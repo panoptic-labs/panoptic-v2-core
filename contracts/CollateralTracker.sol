@@ -1697,7 +1697,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         ); // calls -> strike/price
 
                     // compute the collateral expression (c2 intermediate for clarity)
-                    uint256 c2 = DECIMALS - uint256(int256(_sellCollateralRatio(utilization)));
+                    uint256 c2 = 2 * DECIMALS - uint256(int256(_sellCollateralRatio(utilization)));
 
                     /// ITM and out-of-range
                     if (
