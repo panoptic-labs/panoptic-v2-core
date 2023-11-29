@@ -306,7 +306,7 @@ contract TokenIdHarness {
     /**
      * @notice Flip all the `isLong` positions in the legs in the `tokenId` option position.
      * @dev uses XOR on existing isLong bits.
-     * @dev useful during rolling an option position where we need to burn and mint. So we need to take
+     * /// @dev useful when we need to take an existing tokenId but now burn it.
      * an existing tokenId but now burn it. The way to do this is to simply flip it to a short instead.
      * @param self the tokenId in the SFPM representing an option position.
      */

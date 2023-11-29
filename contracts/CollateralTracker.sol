@@ -1305,15 +1305,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 }
             }
 
-            if (positionBalanceArray.length > 0) {
-                // add the utilization to positionBalanceArray for the current position:
-                uint128 positionSize = positionBalanceArray[positionBalanceArray.length - 1][1]
-                    .rightSlot();
+            // add the utilization to positionBalanceArray for the current position:
+            uint128 positionSize = positionBalanceArray[positionBalanceArray.length - 1][1]
+                .rightSlot();
 
-                positionBalanceArray[positionBalanceArray.length - 1][1] = uint256(0)
-                    .toRightSlot(positionSize)
-                    .toLeftSlot(uint128(utilization) + (uint128(utilization) << 64));
-            }
+            positionBalanceArray[positionBalanceArray.length - 1][1] = uint256(0)
+                .toRightSlot(positionSize)
+                .toLeftSlot(uint128(utilization) + (uint128(utilization) << 64));
 
             // get collateral of the user (optionOwner) for the current position.
             tokenData = getAccountMarginDetails(
