@@ -1633,7 +1633,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     // First term (1-SCR) is the amount of collateral needed to cover the option exercise
                     // The second term (DECIMALS) adds the ITM amount for that option, which gets subtracted from the collateral balance
                     // That extra DECIMAL will add a factor of (Constants.FP96 - ratio) with out-of-range or a factor of (scaleFactor - ratio) / (scaleFactor + 1) when in range
-                    uint256 c2 = (DECIMALS - uint256(int256(_sellCollateralRatio(utilization)))) + DECIMALS;
+                    uint256 c2 = (DECIMALS - uint256(int256(_sellCollateralRatio(utilization)))) +
+                        DECIMALS;
 
                     /// ITM and out-of-range
                     if (
