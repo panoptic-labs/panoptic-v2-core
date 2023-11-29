@@ -221,14 +221,12 @@ library PanopticMath {
 
     /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
     /// @param tokenId the option position id
-    /// @param oldTokenId the position id being burnt if rolling from a position
     /// @param positionSize The number of contracts of this option
     /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
     /// @return longAmounts Left-right packed word where the right conains the total contract size and the left total notional
     /// @return shortAmounts Left-right packed word where the right conains the total contract size and the left total notional
     function computeExercisedAmounts(
         uint256 tokenId,
-        uint256 oldTokenId,
         uint128 positionSize,
         int24 tickSpacing
     ) internal pure returns (int256 longAmounts, int256 shortAmounts) {
@@ -242,16 +240,6 @@ library PanopticMath {
                 tickSpacing
             );
 
-            if (oldTokenId != 0) {
-                (int256 longsOld, int256 shortsOld) = _calculateIOAmounts(
-                    oldTokenId,
-                    positionSize,
-                    leg,
-                    tickSpacing
-                );
-                longs = longs.sub(longsOld);
-                shorts = shorts.sub(shortsOld);
-            }
             longAmounts = longAmounts.add(longs);
             shortAmounts = shortAmounts.add(shorts);
 

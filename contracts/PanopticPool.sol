@@ -93,27 +93,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 poolUtilizations
     );
 
-    /// @notice Emitted when an option is rolled.
-    /// @param recipient User that burnt the option.
-    /// @param positionSize The number of contracts burnt, expressed in terms of the asset.
-    /// @param oldTokenId TokenId of the burnt option.
-    /// @param newTokenId TokenId of the minted option.
-    /// @param tickAtRoll Tick at which the option was rolled.
-    /// @param poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
-    /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
-    /// @param premia LeftRight packing for the amount of premia collected for token0 and token1.
-    /// Where token0 premia is in the right slot and token1 premia is in the left slot.
-    event OptionRolled(
-        address indexed recipient,
-        uint128 positionSize,
-        uint256 indexed oldTokenId,
-        uint256 indexed newTokenId,
-        int24 tickAtRoll,
-        uint128 poolUtilizations,
-        int256 premia
-    );
-
     /*//////////////////////////////////////////////////////////////
                                  TYPES
     //////////////////////////////////////////////////////////////*/
@@ -465,7 +444,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        MINT/BURN/ROLL INTERFACE
+                          MINT/BURN INTERFACE
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validates the current options of the user, and mints a new position.
@@ -511,47 +490,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitHigh
     ) external {
         _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, positionIdList);
-    }
-
-    /// @notice Rolls the entire liquidity of oldTokenId into the last item in positionIdList.
-    /// @param oldTokenId The tokenId of the position to be burnt.
-    /// @param newTokenId The tokenId of the position to be minted.
-    /// @param positionIdList Positions list. IF new tokenId is out-of-range, then list can be set be the empty [] to avoid checking for collateral requirements and save gas. Otherwise, last item MUST be oldTokenId.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position.
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
-    /// @param tickLimitLow Price slippage limit when burning an ITM option.
-    /// @param tickLimitHigh Price slippage limit when burning an ITM option.
-    function rollOptions(
-        uint256 oldTokenId,
-        uint256 newTokenId,
-        uint256[] calldata positionIdList,
-        uint64 effectiveLiquidityLimitX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) private {
-        // checks that the current tick is within the limits provided
-        int24 currentTick;
-        int24 medianTick;
-        (currentTick, medianTick, tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
-            tickLimitLow,
-            tickLimitHigh
-        );
-
-        // Pack the current tick, median tick, and caller into a single uint256
-        uint256 tickStateCallContext = uint256(0)
-            .addCurrentTick(currentTick)
-            .addMedianTick(medianTick)
-            .addCaller(msg.sender);
-
-        _rollOptions(
-            oldTokenId,
-            newTokenId,
-            tickStateCallContext,
-            positionIdList,
-            effectiveLiquidityLimitX32,
-            tickLimitLow,
-            tickLimitHigh
-        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -657,13 +595,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
-        (poolUtilizations, ) = _payCommissionAndWriteData(
+        poolUtilizations = _payCommissionAndWriteData(
             tickStateCallContext.updateCurrentTick(newTick),
-            0,
             tokenId,
             positionSize,
             totalSwapped,
-            int256(0),
             positionIdList
         );
     }
@@ -671,31 +607,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Pay the commission fees for creating the options and update internal state.
     /// @dev Computes long+short amounts, extracts pool utilizations.
     /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
-    /// @param oldTokenId The old option position - used for rolls only: rolling *from* this position.
-    /// @param tokenId The option position; in case of a roll: the position to roll *to*.
+    /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped How much was swapped (if in-the-money position).
-    /// @param oldPositionPremia Premia of the closed position, if this is a roll.
     /// @param positionIdList The total amount of positions held by the user.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
     /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
-    /// @return realizedPremium The final premium paid/collected after accounting for available funds.
     function _payCommissionAndWriteData(
         uint256 tickStateCallContext,
-        uint256 oldTokenId,
         uint256 tokenId,
         uint128 positionSize,
         int256 totalSwapped,
-        int256 oldPositionPremia,
         uint256[] calldata positionIdList
-    ) internal returns (uint128 poolUtilizations, int256 realizedPremium) {
+    ) internal returns (uint128 poolUtilizations) {
         // update storage data, take commission IMPORTANT: use post minting utilizations!
 
         int256 portfolioPremium;
 
         uint256[2][] memory positionBalanceArray;
-        if (positionIdList.length > 0) {
+        {
             // cache to avoid stack to deep errors
             int24 currentTick = tickStateCallContext.currentTick();
 
@@ -707,58 +638,47 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 COMPUTE_ALL_PREMIA,
                 currentTick
             );
+        }
 
-            // add the balance of the current position to positionBalanceArray
-            // if necessary, replace the last item with the new tokenId because this was a roll (oldTokenId != 0)
-            unchecked {
-                positionBalanceArray[positionIdList.length - 1][1] = uint256(positionSize);
-                if (oldTokenId != 0) {
-                    positionBalanceArray[positionIdList.length - 1][0] = tokenId;
-                }
-            }
+        unchecked {
+            positionBalanceArray[positionIdList.length - 1][1] = uint256(positionSize);
         }
 
         {
             // compute how much of tokenId is long and short positions
             (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                oldTokenId,
                 positionSize,
                 s_tickSpacing
             );
 
             // update storage data, take commission
-            (poolUtilizations, realizedPremium) = takeCommission(
+            poolUtilizations = takeCommission(
                 positionBalanceArray,
                 tickStateCallContext,
                 longAmounts,
                 shortAmounts,
                 portfolioPremium,
-                totalSwapped,
-                oldPositionPremia
+                totalSwapped
             );
         }
     }
 
     /// @notice Takes the commission for each collateral token and check for user solvency.
-    /// @dev Solvency check is only performed if the positionBalanceArray length is larger that 0 (it is zero when rolling a position).
     /// @param positionBalanceArray Array containing a list of [tokenId, s_positionBalance], where s_positionBalance is (utilization0, utilization1, positionSize).
     /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param longAmounts The notional value of long legs in the position.
     /// @param shortAmounts The notional value of short legs in the position.
     /// @param portfolioPremium Value of the long premia owed for all position in positionIdList.
-    /// @param totalSwapped Amount of tokens that were swapped during minting/rolling. Only happens when minting ITM positions.
-    /// @param oldPositionPremia Premia accumulated for the position that was closed during a roll.
-    /// @return realizedPremium The final premium paid/collected after accounting for available funds.
+    /// @param totalSwapped Amount of tokens that were swapped during minting. Only happens when minting ITM positions.
     function takeCommission(
         uint256[2][] memory positionBalanceArray,
         uint256 tickStateCallContext,
         int256 longAmounts,
         int256 shortAmounts,
         int256 portfolioPremium,
-        int256 totalSwapped,
-        int256 oldPositionPremia
-    ) internal returns (uint128, int256 realizedPremium) {
+        int256 totalSwapped
+    ) internal returns (uint128) {
         uint256 tokenData0;
         uint256 tokenData1;
         int128 utilization0;
@@ -771,62 +691,52 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int128 _shortAmount = shortAmounts.rightSlot();
             int128 _portfolioPremium = portfolioPremium.rightSlot();
             int128 _swapped = totalSwapped.rightSlot();
-            int128 _oldPositionPremia = oldPositionPremia.rightSlot();
-            (utilization0, tokenData0, _oldPositionPremia) = s_collateralToken0
-                .takeCommissionAddData(
-                    _ct,
-                    _longAmount,
-                    _shortAmount,
-                    _portfolioPremium,
-                    _oldPositionPremia,
-                    _swapped,
-                    _positionBalanceArray
-                );
-            realizedPremium = int256(0).toRightSlot(_oldPositionPremia);
+            (utilization0, tokenData0) = s_collateralToken0.takeCommissionAddData(
+                _ct,
+                _longAmount,
+                _shortAmount,
+                _portfolioPremium,
+                _swapped,
+                _positionBalanceArray
+            );
         }
         {
             int128 _longAmount = longAmounts.leftSlot();
             int128 _shortAmount = shortAmounts.leftSlot();
             int128 _portfolioPremium = portfolioPremium.leftSlot();
             int128 _swapped = totalSwapped.leftSlot();
-            int128 _oldPositionPremia = oldPositionPremia.leftSlot();
-            (utilization1, tokenData1, _oldPositionPremia) = s_collateralToken1
-                .takeCommissionAddData(
-                    _ct,
-                    _longAmount,
-                    _shortAmount,
-                    _portfolioPremium,
-                    _oldPositionPremia,
-                    _swapped,
-                    _positionBalanceArray
-                );
-            realizedPremium = realizedPremium.toLeftSlot(_oldPositionPremia);
+            (utilization1, tokenData1) = s_collateralToken1.takeCommissionAddData(
+                _ct,
+                _longAmount,
+                _shortAmount,
+                _portfolioPremium,
+                _swapped,
+                _positionBalanceArray
+            );
         }
 
-        unchecked {
-            if (positionBalanceArray.length > 0) {
-                // make sure there is enough collateral, allow cross-collateralization between token0 and token1.
-                // rightSlot = userBalance, leftSlot = tokensRequired. Calculate requirement as:
-                // balance1/sqrt(price) + balance0*sqrt(price) >= required0/sqrtPrice + require1*sqrtPrice
-                /// use the median price to ensure cross-collateral requirements are not a results of single-block price manipulations
-                uint160 sqrtPriceX96Median;
-                {
-                    int24 medianTick = _ct.medianTick();
-                    sqrtPriceX96Median = Math.getSqrtRatioAtTick(medianTick);
-                }
-                // check cross-collateral (tokens 0 and 1) solvency state:
-                (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-                    tokenData0,
-                    tokenData1,
-                    sqrtPriceX96Median
-                );
-                if (balanceCross < thresholdCross) revert Errors.NotEnoughCollateral();
+        {
+            // make sure there is enough collateral, allow cross-collateralization between token0 and token1.
+            // rightSlot = userBalance, leftSlot = tokensRequired. Calculate requirement as:
+            // balance1/sqrt(price) + balance0*sqrt(price) >= required0/sqrtPrice + require1*sqrtPrice
+            /// use the median price to ensure cross-collateral requirements are not a results of single-block price manipulations
+            uint160 sqrtPriceX96Median;
+            {
+                int24 medianTick = _ct.medianTick();
+                sqrtPriceX96Median = Math.getSqrtRatioAtTick(medianTick);
             }
+            // check cross-collateral (tokens 0 and 1) solvency state:
+            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
+                tokenData0,
+                tokenData1,
+                sqrtPriceX96Median
+            );
+            if (balanceCross < thresholdCross) revert Errors.NotEnoughCollateral();
         }
 
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)
         unchecked {
-            return (uint128(utilization0) + uint128(utilization1 << 64), realizedPremium);
+            return (uint128(utilization0) + uint128(utilization1 << 64));
         }
     }
 
@@ -991,7 +901,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         emit OptionBurnt(owner, positionSize, tokenId, currentTick, premiaOwed);
     }
 
-    /// @notice Update the internal tracking of the owner's position data upon burning/rolling a position.
+    /// @notice Update the internal tracking of the owner's position data upon burning a position.
     /// @param owner The owner of the option position.
     /// @param burnTokenId The option position to burn.
     function _updatePositionDataBurn(address owner, uint256 burnTokenId) internal {
@@ -1050,7 +960,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // compute option amounts if exercise was necessary
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSize,
             s_tickSpacing
         );
@@ -1075,171 +984,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentPositionPremia.leftSlot()
             )
         );
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                         POSITION ROLLING LOGIC
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Helper to Roll options from an old position to a new position.
-    /// @param oldTokenId Roll *from* this option position.
-    /// @param newTokenId Roll *to* this option position.
-    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
-    /// @param positionIdList The list of position's the user holds. If rolling to an OTM position pass in an empty list of existing positions (not needed).
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position.
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
-    /// @param tickLimitLow The lower slippage limit on the tick.
-    /// @param tickLimitHigh The upper slippage limit on the tick.
-    function _rollOptions(
-        uint256 oldTokenId,
-        uint256 newTokenId,
-        uint256 tickStateCallContext,
-        uint256[] calldata positionIdList,
-        uint64 effectiveLiquidityLimitX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) internal {
-        int24 currentTick = tickStateCallContext.currentTick();
-        // Do checks relevant to option rolls
-        _doRollChecks(positionIdList, oldTokenId, newTokenId, currentTick);
-
-        uint128 positionSize = s_positionBalance[msg.sender][oldTokenId].rightSlot();
-
-        // write data, no need to check collateral because all s_options are OTM and have the same notional value
-        (uint128 poolUtilizations, int256 premiaOwed) = _writeDataForRolls(
-            oldTokenId,
-            newTokenId,
-            positionSize,
-            tickStateCallContext,
-            positionIdList,
-            tickLimitLow,
-            tickLimitHigh
-        );
-
-        // Loop through positions, add option data to "s_options" mapping
-        _addUserOption(newTokenId, effectiveLiquidityLimitX32);
-
-        // calculate and erase position data
-        _updatePositionDataBurn(msg.sender, oldTokenId);
-        emit OptionRolled(
-            msg.sender,
-            positionSize,
-            oldTokenId,
-            newTokenId,
-            currentTick,
-            poolUtilizations,
-            premiaOwed
-        );
-    }
-
-    /// @notice Update The amount of funds in the AMM and the premia. Also updates the number of positions.
-    /// @param oldTokenId The position to roll *from*.
-    /// @param newTokenId The position to roll *to*.
-    /// @param positionSize The size of the position to roll, expressed in terms of the asset.
-    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
-    /// @param positionIdList Use an empty list for the positions held by a user because we are rolling.
-    /// @param tickLimitLow The lower slippage limit on the tick.
-    /// @param tickLimitHigh The upper slippage limit on the tick.
-    /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1.
-    /// @return oldPositionPremia Premium collected for the position that was closed.
-    function _writeDataForRolls(
-        uint256 oldTokenId,
-        uint256 newTokenId,
-        uint128 positionSize,
-        uint256 tickStateCallContext,
-        uint256[] calldata positionIdList,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) internal returns (uint128 poolUtilizations, int256 oldPositionPremia) {
-        (int256 totalSwappedNet, int24 newTick) = _doRoll(
-            oldTokenId,
-            newTokenId,
-            positionSize,
-            tickLimitHigh,
-            tickLimitLow
-        );
-        updateMedian(newTick);
-        tickStateCallContext = tickStateCallContext.updateCurrentTick(newTick);
-
-        // compute accumulated fees only for closed position. Can use type(int24).max because oldTokenId was poked during the roll.
-        oldPositionPremia = _getPremia(
-            oldTokenId,
-            positionSize,
-            msg.sender,
-            COMPUTE_ALL_PREMIA,
-            type(int24).max
-        );
-
-        // pay commission based on total moved amount (long + short), write data about inAMM and premia in collateralBase
-        (poolUtilizations, oldPositionPremia) = _payCommissionAndWriteData(
-            tickStateCallContext,
-            oldTokenId,
-            newTokenId,
-            positionSize,
-            totalSwappedNet,
-            oldPositionPremia,
-            positionIdList
-        );
-
-        // update the s_positionBalance and the total number of positions
-        _setUserOptionsBalance(msg.sender, newTokenId, positionSize, poolUtilizations);
-    }
-
-    /// @notice Calls the SFPM to perform a roll of an option position and returns relevant data
-    /// @param oldTokenId roll *from* this option position
-    /// @param newTokenId roll *to* this option position
-    /// @param positionSize the size of the option position
-    /// @param tickLimitLow the lower slippage limit on the tick
-    /// @param tickLimitHigh the upper slippage limit on the tick
-    /// @return totalSwappedNet the net amount moved after burning `oldTokenId` and minting `newTokenId` including the swapped amount
-    /// @return newTick the `currentTick` in the Uniswap pool after rolling `oldTokenId` to `newTokenId`
-    function _doRoll(
-        uint256 oldTokenId,
-        uint256 newTokenId,
-        uint128 positionSize,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) internal returns (int256, int24) {
-        (, int256 totalSwappedBurn, , int256 totalSwappedMint, int24 newTick) = sfpm
-            .rollTokenizedPositions(
-                oldTokenId,
-                newTokenId,
-                positionSize,
-                tickLimitLow,
-                tickLimitHigh
-            );
-
-        return (totalSwappedMint.add(totalSwappedBurn), newTick);
-    }
-
-    /// @notice Checks that the roll tokens (old to new) are valid.
-    /// @param positionIdList Positions list. IF new tokenId is out-of-range, then list can be set be the empty [] to avoid checking for collateral requirements and save gas
-    /// @param oldTokenId the position being rolled *from*
-    /// @param newTokenId the position being rolled *to*
-    /// @param currentTick the current tick of the AMM
-    function _doRollChecks(
-        uint256[] calldata positionIdList,
-        uint256 oldTokenId,
-        uint256 newTokenId,
-        int24 currentTick
-    ) internal view {
-        // Ensure the tokenIds are valid for rolls
-        if (!oldTokenId.rolledTokenIsValid(newTokenId)) revert Errors.NotATokenRoll();
-
-        // Do Mint check
-        _doMintChecks(newTokenId);
-        // if rolling to an OTM position, no need to check for collateral requirements and user submits an empty position list
-        if (positionIdList.length == 0) {
-            // ITM positions cannot be rolled
-            newTokenId.ensureIsOTM(currentTick, s_tickSpacing);
-        } else {
-            unchecked {
-                if (positionIdList[positionIdList.length - 1] != oldTokenId)
-                    revert Errors.BurnedTokenIdNotLastIndex();
-            }
-            _validatePositionList(msg.sender, positionIdList, 0);
-        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1368,7 +1112,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // and the long legs (from which the exercise cost is computed)
         (int256 longAmounts, int256 delegatedAmounts) = PanopticMath.computeExercisedAmounts(
             touchedId[0],
-            0,
             s_positionBalance[account][touchedId[0]].rightSlot(),
             s_tickSpacing
         );
@@ -1488,7 +1231,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Check whether the list of positionId 1) has duplicates and 2) matches the length stored in the positionsHash.
     /// @param account The owner of the incoming list of positions.
     /// @param positionIdList The existing list of active options for the owner.
-    /// @param offset Changes depending on whether this is a new mint or a roll (=1 if new mint, 0 if roll).
+    /// @param offset Changes depending on whether this is a new mint or a liquidation (=1 if new mint, 0 if liquidation).
     function _validatePositionList(
         address account,
         uint256[] calldata positionIdList,

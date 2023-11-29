@@ -6,10 +6,6 @@ pragma solidity ^0.8.0;
 library Errors {
     /// Errors are alphabetically ordered
 
-    /// @notice The tokenID being burned during a roll is not the last index of the positionIdList (if provided)
-    /// @dev We check this because we need to know where the old tokenId is, so we can replace it with the new one when checking collateral
-    error BurnedTokenIdNotLastIndex();
-
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();
@@ -51,9 +47,6 @@ library Errors {
 
     /// @notice None of the forced exercised legs are exerciseable (they are all in-the-money)
     error NoLegsExercisable();
-
-    /// @notice Not a valid option roll; some parameters differ that shouldn't (e.g. optionRatio, etc.)
-    error NotATokenRoll();
 
     /// @notice PanopticPool: Position does not have enough collateral
     error NotEnoughCollateral();
