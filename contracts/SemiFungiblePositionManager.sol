@@ -460,9 +460,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         SafeTransferLib.safeTransferFrom(token, decoded.payer, msg.sender, amountToPay);
     }
 
-    /*///////////////////////////////////////////////////////////////////////////
-                           PUBLIC MINT/BURN/ROLL FUNCTIONS
-    ///////////////////////////////////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                       PUBLIC MINT/BURN FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Burn a new position containing up to 4 legs wrapped in a ERC1155 token.
     /// @dev Auto-collect all accumulated fees.
@@ -649,9 +649,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ///   └───────────────────────┘   │
     ///                               │
     ///   ┌───────────────────────┐   │   ┌───────────────────────────────┐
-    ///   │burnTokenizedPosition()├───┼───► _validateAndForwardToAMM(...) ├─ (...) --> (mint/burn in AMM)
+    ///   │burnTokenizedPosition()├───────► _validateAndForwardToAMM(...) ├─ (...) --> (mint/burn in AMM)
     ///   └───────────────────────┘       └───────────────────────────────┘
-    ///
+
     /// @param tokenId the option position
     /// @param positionSize the size of the position to create
     /// @param tickLimitLow lower limits on potential slippage
@@ -836,7 +836,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         }
     }
 
-    /// @notice Create the position in the AMM given in the tokenId. 
+    /// @notice Create the position in the AMM given in the tokenId.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
     /// @param univ3pool the Uniswap pool.
     /// @param tokenId the option position

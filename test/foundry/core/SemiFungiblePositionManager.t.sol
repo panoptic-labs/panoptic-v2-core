@@ -25,7 +25,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
-import {ReenterMint, ReenterBurn, ReenterRoll} from "../testUtils/ReentrancyMocks.sol";
+import {ReenterMint, ReenterBurn} from "../testUtils/ReentrancyMocks.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -2630,6 +2630,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
     }
+
     /*//////////////////////////////////////////////////////////////
                          TRANSFER HOOK LOGIC: +
     //////////////////////////////////////////////////////////////*/

@@ -7,9 +7,6 @@ library Constants {
     // Fixed point multiplier: 2**96
     uint256 internal constant FP96 = 0x1000000000000000000000000;
 
-    // Fixed point multiplier: 2**128
-    uint256 internal constant FP128 = 0x100000000000000000000000000000000;
-
     // Minimum possible price tick in a Uniswap V3 pool
     int24 internal constant MIN_V3POOL_TICK = -887272;
 

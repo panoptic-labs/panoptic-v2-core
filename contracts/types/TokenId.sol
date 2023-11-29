@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
 
 // Libraries
@@ -423,6 +424,32 @@ library TokenId {
             return 3;
         }
         return 4;
+    }
+
+    /// @notice Clear a leg in an option position with index `i`.
+    /// @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
+    /// @dev NOTE it's important that the caller fills in the leg details after.
+    /// @dev  - optionRatio is zeroed
+    /// @dev  - asset is zeroed
+    /// @dev  - width is zeroed
+    /// @dev  - strike is zeroed
+    /// @dev  - tokenType is zeroed
+    /// @dev  - isLong is zeroed
+    /// @dev  - riskPartner is zeroed
+    /// @param self the tokenId to reset the leg of
+    /// @param i the leg index to reset, in {0,1,2,3}
+    /// @return `self` with the `i`th leg zeroed including optionRatio and asset.
+    function clearLeg(uint256 self, uint256 i) internal pure returns (uint256) {
+        if (i == 0)
+            return self & 0xFFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFFFFFF;
+        if (i == 1)
+            return self & 0xFFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF;
+        if (i == 2)
+            return self & 0xFFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF;
+        if (i == 3)
+            return self & 0x000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF;
+
+        return self;
     }
 
     /*//////////////////////////////////////////////////////////////
