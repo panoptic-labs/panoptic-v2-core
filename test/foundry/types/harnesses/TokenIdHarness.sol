@@ -399,6 +399,4 @@ contract TokenIdHarness {
     /* LOGIC FOR ROLLING AN OPTION POSITION.
     /*
     /*****************************************************************/
-
-
 }
