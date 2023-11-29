@@ -1261,11 +1261,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 portfolioPremium,
         int128 swappedAmount,
         uint256[2][] memory positionBalanceArray
-    )
-        external
-        onlyPanopticPool
-        returns (int128 utilization, uint256 tokenData)
-    {
+    ) external onlyPanopticPool returns (int128 utilization, uint256 tokenData) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;

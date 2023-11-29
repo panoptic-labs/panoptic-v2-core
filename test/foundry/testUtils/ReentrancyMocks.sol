@@ -153,5 +153,4 @@ contract ReenterRoll {
         fee = _fee;
         tickSpacing = _tickSpacing;
     }
-
 }

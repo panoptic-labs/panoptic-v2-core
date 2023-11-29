@@ -638,7 +638,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 COMPUTE_ALL_PREMIA,
                 currentTick
             );
-
         }
 
         {
@@ -688,30 +687,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int128 _shortAmount = shortAmounts.rightSlot();
             int128 _portfolioPremium = portfolioPremium.rightSlot();
             int128 _swapped = totalSwapped.rightSlot();
-            (utilization0, tokenData0) = s_collateralToken0
-                .takeCommissionAddData(
-                    _ct,
-                    _longAmount,
-                    _shortAmount,
-                    _portfolioPremium,
-                    _swapped,
-                    _positionBalanceArray
-                );
+            (utilization0, tokenData0) = s_collateralToken0.takeCommissionAddData(
+                _ct,
+                _longAmount,
+                _shortAmount,
+                _portfolioPremium,
+                _swapped,
+                _positionBalanceArray
+            );
         }
         {
             int128 _longAmount = longAmounts.leftSlot();
             int128 _shortAmount = shortAmounts.leftSlot();
             int128 _portfolioPremium = portfolioPremium.leftSlot();
             int128 _swapped = totalSwapped.leftSlot();
-            (utilization1, tokenData1) = s_collateralToken1
-                .takeCommissionAddData(
-                    _ct,
-                    _longAmount,
-                    _shortAmount,
-                    _portfolioPremium,
-                    _swapped,
-                    _positionBalanceArray
-                );
+            (utilization1, tokenData1) = s_collateralToken1.takeCommissionAddData(
+                _ct,
+                _longAmount,
+                _shortAmount,
+                _portfolioPremium,
+                _swapped,
+                _positionBalanceArray
+            );
         }
 
         unchecked {
