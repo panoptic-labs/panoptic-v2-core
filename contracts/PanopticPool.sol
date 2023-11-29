@@ -444,7 +444,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        MINT/BURN/ROLL INTERFACE
+                          MINT/BURN INTERFACE
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validates the current options of the user, and mints a new position.
@@ -626,7 +626,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 portfolioPremium;
 
         uint256[2][] memory positionBalanceArray;
-        if (positionIdList.length > 0) {
+        {
             // cache to avoid stack to deep errors
             int24 currentTick = tickStateCallContext.currentTick();
 
@@ -638,6 +638,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 COMPUTE_ALL_PREMIA,
                 currentTick
             );
+        }
+
+        unchecked {
+            positionBalanceArray[positionIdList.length - 1][1] = uint256(positionSize);
         }
 
         {
@@ -711,25 +715,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        unchecked {
-            if (positionBalanceArray.length > 0) {
-                // make sure there is enough collateral, allow cross-collateralization between token0 and token1.
-                // rightSlot = userBalance, leftSlot = tokensRequired. Calculate requirement as:
-                // balance1/sqrt(price) + balance0*sqrt(price) >= required0/sqrtPrice + require1*sqrtPrice
-                /// use the median price to ensure cross-collateral requirements are not a results of single-block price manipulations
-                uint160 sqrtPriceX96Median;
-                {
-                    int24 medianTick = _ct.medianTick();
-                    sqrtPriceX96Median = Math.getSqrtRatioAtTick(medianTick);
-                }
-                // check cross-collateral (tokens 0 and 1) solvency state:
-                (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-                    tokenData0,
-                    tokenData1,
-                    sqrtPriceX96Median
-                );
-                if (balanceCross < thresholdCross) revert Errors.NotEnoughCollateral();
+        {
+            // make sure there is enough collateral, allow cross-collateralization between token0 and token1.
+            // rightSlot = userBalance, leftSlot = tokensRequired. Calculate requirement as:
+            // balance1/sqrt(price) + balance0*sqrt(price) >= required0/sqrtPrice + require1*sqrtPrice
+            /// use the median price to ensure cross-collateral requirements are not a results of single-block price manipulations
+            uint160 sqrtPriceX96Median;
+            {
+                int24 medianTick = _ct.medianTick();
+                sqrtPriceX96Median = Math.getSqrtRatioAtTick(medianTick);
             }
+            // check cross-collateral (tokens 0 and 1) solvency state:
+            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
+                tokenData0,
+                tokenData1,
+                sqrtPriceX96Median
+            );
+            if (balanceCross < thresholdCross) revert Errors.NotEnoughCollateral();
         }
 
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)

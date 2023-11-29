@@ -6,9 +6,6 @@ pragma solidity ^0.8.0;
 library Errors {
     /// Errors are alphabetically ordered
 
-    /// @notice The tokenID being burned must be the last index of the positionIdList
-    error BurnedTokenIdNotLastIndex();
-
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();
