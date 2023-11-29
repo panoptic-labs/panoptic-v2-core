@@ -321,7 +321,7 @@ library TokenId {
 
     /// @notice Flip all the `isLong` positions in the legs in the `tokenId` option position.
     /// @dev uses XOR on existing isLong bits.
-    /// @dev useful when we need to take an existing tokenId but now burn it. 
+    /// @dev useful when we need to take an existing tokenId but now burn it.
     /// @dev The way to do this is to simply flip it to a short instead.
     /// @param self the tokenId in the SFPM representing an option position.
     function flipToBurnToken(uint256 self) internal pure returns (uint256) {
@@ -551,5 +551,4 @@ library TokenId {
         // Fail if position has no legs that is far-out-of-the-money
         revert Errors.NoLegsExercisable();
     }
-
 }
