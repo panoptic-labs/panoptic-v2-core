@@ -640,6 +640,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
+        unchecked {
+            positionBalanceArray[positionIdList.length - 1][1] = uint256(positionSize);
+        }
+
         {
             // compute how much of tokenId is long and short positions
             (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
