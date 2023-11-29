@@ -141,7 +141,9 @@ contract PositionUtils is Test {
         strikeOffset = int24(width % 2 == 0 ? int256(0) : ts / 2);
 
         minTick = int24(((currentTick - 4096 * ts) / ts) * ts);
+        minTick = minTick < TickMath.MIN_TICK ? (TickMath.MIN_TICK/ts)*ts : minTick;
         maxTick = int24(((currentTick + 4096 * ts) / ts) * ts);
+        maxTick = maxTick > TickMath.MAX_TICK ? (TickMath.MAX_TICK/ts)*ts : maxTick;
     }
 
     function getValidSW(
