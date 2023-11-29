@@ -1238,8 +1238,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // get collateral of the user (optionOwner) for the current position.
             tokenData = _getAccountMargin(
-                environmentContext.caller(),
-                environmentContext.currentTick(),
+                tickStateCallContext.caller(),
+                tickStateCallContext.currentTick(),
                 positionBalanceArray,
                 portfolioPremium
             );

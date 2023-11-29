@@ -4560,7 +4560,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 tokenType,
                 0,
                 strike,
-                500
+                5000
             );
             positionIdList1.push(tokenIdFull);
             panopticPool.mintOptions(positionIdList1, uint128(positionSize0), 0, 0, 0);
@@ -4579,9 +4579,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             _grantTokens(Alice);
             uint160 sqrtPriceX96;
             (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-            uint160 sqrtPriceStrike = TickMath.getSqrtRatioAtTick(
-                ((2 * currentTick - strike) / tickSpacing) * tickSpacing
-            );
+            uint160 sqrtPriceStrike = TickMath.getSqrtRatioAtTick(strike);
 
             // deposit only the token that is moved to avoid cross collateralization
             // only deposit the token which is WETH
