@@ -154,7 +154,4 @@ contract ReenterRoll {
         tickSpacing = _tickSpacing;
     }
 
-    fallback() external {
-        SemiFungiblePositionManagerHarness(msg.sender).rollTokenizedPositions(0, 0, 0, 0, 0);
-    }
 }

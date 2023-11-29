@@ -1854,7 +1854,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 uint128(positionSize),
                 tickSpacing
             );
@@ -1954,7 +1953,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 positionSize,
                 tickSpacing
             );
@@ -2083,7 +2081,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 uint128(positionSize),
                 tickSpacing
             );
@@ -2172,7 +2169,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 uint128(positionSize),
                 tickSpacing
             );
@@ -2261,7 +2257,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 positionSize,
                 tickSpacing
             );
@@ -2374,7 +2369,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 positionSize,
                 tickSpacing
             );
@@ -2468,7 +2462,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSize,
             tickSpacing
         );
@@ -2600,7 +2593,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmountsSold) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSizes[0],
             tickSpacing
         );
@@ -2646,7 +2638,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSizes[1],
             tickSpacing
         );
@@ -2932,7 +2923,6 @@ contract PanopticPoolTest is PositionUtils {
         // deposit commission so we can reach collateral check
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSize,
             tickSpacing
         );
@@ -3052,7 +3042,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                0,
                 positionSize,
                 tickSpacing
             );
@@ -3193,7 +3182,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             uint128(positionSize),
             tickSpacing
         );
@@ -3354,7 +3342,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             uint128(positionSize),
             tickSpacing
         );
@@ -3548,7 +3535,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenIds[0],
-            0,
             uint128(positionSize),
             tickSpacing
         );
@@ -3756,14 +3742,12 @@ contract PanopticPoolTest is PositionUtils {
     //        {
     //            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
     //
     //            (, int256 shortAmountsNew) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                newTokenId,
     //                positionSize,
     //                tickSpacing
     //            );
@@ -3805,14 +3789,12 @@ contract PanopticPoolTest is PositionUtils {
     //        {
     //            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
     //
     //            (, int256 shortAmounts2) = PanopticMath.computeExercisedAmounts(
     //                newTokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
@@ -3976,14 +3958,12 @@ contract PanopticPoolTest is PositionUtils {
     //        {
     //            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
     //
     //            (, int256 shortAmountsNew) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                newTokenId,
     //                positionSize,
     //                tickSpacing
     //            );
@@ -4059,13 +4039,11 @@ contract PanopticPoolTest is PositionUtils {
     //        {
     //            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
     //            (, int256 shortAmounts2) = PanopticMath.computeExercisedAmounts(
     //                newTokenId,
-    //                tokenId,
     //                positionSize,
     //                tickSpacing
     //            );
@@ -4229,14 +4207,12 @@ contract PanopticPoolTest is PositionUtils {
     //        {
     //            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
     //
     //            (, int256 shortAmountsNew) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                newTokenId,
     //                positionSize,
     //                tickSpacing
     //            );
@@ -4307,14 +4283,12 @@ contract PanopticPoolTest is PositionUtils {
     //        {
     //            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
     //                tokenId,
-    //                0,
     //                positionSize,
     //                tickSpacing
     //            );
     //
     //            (, int256 shortAmounts2) = PanopticMath.computeExercisedAmounts(
     //                newTokenId,
-    //                tokenId,
     //                positionSize,
     //                tickSpacing
     //            );
@@ -4673,7 +4647,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSize,
             tickSpacing
         );
@@ -4865,7 +4838,6 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            0,
             positionSize,
             tickSpacing
         );

@@ -43,13 +43,11 @@ contract PanopticMathHarness is Test {
 
     function computeExercisedAmounts(
         uint256 tokenId,
-        uint256 oldTokenId,
         uint128 positionSize,
         int24 tickSpacing
     ) public view returns (int256, int256) {
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            oldTokenId,
             positionSize,
             tickSpacing
         );
