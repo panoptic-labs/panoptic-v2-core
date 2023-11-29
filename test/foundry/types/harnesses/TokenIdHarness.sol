@@ -304,6 +304,18 @@ contract TokenIdHarness {
     /*****************************************************************/
 
     /**
+     * @notice Flip all the `isLong` positions in the legs in the `tokenId` option position.
+     * @dev uses XOR on existing isLong bits.
+     * @dev useful during rolling an option position where we need to burn and mint. So we need to take
+     * an existing tokenId but now burn it. The way to do this is to simply flip it to a short instead.
+     * @param self the tokenId in the SFPM representing an option position.
+     */
+    function flipToBurnToken(uint256 self) public view returns (uint256) {
+        uint256 r = TokenId.flipToBurnToken(self);
+        return r;
+    }
+
+    /**
      * @notice Get the number of longs in this option position.
      * @notice count the number of legs (out of a maximum of 4) that are long positions.
      * @param self the tokenId in the SFPM representing an option position.
