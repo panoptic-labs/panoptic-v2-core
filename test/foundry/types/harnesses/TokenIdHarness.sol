@@ -19,10 +19,6 @@ contract TokenIdHarness {
     int256 public constant BITMASK_INT24 = 0xFFFFFF;
     // Setting the width to its max possible value (2**12-1) indicates a full-range liquidity chunk and not a width of 4095 ticks
     int24 public constant MAX_LEG_WIDTH = 4095; // int24 because that's the strike and width formats
-    // this mask in hex has a 1 bit in each location except in the strike+width of the tokenId:
-    // this ROLL_MASK will make sure that two tokens will have the exact same parameters
-    uint256 public constant ROLL_MASK =
-        0xFFF_000000000FFF_000000000FFF_000000000FFF_FFFFFFFFFFFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
     // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
     uint256 public constant RISK_PARTNER_MASK = 0xFFFFFFFFF3FF;
@@ -308,18 +304,6 @@ contract TokenIdHarness {
     /*****************************************************************/
 
     /**
-     * @notice Flip all the `isLong` positions in the legs in the `tokenId` option position.
-     * @dev uses XOR on existing isLong bits.
-     * @dev useful during rolling an option position where we need to burn and mint. So we need to take
-     * an existing tokenId but now burn it. The way to do this is to simply flip it to a short instead.
-     * @param self the tokenId in the SFPM representing an option position.
-     */
-    function flipToBurnToken(uint256 self) public view returns (uint256) {
-        uint256 r = TokenId.flipToBurnToken(self);
-        return r;
-    }
-
-    /**
      * @notice Get the number of longs in this option position.
      * @notice count the number of legs (out of a maximum of 4) that are long positions.
      * @param self the tokenId in the SFPM representing an option position.
@@ -391,12 +375,4 @@ contract TokenIdHarness {
     function validateIsExercisable(uint256 self, int24 currentTick, int24 tickSpacing) public view {
         TokenId.validateIsExercisable(self, currentTick, tickSpacing);
     }
-
-    /**
-     *
-     */
-    /*
-    /* LOGIC FOR ROLLING AN OPTION POSITION.
-    /*
-    /*****************************************************************/
 }
