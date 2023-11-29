@@ -42,11 +42,11 @@ A gas-efficient alternative to Uniswap’s NonFungiblePositionManager that manag
 
 ### CollateralTracker
 
-An ERC4626 vault where token liquidity from passive Panoptic Liquidity Providers (PLPs) and collateral for option positions are deposited. CollateralTrackers are also responsible for paying out commission fees and options premia, handling payments of intrinsic value for options and distributing P&L, calculating liquidation bonuses, and determining costs for forcefully exercising another user’s options. However, by far the most important functionality of the CollateralTracker is to calculate the collateral requirement for every account and position. Each time positions are minted, burned, or rolled in Panoptic, the CollateralTracker updates the collateral balances and provides information on the collateral requirement, ensuring that the protocol remains solvent and we retain the ability to liquidate distressed positions when needed.
+An ERC4626 vault where token liquidity from passive Panoptic Liquidity Providers (PLPs) and collateral for option positions are deposited. CollateralTrackers are also responsible for paying out commission fees and options premia, handling payments of intrinsic value for options and distributing P&L, calculating liquidation bonuses, and determining costs for forcefully exercising another user’s options. However, by far the most important functionality of the CollateralTracker is to calculate the collateral requirement for every account and position. Each time positions are minted or burned in Panoptic, the CollateralTracker updates the collateral balances and provides information on the collateral requirement, ensuring that the protocol remains solvent and we retain the ability to liquidate distressed positions when needed.
 
 ### PanopticPool
 
-The Panoptic Pool exposes the core functionality of the protocol. If the SFPM is the “engine” of Panoptic, the Panoptic Pool is the “conductor”. All interactions with the protocol, be it minting, burning or rolling positions, liquidating or force exercising distressed accounts, or just checking position balances and accumulating premiums, originate in this contract. It is responsible for orchestrating the required calls to the SFPM to actually create option positions in Uniswap, tracking user balances of and accumulating the premia on those positions, and calling the CollateralTracker with the data it needs to settle position changes.
+The Panoptic Pool exposes the core functionality of the protocol. If the SFPM is the “engine” of Panoptic, the Panoptic Pool is the “conductor”. All interactions with the protocol, be it minting or burning positions, liquidating or force exercising distressed accounts, or just checking position balances and accumulating premiums, originate in this contract. It is responsible for orchestrating the required calls to the SFPM to actually create option positions in Uniswap, tracking user balances of and accumulating the premia on those positions, and calling the CollateralTracker with the data it needs to settle position changes.
 
 ## Architecture & Actors
 
@@ -86,7 +86,6 @@ Once they have deposited, there are many options for the other actors in the pro
 
 - `mintOptions` - create an option position with up to four distinct legs with a specially encoded - positionID/tokenID, each of which is its own short (sold/added) or long (bought/removed) liquidity chunk
 - `burnOptions` - burn or exercise a position created through `mintOptions`
-- `rollOptions`- modify the liquidity chunk (strike/width) of one or more legs in an existing position, transitioning it to a new ID but retaining the same size, only paying commission on intrinsic value. Only modifies the required legs and is far cheaper/more gas efficient than entirely burning and minting a position - enabling the frequent rebalancing required to be an effective seller.
 
 Meanwhile, force exercisers and liquidators can perform their respective roles with the `forceExercise` and `liquidateAccount` functions.
 
@@ -96,7 +95,7 @@ Meanwhile, force exercisers and liquidators can perform their respective roles w
 contracts/
 ├── CollateralTracker — "ERC4626 vault where token liquidity from Panoptic Liquidity Providers (PLPs) and collateral for option positions are deposited and collateral requirements are computed"
 ├── PanopticFactory — "Handles deployment new Panoptic instances on top of Uniswap pools, initial liquidity deployments, and NFT rewards for deployers"
-├── PanopticPool — "Coordinates all options trading activity - minting, burning, rolling, force exercises, liquidations"
+├── PanopticPool — "Coordinates all options trading activity - minting, burning, force exercises, liquidations"
 ├── SemiFungiblePositionManager — "The 'engine' of Panoptic - manages all Uniswap V3 positions in the protocol as well as being a more advanced, gas-efficient alternative to NFPM for Uniswap LPs"
 ├── tokens
 │   ├── ERC1155Minimal — "A minimalist implementation of the ERC1155 token standard without metadata"

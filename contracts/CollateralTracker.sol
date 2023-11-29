@@ -1169,47 +1169,28 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Take commission on option creation/opening (commissions will not be taken on closing).
-    /// @param environmentContext Container that holds current tick, median tick, and caller.
+    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param longAmount The amount of longs.
     /// @param shortAmount The amount of shorts.
     /// @param portfolioPremium Equal to the total accumulated long premium for the whole portfolio.
-    /// @param oldPositionPremia Equal to the premium of the burnt option if this is a roll.
     /// @param swappedAmount The amount of tokens swapped during creation of the option position (non-zero for options minted ITM).
     /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
     /// @return utilization The utilization of the Panoptic Pool.
     /// @return tokenData LeftRight encoding with tokenbalance, ie assets, (in the right slot) and amount required in collateral (left slot).
-    /// @return realizedPremium The final premium paid/collected after accounting for available funds.
     function takeCommissionAddData(
-        uint256 environmentContext,
+        uint256 tickStateCallContext,
         int128 longAmount,
         int128 shortAmount,
         int128 portfolioPremium,
-        int128 oldPositionPremia,
         int128 swappedAmount,
         uint256[2][] memory positionBalanceArray
-    )
-        external
-        onlyPanopticPool
-        returns (int128 utilization, uint256 tokenData, int128 realizedPremium)
-    {
+    ) external onlyPanopticPool returns (int128 utilization, uint256 tokenData) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            int256 exchangedAmount = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
-
-            realizedPremium = int128(
-                Math.min(
-                    oldPositionPremia,
-                    int256(IERC20Partial(s_underlyingToken).balanceOf(address(s_panopticPool))) -
-                        updatedAssets
-                )
-            );
-
-            // pay/collect premium of burnt option if rolling
-            // add intrinsic value of option + commission/ITM spread fees to settle
-            int256 tokenToPay = exchangedAmount - realizedPremium;
+            int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
@@ -1220,25 +1201,25 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
-                _burn(environmentContext.caller(), sharesToBurn);
+                _burn(tickStateCallContext.caller(), sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(environmentContext.caller(), sharesToMint);
+                _mint(tickStateCallContext.caller(), sharesToMint);
             }
 
             // update stored asset balances with net moved amounts
             // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
+            s_poolAssets = uint128(uint256(updatedAssets));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
 
             {
                 // get the current Panoptic pool utilization
                 // Check if current tick is too far away from median, set to utilization to 10,001 if it is
-                int24 currentTick = environmentContext.currentTick();
-                int24 medianTick = environmentContext.medianTick();
+                int24 currentTick = tickStateCallContext.currentTick();
+                int24 medianTick = tickStateCallContext.medianTick();
                 // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
                 if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
                     utilization = DECIMALS_128 + 1;
@@ -1247,16 +1228,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 }
             }
 
-            // pLength is zero for rollOptions to an OTM position, so no need to check margin requirements
-            if (positionBalanceArray.length > 0) {
-                // add the utilization to positionBalanceArray for the current position:
-                uint128 positionSize = positionBalanceArray[positionBalanceArray.length - 1][1]
-                    .rightSlot();
+            // add the utilization to positionBalanceArray for the current position:
+            uint128 positionSize = positionBalanceArray[positionBalanceArray.length - 1][1]
+                .rightSlot();
 
-                positionBalanceArray[positionBalanceArray.length - 1][1] = uint256(0)
-                    .toRightSlot(positionSize)
-                    .toLeftSlot(uint128(utilization) + (uint128(utilization) << 64));
-            }
+            positionBalanceArray[positionBalanceArray.length - 1][1] = uint256(0)
+                .toRightSlot(positionSize)
+                .toLeftSlot(uint128(utilization) + (uint128(utilization) << 64));
 
             // get collateral of the user (optionOwner) for the current position.
             tokenData = _getAccountMargin(
