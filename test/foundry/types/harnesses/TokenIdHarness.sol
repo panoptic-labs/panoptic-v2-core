@@ -356,6 +356,26 @@ contract TokenIdHarness {
     }
 
     /**
+     * @notice Clear a leg in an option position with index `i`.
+     * @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
+     * @dev NOTE it's important that the caller fills in the leg details after.
+     * @dev  - optionRatio is zeroed
+     * @dev  - asset is zeroed
+     * @dev  - width is zeroed
+     * @dev  - strike is zeroed
+     * @dev  - tokenType is zeroed
+     * @dev  - isLong is zeroed
+     * @dev  - riskPartner is zeroed
+     * @param self the tokenId to reset the leg of
+     * @param i the leg index to reset, in {0,1,2,3}
+     * @return `self` with the `i`th leg zeroed including optionRatio and asset.
+     */
+    function clearLeg(uint256 self, uint256 i) public view returns (uint256) {
+        uint256 r = TokenId.clearLeg(self, i);
+        return r;
+    }
+
+    /**
      * @notice Validate an option position and all its active legs; return the underlying AMM address.
      * @dev used to validate a position tokenId and its legs.
      * @param self the option position id.

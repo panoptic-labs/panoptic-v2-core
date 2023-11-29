@@ -1015,6 +1015,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// clear a random leg to produce a gap
         /// (avoid clearing leg indetokenId 3 as 0-2 would be valid)
         indexToClear = bound(indexToClear, 0, 2);
+        tokenId = harness.clearLeg(tokenId, indexToClear);
 
         /// will fail as tokenId's cannot have legs with gaps
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 1));
@@ -1780,6 +1781,178 @@ contract TokenIdTest is Test, PositionUtils {
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
         harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              CLEAR LEG
+    //////////////////////////////////////////////////////////////*/
+
+    // clearLeg
+    // call on each leg of a full tokenId
+    // then eval that each has been cleared
+    function test_Success_clearLeg_Four(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        /// fuzz a 4 leg position
+        tokenId = fuzzedPosition(
+            4,
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear leg four
+        tokenId = harness.clearLeg(tokenId, 3);
+
+        assertEq(0, harness.optionRatio(tokenId, 3));
+    }
+
+    function test_Success_clearLeg_Three(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        /// fuzz a 4 leg position
+        tokenId = fuzzedPosition(
+            4,
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear leg three
+        tokenId = harness.clearLeg(tokenId, 2);
+
+        assertEq(0, harness.optionRatio(tokenId, 2));
+    }
+
+    function test_Success_clearLeg_Two(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        /// fuzz a 4 leg position
+        tokenId = fuzzedPosition(
+            4,
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear leg two
+        tokenId = harness.clearLeg(tokenId, 1);
+
+        assertEq(0, harness.optionRatio(tokenId, 1));
+    }
+
+    function test_Success_clearLeg_One(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        /// fuzz a 4 leg position
+        tokenId = fuzzedPosition(
+            4,
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear leg one
+        tokenId = harness.clearLeg(tokenId, 0);
+
+        assertEq(0, harness.optionRatio(tokenId, 0));
+    }
+
+    function test_Success_clearLeg_Null(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        /// fuzz a 4 leg position
+        tokenId = fuzzedPosition(
+            4,
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        // clear leg 4 (non-existent)
+        uint256 returnedToken = harness.clearLeg(tokenId, 4);
+
+        assertEq(tokenId, returnedToken);
     }
 
     /*//////////////////////////////////////////////////////////////
