@@ -1246,7 +1246,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Take commission on option creation/opening (commissions will not be taken on closing).
-    /// @param environmentContext Container that holds current tick, median tick, and caller.
+    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param longAmount The amount of longs.
     /// @param shortAmount The amount of shorts.
     /// @param portfolioPremium Equal to the total accumulated long premium for the whole portfolio.
@@ -1255,7 +1255,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return utilization The utilization of the Panoptic Pool.
     /// @return tokenData LeftRight encoding with tokenbalance, ie assets, (in the right slot) and amount required in collateral (left slot).
     function takeCommissionAddData(
-        uint256 environmentContext,
+        uint256 tickStateCallContext,
         int128 longAmount,
         int128 shortAmount,
         int128 portfolioPremium,
@@ -1278,11 +1278,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
-                _burn(environmentContext.caller(), sharesToBurn);
+                _burn(tickStateCallContext.caller(), sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(environmentContext.caller(), sharesToMint);
+                _mint(tickStateCallContext.caller(), sharesToMint);
             }
 
             // update stored asset balances with net moved amounts
@@ -1295,8 +1295,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             {
                 // get the current Panoptic pool utilization
                 // Check if current tick is too far away from median, set to utilization to 10,001 if it is
-                int24 currentTick = environmentContext.currentTick();
-                int24 medianTick = environmentContext.medianTick();
+                int24 currentTick = tickStateCallContext.currentTick();
+                int24 medianTick = tickStateCallContext.medianTick();
                 // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
                 if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
                     utilization = DECIMALS_128 + 1;
@@ -1315,8 +1315,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // get collateral of the user (optionOwner) for the current position.
             tokenData = getAccountMarginDetails(
-                environmentContext.caller(),
-                environmentContext.currentTick(),
+                tickStateCallContext.caller(),
+                tickStateCallContext.currentTick(),
                 positionBalanceArray,
                 portfolioPremium
             );
