@@ -626,7 +626,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 portfolioPremium;
 
         uint256[2][] memory positionBalanceArray;
-        if (positionIdList.length > 0) {
+        {
             // cache to avoid stack to deep errors
             int24 currentTick = tickStateCallContext.currentTick();
 
@@ -715,7 +715,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        unchecked {
+        {
             // make sure there is enough collateral, allow cross-collateralization between token0 and token1.
             // rightSlot = userBalance, leftSlot = tokensRequired. Calculate requirement as:
             // balance1/sqrt(price) + balance0*sqrt(price) >= required0/sqrtPrice + require1*sqrtPrice
