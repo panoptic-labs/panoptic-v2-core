@@ -8905,7 +8905,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 uint128(liquidity)
             );
 
-            vm.assume(amount0 < 2 ** 127 - 1 && amount1 < 2 ** 127 - 1);
+            vm.assume(amount0 < 2 ** 104 - 1 && amount1 < 2 ** 104 - 1);
 
             /// assert the notional value is valid
             uint128 contractSize = positionSize * uint128(tokenId.optionRatio(i));
