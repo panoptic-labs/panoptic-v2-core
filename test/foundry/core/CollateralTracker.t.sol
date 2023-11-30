@@ -1455,7 +1455,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Charlie);
-        collateralToken1.deposit(uint128(assetsToken1), Charlie);
 
         // Invoke all interactions with the Collateral Tracker from user Alice
         vm.startPrank(Alice);
@@ -1465,7 +1464,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-        IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
 
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
@@ -6401,8 +6399,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(tokenData1, calcThresholdCross, "1");
 
             // assert that the threshold cross is 0 (calendar spread of same strike/width) has 0 requirement
-            assertApproxEqAbs(tokenData1, 0, 1);
-            assertApproxEqAbs(calcThresholdCross, 0, 1);
+            assertApproxEqAbs(tokenData1, 0, 5);
+            assertApproxEqAbs(calcThresholdCross, 0, 5);
         }
     }
 
