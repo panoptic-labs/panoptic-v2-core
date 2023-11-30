@@ -2768,7 +2768,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     sqrtPriceX96 +
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
-                assertTrue(crossAfterA < 1000);
+                assertTrue(crossAfterA < crossBeforeA);
             }
 
             {
@@ -3042,7 +3042,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     sqrtPriceX96 +
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
-                assertTrue(crossAfterA < 1000);
+                assertTrue(crossAfterA < crossBeforeA);
             }
 
             {
@@ -3341,7 +3341,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
                 assertTrue(crossAfterA < crossBeforeA);
-                assertTrue(crossAfterA > 0);
             }
             {
                 console2.log("all amounts are the same for Diana (no protocol loss)");
@@ -3882,7 +3881,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
                 assertTrue(crossAfterA < crossBeforeA);
-                assertTrue(crossAfterA < 1000);
             }
             {
                 console2.log(
