@@ -1911,7 +1911,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // at low pool utilization's strangle legs are evaluated at 2x capital efficiency
             uint64 poolUtilization0 = uint64(poolUtilization);
             uint64 poolUtilization1 = uint64(poolUtilization >> 64);
-            
+
             // add 1 to handle poolUtilization = 0
             poolUtilization =
                 uint128(uint64(-int64(poolUtilization0 == 0 ? 1 : poolUtilization0))) +
