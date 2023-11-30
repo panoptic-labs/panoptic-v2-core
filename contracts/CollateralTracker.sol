@@ -1588,7 +1588,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     ((atTick < (strike - oneSidedRange)) && (tokenType == 0)) // strike OTM when price < lowerTick for tokenType=0
                 ) {
                     // position is out-the-money, collateral requirement = SCR * amountMoved
-                    return required;
+                    required;
                 } else {
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
@@ -1909,10 +1909,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             // A negative pool utilization is used to denote a position which is a strangle
             // at low pool utilization's strangle legs are evaluated at 2x capital efficiency
+            uint64 poolUtilization0 = uint64(poolUtilization);
+            uint64 poolUtilization1 = uint64(poolUtilization >> 64);
+            
             // add 1 to handle poolUtilization = 0
             poolUtilization =
-                uint128(uint64(-int64(uint64(poolUtilization + 1)))) +
-                (uint128(uint64(-int64(uint64((poolUtilization >> 64) + 1)))) << 64);
+                uint128(uint64(-int64(poolUtilization0 == 0 ? 1 : poolUtilization0))) +
+                (uint128(uint64(-int64(poolUtilization1 == 0 ? 1 : poolUtilization1))) << 64);
 
             return
                 strangleRequired = _getRequiredCollateralSingleLegNoPartner(
