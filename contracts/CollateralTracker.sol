@@ -1912,7 +1912,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // add 1 to handle poolUtilization = 0
             poolUtilization =
                 uint128(uint64(-int64(uint64(poolUtilization + 1)))) +
-                (uint128(uint64(-int64(uint64(poolUtilization >> 64 + 1)))) << 64);
+                (uint128(uint64(-int64(uint64(poolUtilization >> (64 + 1))))) << 64);
 
             return
                 strangleRequired = _getRequiredCollateralSingleLegNoPartner(
