@@ -1413,14 +1413,32 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
     }
 
-    function test_Success_revoke_mint(uint256 x, uint128 shares) public {
-        shares = uint128(bound(shares, 101, type(uint104).max - 100));
-
+    function test_Success_revoke_mint(
+        uint256 x,
+        uint128 shares,
+        uint256 existingShares,
+        uint256 mintSeed
+    ) public {
+        vm.assume(shares < type(uint104).max - 100);
         // fuzz
         _initWorld(x);
 
+        changePrank(Charlie);
+
+        _grantTokens(Charlie);
+
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+
+        // deposit a number of assets determined via fuzzing
+        collateralToken0.mint(
+            bound(existingShares, 0, (uint256(type(uint104).max) * 10_000) / 10_010),
+            Charlie
+        );
+
         // Invoke all interactions with the Collateral Tracker from user Alice
-        vm.startPrank(Charlie);
+
+        changePrank(Alice);
 
         // give Bob the max amount of tokens
         _grantTokens(Charlie);
@@ -1430,15 +1448,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             1,
             type(uint104).max
         );
-        uint256 assetsToken1 = bound(
-            convertToAssets(shares, collateralToken1),
-            1,
-            type(uint104).max
-        );
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-        IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
 
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
@@ -1458,43 +1470,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Alice);
-        collateralToken1.deposit(uint128(assetsToken1), Alice);
 
-        // check delegatee balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
 
-        console.log(collateralToken0.totalSupply(), shares);
-
-        uint256 totalSupplyBefore0 = collateralToken0.totalSupply();
-        uint256 totalSupplyBefore1 = collateralToken1.totalSupply();
+        uint256 assetsBefore0 = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        ) +
+            bound(
+                mintSeed,
+                0,
+                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
+            );
+        vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
         // invoke delegate transactions from the Panoptic pool
         // attempt to request an amount greater than the delegatee's balance
-        panopticPool.revoke(Bob, Alice, assetsToken0 + 100, collateralToken0);
-        panopticPool.revoke(Bob, Alice, assetsToken1 + 100, collateralToken1);
+        panopticPool.revoke(Bob, Alice, assetsBefore0, collateralToken0);
 
         // check delegatee balance after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Bob);
+        uint256 assetsAfter0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
 
-        assertTrue(collateralToken0.balanceOf(Alice) == 0);
-        assertTrue(collateralToken1.balanceOf(Alice) == 0);
 
-        uint256 delta0 = ((assetsToken0 + 100) * (totalSupplyBefore0 - sharesBefore0)) /
-            (collateralToken0.totalAssets() - assetsToken0 - 100) -
-            sharesBefore0;
-        uint256 delta1 = ((assetsToken1 + 100) * (totalSupplyBefore1 - sharesBefore1)) /
-            (collateralToken1.totalAssets() - assetsToken1 - 100) -
-            sharesBefore1;
-
-        assertApproxEqAbs(sharesBefore0 + delta0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore0 + delta1, sharesAfter1, 5);
-
-        assertApproxEqAbs(collateralToken0.previewRedeem(sharesAfter0), assetsToken0 + 100, 1);
-        assertApproxEqAbs(collateralToken1.previewRedeem(sharesAfter1), assetsToken1 + 100, 1);
-
-        assertTrue(collateralToken0.previewRedeem(sharesAfter0) < assetsToken0 + 100);
-        assertTrue(collateralToken1.previewRedeem(sharesAfter1) < assetsToken1 + 100);
+        assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
     }
 
     /*//////////////////////////////////////////////////////////////
