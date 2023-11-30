@@ -1471,7 +1471,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Alice);
 
-
         uint256 assetsBefore0 = collateralToken0.convertToAssets(
             collateralToken0.balanceOf(Alice)
         ) +
@@ -1487,7 +1486,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // check delegatee balance after
         uint256 assetsAfter0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
-
 
         assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
     }
