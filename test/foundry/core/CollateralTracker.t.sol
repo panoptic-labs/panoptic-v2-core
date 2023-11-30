@@ -1486,6 +1486,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         
         assertApproxEqAbs(sharesBefore0 + delta0, sharesAfter0, 5);
         assertApproxEqAbs(sharesBefore0 + delta1, sharesAfter1, 5);
+
+        assertApproxEqAbs(collateralToken0.previewRedeem(sharesAfter0), assetsToken0 + 100, 1);
+        assertApproxEqAbs(collateralToken1.previewRedeem(sharesAfter1), assetsToken1 + 100, 1);
+        
+        assertTrue(collateralToken0.previewRedeem(sharesAfter0) < assetsToken0 + 100);
+        assertTrue(collateralToken1.previewRedeem(sharesAfter1) < assetsToken1 + 100);
+
     }
 
     /*//////////////////////////////////////////////////////////////
