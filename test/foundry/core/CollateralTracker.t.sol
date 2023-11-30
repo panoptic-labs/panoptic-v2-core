@@ -1415,7 +1415,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_revoke_mint(uint256 x, uint128 shares) public {
         shares = uint128(bound(shares, 101, type(uint104).max - 100));
-        
+
         // fuzz
         _initWorld(x);
 
@@ -1444,13 +1444,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Charlie);
         collateralToken1.deposit(uint128(assetsToken1), Charlie);
-        
+
         // Invoke all interactions with the Collateral Tracker from user Alice
         vm.startPrank(Alice);
 
         // give Bob the max amount of tokens
         _grantTokens(Alice);
-        
+
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
         IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
@@ -1460,11 +1460,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(uint128(assetsToken0), Alice);
         collateralToken1.deposit(uint128(assetsToken1), Alice);
 
-
         // check delegatee balance before
         uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
         uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
-        
+
         console.log(collateralToken0.totalSupply(), shares);
 
         uint256 totalSupplyBefore0 = collateralToken0.totalSupply();
@@ -1481,9 +1480,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertTrue(collateralToken0.balanceOf(Alice) == 0);
         assertTrue(collateralToken1.balanceOf(Alice) == 0);
 
-        uint256 delta0 = ((assetsToken0 + 100) * (totalSupplyBefore0 - sharesBefore0)) / (collateralToken0.totalAssets() - assetsToken0 - 100) - sharesBefore0;
-        uint256 delta1 = ((assetsToken1 + 100) * (totalSupplyBefore1 - sharesBefore1)) / (collateralToken1.totalAssets() - assetsToken1 - 100) - sharesBefore1;
-        
+        uint256 delta0 = ((assetsToken0 + 100) * (totalSupplyBefore0 - sharesBefore0)) /
+            (collateralToken0.totalAssets() - assetsToken0 - 100) -
+            sharesBefore0;
+        uint256 delta1 = ((assetsToken1 + 100) * (totalSupplyBefore1 - sharesBefore1)) /
+            (collateralToken1.totalAssets() - assetsToken1 - 100) -
+            sharesBefore1;
+
         assertApproxEqAbs(sharesBefore0 + delta0, sharesAfter0, 5);
         assertApproxEqAbs(sharesBefore0 + delta1, sharesAfter1, 5);
 
