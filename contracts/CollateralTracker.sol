@@ -1140,7 +1140,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // mint shares to complete to requested amount
                 _mint(
                     delegator,
-                    Math.mulDiv(assets, totalSupply - delegateeBalance, tA - assets) -delegateeBalance
+                    Math.mulDiv(assets, totalSupply - delegateeBalance, tA - assets) -
+                        delegateeBalance
                 );
             }
         }
