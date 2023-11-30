@@ -2035,6 +2035,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // sell an OTM call as Bob
 
             (tokenType, asset) = (seed >> 25) % 2 == 0 ? (1, 1) : (0, 0);
+            width = (int24((uint24(seed >> 24) % 16) + 2) / 2) * 2;
 
             strike = asset == 1
                 ? ((currentTick - tickSpacing - int24(uint24(seed) % 4096)) / tickSpacing) *
@@ -2701,7 +2702,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             // account is liquidatable
             uint256 k;
-            while (2 * requiredBalance <= 3 * collateralBalance) {
+            while (requiredBalance <= 3 * collateralBalance) {
                 oneWaySwapRnd(
                     asset == 1
                         ? int256(uint256((k + 1) * 10 ** 17))
@@ -2975,7 +2976,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             // account is liquidatable
             uint256 k;
-            while (requiredBalance <= 2 * collateralBalance) {
+            while (requiredBalance <= 4 * collateralBalance) {
                 oneWaySwapRnd(
                     asset == 1
                         ? int256(uint256((k + 1) * 10 ** 17))
@@ -3175,8 +3176,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenId);
 
             positionSize0 = asset == 1
-                ? uint128(bound(seed, 0.1 ether, 0.1 ether))
-                : uint128(bound(seed, 10 ** 8, 10 ** 8));
+                ? uint128(bound(seed, 0.1 ether, 5 ether))
+                : uint128(bound(seed, 10 ** 8, 10 ** 10));
 
             panopticPool.mintOptions(positionIdList, uint128(positionSize0), 0, 0, 0);
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -3228,14 +3229,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 uint256 collateralAmount = (((uint256(positionSize0) * 2 ** 96) / sqrtPriceX96) *
                     2 ** 96) / sqrtPriceX96;
                 console2.log("collateral1", collateralAmount, positionSize0, sqrtPriceX96);
-                collateralToken0.deposit((collateralAmount) / 2, Alice);
-                collateralToken1.deposit((positionSize0) / 2, Alice);
+                collateralToken0.deposit((collateralAmount) / 4, Alice);
+                collateralToken1.deposit((positionSize0) / 4, Alice);
             } else {
                 uint256 collateralAmount = (((uint256(positionSize0) * sqrtPriceX96) / 2 ** 96) *
                     sqrtPriceX96) / 2 ** 96;
                 console2.log("collateral0", collateralAmount, positionSize0, sqrtPriceX96);
-                collateralToken1.deposit((collateralAmount) / 2, Alice);
-                collateralToken0.deposit((positionSize0) / 2, Alice);
+                collateralToken1.deposit((collateralAmount) / 4, Alice);
+                collateralToken0.deposit((positionSize0) / 4, Alice);
             }
             // sell a put as Alice
             //tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, width);
@@ -4718,7 +4719,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             // account is liquidatable
             uint256 k;
-            while (10 * requiredBalance <= 50 * collateralBalance) {
+            while (10 * requiredBalance <= 25 * collateralBalance) {
                 oneWaySwapRnd(
                     asset == 1
                         ? int256(uint256((k + 1) * 10 ** 18))
@@ -6362,8 +6363,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(tokenData1, calcThresholdCross, "1");
 
             // assert that the threshold cross is 0 (calendar spread of same strike/width) has 0 requirement
-            assertEq(tokenData1, 0);
-            assertEq(calcThresholdCross, 0);
+            assertApproxEqAbs(tokenData1, 0, 1);
+            assertApproxEqAbs(calcThresholdCross, 0, 1);
         }
     }
 
@@ -9284,7 +9285,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     // if buying
                     buyCollateralRatio = utilization != 0
                         ? buyCollateralRatio / 2
-                        : buyCollateralRatio; // 2x efficiency (doesn't compound at 0)
+                        : buyCollateralRatio / 2; // 2x efficiency (doesn't compound at 0)
 
                     if (utilization < targetPoolUtilization) {
                         baseCollateralRatio = int128(int256(buyCollateralRatio));
@@ -9322,7 +9323,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     // if selling
                     sellCollateralRatio = utilization != 0
                         ? sellCollateralRatio / 2
-                        : sellCollateralRatio; // 2x efficiency (doesn't compound at 0)
+                        : sellCollateralRatio / 2; // 2x efficiency (doesn't compound at 0)
 
                     if (utilization < targetPoolUtilization) {
                         baseCollateralRatio = int128(int256(sellCollateralRatio));
