@@ -1458,7 +1458,6 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(expectedLongs, returnedLongs);
     }
 
-
     // mul div as ticks
     function test_Success_mulDivAsTicks_1bps_1TickWide() public {
         int24 width = 1;

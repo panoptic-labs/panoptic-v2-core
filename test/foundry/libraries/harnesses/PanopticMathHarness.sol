@@ -212,5 +212,4 @@ contract PanopticMathHarness is Test {
         (int24 result0, int24 result1) = PanopticMath.mulDivAsTicks(width, tickSpacing);
         return (result0, result1);
     }
-
 }

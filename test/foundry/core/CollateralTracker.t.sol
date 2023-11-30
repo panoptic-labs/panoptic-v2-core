@@ -363,8 +363,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     IUniswapV3Pool constant MATIC_ETH_30 =
         IUniswapV3Pool(0x290A6a7460B308ee3F19023D2D00dE604bcf5B42);
 
-    IUniswapV3Pool constant DAI_USDC_1 = 
-        IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
+    IUniswapV3Pool constant DAI_USDC_1 = IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
 
     // IUniswapV3Pool[4] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30, DAI_USDC_1];
 
@@ -6378,7 +6377,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(exerciseFees.leftSlot(), exerciseFee1);
         }
     }
-
 
     /* Utilization setter */
     function setUtilization(

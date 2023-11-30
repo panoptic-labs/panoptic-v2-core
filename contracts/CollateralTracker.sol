@@ -954,7 +954,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-
     /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
     /// @dev Only called on collateralTracker0, so we must query balances from collateralTracker1.
     /// @param refunder Address of the user the refund is coming from (the force exercisee).
