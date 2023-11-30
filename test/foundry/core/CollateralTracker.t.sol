@@ -4986,6 +4986,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 premium1
             );
 
+            console2.log('pS', positionSize0 / 2, poolUtilization0, poolUtilization1); 
+            console2.log('strike', strike); 
+            console2.log('strike1', strike1); 
+
             // checks tokens required
             assertEq(tokensRequired0, tokenData0.leftSlot(), "required token0");
             assertEq(tokensRequired1, tokenData1.leftSlot(), "required token1");
@@ -9282,9 +9286,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
                 if (isLong == 1) {
                     // if buying
-                    buyCollateralRatio = utilization != 0
-                        ? buyCollateralRatio / 2
-                        : buyCollateralRatio; // 2x efficiency (doesn't compound at 0)
+                    buyCollateralRatio = buyCollateralRatio / 2;
 
                     if (utilization < targetPoolUtilization) {
                         baseCollateralRatio = int128(int256(buyCollateralRatio));
@@ -9320,9 +9322,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     );
                 } else {
                     // if selling
-                    sellCollateralRatio = utilization != 0
-                        ? sellCollateralRatio / 2
-                        : sellCollateralRatio; // 2x efficiency (doesn't compound at 0)
+                    sellCollateralRatio = sellCollateralRatio / 2;
 
                     if (utilization < targetPoolUtilization) {
                         baseCollateralRatio = int128(int256(sellCollateralRatio));
