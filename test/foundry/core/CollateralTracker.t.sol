@@ -4989,9 +4989,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             console2.log('premium0', premium0);
             console2.log('premium1', premium1);
 
-            console2.log('pS', positionSize0 / 2, poolUtilization0, poolUtilization1); 
-            console2.log('strike', strike); 
-            console2.log('strike1', strike1); 
+            console2.log("pS", positionSize0 / 2, poolUtilization0, poolUtilization1);
+            console2.log("strike", strike);
+            console2.log("strike1", strike1);
 
             console2.log('req0', tokensRequired0, tokenData0.leftSlot());
             // checks tokens required
