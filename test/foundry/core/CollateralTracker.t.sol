@@ -4187,6 +4187,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
                 assertTrue(crossAfterA < crossBeforeA);
+                assertTrue(crossAfterA == 0);
             }
             {
                 console2.log(
@@ -9283,7 +9284,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     // if buying
                     buyCollateralRatio = utilization != 0
                         ? buyCollateralRatio / 2
-                        : buyCollateralRatio / 2; // 2x efficiency (doesn't compound at 0)
+                        : buyCollateralRatio; // 2x efficiency (doesn't compound at 0)
 
                     if (utilization < targetPoolUtilization) {
                         baseCollateralRatio = int128(int256(buyCollateralRatio));
@@ -9321,7 +9322,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     // if selling
                     sellCollateralRatio = utilization != 0
                         ? sellCollateralRatio / 2
-                        : sellCollateralRatio / 2; // 2x efficiency (doesn't compound at 0)
+                        : sellCollateralRatio; // 2x efficiency (doesn't compound at 0)
 
                     if (utilization < targetPoolUtilization) {
                         baseCollateralRatio = int128(int256(sellCollateralRatio));
