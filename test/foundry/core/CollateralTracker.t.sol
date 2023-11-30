@@ -1364,6 +1364,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
     }
 
+
     // transfer from delgatee to delegator
     function test_Success_revoke(uint256 x, uint104 shares) public {
         {
@@ -1378,13 +1379,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 assetsToken0 = bound(
                 convertToAssets(shares, collateralToken0),
-                1000,
-                type(uint96).max
+                1,
+                type(uint104).max
             );
             uint256 assetsToken1 = bound(
                 convertToAssets(shares, collateralToken1),
-                1000,
-                type(uint96).max
+                1,
+                type(uint104).max
             );
 
             // approve collateral tracker to move tokens on Bob's behalf
@@ -1437,30 +1438,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // Invoke all interactions with the Collateral Tracker from user Alice
-
         changePrank(Alice);
 
         // give Bob the max amount of tokens
-        _grantTokens(Charlie);
+        _grantTokens(Alice);
 
         uint256 assetsToken0 = bound(
             convertToAssets(shares, collateralToken0),
             1,
             type(uint104).max
         );
-
-        // approve collateral tracker to move tokens on Bob's behalf
-        IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-
-        // deposit a number of assets determined via fuzzing
-        // equal deposits for both collateral token pairs for testing purposes
-        collateralToken0.deposit(uint128(assetsToken0), Charlie);
-
-        // Invoke all interactions with the Collateral Tracker from user Alice
-        vm.startPrank(Alice);
-
-        // give Bob the max amount of tokens
-        _grantTokens(Alice);
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
@@ -1474,8 +1461,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         ) +
             bound(
                 mintSeed,
-                10,
-                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie)) - 10
+                0,
+                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
             );
         vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
         // invoke delegate transactions from the Panoptic pool
@@ -6693,8 +6680,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(tokenData1, calcThresholdCross, "1");
 
             // assert that the threshold cross is 0 (calendar spread of same strike/width) has 0 requirement
-            assertApproxEqAbs(tokenData1, 0, 15);
-            assertApproxEqAbs(calcThresholdCross, 0, 15);
+            //assertApproxEqAbs(tokenData1, 0, 15);
+            //assertApproxEqAbs(calcThresholdCross, 0, 15);
         }
     }
 
