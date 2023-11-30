@@ -6237,7 +6237,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(1, 1, 0, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
-            positionSize0 = uint128(bound(positionSizeSeed, 2**12, 2 ** 24));
+            positionSize0 = uint128(bound(positionSizeSeed, 2 ** 12, 2 ** 24));
             _assumePositionValidity(Bob, tokenId, positionSize0);
             _spreadTokensRequired(tokenId1, positionSize0);
 
@@ -6545,7 +6545,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             // award corresponding shares
             _mockMaxDeposit(Bob);
-
 
             // have Bob sell
             (width, strike) = PositionUtils.getOTMSW(
