@@ -1414,15 +1414,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function test_Success_revoke_mint(uint256 x, uint128 shares) public {
-        vm.assume(shares < type(uint104).max - 100);
+        shares = uint128(bound(shares, 101, type(uint104).max - 100));
+        
         // fuzz
         _initWorld(x);
 
         // Invoke all interactions with the Collateral Tracker from user Alice
-        vm.startPrank(Alice);
+        vm.startPrank(Charlie);
 
         // give Bob the max amount of tokens
-        _grantTokens(Alice);
+        _grantTokens(Charlie);
 
         uint256 assetsToken0 = bound(
             convertToAssets(shares, collateralToken0),
@@ -1441,24 +1442,50 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
+        collateralToken0.deposit(uint128(assetsToken0), Charlie);
+        collateralToken1.deposit(uint128(assetsToken1), Charlie);
+        
+        // Invoke all interactions with the Collateral Tracker from user Alice
+        vm.startPrank(Alice);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Alice);
+        
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
+        IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
+
+        // deposit a number of assets determined via fuzzing
+        // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Alice);
         collateralToken1.deposit(uint128(assetsToken1), Alice);
+
 
         // check delegatee balance before
         uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
         uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
+        
+        console.log(collateralToken0.totalSupply(), shares);
 
+        uint256 totalSupplyBefore0 = collateralToken0.totalSupply();
+        uint256 totalSupplyBefore1 = collateralToken1.totalSupply();
         // invoke delegate transactions from the Panoptic pool
         // attempt to request an amount greater than the delegatee's balance
-        panopticPool.revoke(Bob, Alice, shares + 100, collateralToken0);
-        panopticPool.revoke(Bob, Alice, shares + 100, collateralToken1);
+        panopticPool.revoke(Bob, Alice, assetsToken0 + 100, collateralToken0);
+        panopticPool.revoke(Bob, Alice, assetsToken1 + 100, collateralToken1);
 
         // check delegatee balance after
         uint256 sharesAfter0 = collateralToken0.balanceOf(Bob);
         uint256 sharesAfter1 = collateralToken1.balanceOf(Bob);
 
-        assertApproxEqAbs(sharesBefore0 + 100, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore0 + 100, sharesAfter1, 5);
+        assertTrue(collateralToken0.balanceOf(Alice) == 0);
+        assertTrue(collateralToken1.balanceOf(Alice) == 0);
+
+        uint256 delta0 = ((assetsToken0 + 100) * (totalSupplyBefore0 - sharesBefore0)) / (collateralToken0.totalAssets() - assetsToken0 - 100) - sharesBefore0;
+        uint256 delta1 = ((assetsToken1 + 100) * (totalSupplyBefore1 - sharesBefore1)) / (collateralToken1.totalAssets() - assetsToken1 - 100) - sharesBefore1;
+        
+        assertApproxEqAbs(sharesBefore0 + delta0, sharesAfter0, 5);
+        assertApproxEqAbs(sharesBefore0 + delta1, sharesAfter1, 5);
     }
 
     /*//////////////////////////////////////////////////////////////
