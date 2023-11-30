@@ -910,10 +910,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
                 // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
                 // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
-                // add 1 to round up
                 bonus1 += Math.min(
                     balance1 - paid1,
-                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96) + 1
+                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96)
                 );
                 bonus0 -= Math.min(
                     PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96),
@@ -928,16 +927,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
                 // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
                 // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
-                // add 1 to round up
                 bonus0 += Math.min(
                     balance0 - paid0,
-                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96) + 1
+                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96)
                 );
                 bonus1 -= Math.min(
                     PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96),
                     paid1 - balance1
                 );
             }
+
         }
     }
 
