@@ -1364,7 +1364,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
     }
 
-
     // transfer from delgatee to delegator
     function test_Success_revoke(uint256 x, uint104 shares) public {
         {
