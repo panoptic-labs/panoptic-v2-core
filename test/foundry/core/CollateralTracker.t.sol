@@ -4304,7 +4304,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (tokenType, asset) = (1, 1);
 
             width = (int24((uint24(seed >> 24) % 16) + 2) / 2) * 2;
-            strike = 197400; 
+            strike = 197400;
 
             tokenId = uint256(0)
                 .addUniv3pool(poolId)
@@ -4488,9 +4488,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             vm.warp(block.timestamp + 1000000);
 
-            console2.log('balance0 Alice before Liq', collateralToken0.balanceOf(Alice));
+            console2.log("balance0 Alice before Liq", collateralToken0.balanceOf(Alice));
             panopticPool.liquidate(Alice, positionIdList, 1e11, 1e20);
-            console2.log('balance0 Alice After Liq', collateralToken0.balanceOf(Alice));
+            console2.log("balance0 Alice After Liq", collateralToken0.balanceOf(Alice));
 
             worldState memory dataAfter = worldSnapshot();
 

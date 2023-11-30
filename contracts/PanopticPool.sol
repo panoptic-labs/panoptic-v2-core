@@ -936,7 +936,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     paid1 - balance1
                 );
             }
-
         }
     }
 
