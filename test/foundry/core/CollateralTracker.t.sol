@@ -4000,8 +4000,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             //(legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
 
             positionSize0 = asset == 1
-                ? uint128(bound(seed, 0.1 ether, 5 ether))
-                : uint128(bound(seed, 10 ** 8, 10 ** 10));
+                ? uint128(bound(seed, 5 ether, 15 ether))
+                : uint128(bound(seed, 10 ** 10, 10 ** 11));
 
             panopticPool.mintOptions(positionIdList, uint128(positionSize0), 0, 0, 0);
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -4783,6 +4783,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
                 assertTrue(crossAfterA < crossBeforeA);
+                assertTrue(crossAfterA == 0);
             }
             {
                 console2.log(
@@ -4985,11 +4986,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 premium0,
                 premium1
             );
+            console2.log('premium0', premium0);
+            console2.log('premium1', premium1);
 
             console2.log('pS', positionSize0 / 2, poolUtilization0, poolUtilization1); 
             console2.log('strike', strike); 
             console2.log('strike1', strike1); 
 
+            console2.log('req0', tokensRequired0, tokenData0.leftSlot());
             // checks tokens required
             assertEq(tokensRequired0, tokenData0.leftSlot(), "required token0");
             assertEq(tokensRequired1, tokenData1.leftSlot(), "required token1");
