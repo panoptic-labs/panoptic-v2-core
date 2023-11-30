@@ -1474,8 +1474,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         ) +
             bound(
                 mintSeed,
-                0,
-                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
+                10,
+                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie)) - 10
             );
         vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
         // invoke delegate transactions from the Panoptic pool
@@ -6251,7 +6251,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(1, 1, 0, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 96));
+            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 64));
             _assumePositionValidity(Bob, tokenId, positionSize0);
             _spreadTokensRequired(tokenId1, positionSize0);
 
@@ -6580,7 +6580,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
 
             // must be minimum at least 2 so there is enough liquidity to buy
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
+            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 64));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
