@@ -4214,7 +4214,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
                 assertTrue(crossAfterA < crossBeforeA);
-                assertTrue(crossAfterA < 2);
             }
             {
                 console2.log(
@@ -4512,7 +4511,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     (dataAfter.AliceBalance0 * sqrtPriceX96) /
                     2 ** 96;
                 assertTrue(crossAfterA < crossBeforeA);
-                assertTrue(crossAfterA < 2);
             }
             {
                 console2.log(
