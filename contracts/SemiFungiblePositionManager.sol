@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
 
+import "forge-std/Test.sol";
 // Interfaces
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -702,6 +703,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             );
         }
 
+        (, newTick, , , , , ) = univ3pool.slot0();
+        console2.log("starting tick", newTick);
+
         // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
         if ((itmAmounts != 0) && (swapAtMint)) {
             totalMoved = swapInAMM(univ3pool, itmAmounts).add(totalMoved);
@@ -1036,11 +1040,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             // Is this _leg ITM?
             // if tokenType is 1, and we transacted some token0: then this leg is ITM!
             if (_tokenType == 1) {
+
+                console2.log("itm 0", _moved.rightSlot());
                 // extract amount moved out of UniswapV3 pool
                 _itmAmounts = _itmAmounts.toRightSlot(_moved.rightSlot());
             }
             // if tokenType is 0, and we transacted some token1: then this leg is ITM
             if (_tokenType == 0) {
+                console2.log("itm 1", _moved.leftSlot());
                 // Add this in-the-money amount transacted.
                 _itmAmounts = _itmAmounts.toLeftSlot(_moved.leftSlot());
             }
@@ -1151,6 +1158,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             liquidityChunk.liquidity(),
             mintdata
         );
+
+        console2.log("minted 0", amount0);
+        console2.log("minted 1", amount1);
 
         // amount0 The amount of token0 that was paid to mint the given amount of liquidity
         // amount1 The amount of token1 that was paid to mint the given amount of liquidity

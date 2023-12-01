@@ -1495,9 +1495,9 @@ contract PanopticMathTest is Test, PositionUtils {
         // if width is odd and tickSpacing is odd
         // then actual range will not be a whole number
         if (widthBounded % 2 == 1 && tickSpacingBounded % 2 == 1) {
-            uint256 mulDivRangeDown = Math.mulDivRoundingUp(widthBounded, tickSpacingBounded, 2);
+            uint256 mulDivRangeDown = Math.mulDiv(widthBounded, tickSpacingBounded, 2);
 
-            uint256 mulDivRangeUp = Math.mulDiv(widthBounded, tickSpacingBounded, 2);
+            uint256 mulDivRangeUp = Math.mulDivRoundingUp(widthBounded, tickSpacingBounded, 2);
 
             // check against mulDivRoundDown
             assertEq(uint24(rangeDown), mulDivRangeDown);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
 
+import "forge-std/Test.sol";
 // Interfaces
 import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
@@ -1301,6 +1302,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
             int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
+            console2.log("long amount", longAmount);
+            console2.log("short amount", shortAmount);
+            console2.log("tokenToPay", tokenToPay);
+        
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
             if (tokenToPay > 0) {
@@ -1440,6 +1445,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             // intrinsic value is the amount that need to be exchanged due to minting in-the-money
             int256 intrinsicValue = swappedAmount - (shortAmount - longAmount);
+
+            console2.log("intrinsic value", intrinsicValue);
+            console2.log("swapped amount", swappedAmount);
 
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
@@ -1643,6 +1651,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int24 atTick,
         uint128 poolUtilization
     ) internal view returns (uint256 required) {
+        console2.log("ct");
+        console2.log("atTick", atTick);
         // compute the total amount of funds moved for that position
         uint256 amountsMoved = PanopticMath.getAmountsMoved(
             tokenId,
@@ -1693,6 +1703,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     ((atTick >= (strike + rangeUp)) && (tokenType == 1)) || // strike OTM when price >= upperTick for tokenType=1
                     ((atTick < (strike - rangeDown)) && (tokenType == 0)) // strike OTM when price < lowerTick for tokenType=0
                 ) {
+                    console2.log("strike", strike);
+                    console2.log("rangeDown", rangeDown);
+                    console2.log("pos is OTM");
                     // position is out-the-money, collateral requirement = SCR * amountMoved
                     required;
                 } else {

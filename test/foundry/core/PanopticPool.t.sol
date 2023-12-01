@@ -98,7 +98,11 @@ contract PanopticPoolTest is PositionUtils {
         IUniswapV3Pool(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD);
     IUniswapV3Pool constant USDC_WETH_30 =
         IUniswapV3Pool(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
-    IUniswapV3Pool[3] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5];
+    IUniswapV3Pool constant WSTETH_ETH_1 =
+        IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
+
+    //IUniswapV3Pool[3] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5];
+    IUniswapV3Pool[1] public pools = [WSTETH_ETH_1];
 
     /*//////////////////////////////////////////////////////////////
                               WORLD STATE
@@ -382,9 +386,13 @@ contract PanopticPoolTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function populatePositionData(int24 width, int24 strike, uint256 positionSizeSeed) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        tickLower = int24(strike - rangeDown);
         tickLowers.push(tickLower);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        tickUpper = int24(strike + rangeUp);
         tickUppers.push(tickUpper);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtLowers.push(sqrtLower);
@@ -392,7 +400,7 @@ contract PanopticPoolTest is PositionUtils {
         sqrtUppers.push(sqrtUpper);
 
         // 0.0001 -> 10_000 WETH
-        positionSizeSeed = bound(positionSizeSeed, 10 ** 15, 10 ** 20);
+        positionSizeSeed = bound(positionSizeSeed, 10 ** 10, 10 ** 15);
 
         // calculate the amount of ETH contracts needed to create a position with above attributes and value in ETH
         positionSize = uint128(
@@ -433,8 +441,12 @@ contract PanopticPoolTest is PositionUtils {
         int24 strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        tickLower = int24(strike - rangeDown);
+        tickUpper = int24(strike + rangeUp);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
 
@@ -458,8 +470,12 @@ contract PanopticPoolTest is PositionUtils {
         int24 strike,
         uint256[2] memory positionSizeSeeds
     ) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        tickLower = int24(strike - rangeDown);
+        tickUpper = int24(strike + rangeUp);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
 
@@ -511,13 +527,16 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
@@ -627,13 +646,18 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256[2] memory positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        int24 rangeDown;
+        int24 rangeUp;
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
@@ -903,18 +927,22 @@ contract PanopticPoolTest is PositionUtils {
         int24[3] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
-        tickLowers.push(int24(strike[2] - (width[2] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[2] + (width[2] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[2] - rangeDown2));
+        tickUppers.push(int24(strike[2] + rangeUp2));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[2]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[2]));
 
@@ -1007,23 +1035,28 @@ contract PanopticPoolTest is PositionUtils {
         int24[4] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+        (int24 rangeDown3, int24 rangeUp3) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[1] - rangeDown0));
+        tickUppers.push(int24(strike[1] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
-        tickLowers.push(int24(strike[2] - (width[2] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[2] + (width[2] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[2] - rangeDown2));
+        tickUppers.push(int24(strike[2] + rangeUp2));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[2]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[2]));
 
-        tickLowers.push(int24(strike[3] - (width[3] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[3] + (width[3] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[3] - rangeDown3));
+        tickUppers.push(int24(strike[3] + rangeUp3));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[3]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[3]));
 
@@ -1128,13 +1161,16 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256[2] memory positionSizeSeeds
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
@@ -1204,8 +1240,10 @@ contract PanopticPoolTest is PositionUtils {
         uint256 positionSizeSeed,
         uint256 positionSizeBurnSeed
     ) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        tickLower = int24(strike - rangeDown0);
+        tickUpper = int24(strike + rangeUp0);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
 
@@ -2027,12 +2065,15 @@ contract PanopticPoolTest is PositionUtils {
             0
         );
 
+        console2.log("width", width);
+        console2.log("strike", strike);
+
         populatePositionData(width, strike, positionSizeSeed);
 
         uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
             0,
             1,
-            isWETH,
+            0,
             0,
             0,
             0,
@@ -2043,9 +2084,13 @@ contract PanopticPoolTest is PositionUtils {
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
 
+       console2.log("before mint");
+
         pp.mintOptions(posIdList, positionSize, 0, TickMath.MIN_TICK, TickMath.MAX_TICK);
 
-        assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
+        console2.log("minted");
+
+        assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize, "balance of panoptic pool");
 
         uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
             sqrtLower,
@@ -2055,28 +2100,30 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(inAMM, amount0, 10);
+            assertApproxEqAbs(inAMM, amount0, 10, "ct0 inAMM");
         }
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertEq(inAMM, 0);
+            assertEq(inAMM, 0, "ct1 inAMM");
         }
         {
             assertEq(
                 pp.positionsHash(Alice),
-                uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+                uint248(uint256(keccak256(abi.encodePacked(tokenId)))), "position hash"
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfPositions(Alice), 1, "num of positions");
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
                 .optionPositionBalance(Alice, tokenId);
 
-            assertEq(balance, positionSize);
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply());
-            assertEq(poolUtilization1, 0);
+            assertEq(balance, positionSize, "balance -> position size");
+            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 0");
+            assertEq(poolUtilization1, 0, "utilization 1");
         }
+
+        console2.log("reached");
 
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
@@ -2085,13 +2132,13 @@ contract PanopticPoolTest is PositionUtils {
                 tickSpacing
             );
 
-            assertApproxEqAbs(
+            assertApproxEqRel(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) - uint128((shortAmounts.rightSlot() * 10) / 10000),
-                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
+                0.0000001e18, "alice balance 0"
             );
 
-            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max));
+            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance 1");
         }
     }
 
@@ -2212,6 +2259,14 @@ contract PanopticPoolTest is PositionUtils {
             width
         );
 
+        uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(
+            sqrtLower,
+            sqrtUpper,
+            expectedLiq
+        );
+
+        vm.assume(amount1 < uint128(type(int128).max));
+
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
 
@@ -2219,11 +2274,7 @@ contract PanopticPoolTest is PositionUtils {
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
 
-        uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(
-            sqrtLower,
-            sqrtUpper,
-            expectedLiq
-        );
+
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.0;
 
+import "forge-std/Test.sol";
 // Interfaces
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
@@ -171,6 +172,8 @@ library PanopticMath {
     ) internal pure returns (uint256 liquidityChunk) {
         // get the tick range for this leg
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+        console2.log("tickLower", tickLower);
+        console2.log("tickUpper", tickUpper);
 
         // Get the amount of liquidity owned by this leg in the univ3 pool in the above tick range
         // Background:
