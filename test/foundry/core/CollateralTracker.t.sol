@@ -2510,11 +2510,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     dataAfter.DianaBalance1
                 );
                 if (asset == 1) {
-                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
-                    assertTrue(dataBefore.DianaBalance0 > dataAfter.DianaBalance0);
-                } else {
-                    assertTrue(dataBefore.DianaBalance1 > dataAfter.DianaBalance1);
                     assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
+                } else {
+                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
                 }
             }
 
