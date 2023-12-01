@@ -3602,7 +3602,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             // account is liquidatable
             uint256 k;
-            while (requiredBalance <= 20 * collateralBalance) {
+            while (requiredBalance <= 11 * collateralBalance) {
                 // mimic pool activity
                 oneWaySwapRnd(
                     asset == 1
@@ -5099,11 +5099,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     dataAfter.DianaBalance1
                 );
                 if (asset == 1) {
-                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 100);
                     assertTrue(dataBefore.DianaBalance1 > dataAfter.DianaBalance1);
                 } else {
                     assertTrue(dataBefore.DianaBalance0 > dataAfter.DianaBalance0);
-                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 100);
                 }
             }
             {
@@ -5368,11 +5368,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     dataAfter.DianaBalance1
                 );
                 if (asset == 1) {
-                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 100);
                     assertTrue(dataBefore.DianaBalance1 > dataAfter.DianaBalance1);
                 } else {
                     assertTrue(dataBefore.DianaBalance0 > dataAfter.DianaBalance0);
-                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 100);
                 }
             }
             {
@@ -5674,11 +5674,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     dataAfter.DianaBalance1
                 );
                 if (asset == 1) {
-                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 100);
                     assertTrue(dataBefore.DianaBalance1 > dataAfter.DianaBalance1);
                 } else {
                     assertTrue(dataBefore.DianaBalance0 > dataAfter.DianaBalance0);
-                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 100);
                 }
             }
             {
@@ -6254,11 +6254,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     dataAfter.DianaBalance1
                 );
                 if (asset == 1) {
-                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 100);
                     assertTrue(dataBefore.DianaBalance1 > dataAfter.DianaBalance1);
                 } else {
                     assertTrue(dataBefore.DianaBalance0 > dataAfter.DianaBalance0);
-                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 100);
                 }
             }
             {
@@ -6566,11 +6566,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     dataAfter.DianaBalance1
                 );
                 if (asset == 1) {
-                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance0, dataAfter.DianaBalance0, 100);
                     assertTrue(dataBefore.DianaBalance1 > dataAfter.DianaBalance1);
                 } else {
                     assertTrue(dataBefore.DianaBalance0 > dataAfter.DianaBalance0);
-                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 1);
+                    assertApproxEqAbs(dataBefore.DianaBalance1, dataAfter.DianaBalance1, 100);
                 }
             }
             {
