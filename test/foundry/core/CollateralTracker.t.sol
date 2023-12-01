@@ -2349,7 +2349,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             console2.log("strike", strike);
             console2.log("width", width);
             assertTrue(requiredBalance >= positionSize0 / 5);
-
         }
 
         {
@@ -2405,7 +2404,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, currentTick, , , , , ) = pool.slot0();
             console2.log("before", currentTick);
 
-
             // check that Alice is insolvent:
 
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -2419,16 +2417,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (requiredBalance <= collateralBalance) {
                 // mimic pool activity
-                oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(10 ** 18))
-                        : -int256(uint256(10 ** 18))
-                );
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? int256(uint256(10 ** 18)) : -int256(uint256(10 ** 18)));
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
                     panopticPool,
@@ -2464,12 +2454,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             worldState memory dataBefore = worldSnapshot();
-            
-            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-            console2.log('balances', dataBefore.AliceBalance0, dataBefore.AliceBalance1);
-            console2.log('premium0', premium0);
-            console2.log('premium1', premium1);
+            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
+                Alice,
+                positionIdList1
+            );
+
+            console2.log("balances", dataBefore.AliceBalance0, dataBefore.AliceBalance1);
+            console2.log("premium0", premium0);
+            console2.log("premium1", premium1);
 
             vm.warp(block.timestamp + 1000000);
 
@@ -2477,7 +2470,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
             worldState memory dataAfter = worldSnapshot();
-
 
             console2.log("Alice lost premia");
             {
@@ -2589,7 +2581,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (tokenType, asset) = (seed >> 25) % 2 == 0 ? (1, 1) : (0, 0);
             width = 2;
 
-            strike =asset == 1 ?  ((currentTick + 2500) / tickSpacing) * tickSpacing : ((currentTick - 2500) / tickSpacing) * tickSpacing;
+            strike = asset == 1
+                ? ((currentTick + 2500) / tickSpacing) * tickSpacing
+                : ((currentTick - 2500) / tickSpacing) * tickSpacing;
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(
                 0,
@@ -2625,7 +2619,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             console2.log("strike", strike);
             console2.log("width", width);
             assertTrue(requiredBalance >= positionSize0 / 5);
-
         }
 
         {
@@ -2681,7 +2674,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, currentTick, , , , , ) = pool.slot0();
             console2.log("before", currentTick);
 
-
             // check that Alice is insolvent:
 
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -2693,11 +2685,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             bool OTM = true;
             while (OTM) {
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 if (asset == 1) {
                     if (currentTick > strike) {
@@ -2709,22 +2697,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     }
                 }
             }
-            console2.log('newTick', currentTick);
+            console2.log("newTick", currentTick);
 
             // account is liquidatable
             uint256 k;
             while (requiredBalance <= collateralBalance) {
                 // mimic pool activity
-                oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(10 ** 18))
-                        : -int256(uint256(10 ** 18))
-                );
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? int256(uint256(10 ** 18)) : -int256(uint256(10 ** 18)));
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
                     panopticPool,
@@ -2760,12 +2740,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             worldState memory dataBefore = worldSnapshot();
-            
-            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-            console2.log('balances', dataBefore.AliceBalance0, dataBefore.AliceBalance1);
-            console2.log('premium0', premium0);
-            console2.log('premium1', premium1);
+            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
+                Alice,
+                positionIdList1
+            );
+
+            console2.log("balances", dataBefore.AliceBalance0, dataBefore.AliceBalance1);
+            console2.log("premium0", premium0);
+            console2.log("premium1", premium1);
 
             vm.warp(block.timestamp + 1000000);
 
@@ -2773,7 +2756,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
             worldState memory dataAfter = worldSnapshot();
-
 
             console2.log("Alice lost premia");
             {
@@ -2885,7 +2867,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (tokenType, asset) = (seed >> 25) % 2 == 0 ? (1, 1) : (0, 0);
             width = 2;
 
-            strike =asset == 1 ?  ((currentTick + 2500) / tickSpacing) * tickSpacing : ((currentTick - 2500) / tickSpacing) * tickSpacing;
+            strike = asset == 1
+                ? ((currentTick + 2500) / tickSpacing) * tickSpacing
+                : ((currentTick - 2500) / tickSpacing) * tickSpacing;
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(
                 0,
@@ -2921,7 +2905,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             console2.log("strike", strike);
             console2.log("width", width);
             assertTrue(requiredBalance >= positionSize0 / 5);
-
         }
 
         {
@@ -2977,7 +2960,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, currentTick, , , , , ) = pool.slot0();
             console2.log("before", currentTick);
 
-
             // check that Alice is insolvent:
 
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -2989,11 +2971,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             bool OTM = true;
             while (OTM) {
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 if (asset == 1) {
                     if (currentTick > strike) {
@@ -3005,22 +2983,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     }
                 }
             }
-            console2.log('newTick', currentTick);
+            console2.log("newTick", currentTick);
 
             // account is liquidatable
             uint256 k;
             while (2 * requiredBalance <= 3 * collateralBalance) {
                 // mimic pool activity
-                oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(10 ** 18))
-                        : -int256(uint256(10 ** 18))
-                );
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? int256(uint256(10 ** 18)) : -int256(uint256(10 ** 18)));
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
                     panopticPool,
@@ -3056,12 +3026,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             worldState memory dataBefore = worldSnapshot();
-            
-            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-            console2.log('balances', dataBefore.AliceBalance0, dataBefore.AliceBalance1);
-            console2.log('premium0', premium0);
-            console2.log('premium1', premium1);
+            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
+                Alice,
+                positionIdList1
+            );
+
+            console2.log("balances", dataBefore.AliceBalance0, dataBefore.AliceBalance1);
+            console2.log("premium0", premium0);
+            console2.log("premium1", premium1);
 
             vm.warp(block.timestamp + 1000000);
 
@@ -3069,7 +3042,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
             worldState memory dataAfter = worldSnapshot();
-
 
             console2.log("Alice lost premia");
             {
@@ -3132,7 +3104,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
     }
 
-
     // pos starts OTM then gets flipped ITM
     function test_Success_liquidate_ITM_LONG_ITM_bigLoss(uint256 seed) public {
         {
@@ -3182,7 +3153,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (tokenType, asset) = (seed >> 25) % 2 == 0 ? (1, 1) : (0, 0);
             width = 2;
 
-            strike =asset == 1 ?  ((currentTick + 2500) / tickSpacing) * tickSpacing : ((currentTick - 2500) / tickSpacing) * tickSpacing;
+            strike = asset == 1
+                ? ((currentTick + 2500) / tickSpacing) * tickSpacing
+                : ((currentTick - 2500) / tickSpacing) * tickSpacing;
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(
                 0,
@@ -3218,7 +3191,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             console2.log("strike", strike);
             console2.log("width", width);
             assertTrue(requiredBalance >= positionSize0 / 5);
-
         }
 
         {
@@ -3274,7 +3246,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, currentTick, , , , , ) = pool.slot0();
             console2.log("before", currentTick);
 
-
             // check that Alice is insolvent:
 
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -3286,11 +3257,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             bool OTM = true;
             while (OTM) {
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 if (asset == 1) {
                     if (currentTick > strike) {
@@ -3302,22 +3269,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     }
                 }
             }
-            console2.log('newTick', currentTick);
+            console2.log("newTick", currentTick);
 
             // account is liquidatable
             uint256 k;
             while (2 * requiredBalance <= 5 * collateralBalance) {
                 // mimic pool activity
-                oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(10 ** 18))
-                        : -int256(uint256(10 ** 18))
-                );
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? int256(uint256(10 ** 18)) : -int256(uint256(10 ** 18)));
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
                     panopticPool,
@@ -3353,12 +3312,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             worldState memory dataBefore = worldSnapshot();
-            
-            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-            console2.log('balances', dataBefore.AliceBalance0, dataBefore.AliceBalance1);
-            console2.log('premium0', premium0);
-            console2.log('premium1', premium1);
+            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
+                Alice,
+                positionIdList1
+            );
+
+            console2.log("balances", dataBefore.AliceBalance0, dataBefore.AliceBalance1);
+            console2.log("premium0", premium0);
+            console2.log("premium1", premium1);
 
             vm.warp(block.timestamp + 1000000);
 
@@ -3366,7 +3328,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
             worldState memory dataAfter = worldSnapshot();
-
 
             console2.log("Alice lost premia");
             {
@@ -3478,7 +3439,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (tokenType, asset) = (seed >> 25) % 2 == 0 ? (1, 1) : (0, 0);
             width = 2;
 
-            strike =asset == 1 ?  ((currentTick + 2500) / tickSpacing) * tickSpacing : ((currentTick - 2500) / tickSpacing) * tickSpacing;
+            strike = asset == 1
+                ? ((currentTick + 2500) / tickSpacing) * tickSpacing
+                : ((currentTick - 2500) / tickSpacing) * tickSpacing;
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(
                 0,
@@ -3514,7 +3477,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             console2.log("strike", strike);
             console2.log("width", width);
             assertTrue(requiredBalance >= positionSize0 / 5);
-
         }
 
         {
@@ -3570,7 +3532,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, currentTick, , , , , ) = pool.slot0();
             console2.log("before", currentTick);
 
-
             // check that Alice is insolvent:
 
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -3582,11 +3543,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             bool OTM = true;
             while (OTM) {
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 if (asset == 1) {
                     if (currentTick > strike) {
@@ -3598,22 +3555,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     }
                 }
             }
-            console2.log('newTick', currentTick);
+            console2.log("newTick", currentTick);
 
             // account is liquidatable
             uint256 k;
             while (requiredBalance <= 11 * collateralBalance) {
                 // mimic pool activity
-                oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(10 ** 18))
-                        : -int256(uint256(10 ** 18))
-                );
-                oneWaySwapRnd(
-                    asset == 1
-                        ? -int256(uint256(10 ** 18))
-                        : int256(uint256(10 ** 18))
-                );
+                oneWaySwapRnd(asset == 1 ? int256(uint256(10 ** 18)) : -int256(uint256(10 ** 18)));
+                oneWaySwapRnd(asset == 1 ? -int256(uint256(10 ** 18)) : int256(uint256(10 ** 18)));
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
                     panopticPool,
@@ -3649,12 +3598,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             worldState memory dataBefore = worldSnapshot();
-            
-            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-            console2.log('balances', dataBefore.AliceBalance0, dataBefore.AliceBalance1);
-            console2.log('premium0', premium0);
-            console2.log('premium1', premium1);
+            (int128 premium0, int128 premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
+                Alice,
+                positionIdList1
+            );
+
+            console2.log("balances", dataBefore.AliceBalance0, dataBefore.AliceBalance1);
+            console2.log("premium0", premium0);
+            console2.log("premium1", premium1);
 
             vm.warp(block.timestamp + 1000000);
 
@@ -3662,7 +3614,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
             worldState memory dataAfter = worldSnapshot();
-
 
             console2.log("Alice lost premia");
             {
@@ -3724,7 +3675,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             }
         }
     }
-
 
     // pos starts OTM then gets flipped ITM
     function test_Success_liquidate_ITM_noLoss_cross(uint256 seed) public {

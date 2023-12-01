@@ -1301,10 +1301,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 //paidAmount = intrinsicValue;
             }
 
-            // add premium owed to paid amount (only for long premium)
-            //if (realizedPremium < 0) {
-            //    paidAmount -= realizedPremium;
-            //}
+            // only return positive paidAmount
             paidAmount = tokenToPay < 0 ? int256(0) : tokenToPay;
 
             if (tokenToPay > 0) {
