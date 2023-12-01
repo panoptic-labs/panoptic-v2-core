@@ -1040,7 +1040,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             // Is this _leg ITM?
             // if tokenType is 1, and we transacted some token0: then this leg is ITM!
             if (_tokenType == 1) {
-
                 console2.log("itm 0", _moved.rightSlot());
                 // extract amount moved out of UniswapV3 pool
                 _itmAmounts = _itmAmounts.toRightSlot(_moved.rightSlot());

@@ -285,11 +285,11 @@ contract PositionUtils is Test {
         if (ts == 1) {
             lowerBound = tokenType == 0
                 ? int24(currentTick + rangeDown)
-                : int24(TickMath.MIN_TICK * 2 + rangeDown);  
+                : int24(TickMath.MIN_TICK * 2 + rangeDown);
 
             upperBound = tokenType == 0
                 ? int24(TickMath.MAX_TICK / 2 - rangeDown)
-                : int24(currentTick - rangeUp);    
+                : int24(currentTick - rangeUp);
         }
 
         console2.log("currentTick", currentTick);
