@@ -2820,7 +2820,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     // pos starts OTM then gets flipped ITM
     /**
-    */    
+     */
     function test_Success_liquidate_ITM_LONG_ITM_loss(uint256 seed) public {
         {
             // fuzz
@@ -3108,7 +3108,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     // pos starts OTM then gets flipped ITM
     /**
-    */    
+     */
     function test_Success_liquidate_ITM_LONG_ITM_bigLoss(uint256 seed) public {
         {
             // fuzz
@@ -3396,7 +3396,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     // pos starts OTM then gets flipped ITM
     /**
-    */    
+     */
     function test_Success_liquidate_ITM_LONG_ITM_veryBigLoss(uint256 seed) public {
         {
             // fuzz
@@ -9604,7 +9604,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int128 currentUtilization = collateralToken1.poolUtilizationHook();
             vm.assume(currentUtilization > 5_000 && currentUtilization < 9_000);
         }
-
 
         // check requirement at fuzzed tick
         {
