@@ -2819,6 +2819,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     // pos starts OTM then gets flipped ITM
+    /**
+    */    
     function test_Success_liquidate_ITM_LONG_ITM_loss(uint256 seed) public {
         {
             // fuzz
@@ -3105,6 +3107,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     // pos starts OTM then gets flipped ITM
+    /**
+    */    
     function test_Success_liquidate_ITM_LONG_ITM_bigLoss(uint256 seed) public {
         {
             // fuzz
@@ -3391,6 +3395,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     // pos starts OTM then gets flipped ITM
+    /**
+    */    
     function test_Success_liquidate_ITM_LONG_ITM_veryBigLoss(uint256 seed) public {
         {
             // fuzz
@@ -6929,7 +6935,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int256 strikeSeed,
         int256 strikeSeed2,
         int24 atTick,
-        uint24 swapSizeSeed
+        uint256 swapSizeSeed
     ) public {
         vm.assume(strikeSeed != strikeSeed2);
 
@@ -7016,6 +7022,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -7182,6 +7189,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -7351,6 +7359,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -7519,6 +7528,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -7691,6 +7701,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -8210,6 +8221,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -8413,6 +8425,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -8603,6 +8616,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -8774,6 +8788,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -8938,6 +8953,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -9107,6 +9123,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -9270,6 +9287,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -9430,6 +9448,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
@@ -9586,8 +9605,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             vm.assume(currentUtilization > 5_000 && currentUtilization < 9_000);
         }
 
-        // mimic pool activity
-        twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
         {
@@ -9675,7 +9692,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int256 strikeSeed,
         uint64 utilizationSeed,
         int24 atTick,
-        uint24 swapSizeSeed
+        uint256 swapSizeSeed
     ) public {
         uint64 targetUtilization;
         {
@@ -9726,6 +9743,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // mimic pool activity
+        swapSizeSeed = bound(swapSizeSeed, positionSize0 / 10, 10 * positionSize0);
         twoWaySwap(swapSizeSeed);
 
         // check requirement at fuzzed tick
