@@ -1422,7 +1422,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // fuzz
         _initWorld(x);
 
-        changePrank(Charlie);
+        vm.startPrank(Charlie);
 
         _grantTokens(Charlie);
 
