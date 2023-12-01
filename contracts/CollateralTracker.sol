@@ -1305,7 +1305,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             if (realizedPremium < 0) {
                 paidAmount -= realizedPremium;
             }
-            
+
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
