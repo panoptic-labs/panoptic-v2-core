@@ -1298,14 +1298,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 tokenToPay += intrinsicValue;
 
                 // record the paid amount
-                paidAmount = intrinsicValue;
+                //paidAmount = intrinsicValue;
             }
 
             // add premium owed to paid amount (only for long premium)
-            if (realizedPremium < 0) {
-                paidAmount -= realizedPremium;
-            }
-            
+            //if (realizedPremium < 0) {
+            //    paidAmount -= realizedPremium;
+            //}
+            paidAmount = tokenToPay < 0 ? int256(0) : tokenToPay;
+
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
