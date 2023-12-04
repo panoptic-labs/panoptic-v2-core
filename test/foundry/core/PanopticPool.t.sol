@@ -4162,12 +4162,14 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.convertToAssets(ct0.balanceOf(Alice)),
                 uint256(int256(lastCollateralBalance0[Alice]) + $balanceDelta0),
-                uint256(int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 100_000 + 10))
+                uint256(
+                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_000_000 + 10)
+                )
             );
             assertApproxEqAbs(
                 ct1.convertToAssets(ct1.balanceOf(Alice)),
                 uint256(int256(lastCollateralBalance1[Alice]) + $balanceDelta1),
-                uint256(int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 100_000 + 10))
+                uint256(int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10))
             );
         }
     }
