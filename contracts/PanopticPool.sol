@@ -1184,25 +1184,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
 
             uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
-                msg.sender,
+                account,
                 twapTick,
                 positionBalanceArray,
                 portfolioPremium.rightSlot()
             );
             uint256 tokenData1 = s_collateralToken1.getAccountMarginDetails(
-                msg.sender,
+                account,
                 twapTick,
                 positionBalanceArray,
                 portfolioPremium.leftSlot()
             );
 
-            (uint256 exerciseFeesCross, uint256 thresholdCross) = _getSolvencyBalances(
+            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 tokenData0,
                 tokenData1,
                 Math.getSqrtRatioAtTick(twapTick)
             );
 
-            if (exerciseFeesCross > thresholdCross) revert Errors.ExerciseeIsLiquidatable();
+            if (balanceCross > thresholdCross) revert Errors.ExerciseeIsLiquidatable();
         }
 
         // the exercisor's position list is validated above
@@ -1233,14 +1233,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 portfolioPremium.leftSlot()
             );
 
-            (uint256 exerciseFeesCross, uint256 thresholdCross) = _getSolvencyBalances(
+            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 // multiply the collateral requirement by 1.333... to create a buffer (CR*1.3333... = CR + CR/3)
                 tokenData0.toLeftSlot(tokenData0.leftSlot() / 3),
                 tokenData1.toLeftSlot(tokenData1.leftSlot() / 3),
                 Math.getSqrtRatioAtTick(twapTick)
             );
 
-            if (exerciseFeesCross > thresholdCross) revert Errors.NotEnoughCollateral();
+            if (balanceCross > thresholdCross) revert Errors.NotEnoughCollateral();
         }
 
         emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees, currentTick);
