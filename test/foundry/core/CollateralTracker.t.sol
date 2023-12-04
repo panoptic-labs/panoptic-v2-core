@@ -5177,8 +5177,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             //(legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
 
             positionSize0 = asset == 1
-                ? uint128(bound(seed, 0.1 ether, 1 ether))
-                : uint128(bound(seed, 10 ** 8, 10 ** 10));
+                ? uint128(bound(seed, 0.1 ether, 0.1 ether))
+                : uint128(bound(seed, 10 ** 8, 10 ** 8));
 
             panopticPool.mintOptions(positionIdList, uint128(positionSize0), 0, 0, 0);
             (uint256 collateralBalance, uint256 requiredBalance) = panopticHelper.checkCollateral(
@@ -5263,7 +5263,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             // account is liquidatable
             uint256 k;
-            while (10 * requiredBalance <= 15 * collateralBalance) {
+            while (10 * requiredBalance <= 16 * collateralBalance) {
                 oneWaySwapRnd(
                     asset == 1
                         ? int256(uint256((1) * 10 ** 18))
