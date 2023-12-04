@@ -3248,8 +3248,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 widthSeed,
         int256 strikeSeed,
         uint256 positionSizeSeed,
-        uint256 swapSizeSeed,
-        bool swapDirection
+        uint256 swapSizeSeed
     ) public {
         _initPool(x);
 
@@ -3302,8 +3301,6 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
-
-        oneWaySwap(swapSizeSeed, swapDirection);
 
         // poke uniswap pool to update tokens owed - needed because swap happens after mint
         changePrank(address(sfpm));
@@ -4428,7 +4425,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256[4] memory widthSeeds,
         int256[4] memory strikeSeeds,
         uint256 positionSizeSeed,
-        uint256[2] memory swapSeeds
+        uint256 swapSizeSeed
     ) public {
         _initPool(x);
 
@@ -4507,9 +4504,7 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0);
 
-        twoWaySwap(swapSeeds[0]);
-
-        oneWaySwap(swapSeeds[0], bound(swapSeeds[1], 0, 1) == 1);
+        twoWaySwap(swapSizeSeed);
 
         datas[6] = uint256(int256(currentTick));
 
@@ -4519,7 +4514,7 @@ contract PanopticPoolTest is PositionUtils {
                 posIdList
             );
             posBalanceArray[0][1] = uint256(uint128(posBalanceArray[0][1])).toLeftSlot(
-                uint64(bound(swapSeeds[0], 0, 9_999)) + uint128(bound(swapSeeds[0], 0, 9_999) << 64)
+                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
             );
             datas[0] = ct0.getAccountMarginDetails(Alice, currentTick, posBalanceArray, 1000);
             datas[1] = ct1.getAccountMarginDetails(Alice, currentTick, posBalanceArray, 1000);
@@ -4557,9 +4552,7 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions($posIdList, positionSize / (uint128(i) + 1), type(uint64).max, 0, 0);
         }
 
-        twoWaySwap(swapSeeds[0]);
-
-        oneWaySwap(swapSeeds[0], bound(swapSeeds[1], 0, 1) == 1);
+        twoWaySwap(swapSizeSeed);
 
         {
             (, , uint256[2][] memory posBalanceArray) = pp.calculateAccumulatedFeesBatch(
@@ -4567,18 +4560,18 @@ contract PanopticPoolTest is PositionUtils {
                 $posIdList
             );
             posBalanceArray[0][1] = uint256(uint128(posBalanceArray[0][1])).toLeftSlot(
-                uint64(bound(swapSeeds[0], 0, 9_999)) + uint128(bound(swapSeeds[0], 0, 9_999) << 64)
+                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
             );
 
             posBalanceArray[1][1] = uint256(uint128(posBalanceArray[1][1])).toLeftSlot(
-                uint64(bound(swapSeeds[0], 0, 9_999)) + uint128(bound(swapSeeds[0], 0, 9_999) << 64)
+                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
             );
             posBalanceArray[2][1] = uint256(uint128(posBalanceArray[2][1])).toLeftSlot(
-                uint64(bound(swapSeeds[0], 0, 9_999)) + uint128(bound(swapSeeds[0], 0, 9_999) << 64)
+                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
             );
 
             posBalanceArray[3][1] = uint256(uint128(posBalanceArray[3][1])).toLeftSlot(
-                uint64(bound(swapSeeds[0], 0, 9_999)) + uint128(bound(swapSeeds[0], 0, 9_999) << 64)
+                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
             );
 
             datas[3] = ct0.getAccountMarginDetails(
