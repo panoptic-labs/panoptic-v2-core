@@ -1631,9 +1631,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (requiredBalance <= collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256((1) * 10 ** 18))
-                        : -int256(uint256((1) * 10 ** 18))
+                    asset == 1 ? int256(uint256((1) * 10 ** 18)) : -int256(uint256((1) * 10 ** 18))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
@@ -2109,8 +2107,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             positionIdList1.push(tokenIdFull);
             panopticPool.mintOptions(positionIdList1, uint128(positionSize0), 0, 0, 0);
-
-
         }
 
         {
@@ -2172,12 +2168,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (10 * requiredBalance <= 16 * collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(3 * 10 ** 19))
-                        : -int256(uint256(3 * 10 ** 19))
+                    asset == 1 ? int256(uint256(3 * 10 ** 19)) : -int256(uint256(3 * 10 ** 19))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-                console2.log('tick', currentTick);
+                console2.log("tick", currentTick);
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
                     panopticPool,
                     Alice,
@@ -4725,9 +4719,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (requiredBalance <= collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256((1) * 10 ** 18))
-                        : -int256(uint256((1) * 10 ** 18))
+                    asset == 1 ? int256(uint256((1) * 10 ** 18)) : -int256(uint256((1) * 10 ** 18))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
@@ -4996,9 +4988,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (10 * requiredBalance <= 13 * collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256((1) * 10 ** 18))
-                        : -int256(uint256((1) * 10 ** 18))
+                    asset == 1 ? int256(uint256((1) * 10 ** 18)) : -int256(uint256((1) * 10 ** 18))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
@@ -5265,9 +5255,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (10 * requiredBalance <= 16 * collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256((1) * 10 ** 18))
-                        : -int256(uint256((1) * 10 ** 18))
+                    asset == 1 ? int256(uint256((1) * 10 ** 18)) : -int256(uint256((1) * 10 ** 18))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
@@ -5571,9 +5559,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (10 * requiredBalance <= 23 * collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256(( 1) * 10 ** 18))
-                        : -int256(uint256(( 1) * 10 ** 18))
+                    asset == 1 ? int256(uint256((1) * 10 ** 18)) : -int256(uint256((1) * 10 ** 18))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
@@ -6151,9 +6137,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 k;
             while (10 * requiredBalance <= 13 * collateralBalance) {
                 oneWaySwapRnd(
-                    asset == 1
-                        ? int256(uint256((1) * 10 ** 18))
-                        : -int256(uint256((1) * 10 ** 18))
+                    asset == 1 ? int256(uint256((1) * 10 ** 18)) : -int256(uint256((1) * 10 ** 18))
                 );
                 (sqrtPriceX96, currentTick, , , , , ) = pool.slot0();
                 (collateralBalance, requiredBalance) = panopticHelper.checkCollateral(
@@ -10853,7 +10837,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                         );
 
-                    uint256 c2 = 10_000;//;2 * 10_000 - sellCollateralRatio;
+                    uint256 c2 = 10_000; //;2 * 10_000 - sellCollateralRatio;
 
                     // ITM
                     if (
@@ -11119,7 +11103,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                                 Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                             );
 
-                        uint256 c2 = 10000;//2 * 10_000 - uint128(baseCollateralRatio);
+                        uint256 c2 = 10000; //2 * 10_000 - uint128(baseCollateralRatio);
 
                         // ITM
                         if (
