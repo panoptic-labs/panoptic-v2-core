@@ -23,11 +23,11 @@ library Errors {
     /// @notice Attempted to withdraw/redeem more than available liquidity/used wrong function with open positions
     error ExceedsMaximumRedemption();
 
+    /// @notice Force exercisee is liquidatable - liquidatable accounts are not permitted to open or close positions outside of a liquidation
+    error ExerciseeIsLiquidatable();
+
     /// @notice PanopticPool: List of option positions is invalid
     error InputListFail();
-
-    /// @notice Emitted during a force exercise if the positions a user with open positions burns do not fully offset the decrease in collateral due to exercise fees
-    error InsufficientCollateralDecrease();
 
     /// @notice Tick is not between MIN_TICK and MAX_TICK
     error InvalidTick();

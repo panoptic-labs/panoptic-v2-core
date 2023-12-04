@@ -1086,22 +1086,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Force the exercise of a single position. Exercisor will have to pay a small fee do force exercise.
     /// @dev Will revert if: number of touchedId is larger than 1 or if user force exercises their own position
     /// @param account Address of the distressed account
-    /// @param tickLimitLow The lower tick slippagelimit
-    /// @param tickLimitHigh The upper tick slippagelimit
     /// @param touchedId List of position to be force exercised. Can only contain one tokenId, written as [tokenId]
-    /// @param idsToBurn List of positions to be burned if the force exercisor has open positions
+    /// @param positionIdListExercisee Post-burn list of open positions in the exercisee's (account) account
+    /// @param positionIdListExercisor List of open positions in the exercisor's (msg.sender) account
     /// @dev The collateral decrease resulting from burning these positions must be greater than the force exercise fee
     function forceExercise(
         address account,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
         uint256[] calldata touchedId,
-        uint256[] calldata idsToBurn
+        uint256[] calldata positionIdListExercisee,
+        uint256[] calldata positionIdListExercisor
     ) external {
         // revert if multiple positions are specified
         // the reason why the singular touchedId is an array is so it composes well with the rest of the system
         // '_calculateAccumulatedPremia' expects a list of positions to be touched, and this is the only way to pass a single position
         if (touchedId.length != 1) revert Errors.InputListFail();
+
+        // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
+        _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
         int24 twapTick = getUniV3TWAP();
 
@@ -1145,60 +1146,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // force exercises result in reduced collateral balance for the exercisor,
-        // and we do not normally allow users to move collateral out of their accounts if they have open positions
-        // thus, wem must enforce there to be a corresponding decrease in collateral requirement at the median tick if this is the case
-        if (numberOfPositions(msg.sender) > 0) {
-            {
-                // compute the collateral requirement of the burned positions
-                (
-                    int256 burntPositionPremium,
-                    uint256[2][] memory positionBalanceArray
-                ) = _calculateAccumulatedPremia(
-                        msg.sender,
-                        idsToBurn,
-                        COMPUTE_ALL_PREMIA,
-                        currentTick
-                    );
-
-                uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
-                    msg.sender,
-                    currentTick,
-                    positionBalanceArray,
-                    burntPositionPremium.rightSlot()
-                );
-                uint256 tokenData1 = s_collateralToken1.getAccountMarginDetails(
-                    msg.sender,
-                    currentTick,
-                    positionBalanceArray,
-                    burntPositionPremium.leftSlot()
-                );
-
-                // substitute exercise fee for collateral balance - we are trying to ensure that the exercise fee is smaller than the collateral requirement,
-                // so we can do a reverse "solvency check" by taking the cross-collateral exercise fee as the "balance" and checking if the cross-collateral requirement
-                // from the burnt positions is greater than this
-                tokenData0 = uint256(0).toRightSlot(uint128(-exerciseFees.rightSlot())).toLeftSlot(
-                    tokenData0.leftSlot()
-                );
-                tokenData1 = uint256(0).toRightSlot(uint128(-exerciseFees.leftSlot())).toLeftSlot(
-                    tokenData1.leftSlot()
-                );
-
-                (uint256 exerciseFeesCross, uint256 thresholdCross) = _getSolvencyBalances(
-                    tokenData0,
-                    tokenData1,
-                    Math.getSqrtRatioAtTick(twapTick)
-                );
-
-                // if collateral decrease from position burning is insufficient to cover exercise fees, revert
-                if (exerciseFeesCross > thresholdCross)
-                    revert Errors.InsufficientCollateralDecrease();
-            }
-
-            // otherwise, go ahead and burn the positions from the exercisor
-            _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, idsToBurn);
-        }
-
         // Liquidator must delegate the notional amount of tokens needed for exercising.
         s_collateralToken0.delegate(msg.sender, account, uint128(delegatedAmounts.rightSlot()));
         s_collateralToken1.delegate(msg.sender, account, uint128(delegatedAmounts.leftSlot()));
@@ -1219,6 +1166,79 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
+
+        // validate the exercisee's position list and assert their solvency
+        _validatePositionList(account, positionIdListExercisee, 0);
+        if (positionIdListExercisee.length > 0) {
+            (
+                int256 portfolioPremium,
+                uint256[2][] memory positionBalanceArray
+            ) = _calculateAccumulatedPremia(
+                    account,
+                    positionIdListExercisee,
+                    COMPUTE_ALL_PREMIA,
+                    currentTick
+                );
+
+            uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
+                msg.sender,
+                twapTick,
+                positionBalanceArray,
+                portfolioPremium.rightSlot()
+            );
+            uint256 tokenData1 = s_collateralToken1.getAccountMarginDetails(
+                msg.sender,
+                twapTick,
+                positionBalanceArray,
+                portfolioPremium.leftSlot()
+            );
+
+            (uint256 exerciseFeesCross, uint256 thresholdCross) = _getSolvencyBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(twapTick)
+            );
+
+            if (exerciseFeesCross > thresholdCross) revert Errors.ExerciseeIsLiquidatable();
+        }
+
+        // the exercisor's position list is validated above
+        // we need to assert their solvency against their collateral requirement plus a buffer
+        // force exercises involve a collateral decrease with open positions, so there is a higher standard for solvency
+        // a similar buffer is also invoked when minting options, which also decreases the available collateral
+        if (positionIdListExercisor.length > 0) {
+            (
+                int256 portfolioPremium,
+                uint256[2][] memory positionBalanceArray
+            ) = _calculateAccumulatedPremia(
+                    msg.sender,
+                    positionIdListExercisor,
+                    COMPUTE_ALL_PREMIA,
+                    currentTick
+                );
+
+            uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
+                msg.sender,
+                twapTick,
+                positionBalanceArray,
+                portfolioPremium.rightSlot()
+            );
+            uint256 tokenData1 = s_collateralToken1.getAccountMarginDetails(
+                msg.sender,
+                twapTick,
+                positionBalanceArray,
+                portfolioPremium.leftSlot()
+            );
+
+            (uint256 exerciseFeesCross, uint256 thresholdCross) = _getSolvencyBalances(
+                // multiply the collateral requirement by 1.333... to create a buffer (CR*1.3333... = CR + CR/3)
+                tokenData0.toLeftSlot(tokenData0.leftSlot() / 3),
+                tokenData1.toLeftSlot(tokenData1.leftSlot() / 3),
+                Math.getSqrtRatioAtTick(twapTick)
+            );
+
+            if (exerciseFeesCross > thresholdCross) revert Errors.NotEnoughCollateral();
+        }
 
         emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees, currentTick);
     }

@@ -3795,7 +3795,7 @@ contract PanopticPoolTest is PositionUtils {
             int256(ct1.convertToShares(uint256((longAmounts.leftSlot() * (-exerciseFee)) / 10_000)))
         ];
 
-        pp.forceExercise(Alice, 0, 0, posIdList, new uint256[](0));
+        pp.forceExercise(Alice, posIdList, new uint256[](0), new uint256[](0));
 
         assertApproxEqAbs(
             ct0.balanceOf(Bob),
@@ -4036,7 +4036,7 @@ contract PanopticPoolTest is PositionUtils {
         exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
         exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
 
-        pp.forceExercise(Alice, 0, 0, posIdList, new uint256[](0));
+        pp.forceExercise(Alice, posIdList, new uint256[](0), new uint256[](0));
 
         assertApproxEqAbs(
             int256(ct0.balanceOf(Bob)),
@@ -4113,168 +4113,6 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_forceExercise_BurningOpenPosition(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOTMSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-
-        populatePositionData(width, strike, positionSizeSeed);
-
-        int24 TWAPtick = pp.getUniV3TWAP_();
-
-        // make sure position is exercisable
-        vm.assume(TWAPtick < tickLower || TWAPtick >= tickUpper);
-
-        // mint a short leg
-        uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        // mint a long leg to exercise
-        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            1,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        posIdList = new uint256[](2);
-        posIdList[0] = tokenIdShort;
-        posIdList[1] = tokenIdLong;
-
-        pp.mintOptions(posIdList, uint128(positionSize / 2), type(uint64).max, 0, 0);
-
-        changePrank(Bob);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        // Bob just needs to have any open position, doesn't matter what it is since he will not provide it
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdLong;
-
-        uint256[] memory idsToBurn = new uint256[](1);
-        idsToBurn[0] = tokenIdShort;
-
-        // Bob will now attempt to force exercise Alice.
-        // He has an open position, which he provides the list of idsToBurn when he exercises
-        // This position is more than enough to cover the exercise fee, so the force exercise should succeed
-        pp.forceExercise(Alice, 0, 0, posIdList, idsToBurn);
-
-        // check that both positions are burnt
-
-        (uint128 balance, , ) = pp.optionPositionBalance(Alice, tokenIdLong);
-        assertEq(balance, 0);
-
-        (balance, , ) = pp.optionPositionBalance(Bob, tokenIdShort);
-        assertEq(balance, 0);
-    }
-
-    function test_Fail_forceExercise_InsufficientCollateralDecrease_NoPositions(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOTMSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-
-        populatePositionData(width, strike, positionSizeSeed);
-
-        int24 TWAPtick = pp.getUniV3TWAP_();
-
-        // make sure position is exercisable
-        vm.assume(TWAPtick < tickLower || TWAPtick >= tickUpper);
-
-        // mint a short leg
-        uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        // mint a long leg to exercise
-        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            1,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        posIdList = new uint256[](2);
-        posIdList[0] = tokenIdShort;
-        posIdList[1] = tokenIdLong;
-
-        pp.mintOptions(posIdList, uint128(positionSize / 2), type(uint64).max, 0, 0);
-
-        changePrank(Bob);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        // Bob just needs to have any open position, doesn't matter what it is since he will not provide it
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdLong;
-
-        // Bob will now attempt to force exercise Alice.
-        // He has an open position, but he did not provide it in the list of idsToBurn when he exercises
-        // Thus, he will experience an overall decrease in buying power due to the exercise fee and our system should revert
-        vm.expectRevert(Errors.InsufficientCollateralDecrease.selector);
-        pp.forceExercise(Alice, 0, 0, posIdList, new uint256[](0));
-    }
-
     function test_Success_getRefundAmounts(
         uint256 x,
         uint256 balance0,
@@ -4346,6 +4184,76 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    function test_Fail_forceExercise_InvalidExercisorList(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
+
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        uint256[] memory posIdList = new uint256[](1);
+        posIdList[0] = tokenId;
+
+        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+
+        posIdList = new uint256[](2);
+        posIdList[0] = tokenId;
+
+        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+
+        posIdList[1] = tokenId2;
+
+        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+
+        changePrank(Bob);
+
+        posIdList = new uint256[](1);
+        posIdList[0] = tokenId2;
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.forceExercise(Alice, new uint256[](1), new uint256[](0), posIdList);
+    }
+
     function test_Fail_forceExercise_1PositionNotSpecified(
         uint256 x,
         uint256[] memory touchedIds
@@ -4356,7 +4264,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.InputListFail.selector);
 
-        pp.forceExercise(Alice, 0, 0, touchedIds, new uint256[](0));
+        pp.forceExercise(Alice, touchedIds, new uint256[](0), new uint256[](0));
     }
 
     function test_Fail_forceExercise_PositionNotExercisable(uint256 x) public {
@@ -4379,7 +4287,7 @@ contract PanopticPoolTest is PositionUtils {
 
         uint256[] memory touchedIds = new uint256[](1);
         touchedIds[0] = tokenId;
-        pp.forceExercise(Alice, 0, 0, touchedIds, new uint256[](0));
+        pp.forceExercise(Alice, touchedIds, new uint256[](0), new uint256[](0));
     }
 
     /*//////////////////////////////////////////////////////////////
