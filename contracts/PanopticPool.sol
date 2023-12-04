@@ -1167,6 +1167,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
+        // update the current tick after any ITM swaps
+        (, currentTick, , , , , ) = s_univ3pool.slot0();
+
         // validate the exercisee's position list and assert their solvency
         _validatePositionList(account, positionIdListExercisee, 0);
         if (positionIdListExercisee.length > 0) {
