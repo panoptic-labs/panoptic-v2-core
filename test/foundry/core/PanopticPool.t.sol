@@ -2680,6 +2680,9 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions(posIdList, positionSizes[1], type(uint64).max, 0, 0);
         }
 
+        // price changes afters swap at mint so we need to update the price
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSizes[1]);
 
         {
