@@ -929,62 +929,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
-    /// @dev Only called on collateralTracker0, so we must query balances from collateralTracker1.
-    /// @param refunder Address of the user the refund is coming from (the force exercisee).
-    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
-    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
-    /// @param collateralToken1 The address of the collateralTracker for token 1.
-    /// @return refundAmounts The amount of tokens to refund to the user.
-    function getRefundAmounts(
-        address refunder,
-        int256 refundValues,
-        int24 atTick,
-        CollateralTracker collateralToken1
-    ) public view returns (int256 refundAmounts) {
-        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
-
-        unchecked {
-            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
-            int256 balanceShortage = refundValues.rightSlot() -
-                int256(convertToAssets(balanceOf[refunder]));
-
-            if (balanceShortage > 0) {
-                return
-                    int256(0)
-                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
-                        .toLeftSlot(
-                            int128(
-                                int256(
-                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.leftSlot()
-                            )
-                        );
-            }
-
-            balanceShortage =
-                refundValues.leftSlot() -
-                int256(collateralToken1.convertToAssets(collateralToken1.balanceOf(refunder)));
-
-            if (balanceShortage > 0) {
-                return
-                    int256(0)
-                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
-                        .toRightSlot(
-                            int128(
-                                int256(
-                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.rightSlot()
-                            )
-                        );
-            }
-        }
-
-        // otherwise, we can just refund the original amounts requested with no problems
-        return refundValues;
-    }
-
     /// @notice Get the pool utilization; it is a measure of the ratio of assets in the AMM vs the total assets managed by the pool.
     // With total assets being the current Panoptic pool balance + the amount in the AMM.
     /// @dev compute: inAMM/totalAssets().

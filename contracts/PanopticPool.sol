@@ -1054,12 +1054,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 refundAmounts = delegatedAmounts.add(exerciseFees);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = s_collateralToken0.getRefundAmounts(
-            account,
-            refundAmounts,
-            twapTick,
-            s_collateralToken1
-        );
+        refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
 
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
@@ -1091,6 +1086,65 @@ contract PanopticPool is ERC1155Holder, Multicall {
         ) revert Errors.NotEnoughCollateral();
 
         emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees, currentTick);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       REVOKE/REFUND COMPUTATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
+    /// @param refunder Address of the user the refund is coming from (the force exercisee).
+    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
+    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
+    /// @return refundAmounts The amount of tokens to refund to the user.
+    function _getRefundAmounts(
+        address refunder,
+        int256 refundValues,
+        int24 atTick
+    ) public view returns (int256 refundAmounts) {
+        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
+        CollateralTracker collateral0 = s_collateralToken0;
+        CollateralTracker collateral1 = s_collateralToken1;
+
+        unchecked {
+            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
+            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
+            int256 balanceShortage = refundValues.rightSlot() -
+                int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
+
+            if (balanceShortage > 0) {
+                return
+                    int256(0)
+                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
+                        .toLeftSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
+                                ) + refundValues.leftSlot()
+                            )
+                        );
+            }
+
+            balanceShortage =
+                refundValues.leftSlot() -
+                int256(collateral1.convertToAssets(collateral1.balanceOf(refunder)));
+
+            if (balanceShortage > 0) {
+                return
+                    int256(0)
+                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
+                        .toRightSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
+                                ) + refundValues.rightSlot()
+                            )
+                        );
+            }
+        }
+
+        // otherwise, we can just refund the original amounts requested with no problems
+        return refundValues;
     }
 
     /*//////////////////////////////////////////////////////////////
