@@ -4362,7 +4362,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 snap = vm.snapshot();
 
             changePrank(Bob);
-            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
+            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], $posIdLists[0]);
 
             int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
                 int256(lastCollateralBalance0[Alice]);
