@@ -28,6 +28,7 @@ import {PanopticHelper} from "@contracts/periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
+import {SwapRouterUnsafe} from "../testUtils/SwapRouterUnsafe.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -393,6 +394,12 @@ contract PanopticPoolTest is PositionUtils {
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
         collateralReference = address(new CollateralTracker());
+
+        // replace router with unsafe router that doesn't enforce exact amounts
+        vm.etch(
+            address(router),
+            address(new SwapRouterUnsafe(address(V3FACTORY), address(WETH))).code
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
