@@ -84,7 +84,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Mutable parameters that can be used to adjust various protocol mechanisms and behaviors.
     /// These parameters are stored in CollateralTracker and are used in various calculations.
     /// They can be updated with the 'updateParameters' function in this contract.
-    /// @dev maintenaceMarginRatio minimum ratio of actual to required collateral that must be maintained to mint a new position (decimals=10000).
     /// @dev commissionFee the commission fee (basis points).
     /// @dev ITMSpreadFee additional risk premium charged on intrinsic value of ITM positions defined in basis points as a multiple of the pool fee / 10000.
     /// @dev sellCollateralRatio minimum collateral ratio for selling options when pool utilization < targetPoolUtilization (basis points).
@@ -93,7 +92,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev saturatedPoolUtilization pool utilization at which sell collateral ratio reaches its maximum and buy collateral ratio reaches its minimum (basis points).
     /// @dev exerciseCost maximum cost of force exercising an OTM position immediately out-of-range, decreases exponentially as the tick moves more ranges away (basis points).
     struct Parameters {
-        uint256 maintenanceMarginRatio;
         int128 commissionFee;
         int128 ITMSpreadFee;
         int128 sellCollateralRatio;
@@ -191,8 +189,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     // liquidation parameters
     /// @notice basal cost to force exercise a position that is barely far-the-money (out-of-range).
     int128 internal s_exerciseCost;
-    /// @notice prevents minting of new options when collateral < (maintenanceMarginRatio * requiredCollateral).
-    uint256 internal s_maintenanceMarginRatio;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
@@ -272,8 +268,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Set the Collateral Tracking System Parameters
 
         // Set default base parameters (see 'updateParameters(uint256)' for updating):
-        s_maintenanceMarginRatio = 13_333; // prevents minting of new options when collateral < 1.3333*required
-
         // commission fee levied when a new option is minted. This fee goes to the Panoptic LP's
         s_commissionFee = 10;
 
@@ -307,7 +301,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function updateParameters(
         CollateralTracker.Parameters calldata newParameters
     ) external onlyFactoryOwner {
-        s_maintenanceMarginRatio = newParameters.maintenanceMarginRatio;
         s_commissionFee = newParameters.commissionFee;
         // precompute the final spread fee - ITMSpreadFee is passed as a multiplier of the pool fee in basis points
         unchecked {
@@ -1263,19 +1256,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param longAmount The amount of longs.
     /// @param shortAmount The amount of shorts.
-    /// @param portfolioPremium Equal to the total accumulated long premium for the whole portfolio.
     /// @param swappedAmount The amount of tokens swapped during creation of the option position (non-zero for options minted ITM).
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
     /// @return utilization The utilization of the Panoptic Pool.
-    /// @return tokenData LeftRight encoding with tokenbalance, ie assets, (in the right slot) and amount required in collateral (left slot).
     function takeCommissionAddData(
         uint256 tickStateCallContext,
         int128 longAmount,
         int128 shortAmount,
-        int128 portfolioPremium,
-        int128 swappedAmount,
-        uint256[2][] memory positionBalanceArray
-    ) external onlyPanopticPool returns (int128 utilization, uint256 tokenData) {
+        int128 swappedAmount
+    ) external onlyPanopticPool returns (int128 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1306,41 +1294,16 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint128(uint256(updatedAssets));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
 
-            {
-                // get the current Panoptic pool utilization
-                // Check if current tick is too far away from median, set to utilization to 10,001 if it is
-                int24 currentTick = tickStateCallContext.currentTick();
-                int24 medianTick = tickStateCallContext.medianTick();
-                // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
-                if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
-                    utilization = DECIMALS_128 + 1;
-                } else {
-                    utilization = _poolUtilization();
-                }
+            // get the current Panoptic pool utilization
+            // Check if current tick is too far away from median, set to utilization to 10,001 if it is
+            int24 currentTick = tickStateCallContext.currentTick();
+            int24 medianTick = tickStateCallContext.medianTick();
+            // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
+            if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
+                utilization = DECIMALS_128 + 1;
+            } else {
+                utilization = _poolUtilization();
             }
-
-            // add the utilization to positionBalanceArray for the current position:
-            uint128 positionSize = positionBalanceArray[positionBalanceArray.length - 1][1]
-                .rightSlot();
-
-            positionBalanceArray[positionBalanceArray.length - 1][1] = uint256(0)
-                .toRightSlot(positionSize)
-                .toLeftSlot(uint128(utilization) + (uint128(utilization) << 64));
-
-            // get collateral of the user (optionOwner) for the current position.
-            tokenData = getAccountMarginDetails(
-                tickStateCallContext.caller(),
-                tickStateCallContext.currentTick(),
-                positionBalanceArray,
-                portfolioPremium
-            );
-
-            // multiply the current collateral requirement with the Maintenance margin ratio to prevent minting too close to liquidations
-            tokenData = tokenData.toLeftSlot(
-                // no need to use safecast as initial requirement will never be more that (2 ** 128) - 1
-                // calculation gives us the needed buffer to add onto the initial requirement
-                uint128((tokenData.leftSlot() * (s_maintenanceMarginRatio - DECIMALS)) / DECIMALS)
-            );
         }
     }
 
@@ -1485,18 +1448,23 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // If premium is negative, increase the short premium requirement by the maintenance margin ratio
             if (premiumAllPositions < 0) {
                 unchecked {
-                    tokenRequired +=
-                        (s_maintenanceMarginRatio * uint128(-premiumAllPositions)) /
-                        DECIMALS;
+                    tokenRequired += uint128(-premiumAllPositions);
                 }
             }
         }
 
-        // get the user's shares balance (amount of collateral);
-        uint256 collateralAmount = balanceOf[user];
+        uint256 collateralAmount = convertToAssets(balanceOf[user]);
+
+        // add/subtract the accumulated premia to the collateral amount
+        uint256 netBalance = collateralAmount;
+        if (premiumAllPositions > 0) {
+            unchecked {
+                netBalance += uint256(uint128(premiumAllPositions));
+            }
+        }
 
         // store assetBalance and tokens required in tokenData variable
-        tokenData = tokenData.toRightSlot(uint128(convertToAssets(collateralAmount))).toLeftSlot(
+        tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
             tokenRequired.toUint128()
         );
         return tokenData;
