@@ -4426,6 +4426,133 @@ contract PanopticPoolTest is PositionUtils {
         pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
     }
 
+    function test_Fail_forceExercise_InvalidExerciseeList(
+        uint256 x,
+        uint256 numLegs,
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256 positionSizeSeed,
+        uint256 swapSizeSeed
+    ) public {
+        _initPool(x);
+
+        numLegs = bound(numLegs, 2, 4);
+
+        int24[4] memory widths;
+        int24[4] memory strikes;
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            tokenTypes[i] = bound(tokenTypes[i], 0, 1);
+            isLongs[i] = bound(isLongs[i], 0, 1);
+            (widths[i], strikes[i]) = getValidSW(
+                widthSeeds[i],
+                strikeSeeds[i],
+                uint24(tickSpacing),
+                // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
+                currentTick
+            );
+
+            // make sure there are no conflicts
+            for (uint256 j = 0; j < i; ++j) {
+                vm.assume(
+                    widths[i] != widths[j] ||
+                        strikes[i] != strikes[j] ||
+                        tokenTypes[i] != tokenTypes[j]
+                );
+            }
+        }
+        if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
+        if (numLegs == 2)
+            populatePositionData(
+                [widths[0], widths[1]],
+                [strikes[0], strikes[1]],
+                positionSizeSeed
+            );
+        if (numLegs == 3)
+            populatePositionData(
+                [widths[0], widths[1], widths[2]],
+                [strikes[0], strikes[1], strikes[2]],
+                positionSizeSeed
+            );
+        if (numLegs == 4) populatePositionData(widths, strikes, positionSizeSeed);
+
+        {
+            uint256 exerciseableCount;
+            // make sure position is exercisable - the uniswap twap is used to determine exercisability
+            // so it could potentially be both OTM and non-exercisable (in-range)
+            TWAPtick = pp.getUniV3TWAP_();
+            for (uint256 i = 0; i < numLegs; ++i) {
+                if (
+                    (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                        TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) && isLongs[i] == 1
+                ) exerciseableCount++;
+            }
+            vm.assume(exerciseableCount > 0);
+        }
+
+        // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
+        changePrank(Seller);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[0].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    0,
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+            pp.mintOptions($posIdLists[0], positionSize * 2, 0, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        // now we can mint the long option we are force exercising
+        changePrank(Alice);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[1].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    isLongs[i],
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+
+            $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
+
+            if (
+                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
+                isLongs[i] == 1 &&
+                $posIdLists[2].length == 0
+            ) {
+                $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
+                $posIdLists[3].pop();
+            }
+
+            pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        changePrank(Bob);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.forceExercise(Alice, new uint256[](0), $posIdLists[3], new uint256[](0));
+    }
+
     function test_Fail_forceExercise_InvalidExercisorList(
         uint256 x,
         uint256[2] memory widthSeeds,
