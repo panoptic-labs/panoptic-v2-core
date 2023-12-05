@@ -4367,23 +4367,7 @@ contract PanopticPoolTest is PositionUtils {
             (totalCollateralRequired0 * 1) / 10_000
         );
 
-        editCollateral(
-            ct0,
-            Alice,
-            ct0.convertToShares(
-                (totalCollateralB0 * bound(collateralRatioSeed, 0, 10_000)) / 10_000
-            )
-        );
-        editCollateral(
-            ct1,
-            Alice,
-            ct1.convertToShares(
-                PanopticMath.convert0to1(
-                    (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
-                )
-            )
-        );
+        editCollateral(ct0, Alice, 0);
 
         changePrank(Bob);
 
