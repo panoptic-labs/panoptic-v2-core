@@ -1408,21 +1408,18 @@ contract PanopticPoolTest is PositionUtils {
             vm.load(address(ct1), bytes32(uint256(11))),
             bytes32(uint256(1_000 + (uint256(int256(-1_024)) << 128)))
         );
-        assertEq(vm.load(address(ct0), bytes32(uint256(12))), bytes32(uint256(13_333))); // maintenance margin
-        assertEq(vm.load(address(ct1), bytes32(uint256(12))), bytes32(uint256(13_333)));
         assertEq(
-            vm.load(address(ct0), bytes32(uint256(13))),
+            vm.load(address(ct0), bytes32(uint256(12))),
             bytes32(uint256(5000 + (uint256(9000) << 128)))
         ); // target pool utilization + saturated utilization
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(13))),
+            vm.load(address(ct1), bytes32(uint256(12))),
             bytes32(uint256(5000 + (uint256(9000) << 128)))
         );
     }
 
     function test_Success_updateParameters(
         uint256 x,
-        uint256 maintenanceMarginRatio,
         int256 sellCollateralRatio,
         int128[7] memory parameters
     ) public {
@@ -1434,7 +1431,6 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.updateParameters(
             CollateralTracker.Parameters(
-                maintenanceMarginRatio,
                 parameters[0],
                 parameters[1],
                 int128(sellCollateralRatio),
@@ -1446,7 +1442,6 @@ contract PanopticPoolTest is PositionUtils {
         );
         ct1.updateParameters(
             CollateralTracker.Parameters(
-                maintenanceMarginRatio,
                 parameters[0],
                 parameters[1],
                 int128(sellCollateralRatio),
@@ -1524,20 +1519,13 @@ contract PanopticPoolTest is PositionUtils {
             vm.load(address(ct1), bytes32(uint256(11))),
             bytes32(uint256(uint128(parameters[3]) + (uint256(int256(parameters[6])) << 128)))
         );
+
         assertEq(
             vm.load(address(ct0), bytes32(uint256(12))),
-            bytes32(uint256(maintenanceMarginRatio))
-        ); // maintenance margin
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(12))),
-            bytes32(uint256(maintenanceMarginRatio))
-        );
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(13))),
             bytes32(uint256(uint128(parameters[4]) + (uint256(int256(parameters[5])) << 128)))
         ); // target pool utilization + saturated utilization
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(13))),
+            vm.load(address(ct1), bytes32(uint256(12))),
             bytes32(uint256(uint128(parameters[4]) + (uint256(int256(parameters[5])) << 128)))
         );
     }
@@ -1547,7 +1535,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.NotOwner.selector);
 
-        ct0.updateParameters(CollateralTracker.Parameters(0, 0, 0, 0, 0, 0, 0, 0));
+        ct0.updateParameters(CollateralTracker.Parameters(0, 0, 0, 0, 0, 0, 0));
     }
 
     /*//////////////////////////////////////////////////////////////

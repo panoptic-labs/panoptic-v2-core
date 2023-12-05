@@ -24,7 +24,7 @@ library Errors {
     error ExceedsMaximumRedemption();
 
     /// @notice Force exercisee is liquidatable - liquidatable accounts are not permitted to open or close positions outside of a liquidation
-    error ExerciseeIsLiquidatable();
+    error ExerciseeNotSolvent();
 
     /// @notice PanopticPool: List of option positions is invalid
     error InputListFail();

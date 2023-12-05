@@ -56,14 +56,13 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
     function getSystemParameters()
         external
-        returns (int128, int128, int128, int128, uint256, int128, int128)
+        returns (int128, int128, int128, int128, int128, int128)
     {
         return (
             s_commissionFee,
             s_sellCollateralRatio,
             s_buyCollateralRatio,
             s_exerciseCost,
-            s_maintenanceMarginRatio,
             s_targetPoolUtilization,
             s_saturatedPoolUtilization
         );
