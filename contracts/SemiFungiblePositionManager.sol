@@ -815,6 +815,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 zeroForOne = itm1 > 0;
                 swapAmount = -itm1;
             }
+            console2.log("itm0", itm0);
+            console2.log("itm1", itm1);
+            console2.log("swapAmountFinal", swapAmount);
 
             // note - can occur if itm0 and itm1 have the same value
             // in that case, swapping would be pointless so skip
