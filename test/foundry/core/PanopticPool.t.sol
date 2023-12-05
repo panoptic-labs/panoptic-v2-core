@@ -4341,7 +4341,12 @@ contract PanopticPoolTest is PositionUtils {
 
             $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
 
-            if (isLongs[i] == 1 && $posIdLists[2].length == 0) {
+            if (
+                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
+                isLongs[i] == 1 &&
+                $posIdLists[2].length == 0
+            ) {
                 $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
                 $posIdLists[3].pop();
             }
