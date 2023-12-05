@@ -650,8 +650,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
         int128 utilization1 = s_collateralToken1.takeCommissionAddData(
             tickStateCallContext,
-            longAmounts.rightSlot(),
-            shortAmounts.rightSlot(),
+            longAmounts.leftSlot(),
+            shortAmounts.leftSlot(),
             totalSwapped.leftSlot()
         );
 
