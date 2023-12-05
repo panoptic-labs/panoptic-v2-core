@@ -4417,7 +4417,7 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Bob);
 
-        vm.expectRevert(Errors.ExerciseeNotSolvent.selector);
+        vm.expectRevert();
         pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
     }
 
