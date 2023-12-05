@@ -4351,6 +4351,24 @@ contract PanopticPoolTest is PositionUtils {
 
         twoWaySwap(swapSizeSeed);
 
+        lastCollateralBalance0[Alice] = ct0.balanceOf(Alice);
+        lastCollateralBalance1[Alice] = ct1.balanceOf(Alice);
+        {
+            uint256 snap = vm.snapshot();
+
+            changePrank(Bob);
+            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
+
+            int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
+                int256(lastCollateralBalance0[Alice]);
+            int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
+                int256(lastCollateralBalance1[Alice]);
+            vm.revertTo(snap);
+
+            $balanceDelta0 = balanceDelta0;
+            $balanceDelta1 = balanceDelta1;
+        }
+
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
@@ -4364,10 +4382,38 @@ contract PanopticPoolTest is PositionUtils {
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
             1,
-            (totalCollateralRequired0 * 1) / 10_000
+            (totalCollateralRequired0 * 1_000) / 10_000
         );
 
-        editCollateral(ct0, Alice, 0);
+        vm.assume(
+            int256(totalCollateralRequired0) -
+                int256(
+                    PanopticMath.convert1to0(
+                        $balanceDelta1,
+                        Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    ) + $balanceDelta0
+                ) *
+                2 >
+                int256(totalCollateralB0)
+        );
+
+        editCollateral(
+            ct0,
+            Alice,
+            ct0.convertToShares(
+                (totalCollateralB0 * bound(collateralRatioSeed, 0, 10_000)) / 10_000
+            )
+        );
+        editCollateral(
+            ct1,
+            Alice,
+            ct1.convertToShares(
+                PanopticMath.convert0to1(
+                    (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
+                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                )
+            )
+        );
 
         changePrank(Bob);
 
