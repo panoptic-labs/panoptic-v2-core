@@ -4233,7 +4233,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Fail_exercise_ExercisorIsLiquidatable(
+    function test_Fail_forceExercise_ExercisorIsLiquidatable(
         uint256 x,
         uint256 numLegs,
         uint256[4] memory isLongs,
