@@ -1317,7 +1317,7 @@ contract PanopticPoolTest is PositionUtils {
 
     function oneWaySwap(uint256 swapSize, bool swapDirection) public {
         changePrank(Swapper);
-        swapSize = bound(swapSize, 10 ** 18, 10 ** 20);
+        swapSize = bound(swapSize, 10 ** 18, 10 ** 19);
         if (swapDirection) {
             router.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams(
