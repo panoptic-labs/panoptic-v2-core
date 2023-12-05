@@ -4233,7 +4233,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Fail_forceExercise_ExercisorIsLiquidatable(
+    function test_Fail_forceExercise_ExerciseeNotSolvent(
         uint256 x,
         uint256 numLegs,
         uint256[4] memory isLongs,
@@ -4387,7 +4387,7 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Bob);
 
-        vm.expectRevert(Errors.ExerciseeIsLiquidatable.selector);
+        vm.expectRevert(Errors.ExerciseeNotSolvent.selector);
         pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
     }
 
