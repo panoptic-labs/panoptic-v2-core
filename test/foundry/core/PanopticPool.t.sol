@@ -881,6 +881,9 @@ contract PanopticPoolTest is PositionUtils {
             zeroForOne = $itm1 > 0;
             swapAmount = -$itm1;
         }
+        console2.log("$itm0E", $itm0);
+        console2.log("$itm1E", $itm1);
+        console2.log("swapAmountFinalE", swapAmount);
 
         if (numLegs == 1) {
             tickLowers.push(tickLower);
@@ -914,6 +917,9 @@ contract PanopticPoolTest is PositionUtils {
             ($swap1 + $amount1MovedBurn) -
             longAmounts.leftSlot() +
             shortAmounts.leftSlot();
+
+        console2.log("$swap0E", $swap0);
+        console2.log("$am0MovedBurn", $amount0MovedBurn);
     }
 
     function populatePositionData(
@@ -4028,6 +4034,8 @@ contract PanopticPoolTest is PositionUtils {
 
         oneWaySwap(swapSizeSeed, swapDirection);
 
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
         updatePositionDataVariable(numLegs, isLongs);
 
         updateITMAmountsBurn(numLegs, tokenTypes);
@@ -4149,6 +4157,8 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             $balanceDelta0 = int256(exerciseFeeAmounts[0]) - $intrinsicValue0 + $expectedPremia0;
+            console2.log("$expectedPremia0", $expectedPremia0);
+            console2.log("$intrinsicValue0", $intrinsicValue0);
 
             $balanceDelta0 = $balanceDelta0 > 0
                 ? int256(uint256($balanceDelta0))
@@ -4159,6 +4169,9 @@ contract PanopticPoolTest is PositionUtils {
             $balanceDelta1 = $balanceDelta1 > 0
                 ? int256(uint256($balanceDelta1))
                 : -int256(uint256(-$balanceDelta1));
+
+            console2.log("balance delta 0", $balanceDelta0);
+            console2.log("balance delta 1", $balanceDelta1);
 
             assertApproxEqAbs(
                 ct0.convertToAssets(ct0.balanceOf(Alice)),
