@@ -4160,6 +4160,9 @@ contract PanopticPoolTest is PositionUtils {
                 ? int256(uint256($balanceDelta1))
                 : -int256(uint256(-$balanceDelta1));
 
+            console2.log("balance delta 0", $balanceDelta0);
+            console2.log("balance delta 1", $balanceDelta1);
+
             assertApproxEqAbs(
                 ct0.convertToAssets(ct0.balanceOf(Alice)),
                 uint256(int256(lastCollateralBalance0[Alice]) + $balanceDelta0),
