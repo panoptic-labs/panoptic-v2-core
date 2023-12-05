@@ -914,6 +914,9 @@ contract PanopticPoolTest is PositionUtils {
             ($swap1 + $amount1MovedBurn) -
             longAmounts.leftSlot() +
             shortAmounts.leftSlot();
+
+        console2.log("$swap0E", $swap0);
+        console2.log("$am0MovedBurn", $amount0MovedBurn);
     }
 
     function populatePositionData(
