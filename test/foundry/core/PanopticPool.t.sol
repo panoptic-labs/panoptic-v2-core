@@ -4034,6 +4034,8 @@ contract PanopticPoolTest is PositionUtils {
 
         oneWaySwap(swapSizeSeed, swapDirection);
 
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
         updatePositionDataVariable(numLegs, isLongs);
 
         updateITMAmountsBurn(numLegs, tokenTypes);
