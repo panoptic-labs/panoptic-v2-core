@@ -4358,7 +4358,7 @@ contract PanopticPoolTest is PositionUtils {
             Alice,
             pp.getUniV3TWAP_(),
             0,
-            $posIdLists[1]
+            $posIdLists[2]
         );
 
         uint256 totalCollateralB0 = bound(
