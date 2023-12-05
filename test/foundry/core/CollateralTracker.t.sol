@@ -9788,6 +9788,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             assertTrue(premium0 >= 0 && premium1 >= 0, "invalid premia");
 
+            console2.log('required', required, uint128(tokenData1.leftSlot()));
+            console2.log('premium1', premium1);
             // checks tokens required
             // only add premium requirement, if there is net premia owed
             required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
@@ -10821,6 +10823,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     FullMath.mulDiv(notionalMoved, sellCollateralRatio, 10_000)
                 );
 
+                console2.log('tR', tokensRequired);
                 // OTM
                 if (
                     ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
@@ -10837,25 +10840,28 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                         );
 
-                    uint256 c2 = 10_000; //;2 * 10_000 - sellCollateralRatio;
-
                     // ITM
                     if (
                         ((atTick < (legLowerTick)) && (tokenType == 1)) ||
                         ((atTick >= (legUpperTick)) && (tokenType == 0))
                     ) {
-                        uint256 c3 = c2 * (FixedPoint96.Q96 - ratio);
-                        return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c3) / 10_000);
+                        uint256 c2 = (FixedPoint96.Q96 - ratio);
+                        tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
+                        console2.log('tRO', tokensRequired);
+                        return tokensRequired;
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
                         uint256 c3 = FullMath.mulDiv(
-                            c2,
+                            notionalMoved,
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
                         );
-                        return tokensRequired += uint128((notionalMoved * c3) / 10_000);
+                        tokensRequired += uint128(c3);
+                        console2.log('tRI', tokensRequired);
+                        return tokensRequired;
+
                     }
                 }
             } else {
@@ -11103,25 +11109,23 @@ contract CollateralTrackerTest is Test, PositionUtils {
                                 Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                             );
 
-                        uint256 c2 = 10000; //2 * 10_000 - uint128(baseCollateralRatio);
-
                         // ITM
                         if (
                             ((atTick < (legLowerTick)) && (tokenType == 1)) ||
                             ((atTick >= (legUpperTick)) && (tokenType == 0))
                         ) {
-                            uint256 c3 = c2 * (FixedPoint96.Q96 - ratio);
-                            tokensRequired += uint128(Math.mulDiv96(notionalMoved, c3) / 10_000);
+                            uint256 c2 =  (FixedPoint96.Q96 - ratio);
+                            tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                         } else {
                             // ATM
                             uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
                             uint256 c3 = FullMath.mulDiv(
-                                c2,
+                                notionalMoved,
                                 scaleFactor - ratio,
                                 scaleFactor + FixedPoint96.Q96
                             );
-                            tokensRequired += uint128((notionalMoved * c3) / 10_000);
+                            tokensRequired += uint128(c3);
                         }
                     }
                 }
