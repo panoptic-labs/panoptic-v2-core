@@ -21,7 +21,6 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1292,10 +1291,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // add the intrinsic value to the tokenToPay
                 tokenToPay += intrinsicValue;
             }
-
-            console2.log("intrinsicValue", intrinsicValue);
-            console2.log("realizedPremium", realizedPremium);
-            console2.log("expectedPremium", currentPositionPremium);
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)

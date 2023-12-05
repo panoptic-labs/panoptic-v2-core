@@ -19,7 +19,6 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
@@ -702,7 +701,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 isBurn
             );
         }
-        console2.log("totalMoved0", totalMoved.rightSlot());
+
         // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
         if ((itmAmounts != 0) && (swapAtMint)) {
             totalMoved = swapInAMM(univ3pool, itmAmounts).add(totalMoved);
@@ -815,9 +814,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 zeroForOne = itm1 > 0;
                 swapAmount = -itm1;
             }
-            console2.log("itm0", itm0);
-            console2.log("itm1", itm1);
-            console2.log("swapAmountFinal", swapAmount);
 
             // note - can occur if itm0 and itm1 have the same value
             // in that case, swapping would be pointless so skip
@@ -834,8 +830,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     : Constants.MAX_V3POOL_SQRT_RATIO - 1,
                 data
             );
-
-            console2.log("swap0", swap0);
 
             // Add amounts swapped to totalSwapped variable
             totalSwapped = int256(0).toRightSlot(swap0.toInt128()).toLeftSlot(swap1.toInt128());
