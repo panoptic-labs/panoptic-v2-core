@@ -4149,6 +4149,8 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             $balanceDelta0 = int256(exerciseFeeAmounts[0]) - $intrinsicValue0 + $expectedPremia0;
+            console2.log("$expectedPremia0", $expectedPremia0);
+            console2.log("$intrinsicValue0", $intrinsicValue0);
 
             $balanceDelta0 = $balanceDelta0 > 0
                 ? int256(uint256($balanceDelta0))
