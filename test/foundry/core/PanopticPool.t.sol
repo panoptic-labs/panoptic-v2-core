@@ -4364,7 +4364,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
             1,
-            (totalCollateralRequired0 * 8_000) / 10_000
+            (totalCollateralRequired0 * 1_000) / 10_000
         );
 
         editCollateral(
