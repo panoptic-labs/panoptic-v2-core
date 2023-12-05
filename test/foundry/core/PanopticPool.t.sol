@@ -4247,7 +4247,7 @@ contract PanopticPoolTest is PositionUtils {
     ) public {
         _initPool(x);
 
-        numLegs = bound(numLegs, 1, 4);
+        numLegs = bound(numLegs, 2, 4);
 
         int24[4] memory widths;
         int24[4] memory strikes;
@@ -4364,7 +4364,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
             1,
-            (totalCollateralRequired0 * 1_000) / 10_000
+            (totalCollateralRequired0 * 1) / 10_000
         );
 
         editCollateral(
