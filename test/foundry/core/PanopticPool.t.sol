@@ -134,7 +134,7 @@ contract PanopticPoolTest is PositionUtils {
     uint256 poolBalance1;
 
     uint256[] emptyList;
-   
+
     int24 medianTick;
     uint160 medianSqrtPriceX96;
     int24 TWAPtick;
@@ -3579,7 +3579,6 @@ contract PanopticPoolTest is PositionUtils {
             pp.burnOptions(tokenIds[0], emptyList, 0, 0);
         }
 
-
         //snapshot balances and revert to old snapshot
         uint256[2] memory balanceBefores = [ct0.balanceOf(Alice), ct1.balanceOf(Alice)];
 
@@ -3708,7 +3707,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[1] = tokenId2;
 
             pp.mintOptions(posIdList, uint128(positionSizes[1]), 0, 0, 0);
-            
+
             pp.burnOptions(posIdList, emptyList, 0, 0);
 
             (uint256 token0Balance, , ) = pp.optionPositionBalance(Alice, tokenId);
@@ -3730,9 +3729,8 @@ contract PanopticPoolTest is PositionUtils {
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 positionSizeSeed        
+        uint256 positionSizeSeed
     ) public {
-
         _initPool(x);
 
         (int24 width, int24 strike) = PositionUtils.getOTMSW(
@@ -3765,7 +3763,6 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.burnOptions(tokenId, posIdList, 0, 0);
     }
-
 
     function test_fail_burnOptions_burnAllOptionsFrom(
         uint256 x,
@@ -3834,8 +3831,8 @@ contract PanopticPoolTest is PositionUtils {
             0,
             strike,
             width
-        );  
-         // leg 4
+        );
+        // leg 4
         uint256 tokenId4 = uint256(0).addUniv3pool(poolId).addLeg(
             0,
             3,
@@ -3845,29 +3842,26 @@ contract PanopticPoolTest is PositionUtils {
             0,
             strike,
             width
-        ); 
+        );
         {
             uint256[] memory posIdList = new uint256[](1);
             posIdList[0] = tokenId;
 
             pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
-           
+
             vm.expectRevert(Errors.InputListFail.selector);
             pp.burnOptions(tokenId, posIdList, 0, 0);
-
         }
 
         {
             uint256[] memory posIdList = new uint256[](2);
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
-            
 
             pp.mintOptions(posIdList, uint128(positionSizes[1]), 0, 0, 0);
-            
+
             vm.expectRevert(Errors.InputListFail.selector);
             pp.burnOptions(tokenId, emptyList, 0, 0);
-            
         }
         {
             uint256[] memory posIdList = new uint256[](3);
@@ -3876,7 +3870,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[2] = tokenId3;
 
             pp.mintOptions(posIdList, uint128(positionSizes[0]), 0, 0, 0);
-            
+
             vm.expectRevert(Errors.InputListFail.selector);
             pp.burnOptions(tokenId, posIdList, 0, 0);
         }
@@ -3887,24 +3881,22 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[1] = tokenId2;
             posIdList[2] = tokenId3;
             posIdList[3] = tokenId4;
-            
+
             pp.mintOptions(posIdList, uint128(positionSizes[1]), 0, 0, 0);
-            
+
             uint256[] memory burnIdList = new uint256[](2);
             burnIdList[0] = tokenId;
             burnIdList[1] = tokenId2;
 
             vm.expectRevert(Errors.InputListFail.selector);
             pp.burnOptions(burnIdList, posIdList, 0, 0);
-            
+
             uint256[] memory leftoverIdList = new uint256[](2);
             leftoverIdList[0] = tokenId3;
             leftoverIdList[1] = tokenId4;
-            
+
             pp.burnOptions(burnIdList, leftoverIdList, 0, 0);
         }
-
-
     }
 
     function test_Success_forceExerciseNoDelta(

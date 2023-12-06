@@ -481,21 +481,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param newPositionIdList The new positionIdList without the token being burnt.
     /// @param tickLimitLow Price slippage limit when burning an ITM option.
     /// @param tickLimitHigh Price slippage limit when burning an ITM option.
-    function burnOptions(uint256 tokenId, uint256[] calldata newPositionIdList, int24 tickLimitLow, int24 tickLimitHigh) external {
+    function burnOptions(
+        uint256 tokenId,
+        uint256[] calldata newPositionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh
+    ) external {
         int24 newTick = _burnOptions(tokenId, msg.sender, tickLimitLow, tickLimitHigh);
 
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (
-            !_checkSolvency(
-                msg.sender,
-                newPositionIdList,
-                newTick,
-                newTick,
-                BP_DECREASE_BUFFER
-            )
-        ) revert Errors.NotEnoughCollateral();
-
+        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, newTick, BP_DECREASE_BUFFER))
+            revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns the entire balance of all tokenIds provided in positionIdList of the caller(msg.sender).
@@ -510,20 +507,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        int24 newTick = _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, positionIdList);
-        
+        int24 newTick = _burnAllOptionsFrom(
+            msg.sender,
+            tickLimitLow,
+            tickLimitHigh,
+            positionIdList
+        );
+
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (
-            !_checkSolvency(
-                msg.sender,
-                newPositionIdList,
-                newTick,
-                newTick,
-                BP_DECREASE_BUFFER
-            )
-        ) revert Errors.NotEnoughCollateral();
-
+        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, newTick, BP_DECREASE_BUFFER))
+            revert Errors.NotEnoughCollateral();
     }
 
     /*//////////////////////////////////////////////////////////////
