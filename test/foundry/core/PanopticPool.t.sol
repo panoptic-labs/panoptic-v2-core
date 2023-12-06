@@ -3847,7 +3847,6 @@ contract PanopticPoolTest is PositionUtils {
             width
         ); 
         {
-            console2.log('first mint');
             uint256[] memory posIdList = new uint256[](1);
             posIdList[0] = tokenId;
 
@@ -3859,7 +3858,6 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            console2.log('second mint');
             uint256[] memory posIdList = new uint256[](2);
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
@@ -3872,7 +3870,6 @@ contract PanopticPoolTest is PositionUtils {
             
         }
         {
-            console2.log('third mint');
             uint256[] memory posIdList = new uint256[](3);
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
@@ -3885,7 +3882,6 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            console2.log('fourth mint');
             uint256[] memory posIdList = new uint256[](4);
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
@@ -3898,16 +3894,12 @@ contract PanopticPoolTest is PositionUtils {
             burnIdList[0] = tokenId;
             burnIdList[1] = tokenId2;
 
-            uint256[] memory leftoverIdList = new uint256[](2);
-            leftoverIdList[0] = tokenId3;
-            leftoverIdList[1] = tokenId4;
-
-            console2.log('fourth mint 2');
-
             vm.expectRevert(Errors.InputListFail.selector);
             pp.burnOptions(burnIdList, posIdList, 0, 0);
             
-            console2.log('fourth mint 3');
+            uint256[] memory leftoverIdList = new uint256[](2);
+            leftoverIdList[0] = tokenId3;
+            leftoverIdList[1] = tokenId4;
             
             pp.burnOptions(burnIdList, leftoverIdList, 0, 0);
         }
