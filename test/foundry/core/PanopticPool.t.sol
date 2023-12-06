@@ -133,6 +133,8 @@ contract PanopticPoolTest is PositionUtils {
     uint256 poolBalance0;
     uint256 poolBalance1;
 
+    uint256[] emptyList;
+   
     int24 medianTick;
     uint160 medianSqrtPriceX96;
     int24 TWAPtick;
@@ -3072,7 +3074,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
 
         pp.mintOptions(posIdList, positionSize, 0, 0, 0);
-        pp.burnOptions(tokenId, 0, 0);
+        pp.burnOptions(tokenId, emptyList, 0, 0);
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), 0);
 
@@ -3197,8 +3199,9 @@ contract PanopticPoolTest is PositionUtils {
             int128(expectedLiq)
         );
 
-        pp.burnOptions(tokenId, 0, 0);
-
+        {
+            pp.burnOptions(tokenId, emptyList, 0, 0);
+        }
         assertEq(sfpm.balanceOf(address(pp), tokenId), 0);
 
         {
@@ -3356,9 +3359,9 @@ contract PanopticPoolTest is PositionUtils {
             sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
             int128(expectedLiq)
         );
-
-        pp.burnOptions(tokenId, 0, 0);
-
+        {
+            pp.burnOptions(tokenId, emptyList, 0, 0);
+        }
         assertEq(sfpm.balanceOf(address(pp), tokenId), 0);
 
         {
@@ -3572,7 +3575,10 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         changePrank(Alice);
-        pp.burnOptions(tokenIds[0], 0, 0);
+        {
+            pp.burnOptions(tokenIds[0], emptyList, 0, 0);
+        }
+
 
         //snapshot balances and revert to old snapshot
         uint256[2] memory balanceBefores = [ct0.balanceOf(Alice), ct1.balanceOf(Alice)];
@@ -3702,7 +3708,8 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[1] = tokenId2;
 
             pp.mintOptions(posIdList, uint128(positionSizes[1]), 0, 0, 0);
-            pp.burnOptions(posIdList, 0, 0);
+            
+            pp.burnOptions(posIdList, emptyList, 0, 0);
 
             (uint256 token0Balance, , ) = pp.optionPositionBalance(Alice, tokenId);
             (uint256 token1Balance, , ) = pp.optionPositionBalance(Alice, tokenId2);
@@ -3716,7 +3723,196 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.OptionsBalanceZero.selector);
 
-        pp.burnOptions(0, 0, 0);
+        pp.burnOptions(0, emptyList, 0, 0);
+    }
+
+    function test_Fail_burnOptions_WrongIdList(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed        
+    ) public {
+
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        uint256[] memory posIdList = new uint256[](1);
+        posIdList[0] = tokenId;
+
+        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+
+        pp.burnOptions(tokenId, posIdList, 0, 0);
+    }
+
+
+    function test_fail_burnOptions_burnAllOptionsFrom(
+        uint256 x,
+        uint256 widthSeed,
+        uint256 widthSeed2,
+        int256 strikeSeed,
+        int256 strikeSeed2,
+        uint256 positionSizeSeed,
+        uint256 positionSize2Seed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeed2,
+            strikeSeed2,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData(
+            [width, width2],
+            [strike, strike2],
+            [positionSizeSeed, positionSize2Seed]
+        );
+
+        // leg 1
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // leg 2
+        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+        // leg 3
+        uint256 tokenId3 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            2,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );  
+         // leg 4
+        uint256 tokenId4 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            3,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        ); 
+        {
+            console2.log('first mint');
+            uint256[] memory posIdList = new uint256[](1);
+            posIdList[0] = tokenId;
+
+            pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
+           
+            vm.expectRevert(Errors.InputListFail.selector);
+            pp.burnOptions(tokenId, posIdList, 0, 0);
+
+        }
+
+        {
+            console2.log('second mint');
+            uint256[] memory posIdList = new uint256[](2);
+            posIdList[0] = tokenId;
+            posIdList[1] = tokenId2;
+            
+
+            pp.mintOptions(posIdList, uint128(positionSizes[1]), 0, 0, 0);
+            
+            vm.expectRevert(Errors.InputListFail.selector);
+            pp.burnOptions(tokenId, emptyList, 0, 0);
+            
+        }
+        {
+            console2.log('third mint');
+            uint256[] memory posIdList = new uint256[](3);
+            posIdList[0] = tokenId;
+            posIdList[1] = tokenId2;
+            posIdList[2] = tokenId3;
+
+            pp.mintOptions(posIdList, uint128(positionSizes[0]), 0, 0, 0);
+            
+            vm.expectRevert(Errors.InputListFail.selector);
+            pp.burnOptions(tokenId, posIdList, 0, 0);
+        }
+
+        {
+            console2.log('fourth mint');
+            uint256[] memory posIdList = new uint256[](4);
+            posIdList[0] = tokenId;
+            posIdList[1] = tokenId2;
+            posIdList[2] = tokenId3;
+            posIdList[3] = tokenId4;
+            
+            pp.mintOptions(posIdList, uint128(positionSizes[1]), 0, 0, 0);
+            
+            uint256[] memory burnIdList = new uint256[](2);
+            burnIdList[0] = tokenId;
+            burnIdList[1] = tokenId2;
+
+            uint256[] memory leftoverIdList = new uint256[](2);
+            leftoverIdList[0] = tokenId3;
+            leftoverIdList[1] = tokenId4;
+
+            console2.log('fourth mint 2');
+
+            vm.expectRevert(Errors.InputListFail.selector);
+            pp.burnOptions(burnIdList, posIdList, 0, 0);
+            
+            console2.log('fourth mint 3');
+            
+            pp.burnOptions(burnIdList, leftoverIdList, 0, 0);
+        }
+
+
     }
 
     function test_Success_forceExerciseNoDelta(
