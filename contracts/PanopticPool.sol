@@ -478,23 +478,33 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Burns the entire balance of tokenId of the caller(msg.sender).
     /// @dev Will exercise if necessary, and will revert if user does not have enough collateral to exercise.
     /// @param tokenId The tokenId of the option position to be burnt.
+    /// @param newPositionIdList The new positionIdList without the token being burnt.
     /// @param tickLimitLow Price slippage limit when burning an ITM option.
     /// @param tickLimitHigh Price slippage limit when burning an ITM option.
-    function burnOptions(uint256 tokenId, int24 tickLimitLow, int24 tickLimitHigh) external {
+    function burnOptions(uint256 tokenId, uint256[] calldata newPositionIdList, int24 tickLimitLow, int24 tickLimitHigh) external {
         _burnOptions(tokenId, msg.sender, tickLimitLow, tickLimitHigh);
+
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(msg.sender, newPositionIdList, 0);
+
     }
 
     /// @notice Burns the entire balance of all tokenIds provided in positionIdList of the caller(msg.sender).
     /// @dev Will exercise if necessary, and will revert if user does not have enough collateral to exercise.
     /// @param positionIdList The list of tokenIds for the option positions to be burnt.
+    /// @param newPositionIdList The new positionIdList without the token being burnt.
     /// @param tickLimitLow Price slippage limit when burning an ITM option.
     /// @param tickLimitHigh Price slippage limit when burning an ITM option.
     function burnOptions(
         uint256[] calldata positionIdList,
+        uint256[] calldata newPositionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
         _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, positionIdList);
+        
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(msg.sender, newPositionIdList, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
