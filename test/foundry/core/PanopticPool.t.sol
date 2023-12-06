@@ -57,6 +57,19 @@ contract PanopticPoolHarness is PanopticPool {
         twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
     }
 
+    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
+    /// @param refunder Address of the user the refund is coming from (the force exercisee).
+    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
+    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
+    /// @return refundAmounts The amount of tokens to refund to the user.
+    function getRefundAmounts(
+        address refunder,
+        int256 refundValues,
+        int24 atTick
+    ) public view returns (int256 refundAmounts) {
+        refundAmounts = _getRefundAmounts(refunder, refundValues, atTick);
+    }
+
     constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
 }
 
@@ -133,6 +146,8 @@ contract PanopticPoolTest is PositionUtils {
     CollateralTracker ct0;
     CollateralTracker ct1;
 
+    PanopticHelper ph;
+
     address Deployer = address(0x1234);
     address Alice = address(0x123456);
     address Bob = address(0x12345678);
@@ -156,6 +171,7 @@ contract PanopticPoolTest is PositionUtils {
     uint160 sqrtUpper;
 
     uint256[] $posIdList;
+    uint256[][1000] $posIdLists;
 
     uint128 positionSize;
     uint128 positionSizeBurn;
@@ -371,6 +387,8 @@ contract PanopticPoolTest is PositionUtils {
 
     function setUp() public {
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
+
+        ph = new PanopticHelper(sfpm);
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
@@ -1291,6 +1309,57 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
     }
 
+    function oneWaySwap(uint256 swapSize, bool swapDirection) public {
+        changePrank(Swapper);
+        swapSize = bound(swapSize, 10 ** 18, 10 ** 19);
+        if (swapDirection) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
+        } else {
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
+    }
+
+    // "virtual" deposit or withdrawal from an account without changing the share price
+    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
+        int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
+        int256 assetDelta = (shareDelta > 0 ? int8(1) : -1) *
+            int256(ct.convertToAssets(uint256(Math.abs(shareDelta))));
+        vm.store(
+            address(ct),
+            bytes32(uint256(8)),
+            bytes32(uint256(uint256(vm.load(address(ct), bytes32(uint256(8)))).add(assetDelta)))
+        );
+        deal(
+            ct.asset(),
+            address(ct),
+            uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
+        );
+
+        deal(address(ct), owner, newShares, true);
+    }
+
     /*//////////////////////////////////////////////////////////////
                          POOL INITIALIZATION: -
     //////////////////////////////////////////////////////////////*/
@@ -1352,21 +1421,18 @@ contract PanopticPoolTest is PositionUtils {
             vm.load(address(ct1), bytes32(uint256(11))),
             bytes32(uint256(1_000 + (uint256(int256(-1_024)) << 128)))
         );
-        assertEq(vm.load(address(ct0), bytes32(uint256(12))), bytes32(uint256(13_333))); // maintenance margin
-        assertEq(vm.load(address(ct1), bytes32(uint256(12))), bytes32(uint256(13_333)));
         assertEq(
-            vm.load(address(ct0), bytes32(uint256(13))),
+            vm.load(address(ct0), bytes32(uint256(12))),
             bytes32(uint256(5000 + (uint256(9000) << 128)))
         ); // target pool utilization + saturated utilization
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(13))),
+            vm.load(address(ct1), bytes32(uint256(12))),
             bytes32(uint256(5000 + (uint256(9000) << 128)))
         );
     }
 
     function test_Success_updateParameters(
         uint256 x,
-        uint256 maintenanceMarginRatio,
         int256 sellCollateralRatio,
         int128[7] memory parameters
     ) public {
@@ -1378,7 +1444,6 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.updateParameters(
             CollateralTracker.Parameters(
-                maintenanceMarginRatio,
                 parameters[0],
                 parameters[1],
                 int128(sellCollateralRatio),
@@ -1390,7 +1455,6 @@ contract PanopticPoolTest is PositionUtils {
         );
         ct1.updateParameters(
             CollateralTracker.Parameters(
-                maintenanceMarginRatio,
                 parameters[0],
                 parameters[1],
                 int128(sellCollateralRatio),
@@ -1468,20 +1532,13 @@ contract PanopticPoolTest is PositionUtils {
             vm.load(address(ct1), bytes32(uint256(11))),
             bytes32(uint256(uint128(parameters[3]) + (uint256(int256(parameters[6])) << 128)))
         );
+
         assertEq(
             vm.load(address(ct0), bytes32(uint256(12))),
-            bytes32(uint256(maintenanceMarginRatio))
-        ); // maintenance margin
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(12))),
-            bytes32(uint256(maintenanceMarginRatio))
-        );
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(13))),
             bytes32(uint256(uint128(parameters[4]) + (uint256(int256(parameters[5])) << 128)))
         ); // target pool utilization + saturated utilization
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(13))),
+            vm.load(address(ct1), bytes32(uint256(12))),
             bytes32(uint256(uint128(parameters[4]) + (uint256(int256(parameters[5])) << 128)))
         );
     }
@@ -1491,7 +1548,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.NotOwner.selector);
 
-        ct0.updateParameters(CollateralTracker.Parameters(0, 0, 0, 0, 0, 0, 0, 0));
+        ct0.updateParameters(CollateralTracker.Parameters(0, 0, 0, 0, 0, 0, 0));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2605,8 +2662,6 @@ contract PanopticPoolTest is PositionUtils {
 
             pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
         }
-        (priceArray, medianTick) = pp.getPriceArray();
-        (, currentTick, , , , , ) = pool.slot0();
 
         // put leg
         tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 1, 0, strike0, width0);
@@ -2614,7 +2669,8 @@ contract PanopticPoolTest is PositionUtils {
         tokenId = tokenId.addLeg(1, 1, isWETH, 1, 0, 1, strike1, width1);
 
         // price changes afters swap at mint so we need to update the price
-        (currentSqrtPriceX96, , , , , , ) = pool.slot0();
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        (priceArray, medianTick) = pp.getPriceArray();
         updatePositionDataLong();
 
         int256 netSurplus0 = $amount0Moveds[1] -
@@ -2648,6 +2704,9 @@ contract PanopticPoolTest is PositionUtils {
 
             pp.mintOptions(posIdList, positionSizes[1], type(uint64).max, 0, 0);
         }
+
+        // price changes afters swap at mint so we need to update the price
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSizes[1]);
 
@@ -3548,9 +3607,6 @@ contract PanopticPoolTest is PositionUtils {
             ? (notionalVals[0] * tickSpacing) / 10_000
             : -((notionalVals[0] * tickSpacing) / 10_000);
 
-        console2.log(tokensOwed0, tokensOwed1);
-        console2.log(expectedSwaps[0], expectedSwaps[1]);
-
         assertApproxEqAbs(
             balanceBefores[0],
             uint256(
@@ -3795,7 +3851,7 @@ contract PanopticPoolTest is PositionUtils {
             int256(ct1.convertToShares(uint256((longAmounts.leftSlot() * (-exerciseFee)) / 10_000)))
         ];
 
-        pp.forceExercise(Alice, 0, 0, posIdList, new uint256[](0));
+        pp.forceExercise(Alice, posIdList, new uint256[](0), new uint256[](0));
 
         assertApproxEqAbs(
             ct0.balanceOf(Bob),
@@ -3870,7 +3926,8 @@ contract PanopticPoolTest is PositionUtils {
         uint256[4] memory widthSeeds,
         int256[4] memory strikeSeeds,
         uint256 positionSizeSeed,
-        uint256 swapSizeSeed
+        uint256 swapSizeSeed,
+        bool swapDirection
     ) public {
         _initPool(x);
 
@@ -3966,6 +4023,10 @@ contract PanopticPoolTest is PositionUtils {
 
         twoWaySwap(swapSizeSeed);
 
+        oneWaySwap(swapSizeSeed, swapDirection);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
         updatePositionDataVariable(numLegs, isLongs);
 
         updateITMAmountsBurn(numLegs, tokenTypes);
@@ -4036,7 +4097,7 @@ contract PanopticPoolTest is PositionUtils {
         exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
         exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
 
-        pp.forceExercise(Alice, 0, 0, posIdList, new uint256[](0));
+        pp.forceExercise(Alice, posIdList, new uint256[](0), new uint256[](0));
 
         assertApproxEqAbs(
             int256(ct0.balanceOf(Bob)),
@@ -4113,168 +4174,6 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_forceExercise_BurningOpenPosition(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOTMSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-
-        populatePositionData(width, strike, positionSizeSeed);
-
-        int24 TWAPtick = pp.getUniV3TWAP_();
-
-        // make sure position is exercisable
-        vm.assume(TWAPtick < tickLower || TWAPtick >= tickUpper);
-
-        // mint a short leg
-        uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        // mint a long leg to exercise
-        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            1,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        posIdList = new uint256[](2);
-        posIdList[0] = tokenIdShort;
-        posIdList[1] = tokenIdLong;
-
-        pp.mintOptions(posIdList, uint128(positionSize / 2), type(uint64).max, 0, 0);
-
-        changePrank(Bob);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        // Bob just needs to have any open position, doesn't matter what it is since he will not provide it
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdLong;
-
-        uint256[] memory idsToBurn = new uint256[](1);
-        idsToBurn[0] = tokenIdShort;
-
-        // Bob will now attempt to force exercise Alice.
-        // He has an open position, which he provides the list of idsToBurn when he exercises
-        // This position is more than enough to cover the exercise fee, so the force exercise should succeed
-        pp.forceExercise(Alice, 0, 0, posIdList, idsToBurn);
-
-        // check that both positions are burnt
-
-        (uint128 balance, , ) = pp.optionPositionBalance(Alice, tokenIdLong);
-        assertEq(balance, 0);
-
-        (balance, , ) = pp.optionPositionBalance(Bob, tokenIdShort);
-        assertEq(balance, 0);
-    }
-
-    function test_Fail_forceExercise_InsufficientCollateralDecrease_NoPositions(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOTMSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-
-        populatePositionData(width, strike, positionSizeSeed);
-
-        int24 TWAPtick = pp.getUniV3TWAP_();
-
-        // make sure position is exercisable
-        vm.assume(TWAPtick < tickLower || TWAPtick >= tickUpper);
-
-        // mint a short leg
-        uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        // mint a long leg to exercise
-        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            1,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        posIdList = new uint256[](2);
-        posIdList[0] = tokenIdShort;
-        posIdList[1] = tokenIdLong;
-
-        pp.mintOptions(posIdList, uint128(positionSize / 2), type(uint64).max, 0, 0);
-
-        changePrank(Bob);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdShort;
-
-        // Bob just needs to have any open position, doesn't matter what it is since he will not provide it
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
-
-        posIdList = new uint256[](1);
-        posIdList[0] = tokenIdLong;
-
-        // Bob will now attempt to force exercise Alice.
-        // He has an open position, but he did not provide it in the list of idsToBurn when he exercises
-        // Thus, he will experience an overall decrease in buying power due to the exercise fee and our system should revert
-        vm.expectRevert(Errors.InsufficientCollateralDecrease.selector);
-        pp.forceExercise(Alice, 0, 0, posIdList, new uint256[](0));
-    }
-
     function test_Success_getRefundAmounts(
         uint256 x,
         uint256 balance0,
@@ -4310,11 +4209,10 @@ contract PanopticPoolTest is PositionUtils {
         int256 shortage = refund0 - int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
 
         if (shortage > 0) {
-            int256 refundAmounts = ct0.getRefundAmounts(
+            int256 refundAmounts = pp.getRefundAmounts(
                 Charlie,
                 int256(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick),
-                ct1
+                int24(atTick)
             );
 
             refund0 = refund0 - shortage;
@@ -4331,11 +4229,10 @@ contract PanopticPoolTest is PositionUtils {
         shortage = refund1 - int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
 
         if (shortage > 0) {
-            int256 refundAmounts = ct0.getRefundAmounts(
+            int256 refundAmounts = pp.getRefundAmounts(
                 Charlie,
                 int256(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick),
-                ct1
+                int24(atTick)
             );
 
             refund1 = refund1 - shortage;
@@ -4344,6 +4241,590 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(refundAmounts.rightSlot(), refund0);
             assertEq(refundAmounts.leftSlot(), refund1);
         }
+    }
+
+    function test_Fail_forceExercise_ExercisorNotSolvent(
+        uint256 x,
+        uint256 numLegs,
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256 positionSizeSeed,
+        uint256 swapSizeSeed,
+        uint256 collateralBalanceSeed,
+        uint256 collateralRatioSeed
+    ) public {
+        _initPool(x);
+
+        numLegs = bound(numLegs, 2, 4);
+
+        int24[4] memory widths;
+        int24[4] memory strikes;
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            tokenTypes[i] = bound(tokenTypes[i], 0, 1);
+            isLongs[i] = bound(isLongs[i], 0, 1);
+            (widths[i], strikes[i]) = getValidSW(
+                widthSeeds[i],
+                strikeSeeds[i],
+                uint24(tickSpacing),
+                // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
+                currentTick
+            );
+
+            // make sure there are no conflicts
+            for (uint256 j = 0; j < i; ++j) {
+                vm.assume(
+                    widths[i] != widths[j] ||
+                        strikes[i] != strikes[j] ||
+                        tokenTypes[i] != tokenTypes[j]
+                );
+            }
+        }
+        if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
+        if (numLegs == 2)
+            populatePositionData(
+                [widths[0], widths[1]],
+                [strikes[0], strikes[1]],
+                positionSizeSeed
+            );
+        if (numLegs == 3)
+            populatePositionData(
+                [widths[0], widths[1], widths[2]],
+                [strikes[0], strikes[1], strikes[2]],
+                positionSizeSeed
+            );
+        if (numLegs == 4) populatePositionData(widths, strikes, positionSizeSeed);
+
+        {
+            uint256 exerciseableCount;
+            // make sure position is exercisable - the uniswap twap is used to determine exercisability
+            // so it could potentially be both OTM and non-exercisable (in-range)
+            TWAPtick = pp.getUniV3TWAP_();
+            for (uint256 i = 0; i < numLegs; ++i) {
+                if (
+                    (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                        TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) && isLongs[i] == 1
+                ) exerciseableCount++;
+            }
+            vm.assume(exerciseableCount > 0);
+        }
+
+        // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
+        changePrank(Bob);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[0].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    0,
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+            pp.mintOptions($posIdLists[0], positionSize * 10, 0, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        // now we can mint the long option we are force exercising
+        changePrank(Alice);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[1].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    isLongs[i],
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+
+            $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
+
+            if (
+                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
+                isLongs[i] == 1 &&
+                $posIdLists[2].length == 0
+            ) {
+                $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
+                $posIdLists[3].pop();
+            }
+
+            pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        lastCollateralBalance0[Alice] = ct0.balanceOf(Alice);
+        lastCollateralBalance1[Alice] = ct1.balanceOf(Alice);
+        {
+            uint256 snap = vm.snapshot();
+
+            changePrank(Bob);
+            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], $posIdLists[0]);
+
+            int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
+                int256(lastCollateralBalance0[Alice]);
+            int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
+                int256(lastCollateralBalance1[Alice]);
+            vm.revertTo(snap);
+
+            $balanceDelta0 = balanceDelta0;
+            $balanceDelta1 = balanceDelta1;
+        }
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        (, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            pp.getUniV3TWAP_(),
+            0,
+            $posIdLists[0]
+        );
+
+        uint256 totalCollateralB0 = bound(
+            collateralBalanceSeed,
+            1,
+            (totalCollateralRequired0 * 1_000) / 10_000
+        );
+
+        vm.assume(
+            int256(totalCollateralRequired0) +
+                int256(
+                    PanopticMath.convert1to0(
+                        $balanceDelta1,
+                        Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    ) + $balanceDelta0
+                ) *
+                2 >
+                int256(totalCollateralB0)
+        );
+
+        editCollateral(
+            ct0,
+            Bob,
+            ct0.convertToShares(
+                (totalCollateralB0 * bound(collateralRatioSeed, 5_000, 6_000)) / 10_000
+            )
+        );
+        editCollateral(
+            ct1,
+            Bob,
+            ct1.convertToShares(
+                PanopticMath.convert0to1(
+                    (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) /
+                        10_000,
+                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                )
+            )
+        );
+
+        changePrank(Bob);
+
+        vm.expectRevert();
+        pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], $posIdLists[0]);
+    }
+
+    function test_Fail_forceExercise_ExerciseeNotSolvent(
+        uint256 x,
+        uint256 numLegs,
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256 positionSizeSeed,
+        uint256 swapSizeSeed,
+        uint256 collateralBalanceSeed,
+        uint256 collateralRatioSeed
+    ) public {
+        _initPool(x);
+
+        numLegs = bound(numLegs, 2, 4);
+
+        int24[4] memory widths;
+        int24[4] memory strikes;
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            tokenTypes[i] = bound(tokenTypes[i], 0, 1);
+            isLongs[i] = bound(isLongs[i], 0, 1);
+            (widths[i], strikes[i]) = getValidSW(
+                widthSeeds[i],
+                strikeSeeds[i],
+                uint24(tickSpacing),
+                // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
+                currentTick
+            );
+
+            // make sure there are no conflicts
+            for (uint256 j = 0; j < i; ++j) {
+                vm.assume(
+                    widths[i] != widths[j] ||
+                        strikes[i] != strikes[j] ||
+                        tokenTypes[i] != tokenTypes[j]
+                );
+            }
+        }
+        if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
+        if (numLegs == 2)
+            populatePositionData(
+                [widths[0], widths[1]],
+                [strikes[0], strikes[1]],
+                positionSizeSeed
+            );
+        if (numLegs == 3)
+            populatePositionData(
+                [widths[0], widths[1], widths[2]],
+                [strikes[0], strikes[1], strikes[2]],
+                positionSizeSeed
+            );
+        if (numLegs == 4) populatePositionData(widths, strikes, positionSizeSeed);
+
+        {
+            uint256 exerciseableCount;
+            // make sure position is exercisable - the uniswap twap is used to determine exercisability
+            // so it could potentially be both OTM and non-exercisable (in-range)
+            TWAPtick = pp.getUniV3TWAP_();
+            for (uint256 i = 0; i < numLegs; ++i) {
+                if (
+                    (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                        TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) && isLongs[i] == 1
+                ) exerciseableCount++;
+            }
+            vm.assume(exerciseableCount > 0);
+        }
+
+        // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
+        changePrank(Seller);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[0].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    0,
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+            pp.mintOptions($posIdLists[0], positionSize * 2, 0, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        // now we can mint the long option we are force exercising
+        changePrank(Alice);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[1].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    isLongs[i],
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+
+            $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
+
+            if (
+                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
+                isLongs[i] == 1 &&
+                $posIdLists[2].length == 0
+            ) {
+                $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
+                $posIdLists[3].pop();
+            }
+
+            pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        lastCollateralBalance0[Alice] = ct0.balanceOf(Alice);
+        lastCollateralBalance1[Alice] = ct1.balanceOf(Alice);
+        {
+            uint256 snap = vm.snapshot();
+
+            changePrank(Bob);
+            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
+
+            int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
+                int256(lastCollateralBalance0[Alice]);
+            int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
+                int256(lastCollateralBalance1[Alice]);
+            vm.revertTo(snap);
+
+            $balanceDelta0 = balanceDelta0;
+            $balanceDelta1 = balanceDelta1;
+        }
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        (, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Alice,
+            pp.getUniV3TWAP_(),
+            0,
+            $posIdLists[3]
+        );
+
+        uint256 totalCollateralB0 = bound(
+            collateralBalanceSeed,
+            1,
+            (totalCollateralRequired0 * 1_000) / 10_000
+        );
+
+        vm.assume(
+            int256(totalCollateralRequired0) -
+                int256(
+                    PanopticMath.convert1to0(
+                        $balanceDelta1,
+                        Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    ) + $balanceDelta0
+                ) *
+                2 >
+                int256(totalCollateralB0)
+        );
+
+        editCollateral(
+            ct0,
+            Alice,
+            ct0.convertToShares(
+                (totalCollateralB0 * bound(collateralRatioSeed, 0, 10_000)) / 10_000
+            )
+        );
+        editCollateral(
+            ct1,
+            Alice,
+            ct1.convertToShares(
+                PanopticMath.convert0to1(
+                    (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
+                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                )
+            )
+        );
+
+        changePrank(Bob);
+
+        vm.expectRevert();
+        pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new uint256[](0));
+    }
+
+    function test_Fail_forceExercise_InvalidExerciseeList(
+        uint256 x,
+        uint256 numLegs,
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256 positionSizeSeed,
+        uint256 swapSizeSeed
+    ) public {
+        _initPool(x);
+
+        numLegs = bound(numLegs, 2, 4);
+
+        int24[4] memory widths;
+        int24[4] memory strikes;
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            tokenTypes[i] = bound(tokenTypes[i], 0, 1);
+            isLongs[i] = bound(isLongs[i], 0, 1);
+            (widths[i], strikes[i]) = getValidSW(
+                widthSeeds[i],
+                strikeSeeds[i],
+                uint24(tickSpacing),
+                // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
+                currentTick
+            );
+
+            // make sure there are no conflicts
+            for (uint256 j = 0; j < i; ++j) {
+                vm.assume(
+                    widths[i] != widths[j] ||
+                        strikes[i] != strikes[j] ||
+                        tokenTypes[i] != tokenTypes[j]
+                );
+            }
+        }
+        if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
+        if (numLegs == 2)
+            populatePositionData(
+                [widths[0], widths[1]],
+                [strikes[0], strikes[1]],
+                positionSizeSeed
+            );
+        if (numLegs == 3)
+            populatePositionData(
+                [widths[0], widths[1], widths[2]],
+                [strikes[0], strikes[1], strikes[2]],
+                positionSizeSeed
+            );
+        if (numLegs == 4) populatePositionData(widths, strikes, positionSizeSeed);
+
+        {
+            uint256 exerciseableCount;
+            // make sure position is exercisable - the uniswap twap is used to determine exercisability
+            // so it could potentially be both OTM and non-exercisable (in-range)
+            TWAPtick = pp.getUniV3TWAP_();
+            for (uint256 i = 0; i < numLegs; ++i) {
+                if (
+                    (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                        TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) && isLongs[i] == 1
+                ) exerciseableCount++;
+            }
+            vm.assume(exerciseableCount > 0);
+        }
+
+        // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
+        changePrank(Seller);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[0].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    0,
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+            pp.mintOptions($posIdLists[0], positionSize * 2, 0, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        // now we can mint the long option we are force exercising
+        changePrank(Alice);
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            $posIdLists[1].push(
+                uint256(0).addUniv3pool(poolId).addLeg(
+                    0,
+                    1,
+                    isWETH,
+                    isLongs[i],
+                    tokenTypes[i],
+                    0,
+                    strikes[i],
+                    widths[i]
+                )
+            );
+
+            $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
+
+            if (
+                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
+                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
+                isLongs[i] == 1 &&
+                $posIdLists[2].length == 0
+            ) {
+                $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
+                $posIdLists[3].pop();
+            }
+
+            pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
+        }
+
+        twoWaySwap(swapSizeSeed);
+
+        changePrank(Bob);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.forceExercise(Alice, new uint256[](0), $posIdLists[3], new uint256[](0));
+    }
+
+    function test_Fail_forceExercise_InvalidExercisorList(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
+
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        uint256[] memory posIdList = new uint256[](1);
+        posIdList[0] = tokenId;
+
+        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+
+        posIdList = new uint256[](2);
+        posIdList[0] = tokenId;
+
+        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+
+        posIdList[1] = tokenId2;
+
+        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+
+        changePrank(Bob);
+
+        posIdList = new uint256[](1);
+        posIdList[0] = tokenId2;
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.forceExercise(Alice, new uint256[](1), new uint256[](0), posIdList);
     }
 
     function test_Fail_forceExercise_1PositionNotSpecified(
@@ -4356,7 +4837,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.InputListFail.selector);
 
-        pp.forceExercise(Alice, 0, 0, touchedIds, new uint256[](0));
+        pp.forceExercise(Alice, touchedIds, new uint256[](0), new uint256[](0));
     }
 
     function test_Fail_forceExercise_PositionNotExercisable(uint256 x) public {
@@ -4379,7 +4860,7 @@ contract PanopticPoolTest is PositionUtils {
 
         uint256[] memory touchedIds = new uint256[](1);
         touchedIds[0] = tokenId;
-        pp.forceExercise(Alice, 0, 0, touchedIds, new uint256[](0));
+        pp.forceExercise(Alice, touchedIds, new uint256[](0), new uint256[](0));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -4469,221 +4950,5 @@ contract PanopticPoolTest is PositionUtils {
                 lastTimestamp = block.timestamp;
             }
         }
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                             SPECIAL TESTS
-    //////////////////////////////////////////////////////////////*/
-
-    // test that minting a 4-leg position yields similar results to minting each leg individually
-    function test_Diff_4x1_1x4(
-        uint256 x,
-        uint256[4] memory isLongs,
-        uint256[4] memory tokenTypes,
-        uint256[4] memory widthSeeds,
-        int256[4] memory strikeSeeds,
-        uint256 positionSizeSeed,
-        uint256 swapSizeSeed
-    ) public {
-        _initPool(x);
-
-        int24[4] memory widths;
-        int24[4] memory strikes;
-
-        for (uint256 i = 0; i < 4; ++i) {
-            tokenTypes[i] = bound(tokenTypes[i], 0, 1);
-            isLongs[i] = bound(isLongs[i], 0, 1);
-            (widths[i], strikes[i]) = getValidSW(
-                widthSeeds[i],
-                strikeSeeds[i],
-                uint24(tickSpacing),
-                currentTick
-            );
-        }
-
-        populatePositionData(widths, strikes, positionSizeSeed);
-
-        // if we have long chunks we have to sell before it can be bought (let's say 2x position size for now)
-        changePrank(Seller);
-
-        uint256 tokenId = uint256(0).addUniv3pool(poolId);
-        {
-            uint256 skipped;
-            for (uint256 i = 0; i < 4; ++i) {
-                if (isLongs[i] == 0) {
-                    skipped++;
-                    continue;
-                }
-                tokenId = tokenId.addLeg(
-                    i - skipped,
-                    1,
-                    isWETH,
-                    0,
-                    tokenTypes[i],
-                    i - skipped,
-                    strikes[i],
-                    widths[i]
-                );
-            }
-        }
-
-        uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenId;
-
-        // can't make an empty position
-        if (tokenId.countLegs() != 0) pp.mintOptions(posIdList, positionSize * 2, 0, 0, 0);
-
-        // setup complete
-        vm.snapshot();
-
-        // 1x4 tokendata 0, 1x4 tokendata 1, 4x1 tokendata 0, 4x1 tokendata 1, 1x4 owned liq, 4x1 owned liq, tick
-        uint256[7] memory datas;
-
-        // mint 4-leg option
-        changePrank(Alice);
-
-        // reset tokenId so we can fill for what we're actually testing (the bought option)
-        tokenId = uint256(0).addUniv3pool(poolId);
-
-        for (uint256 i = 0; i < 4; ++i) {
-            tokenId = tokenId.addLeg(
-                i,
-                1,
-                isWETH,
-                isLongs[i],
-                tokenTypes[i],
-                i,
-                strikes[i],
-                widths[i]
-            );
-        }
-
-        posIdList[0] = tokenId;
-
-        pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0);
-
-        twoWaySwap(swapSizeSeed);
-
-        datas[6] = uint256(int256(currentTick));
-
-        unchecked {
-            (, , uint256[2][] memory posBalanceArray) = pp.calculateAccumulatedFeesBatch(
-                Alice,
-                posIdList
-            );
-            posBalanceArray[0][1] = uint256(uint128(posBalanceArray[0][1])).toLeftSlot(
-                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
-            );
-            datas[0] = ct0.getAccountMarginDetails(Alice, currentTick, posBalanceArray, 1000);
-            datas[1] = ct1.getAccountMarginDetails(Alice, currentTick, posBalanceArray, 1000);
-        }
-        for (uint256 i = 0; i < 4; ++i) {
-            datas[2] += sfpm.getAccountLiquidity(
-                address(pool),
-                address(pp),
-                tokenTypes[i],
-                tickLowers[i],
-                tickUppers[i]
-            );
-        }
-
-        // go back to setup state
-        vm.revertTo(0);
-
-        // now mint 4 1-leg options
-        changePrank(Alice);
-
-        for (uint256 i = 0; i < 4; ++i) {
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                i + 1,
-                isWETH,
-                isLongs[i],
-                tokenTypes[i],
-                0,
-                strikes[i],
-                widths[i]
-            );
-
-            $posIdList.push(tokenId);
-
-            pp.mintOptions($posIdList, positionSize / (uint128(i) + 1), type(uint64).max, 0, 0);
-        }
-
-        twoWaySwap(swapSizeSeed);
-
-        {
-            (, , uint256[2][] memory posBalanceArray) = pp.calculateAccumulatedFeesBatch(
-                Alice,
-                $posIdList
-            );
-            posBalanceArray[0][1] = uint256(uint128(posBalanceArray[0][1])).toLeftSlot(
-                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
-            );
-
-            posBalanceArray[1][1] = uint256(uint128(posBalanceArray[1][1])).toLeftSlot(
-                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
-            );
-            posBalanceArray[2][1] = uint256(uint128(posBalanceArray[2][1])).toLeftSlot(
-                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
-            );
-
-            posBalanceArray[3][1] = uint256(uint128(posBalanceArray[3][1])).toLeftSlot(
-                uint64(bound(swapSizeSeed, 0, 9_999)) + uint128(bound(swapSizeSeed, 0, 9_999) << 64)
-            );
-
-            datas[3] = ct0.getAccountMarginDetails(
-                Alice,
-                int24(int256(datas[6])),
-                posBalanceArray,
-                1000
-            );
-            datas[4] = ct1.getAccountMarginDetails(Alice, currentTick, posBalanceArray, 1000);
-        }
-        for (uint256 i = 0; i < 4; ++i) {
-            datas[5] += sfpm.getAccountLiquidity(
-                address(pool),
-                address(pp),
-                tokenTypes[i],
-                tickLowers[i],
-                tickUppers[i]
-            );
-        }
-
-        // high tolerances here because the swaps can get really big and change the collateral reqs
-        // way too much work to actually account for the error, this test is basically a sanity check so this is good enough
-        // same 0 collateral req for both
-        assertApproxEqAbs(
-            datas[0].leftSlot(),
-            datas[3].leftSlot(),
-            (
-                datas[3].leftSlot() > datas[0].leftSlot()
-                    ? datas[3].leftSlot() / 100
-                    : datas[0].leftSlot() / 100
-            ) + 10,
-            "0 collateral reqs should be the same"
-        );
-        // same 1 collateral req for both
-        assertApproxEqAbs(
-            datas[1].leftSlot(),
-            datas[4].leftSlot(),
-            (
-                datas[4].leftSlot() > datas[1].leftSlot()
-                    ? datas[4].leftSlot() / 100
-                    : datas[1].leftSlot() / 100
-            ) + 10,
-            "1 collateral reqs should be the same"
-        );
-        // same netliq for both (some smol innacuracies can be created by the position size division)
-        assertApproxEqAbs(
-            datas[2].leftSlot(),
-            datas[5].leftSlot(),
-            (
-                datas[5].leftSlot() > datas[2].leftSlot()
-                    ? datas[5].leftSlot() / 1000
-                    : datas[2].leftSlot() / 1000
-            ) + 10,
-            "netliq should be the same"
-        );
     }
 }

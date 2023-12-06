@@ -142,6 +142,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev The maximum allowed number of opened positions
     uint64 internal constant MAX_POSITIONS = 32;
 
+    // multiplier (x10k) for the collateral requirement in the event of a buying power decrease, such as minting or force exercising
+    uint256 internal constant BP_DECREASE_BUFFER = 13_333;
+
+    // multiplier (x10k) for the collateral requirement in the general case
+    uint256 internal constant NO_BUFFER = 10_000;
+
     // Panoptic ecosystem contracts - addresses are set in the constructor
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises
@@ -269,7 +275,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_tickSpacing = tickSpacing;
 
         // Store the median data
-
         unchecked {
             s_miniMedian =
                 (uint256(block.timestamp) << 216) +
@@ -539,7 +544,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 .addCaller(msg.sender);
         }
         // Mint in the SFPM and update state of collateral
-        uint128 poolUtilizations = _mintInSFPMAndUpdateCollateral(
+        (uint128 poolUtilizations, int24 newTick) = _mintInSFPMAndUpdateCollateral(
             tokenId,
             tickStateCallContext,
             positionSize,
@@ -548,12 +553,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
+        updateMedian(newTick);
+
         // calculate and write position Data
         _addUserOption(tokenId, effectiveLiquidityLimitX32);
 
         // update the users options balance of position 'tokenId'
         // note: user can't mint same position multiple times, so set the positionSize instead of adding
         _setUserOptionsBalance(msg.sender, tokenId, positionSize, poolUtilizations);
+
+        if (
+            !_checkSolvency(
+                msg.sender,
+                positionIdList,
+                newTick,
+                tickStateCallContext.medianTick(),
+                BP_DECREASE_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
 
         emit OptionMinted(
             msg.sender,
@@ -581,7 +598,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256[] calldata positionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (uint128 poolUtilizations) {
+    ) internal returns (uint128 poolUtilizations, int24) {
         // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
         // Switch order of tickLimits to create "swapAtMint" flag
         (, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
@@ -591,17 +608,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitLow
         );
 
-        updateMedian(newTick);
-
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
         poolUtilizations = _payCommissionAndWriteData(
             tickStateCallContext.updateCurrentTick(newTick),
             tokenId,
             positionSize,
-            totalSwapped,
-            positionIdList
+            totalSwapped
         );
+
+        return (poolUtilizations, newTick);
     }
 
     /// @notice Pay the commission fees for creating the options and update internal state.
@@ -610,7 +626,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped How much was swapped (if in-the-money position).
-    /// @param positionIdList The total amount of positions held by the user.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
     /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
@@ -618,121 +633,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tickStateCallContext,
         uint256 tokenId,
         uint128 positionSize,
-        int256 totalSwapped,
-        uint256[] calldata positionIdList
-    ) internal returns (uint128 poolUtilizations) {
-        // update storage data, take commission IMPORTANT: use post minting utilizations!
-
-        int256 portfolioPremium;
-
-        uint256[2][] memory positionBalanceArray;
-        {
-            // cache to avoid stack to deep errors
-            int24 currentTick = tickStateCallContext.currentTick();
-
-            // compute accumulated premia for all open options
-            // Additionally Read all position balances from the Panoptic pool
-            (portfolioPremium, positionBalanceArray) = _calculateAccumulatedPremia(
-                msg.sender,
-                positionIdList,
-                COMPUTE_ALL_PREMIA,
-                currentTick
-            );
-        }
-
-        unchecked {
-            positionBalanceArray[positionIdList.length - 1][1] = uint256(positionSize);
-        }
-
-        {
-            // compute how much of tokenId is long and short positions
-            (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize,
-                s_tickSpacing
-            );
-
-            // update storage data, take commission
-            poolUtilizations = takeCommission(
-                positionBalanceArray,
-                tickStateCallContext,
-                longAmounts,
-                shortAmounts,
-                portfolioPremium,
-                totalSwapped
-            );
-        }
-    }
-
-    /// @notice Takes the commission for each collateral token and check for user solvency.
-    /// @param positionBalanceArray Array containing a list of [tokenId, s_positionBalance], where s_positionBalance is (utilization0, utilization1, positionSize).
-    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
-    /// @param longAmounts The notional value of long legs in the position.
-    /// @param shortAmounts The notional value of short legs in the position.
-    /// @param portfolioPremium Value of the long premia owed for all position in positionIdList.
-    /// @param totalSwapped Amount of tokens that were swapped during minting. Only happens when minting ITM positions.
-    function takeCommission(
-        uint256[2][] memory positionBalanceArray,
-        uint256 tickStateCallContext,
-        int256 longAmounts,
-        int256 shortAmounts,
-        int256 portfolioPremium,
         int256 totalSwapped
     ) internal returns (uint128) {
-        uint256 tokenData0;
-        uint256 tokenData1;
-        int128 utilization0;
-        int128 utilization1;
+        // compute how much of tokenId is long and short positions
+        (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
+            tokenId,
+            positionSize,
+            s_tickSpacing
+        );
 
-        uint256 _ct = tickStateCallContext;
-        uint256[2][] memory _positionBalanceArray = positionBalanceArray;
-        {
-            int128 _longAmount = longAmounts.rightSlot();
-            int128 _shortAmount = shortAmounts.rightSlot();
-            int128 _portfolioPremium = portfolioPremium.rightSlot();
-            int128 _swapped = totalSwapped.rightSlot();
-            (utilization0, tokenData0) = s_collateralToken0.takeCommissionAddData(
-                _ct,
-                _longAmount,
-                _shortAmount,
-                _portfolioPremium,
-                _swapped,
-                _positionBalanceArray
-            );
-        }
-        {
-            int128 _longAmount = longAmounts.leftSlot();
-            int128 _shortAmount = shortAmounts.leftSlot();
-            int128 _portfolioPremium = portfolioPremium.leftSlot();
-            int128 _swapped = totalSwapped.leftSlot();
-            (utilization1, tokenData1) = s_collateralToken1.takeCommissionAddData(
-                _ct,
-                _longAmount,
-                _shortAmount,
-                _portfolioPremium,
-                _swapped,
-                _positionBalanceArray
-            );
-        }
-
-        {
-            // make sure there is enough collateral, allow cross-collateralization between token0 and token1.
-            // rightSlot = userBalance, leftSlot = tokensRequired. Calculate requirement as:
-            // balance1/sqrt(price) + balance0*sqrt(price) >= required0/sqrtPrice + require1*sqrtPrice
-            /// use the median price to ensure cross-collateral requirements are not a results of single-block price manipulations
-            uint160 sqrtPriceX96Median;
-            {
-                int24 medianTick = _ct.medianTick();
-                sqrtPriceX96Median = Math.getSqrtRatioAtTick(medianTick);
-            }
-            // check cross-collateral (tokens 0 and 1) solvency state:
-            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-                tokenData0,
-                tokenData1,
-                sqrtPriceX96Median
-            );
-            if (balanceCross < thresholdCross) revert Errors.NotEnoughCollateral();
-        }
+        int128 utilization0 = s_collateralToken0.takeCommissionAddData(
+            tickStateCallContext,
+            longAmounts.rightSlot(),
+            shortAmounts.rightSlot(),
+            totalSwapped.rightSlot()
+        );
+        int128 utilization1 = s_collateralToken1.takeCommissionAddData(
+            tickStateCallContext,
+            longAmounts.leftSlot(),
+            shortAmounts.leftSlot(),
+            totalSwapped.leftSlot()
+        );
 
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)
         unchecked {
@@ -817,30 +738,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // disallow user to mint exact same position
         // in order to do it, user should burn it first and then mint
         if (s_positionBalance[msg.sender][mintTokenId] != 0) revert Errors.PositionAlreadyMinted();
-    }
-
-    /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
-    /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot.
-    /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot.
-    /// @param sqrtPriceX96 The current sqrt(price) of the AMM.
-    /// @return balanceCross The current cross-collateral balance of the option positions.
-    /// @return thresholdCross The cross-collateral threshold balance under which the account is insolvent.
-    function _getSolvencyBalances(
-        uint256 tokenData0,
-        uint256 tokenData1,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
-        unchecked {
-            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
-            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows
-            balanceCross =
-                ((uint256(tokenData1.rightSlot()) * 2 ** 96) / sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
-            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            thresholdCross =
-                ((uint256(tokenData1.leftSlot()) * 2 ** 96) / sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.leftSlot(), sqrtPriceX96);
-        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1086,22 +983,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Force the exercise of a single position. Exercisor will have to pay a small fee do force exercise.
     /// @dev Will revert if: number of touchedId is larger than 1 or if user force exercises their own position
     /// @param account Address of the distressed account
-    /// @param tickLimitLow The lower tick slippagelimit
-    /// @param tickLimitHigh The upper tick slippagelimit
     /// @param touchedId List of position to be force exercised. Can only contain one tokenId, written as [tokenId]
-    /// @param idsToBurn List of positions to be burned if the force exercisor has open positions
+    /// @param positionIdListExercisee Post-burn list of open positions in the exercisee's (account) account
+    /// @param positionIdListExercisor List of open positions in the exercisor's (msg.sender) account
     /// @dev The collateral decrease resulting from burning these positions must be greater than the force exercise fee
     function forceExercise(
         address account,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
         uint256[] calldata touchedId,
-        uint256[] calldata idsToBurn
+        uint256[] calldata positionIdListExercisee,
+        uint256[] calldata positionIdListExercisor
     ) external {
         // revert if multiple positions are specified
         // the reason why the singular touchedId is an array is so it composes well with the rest of the system
         // '_calculateAccumulatedPremia' expects a list of positions to be touched, and this is the only way to pass a single position
         if (touchedId.length != 1) revert Errors.InputListFail();
+
+        // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
+        _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
         int24 twapTick = getUniV3TWAP();
 
@@ -1145,60 +1043,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // force exercises result in reduced collateral balance for the exercisor,
-        // and we do not normally allow users to move collateral out of their accounts if they have open positions
-        // thus, wem must enforce there to be a corresponding decrease in collateral requirement at the median tick if this is the case
-        if (numberOfPositions(msg.sender) > 0) {
-            {
-                // compute the collateral requirement of the burned positions
-                (
-                    int256 burntPositionPremium,
-                    uint256[2][] memory positionBalanceArray
-                ) = _calculateAccumulatedPremia(
-                        msg.sender,
-                        idsToBurn,
-                        COMPUTE_ALL_PREMIA,
-                        currentTick
-                    );
-
-                uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
-                    msg.sender,
-                    currentTick,
-                    positionBalanceArray,
-                    burntPositionPremium.rightSlot()
-                );
-                uint256 tokenData1 = s_collateralToken1.getAccountMarginDetails(
-                    msg.sender,
-                    currentTick,
-                    positionBalanceArray,
-                    burntPositionPremium.leftSlot()
-                );
-
-                // substitute exercise fee for collateral balance - we are trying to ensure that the exercise fee is smaller than the collateral requirement,
-                // so we can do a reverse "solvency check" by taking the cross-collateral exercise fee as the "balance" and checking if the cross-collateral requirement
-                // from the burnt positions is greater than this
-                tokenData0 = uint256(0).toRightSlot(uint128(-exerciseFees.rightSlot())).toLeftSlot(
-                    tokenData0.leftSlot()
-                );
-                tokenData1 = uint256(0).toRightSlot(uint128(-exerciseFees.leftSlot())).toLeftSlot(
-                    tokenData1.leftSlot()
-                );
-
-                (uint256 exerciseFeesCross, uint256 thresholdCross) = _getSolvencyBalances(
-                    tokenData0,
-                    tokenData1,
-                    Math.getSqrtRatioAtTick(twapTick)
-                );
-
-                // if collateral decrease from position burning is insufficient to cover exercise fees, revert
-                if (exerciseFeesCross > thresholdCross)
-                    revert Errors.InsufficientCollateralDecrease();
-            }
-
-            // otherwise, go ahead and burn the positions from the exercisor
-            _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, idsToBurn);
-        }
-
         // Liquidator must delegate the notional amount of tokens needed for exercising.
         s_collateralToken0.delegate(msg.sender, account, uint128(delegatedAmounts.rightSlot()));
         s_collateralToken1.delegate(msg.sender, account, uint128(delegatedAmounts.leftSlot()));
@@ -1210,17 +1054,165 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 refundAmounts = delegatedAmounts.add(exerciseFees);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = s_collateralToken0.getRefundAmounts(
-            account,
-            refundAmounts,
-            twapTick,
-            s_collateralToken1
-        );
+        refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
 
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
+        // update the current tick after any ITM swaps
+        (, currentTick, , , , , ) = s_univ3pool.slot0();
+
+        // validate the exercisee's position list and assert their solvency
+        _validatePositionList(account, positionIdListExercisee, 0);
+
+        if (
+            positionIdListExercisee.length > 0 &&
+            !_checkSolvency(account, positionIdListExercisee, currentTick, twapTick, NO_BUFFER)
+        ) revert Errors.ExerciseeNotSolvent();
+
+        // the exercisor's position list is validated above
+        // we need to assert their solvency against their collateral requirement plus a buffer
+        // force exercises involve a collateral decrease with open positions, so there is a higher standard for solvency
+        // a similar buffer is also invoked when minting options, which also decreases the available collateral
+        if (
+            positionIdListExercisor.length > 0 &&
+            !_checkSolvency(
+                msg.sender,
+                positionIdListExercisor,
+                currentTick,
+                twapTick,
+                BP_DECREASE_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
+
         emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees, currentTick);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       REVOKE/REFUND COMPUTATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
+    /// @param refunder Address of the user the refund is coming from (the force exercisee).
+    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
+    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
+    /// @return refundAmounts The amount of tokens to refund to the user.
+    function _getRefundAmounts(
+        address refunder,
+        int256 refundValues,
+        int24 atTick
+    ) public view returns (int256 refundAmounts) {
+        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
+        CollateralTracker collateral0 = s_collateralToken0;
+        CollateralTracker collateral1 = s_collateralToken1;
+
+        unchecked {
+            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
+            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
+            int256 balanceShortage = refundValues.rightSlot() -
+                int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
+
+            if (balanceShortage > 0) {
+                return
+                    int256(0)
+                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
+                        .toLeftSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
+                                ) + refundValues.leftSlot()
+                            )
+                        );
+            }
+
+            balanceShortage =
+                refundValues.leftSlot() -
+                int256(collateral1.convertToAssets(collateral1.balanceOf(refunder)));
+
+            if (balanceShortage > 0) {
+                return
+                    int256(0)
+                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
+                        .toRightSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
+                                ) + refundValues.rightSlot()
+                            )
+                        );
+            }
+        }
+
+        // otherwise, we can just refund the original amounts requested with no problems
+        return refundValues;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            SOLVENCY CHECKS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionIdList`.
+    /// @param account The account to check solvency for.
+    /// @param positionIdList The list of positions to check solvency for.
+    /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations).
+    /// @param atTick The tick to check solvency at.
+    /// @param buffer The buffer to apply to the collateral requirement.
+    function _checkSolvency(
+        address account,
+        uint256[] calldata positionIdList,
+        int24 currentTick,
+        int24 atTick,
+        uint256 buffer
+    ) internal view returns (bool) {
+        (
+            int256 portfolioPremium,
+            uint256[2][] memory positionBalanceArray
+        ) = _calculateAccumulatedPremia(account, positionIdList, COMPUTE_ALL_PREMIA, currentTick);
+
+        uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
+            account,
+            atTick,
+            positionBalanceArray,
+            portfolioPremium.rightSlot()
+        );
+        uint256 tokenData1 = s_collateralToken1.getAccountMarginDetails(
+            account,
+            atTick,
+            positionBalanceArray,
+            portfolioPremium.leftSlot()
+        );
+
+        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
+            tokenData0,
+            tokenData1,
+            Math.getSqrtRatioAtTick(atTick)
+        );
+
+        return balanceCross > (thresholdCross * buffer) / 10_000;
+    }
+
+    /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
+    /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot.
+    /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot.
+    /// @param sqrtPriceX96 The current sqrt(price) of the AMM.
+    /// @return balanceCross The current cross-collateral balance of the option positions.
+    /// @return thresholdCross The cross-collateral threshold balance under which the account is insolvent.
+    function _getSolvencyBalances(
+        uint256 tokenData0,
+        uint256 tokenData1,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
+        unchecked {
+            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
+            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows
+            balanceCross =
+                ((uint256(tokenData1.rightSlot()) * 2 ** 96) / sqrtPriceX96) +
+                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
+            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
+            thresholdCross =
+                ((uint256(tokenData1.leftSlot()) * 2 ** 96) / sqrtPriceX96) +
+                Math.mulDiv96(tokenData0.leftSlot(), sqrtPriceX96);
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
