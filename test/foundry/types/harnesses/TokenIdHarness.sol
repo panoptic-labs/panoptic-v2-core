@@ -19,10 +19,6 @@ contract TokenIdHarness {
     int256 public constant BITMASK_INT24 = 0xFFFFFF;
     // Setting the width to its max possible value (2**12-1) indicates a full-range liquidity chunk and not a width of 4095 ticks
     int24 public constant MAX_LEG_WIDTH = 4095; // int24 because that's the strike and width formats
-    // this mask in hex has a 1 bit in each location except in the strike+width of the tokenId:
-    // this ROLL_MASK will make sure that two tokens will have the exact same parameters
-    uint256 public constant ROLL_MASK =
-        0xFFF_000000000FFF_000000000FFF_000000000FFF_FFFFFFFFFFFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
     // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
     uint256 public constant RISK_PARTNER_MASK = 0xFFFFFFFFF3FF;
@@ -310,7 +306,7 @@ contract TokenIdHarness {
     /**
      * @notice Flip all the `isLong` positions in the legs in the `tokenId` option position.
      * @dev uses XOR on existing isLong bits.
-     * @dev useful during rolling an option position where we need to burn and mint. So we need to take
+     * /// @dev useful when we need to take an existing tokenId but now burn it.
      * an existing tokenId but now burn it. The way to do this is to simply flip it to a short instead.
      * @param self the tokenId in the SFPM representing an option position.
      */
@@ -360,6 +356,26 @@ contract TokenIdHarness {
     }
 
     /**
+     * @notice Clear a leg in an option position with index `i`.
+     * @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
+     * @dev NOTE it's important that the caller fills in the leg details after.
+     * @dev  - optionRatio is zeroed
+     * @dev  - asset is zeroed
+     * @dev  - width is zeroed
+     * @dev  - strike is zeroed
+     * @dev  - tokenType is zeroed
+     * @dev  - isLong is zeroed
+     * @dev  - riskPartner is zeroed
+     * @param self the tokenId to reset the leg of
+     * @param i the leg index to reset, in {0,1,2,3}
+     * @return `self` with the `i`th leg zeroed including optionRatio and asset.
+     */
+    function clearLeg(uint256 self, uint256 i) public view returns (uint256) {
+        uint256 r = TokenId.clearLeg(self, i);
+        return r;
+    }
+
+    /**
      * @notice Validate an option position and all its active legs; return the underlying AMM address.
      * @dev used to validate a position tokenId and its legs.
      * @param self the option position id.
@@ -390,79 +406,5 @@ contract TokenIdHarness {
      */
     function validateIsExercisable(uint256 self, int24 currentTick, int24 tickSpacing) public view {
         TokenId.validateIsExercisable(self, currentTick, tickSpacing);
-    }
-
-    /**
-     *
-     */
-    /*
-    /* LOGIC FOR ROLLING AN OPTION POSITION.
-    /*
-    /*****************************************************************/
-
-    /**
-     * @notice Validate that a roll didn't change unexpected parameters.
-     * @notice Does NOT revert if invalid; returns the validation check as a boolean.
-     * @dev Call this on an old tokenId when rolling into a new TokenId.
-     *      this checks that the new tokenId is valid in structure.
-     * @param oldTokenId the old tokenId that is being rolled into a new position.
-     * @param newTokenId the new tokenId that the old position is being rolled into.
-     * @return true of the rolled token (newTokenId) is valid in structure.
-     */
-    function rolledTokenIsValid(uint256 oldTokenId, uint256 newTokenId) public view returns (bool) {
-        bool r = TokenId.rolledTokenIsValid(oldTokenId, newTokenId);
-        return r;
-    }
-
-    /**
-     * @notice Roll an option position from an old TokenId to a position with parameters from the newTokenId.
-     * @dev a roll in general burns existing legs and re-mints the legs.
-     * @param oldTokenId the old option position that we are rolling into a new position.
-     * @param newTokenId the new option position that we are rolling into.
-     * @return burnTokenId the details of the legs to burn as part of the roll.
-     * @return mintTokenId the details of the legs to mint as part of the roll.
-     */
-    function constructRollTokenIdWith(
-        uint256 oldTokenId,
-        uint256 newTokenId
-    ) public view returns (uint256 burnTokenId, uint256 mintTokenId) {
-        (burnTokenId, mintTokenId) = TokenId.constructRollTokenIdWith(oldTokenId, newTokenId);
-    }
-
-    /**
-     * @notice Clear a leg in an option position with index `i`.
-     * @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
-     * @dev NOTE it's important that the caller fills in the leg details after.
-     * @dev  - optionRatio is zeroed
-     * @dev  - asset is zeroed
-     * @dev  - width is zeroed
-     * @dev  - strike is zeroed
-     * @dev  - tokenType is zeroed
-     * @dev  - isLong is zeroed
-     * @dev  - riskPartner is zeroed
-     * @param self the tokenId to reset the leg of
-     * @param i the leg index to reset, in {0,1,2,3}
-     * @return `self` with the `i`th leg zeroed including optionRatio and asset.
-     */
-    function clearLeg(uint256 self, uint256 i) public view returns (uint256) {
-        uint256 r = TokenId.clearLeg(self, i);
-        return r;
-    }
-
-    /// @notice Roll (by copying) over the information from `other`'s leg index `src` to `self`'s leg index `dst`.
-    /// @notice to leg index `dst` in `self`.
-    /// @param self the destination tokenId of the roll
-    /// @param other the source tokenId of the roll
-    /// @param src the leg index in `other` we are rolling/copying over to `self`s `dst` leg index
-    /// @param dst the leg index in `self` we are rolling/copying into from `other`s `src` leg index
-    /// @return `self` with its `dst` leg index overwritten by the `src` leg index of `other`
-    function rollTokenInfo(
-        uint256 self,
-        uint256 other,
-        uint256 src,
-        uint256 dst
-    ) public view returns (uint256) {
-        uint256 r = TokenId.rollTokenInfo(self, other, src, dst);
-        return r;
     }
 }

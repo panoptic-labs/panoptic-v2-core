@@ -56,14 +56,13 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
     function getSystemParameters()
         external
-        returns (int128, int128, int128, int128, uint256, int128, int128)
+        returns (int128, int128, int128, int128, int128, int128)
     {
         return (
             s_commissionFee,
             s_sellCollateralRatio,
             s_buyCollateralRatio,
             s_exerciseCost,
-            s_maintenanceMarginRatio,
             s_targetPoolUtilization,
             s_saturatedPoolUtilization
         );
@@ -347,6 +346,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // users who will send/receive deposits, transfers, and withdrawals
     address Alice = makeAddr("Alice");
     address Bob = makeAddr("Bob");
+    address Charlie = makeAddr("Charlie");
     address Swapper = makeAddr("Swapper");
 
     /*//////////////////////////////////////////////////////////////
@@ -1368,13 +1368,31 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
     }
 
-    function test_Success_revoke_mint(uint256 x, uint128 shares) public {
+    function test_Success_revoke_mint(
+        uint256 x,
+        uint128 shares,
+        uint256 existingShares,
+        uint256 mintSeed
+    ) public {
         vm.assume(shares < type(uint104).max - 100);
         // fuzz
         _initWorld(x);
 
+        changePrank(Charlie);
+
+        _grantTokens(Charlie);
+
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+
+        // deposit a number of assets determined via fuzzing
+        collateralToken0.mint(
+            bound(existingShares, 0, (uint256(type(uint104).max) * 10_000) / 10_010),
+            Charlie
+        );
+
         // Invoke all interactions with the Collateral Tracker from user Alice
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // give Bob the max amount of tokens
         _grantTokens(Alice);
@@ -1384,36 +1402,31 @@ contract CollateralTrackerTest is Test, PositionUtils {
             1,
             type(uint104).max
         );
-        uint256 assetsToken1 = bound(
-            convertToAssets(shares, collateralToken1),
-            1,
-            type(uint104).max
-        );
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-        IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
 
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Alice);
-        collateralToken1.deposit(uint128(assetsToken1), Alice);
 
-        // check delegatee balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
-
+        uint256 assetsBefore0 = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        ) +
+            bound(
+                mintSeed,
+                0,
+                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
+            );
+        vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
         // invoke delegate transactions from the Panoptic pool
         // attempt to request an amount greater than the delegatee's balance
-        panopticPool.revoke(Bob, Alice, shares + 100, collateralToken0);
-        panopticPool.revoke(Bob, Alice, shares + 100, collateralToken1);
+        panopticPool.revoke(Bob, Alice, assetsBefore0, collateralToken0);
 
         // check delegatee balance after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Bob);
+        uint256 assetsAfter0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
 
-        assertApproxEqAbs(sharesBefore0 + 100, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore0 + 100, sharesAfter1, 5);
+        assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -3018,8 +3031,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 required = _spreadTokensRequired(tokenId1, positionSize0 / 2);
 
             // only add premium requirement if there is net premia owed
-            premium0 = premium0 < 0 ? int128(13_333 * uint128(-premium0)) / 10_000 : int128(0);
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128(10_000 * uint128(-premium0)) / 10_000 : int128(0);
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -3184,8 +3197,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 required = _spreadTokensRequired(tokenId1, positionSize0 / 4);
 
             // only add premium requirement if there is net premia owed
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128(13_333 * uint128(-premium1)) / 10_000 : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128(10_000 * uint128(-premium1)) / 10_000 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -3353,8 +3366,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 required = _spreadTokensRequired(tokenId1, positionSize0 / 2);
 
             // only add premium requirement if there is net premia owed
-            premium0 = premium0 < 0 ? int128((13_333 * uint128(-premium0)) / 10_000) : int128(0);
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128((10_000 * uint128(-premium0)) / 10_000) : int128(0);
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -3522,8 +3535,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
             // only add premium requirement if there is net premia owed
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -3691,8 +3704,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (uint128(poolUtilization1) << 64);
 
             // only add premium requirement if there is net premia owed
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -3854,8 +3867,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (uint128(poolUtilization1) << 64);
 
             // only add premium requirement if there is net premia owed
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -4018,8 +4031,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 required = _spreadTokensRequired(tokenId1, positionSize0);
 
             // only add premium requirement if there is net premia owed
-            premium0 = premium0 < 0 ? int128((13_333 * uint128(-premium0)) / 10_000) : int128(0); // add only long premia (premia owed)
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128((10_000 * uint128(-premium0)) / 10_000) : int128(0); // add only long premia (premia owed)
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -4219,8 +4232,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -4422,8 +4435,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -4612,8 +4625,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // checks tokens required
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -4783,7 +4796,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -4951,8 +4964,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            premium0 = premium0 < 0 ? int128((13_333 * uint128(-premium0)) / 10_000) : int128(0);
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128((10_000 * uint128(-premium0)) / 10_000) : int128(0);
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -5116,8 +5129,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // checks tokens required
-            required += premium0 < 0 ? uint128((uint128(13_333) * uint128(-premium0)) / 10_000) : 0;
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -5279,8 +5292,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            premium0 = premium0 < 0 ? int128((13_333 * uint128(-premium0)) / 10_000) : int128(0);
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128((10_000 * uint128(-premium0)) / 10_000) : int128(0);
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -5439,7 +5452,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            premium1 = premium1 < 0 ? int128((13_333 * uint128(-premium1)) / 10_000) : int128(0);
+            premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
@@ -5596,8 +5609,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            premium0 = premium0 < 0 ? int128((13_333 * uint128(-premium0)) / 10_000) : int128(0);
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128((10_000 * uint128(-premium0)) / 10_000) : int128(0);
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -5742,8 +5755,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             // checks tokens required
             // only add premium requirement, if there is net premia owed
-            required += premium1 < 0 ? uint128((uint128(13_333) * uint128(-premium1)) / 10_000) : 0;
-            premium0 = premium0 < 0 ? int128((13_333 * uint128(-premium0)) / 10_000) : int128(0);
+            required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
+            premium0 = premium0 < 0 ? int128((10_000 * uint128(-premium0)) / 10_000) : int128(0);
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -6347,8 +6360,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         CollateralTracker collateralToken
     ) public view returns (uint256 shares) {
         uint256 supply = collateralToken.totalSupply();
-        return
-            supply == 0 ? assets : Math.mulDivDown(assets, supply, collateralToken.totalAssets());
+        return supply == 0 ? assets : Math.mulDiv(assets, supply, collateralToken.totalAssets());
     }
 
     function convertToAssets(
@@ -6356,8 +6368,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         CollateralTracker collateralToken
     ) public view returns (uint256 assets) {
         uint256 supply = collateralToken.totalSupply();
-        return
-            supply == 0 ? shares : Math.mulDivDown(shares, collateralToken.totalAssets(), supply);
+        return supply == 0 ? shares : Math.mulDiv(shares, collateralToken.totalAssets(), supply);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -7035,12 +7046,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             if (tokenType == 0) {
                 tokensRequired0 = premium0 < 0
-                    ? tokensRequired += uint128((uint128(13_333) * uint128(-premium0)) / 10_000)
+                    ? tokensRequired += uint128((uint128(10_000) * uint128(-premium0)) / 10_000)
                     : tokensRequired;
                 tokensRequired = 0;
             } else {
                 tokensRequired1 = premium1 < 0
-                    ? tokensRequired += uint128((uint128(13_333) * uint128(-premium1)) / 10_000)
+                    ? tokensRequired += uint128((uint128(10_000) * uint128(-premium1)) / 10_000)
                     : tokensRequired;
                 tokensRequired = 0; // reset temp
             }

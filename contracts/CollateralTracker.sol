@@ -84,7 +84,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Mutable parameters that can be used to adjust various protocol mechanisms and behaviors.
     /// These parameters are stored in CollateralTracker and are used in various calculations.
     /// They can be updated with the 'updateParameters' function in this contract.
-    /// @dev maintenaceMarginRatio minimum ratio of actual to required collateral that must be maintained to mint a new position (decimals=10000).
     /// @dev commissionFee the commission fee (basis points).
     /// @dev ITMSpreadFee additional risk premium charged on intrinsic value of ITM positions defined in basis points as a multiple of the pool fee / 10000.
     /// @dev sellCollateralRatio minimum collateral ratio for selling options when pool utilization < targetPoolUtilization (basis points).
@@ -93,7 +92,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev saturatedPoolUtilization pool utilization at which sell collateral ratio reaches its maximum and buy collateral ratio reaches its minimum (basis points).
     /// @dev exerciseCost maximum cost of force exercising an OTM position immediately out-of-range, decreases exponentially as the tick moves more ranges away (basis points).
     struct Parameters {
-        uint256 maintenanceMarginRatio;
         int128 commissionFee;
         int128 ITMSpreadFee;
         int128 sellCollateralRatio;
@@ -194,8 +192,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     // liquidation parameters
     /// @notice basal cost to force exercise a position that is barely far-the-money (out-of-range).
     int128 internal s_exerciseCost;
-    /// @notice prevents minting of new options when collateral < (maintenanceMarginRatio * requiredCollateral).
-    uint256 internal s_maintenanceMarginRatio;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
@@ -287,8 +283,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Set the Collateral Tracking System Parameters
 
         // Set default base parameters (see 'updateParameters(uint256)' for updating):
-        s_maintenanceMarginRatio = 13_333; // prevents minting of new options when collateral < 1.3333*required
-
         // commission fee levied when a new option is minted. This fee goes to the Panoptic LP's
         s_commissionFee = 10;
 
@@ -322,7 +316,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function updateParameters(
         CollateralTracker.Parameters calldata newParameters
     ) external onlyFactoryOwner {
-        s_maintenanceMarginRatio = newParameters.maintenanceMarginRatio;
         s_commissionFee = newParameters.commissionFee;
         // precompute the final spread fee - ITMSpreadFee is passed as a multiplier of the pool fee in basis points
         unchecked {
@@ -478,7 +471,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return shares The amount of shares that can be minted.
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
         uint256 supply = totalSupply;
-        return supply == 0 ? assets : Math.mulDivDown(assets, supply, totalAssets());
+        return supply == 0 ? assets : Math.mulDiv(assets, supply, totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
@@ -486,7 +479,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return assets The amount of assets that can be redeemed.
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
         uint256 supply = totalSupply;
-        return supply == 0 ? shares : Math.mulDivDown(shares, totalAssets(), supply);
+        return supply == 0 ? shares : Math.mulDiv(shares, totalAssets(), supply);
     }
 
     /// @notice returns The maximum deposit amount.
@@ -561,7 +554,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        assets = supply == 0 ? shares : Math.mulDivUp(shares, totalAssets(), supply);
+        assets = supply == 0 ? shares : Math.mulDivRoundingUp(shares, totalAssets(), supply);
 
         // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
         unchecked {
@@ -626,7 +619,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewWithdraw(uint256 assets) public view returns (uint256 shares) {
         uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
 
-        return supply == 0 ? assets : Math.mulDivUp(assets, supply, totalAssets());
+        return supply == 0 ? assets : Math.mulDivRoundingUp(assets, supply, totalAssets());
     }
 
     /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
@@ -960,62 +953,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
-    /// @dev Only called on collateralTracker0, so we must query balances from collateralTracker1.
-    /// @param refunder Address of the user the refund is coming from (the force exercisee).
-    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
-    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
-    /// @param collateralToken1 The address of the collateralTracker for token 1.
-    /// @return refundAmounts The amount of tokens to refund to the user.
-    function getRefundAmounts(
-        address refunder,
-        int256 refundValues,
-        int24 atTick,
-        CollateralTracker collateralToken1
-    ) public view returns (int256 refundAmounts) {
-        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
-
-        unchecked {
-            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
-            int256 balanceShortage = refundValues.rightSlot() -
-                int256(convertToAssets(balanceOf[refunder]));
-
-            if (balanceShortage > 0) {
-                return
-                    int256(0)
-                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
-                        .toLeftSlot(
-                            int128(
-                                int256(
-                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.leftSlot()
-                            )
-                        );
-            }
-
-            balanceShortage =
-                refundValues.leftSlot() -
-                int256(collateralToken1.convertToAssets(collateralToken1.balanceOf(refunder)));
-
-            if (balanceShortage > 0) {
-                return
-                    int256(0)
-                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
-                        .toRightSlot(
-                            int128(
-                                int256(
-                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.rightSlot()
-                            )
-                        );
-            }
-        }
-
-        // otherwise, we can just refund the original amounts requested with no problems
-        return refundValues;
-    }
-
     /// @notice Get the pool utilization; it is a measure of the ratio of assets in the AMM vs the total assets managed by the pool.
     // With total assets being the current Panoptic pool balance + the amount in the AMM.
     /// @dev compute: inAMM/totalAssets().
@@ -1238,10 +1175,24 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // transfer delegatee balance to delegator
             _transferFrom(delegatee, delegator, delegateeBalance);
 
-            unchecked {
-                // mint shares to complete to requested amount
-                _mint(delegator, shares - delegateeBalance);
-            }
+            // this is paying out protocol loss, so correct for that in the amount of shares to be minted
+            // X: total assets in vault
+            // Y: total supply of shares
+            // Z: desired value (assets) of shares to be minted
+            // N: total shares corresponding to Z
+            // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
+            // Z = N * X / (Y + N - T)
+            // Z * (Y + N - T) = N * X
+            // ZY + ZN - ZT = NX
+            // ZY - ZT = N(X - Z)
+            // N = (ZY - ZT) / (X - Z)
+            // N = Z(Y - T) / (X - Z)
+            // subtract delegatee balance from N since it was already transferred to the delegator
+            _mint(
+                delegator,
+                Math.mulDiv(assets, totalSupply - delegateeBalance, totalAssets() - assets) -
+                    delegateeBalance
+            );
         }
         // if requested amount < delegatee balance, then just transfer shares back
         else {
@@ -1270,109 +1221,57 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Take commission on option creation/opening (commissions will not be taken on closing).
-    /// @param environmentContext Container that holds current tick, median tick, and caller.
+    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param longAmount The amount of longs.
     /// @param shortAmount The amount of shorts.
-    /// @param portfolioPremium Equal to the total accumulated long premium for the whole portfolio.
-    /// @param oldPositionPremia Equal to the premium of the burnt option if this is a roll.
     /// @param swappedAmount The amount of tokens swapped during creation of the option position (non-zero for options minted ITM).
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
     /// @return utilization The utilization of the Panoptic Pool.
-    /// @return tokenData LeftRight encoding with tokenbalance, ie assets, (in the right slot) and amount required in collateral (left slot).
-    /// @return realizedPremium The final premium paid/collected after accounting for available funds.
     function takeCommissionAddData(
-        uint256 environmentContext,
+        uint256 tickStateCallContext,
         int128 longAmount,
         int128 shortAmount,
-        int128 portfolioPremium,
-        int128 oldPositionPremia,
-        int128 swappedAmount,
-        uint256[2][] memory positionBalanceArray
-    )
-        external
-        onlyPanopticPool
-        returns (int128 utilization, uint256 tokenData, int128 realizedPremium)
-    {
+        int128 swappedAmount
+    ) external onlyPanopticPool returns (int128 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            int256 exchangedAmount = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
-
-            realizedPremium = int128(
-                Math.min(
-                    oldPositionPremia,
-                    int256(IERC20Partial(s_underlyingToken).balanceOf(address(s_panopticPool))) -
-                        updatedAssets
-                )
-            );
-
-            // pay/collect premium of burnt option if rolling
-            // add intrinsic value of option + commission/ITM spread fees to settle
-            int256 tokenToPay = exchangedAmount - realizedPremium;
+            int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance
-                uint256 sharesToBurn = Math.mulDivUp(
+                uint256 sharesToBurn = Math.mulDivRoundingUp(
                     uint256(tokenToPay),
                     totalSupply,
                     totalAssets()
                 );
-                _burn(environmentContext.caller(), sharesToBurn);
+                _burn(tickStateCallContext.caller(), sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(environmentContext.caller(), sharesToMint);
+                _mint(tickStateCallContext.caller(), sharesToMint);
             }
 
             // update stored asset balances with net moved amounts
             // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
+            s_poolAssets = uint128(uint256(updatedAssets));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
 
-            {
-                // get the current Panoptic pool utilization
-                // Check if current tick is too far away from median, set to utilization to 10,001 if it is
-                int24 currentTick = environmentContext.currentTick();
-                int24 medianTick = environmentContext.medianTick();
-                // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
-                if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
-                    utilization = DECIMALS_128 + 1;
-                } else {
-                    utilization = _poolUtilization();
-                }
+            // get the current Panoptic pool utilization
+            // Check if current tick is too far away from median, set to utilization to 10,001 if it is
+            int24 currentTick = tickStateCallContext.currentTick();
+            int24 medianTick = tickStateCallContext.medianTick();
+            // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
+            if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
+                utilization = DECIMALS_128 + 1;
+            } else {
+                utilization = _poolUtilization();
             }
-
-            // pLength is zero for rollOptions to an OTM position, so no need to check margin requirements
-            if (positionBalanceArray.length > 0) {
-                // add the utilization to positionBalanceArray for the current position:
-                uint128 positionSize = positionBalanceArray[positionBalanceArray.length - 1][1]
-                    .rightSlot();
-
-                positionBalanceArray[positionBalanceArray.length - 1][1] = uint256(0)
-                    .toRightSlot(positionSize)
-                    .toLeftSlot(uint128(utilization) + (uint128(utilization) << 64));
-            }
-
-            // get collateral of the user (optionOwner) for the current position.
-            tokenData = getAccountMarginDetails(
-                environmentContext.caller(),
-                environmentContext.currentTick(),
-                positionBalanceArray,
-                portfolioPremium
-            );
-
-            // multiply the current collateral requirement with the Maintenance margin ratio to prevent minting too close to liquidations
-            tokenData = tokenData.toLeftSlot(
-                // no need to use safecast as initial requirement will never be more that (2 ** 128) - 1
-                // calculation gives us the needed buffer to add onto the initial requirement
-                uint128((tokenData.leftSlot() * (s_maintenanceMarginRatio - DECIMALS)) / DECIMALS)
-            );
         }
     }
 
@@ -1419,7 +1318,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
-                uint256 sharesToBurn = Math.mulDivUp(
+                uint256 sharesToBurn = Math.mulDivRoundingUp(
                     uint256(tokenToPay),
                     totalSupply,
                     totalAssets()
@@ -1517,18 +1416,23 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // If premium is negative, increase the short premium requirement by the maintenance margin ratio
             if (premiumAllPositions < 0) {
                 unchecked {
-                    tokenRequired +=
-                        (s_maintenanceMarginRatio * uint128(-premiumAllPositions)) /
-                        DECIMALS;
+                    tokenRequired += uint128(-premiumAllPositions);
                 }
             }
         }
 
-        // get the user's shares balance (amount of collateral);
-        uint256 collateralAmount = balanceOf[user];
+        uint256 collateralAmount = convertToAssets(balanceOf[user]);
+
+        // add/subtract the accumulated premia to the collateral amount
+        uint256 netBalance = collateralAmount;
+        if (premiumAllPositions > 0) {
+            unchecked {
+                netBalance += uint256(uint128(premiumAllPositions));
+            }
+        }
 
         // store assetBalance and tokens required in tokenData variable
-        tokenData = tokenData.toRightSlot(uint128(convertToAssets(collateralAmount))).toLeftSlot(
+        tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
             tokenRequired.toUint128()
         );
         return tokenData;
