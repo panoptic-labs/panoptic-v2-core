@@ -3812,7 +3812,7 @@ contract PanopticPoolTest is PositionUtils {
             );
             pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
 
-            if ($posIdLists[2].length < legsToBurn) {
+            if ($posIdLists[3].length < legsToBurn) {
                 $posIdLists[3].push($posIdLists[1][i]);
             } else {
                 $posIdLists[2].push($posIdLists[1][i]);
