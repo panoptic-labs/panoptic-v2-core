@@ -2949,6 +2949,48 @@ contract PanopticPoolTest is PositionUtils {
         pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
     }
 
+    function test_Fail_mintOptions_PositionSizeZero(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            1
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        uint256[] memory posIdList = new uint256[](1);
+        posIdList[0] = tokenId;
+
+        pp.mintOptions(posIdList, positionSize * 0, 0, 0, 0);
+
+        posIdList = new uint256[](2);
+        posIdList[0] = tokenId;
+        posIdList[1] = tokenId;
+
+        vm.expectRevert(Errors.PositionAlreadyMinted.selector);
+        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
+    }
+
     function test_Fail_mintOptions_OTMShortCall_NotEnoughCollateral(
         uint256 x,
         uint256 widthSeed,
