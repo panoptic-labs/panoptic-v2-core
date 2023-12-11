@@ -3792,8 +3792,6 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions($posIdLists[0], positionSize * 10, 0, 0, 0);
         }
 
-        twoWaySwap(swapSizeSeed);
-
         // now we can mint the long option we are force exercising
         changePrank(Alice);
 
@@ -3818,8 +3816,6 @@ contract PanopticPoolTest is PositionUtils {
                 $posIdLists[2].push($posIdLists[1][i]);
             }
         }
-
-        twoWaySwap(swapSizeSeed);
 
         lastCollateralBalance0[Alice] = ct0.balanceOf(Alice);
         lastCollateralBalance1[Alice] = ct1.balanceOf(Alice);
@@ -3889,7 +3885,7 @@ contract PanopticPoolTest is PositionUtils {
 
         editCollateral(
             ct0,
-            Bob,
+            Alice,
             uint256(
                 int256(
                     ct0.convertToShares(
@@ -3900,7 +3896,7 @@ contract PanopticPoolTest is PositionUtils {
         );
         editCollateral(
             ct1,
-            Bob,
+            Alice,
             uint256(
                 int256(
                     ct1.convertToShares(
