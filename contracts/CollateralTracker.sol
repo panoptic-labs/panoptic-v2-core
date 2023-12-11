@@ -1056,27 +1056,24 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         if (shares > delegateeBalance) {
             // transfer delegatee balance to delegator
             _transferFrom(delegatee, delegator, delegateeBalance);
-            // must mint the correct amount of shares (∆) so that the redeemable value is exactly equal to A, the requested assets
-            // tA: total assets in vault (ie. totalAssets())
-            // tS: total supply of shares (ie. totalSupply)
-            // ∆: desired number of shares to be minted
-            // A: requested assets
-            // B: transferred shares from liquidatee (ie. delegateeBalance)
-            //
-            // Redeemable value = assets === delegatorShares * totalAssets() / newTotalSupply
-            //
-            // A = (B + ∆) * tA / (tS + ∆)
-            // ∆ * (tA - A) = A * tS - B * tA
-            // ∆ = (A*tS - B*tA)/(tA-A)
-            //
-            // Rearranging, we get
-            // (∆ + B) - B = A*(tS - B)/(tA - A) - B
 
-            uint256 tA = totalAssets();
-            // mint shares to complete to requested amount
+            // this is paying out protocol loss, so correct for that in the amount of shares to be minted
+            // X: total assets in vault
+            // Y: total supply of shares
+            // Z: desired value (assets) of shares to be minted
+            // N: total shares corresponding to Z
+            // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
+            // Z = N * X / (Y + N - T)
+            // Z * (Y + N - T) = N * X
+            // ZY + ZN - ZT = NX
+            // ZY - ZT = N(X - Z)
+            // N = (ZY - ZT) / (X - Z)
+            // N = Z(Y - T) / (X - Z)
+            // subtract delegatee balance from N since it was already transferred to the delegator
             _mint(
                 delegator,
-                Math.mulDiv(assets, totalSupply - delegateeBalance, tA - assets) - delegateeBalance
+                Math.mulDiv(assets, totalSupply - delegateeBalance, totalAssets() - assets) -
+                    delegateeBalance
             );
         }
         // if requested amount < delegatee balance, then just transfer shares back
