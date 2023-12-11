@@ -3847,7 +3847,7 @@ contract PanopticPoolTest is PositionUtils {
             Alice,
             medianTick,
             0,
-            $posIdLists[3]
+            $posIdLists[2]
         );
 
         uint256 totalCollateralB0 = bound(
