@@ -3857,30 +3857,13 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.assume(
-            int256(
-                ct0.convertToShares(
-                    (totalCollateralB0 * bound(collateralRatioSeed, 5_000, 6_000)) / 10_000
-                )
-            ) -
-                $balanceDelta0 >
-                0
-        );
-        vm.assume(
-            int256(
-                ct1.convertToShares(
-                    uint256(
-                        int256(
-                            PanopticMath.convert0to1(
-                                (totalCollateralB0 *
-                                    (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) / 10_000,
-                                Math.getSqrtRatioAtTick(medianTick)
-                            )
-                        )
-                    )
-                )
-            ) -
-                $balanceDelta1 >
-                0
+            int256(totalCollateralRequired0) +
+                int256(
+                    PanopticMath.convert1to0($balanceDelta1, Math.getSqrtRatioAtTick(medianTick)) +
+                        $balanceDelta0
+                ) *
+                2 >
+                int256(totalCollateralB0)
         );
 
         editCollateral(
@@ -3891,7 +3874,7 @@ contract PanopticPoolTest is PositionUtils {
                     ct0.convertToShares(
                         (totalCollateralB0 * bound(collateralRatioSeed, 5_000, 6_000)) / 10_000
                     )
-                ) - $balanceDelta0
+                )
             )
         );
         editCollateral(
@@ -3911,7 +3894,7 @@ contract PanopticPoolTest is PositionUtils {
                             )
                         )
                     )
-                ) - $balanceDelta1
+                )
             )
         );
 
