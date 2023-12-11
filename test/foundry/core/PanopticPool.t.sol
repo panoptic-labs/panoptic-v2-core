@@ -3857,7 +3857,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.assume(
-            int256(totalCollateralRequired0) +
+            int256(totalCollateralRequired0) -
                 int256(
                     PanopticMath.convert1to0($balanceDelta1, Math.getSqrtRatioAtTick(medianTick)) +
                         $balanceDelta0
