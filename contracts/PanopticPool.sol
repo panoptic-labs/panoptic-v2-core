@@ -500,7 +500,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, BP_DECREASE_BUFFER))
+        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
             revert Errors.NotEnoughCollateral();
     }
 
@@ -525,7 +525,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, BP_DECREASE_BUFFER))
+        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
             revert Errors.NotEnoughCollateral();
     }
 
