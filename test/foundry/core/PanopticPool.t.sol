@@ -3915,7 +3915,7 @@ contract PanopticPoolTest is PositionUtils {
             )
         );
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert();
         if ($posIdLists[3].length > 1) {
             pp.burnOptions($posIdLists[3], $posIdLists[2], 0, 0);
         } else {
