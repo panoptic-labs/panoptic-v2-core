@@ -478,23 +478,51 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Burns the entire balance of tokenId of the caller(msg.sender).
     /// @dev Will exercise if necessary, and will revert if user does not have enough collateral to exercise.
     /// @param tokenId The tokenId of the option position to be burnt.
+    /// @param newPositionIdList The new positionIdList without the token being burnt.
     /// @param tickLimitLow Price slippage limit when burning an ITM option.
     /// @param tickLimitHigh Price slippage limit when burning an ITM option.
-    function burnOptions(uint256 tokenId, int24 tickLimitLow, int24 tickLimitHigh) external {
-        _burnOptions(tokenId, msg.sender, tickLimitLow, tickLimitHigh);
+    function burnOptions(
+        uint256 tokenId,
+        uint256[] calldata newPositionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh
+    ) external {
+        (int24 medianTick, int24 newTick) = _burnOptions(
+            tokenId,
+            msg.sender,
+            tickLimitLow,
+            tickLimitHigh
+        );
+
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(msg.sender, newPositionIdList, 0);
+        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
+            revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns the entire balance of all tokenIds provided in positionIdList of the caller(msg.sender).
     /// @dev Will exercise if necessary, and will revert if user does not have enough collateral to exercise.
     /// @param positionIdList The list of tokenIds for the option positions to be burnt.
+    /// @param newPositionIdList The new positionIdList without the token being burnt.
     /// @param tickLimitLow Price slippage limit when burning an ITM option.
     /// @param tickLimitHigh Price slippage limit when burning an ITM option.
     function burnOptions(
         uint256[] calldata positionIdList,
+        uint256[] calldata newPositionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, positionIdList);
+        (int24 medianTick, int24 newTick) = _burnAllOptionsFrom(
+            msg.sender,
+            tickLimitLow,
+            tickLimitHigh,
+            positionIdList
+        );
+
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(msg.sender, newPositionIdList, 0);
+        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
+            revert Errors.NotEnoughCollateral();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -754,9 +782,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint256[] calldata positionIdList
-    ) internal {
+    ) internal returns (int24 medianTick, int24 newTick) {
         for (uint256 i = 0; i < positionIdList.length; ) {
-            _burnOptions(positionIdList[i], owner, tickLimitLow, tickLimitHigh);
+            (medianTick, newTick) = _burnOptions(
+                positionIdList[i],
+                owner,
+                tickLimitLow,
+                tickLimitHigh
+            );
             unchecked {
                 ++i;
             }
@@ -773,10 +806,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal {
+    ) internal returns (int24 medianTick, int24 newTick) {
         // Ensure that the current price is within the tick limits
         int24 currentTick;
-        (currentTick, , tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
+        (currentTick, medianTick, tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
             tickLimitLow,
             tickLimitHigh
         );
@@ -784,7 +817,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
         // burn position and do exercise checks
-        int256 premiaOwed = _burnAndHandleExercise(
+        int256 premiaOwed;
+        (premiaOwed, newTick) = _burnAndHandleExercise(
             tokenId,
             positionSize,
             owner,
@@ -834,9 +868,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (int256 currentPositionPremia) {
+    ) internal returns (int256 currentPositionPremia, int24 newTick) {
         // burn the option in sfpm, switch order of tickLimits to create "swapAtMint" flag
-        (, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
+        int256 totalSwapped;
+        (, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             positionSize,
             tickLimitHigh,
