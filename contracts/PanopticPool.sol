@@ -20,6 +20,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1001,7 +1002,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(msg.sender, _liquidatee, delegation1);
 
         // burn all options from the liquidatee
-        (, , int256 netExchanged) = _burnAllOptionsFrom(
+        (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
             _liquidatee,
             Constants.MIN_V3POOL_TICK,
             Constants.MAX_V3POOL_TICK,
@@ -1009,7 +1010,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         // compute bonus amounts using latest tick data
-        (, int24 finalTick, , , , , ) = s_univ3pool.slot0();
         (int256 liquidationBonus0, int256 liquidationBonus1) = getLiquidationBonus(
             tokenData0,
             tokenData1,
@@ -1207,6 +1207,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
+
+            console2.log("balance0", balance0);
+            console2.log("balance1", balance1);
+            console2.log("paid0", paid0);
+            console2.log("paid1", paid1);
+            console2.log("sqrtPriceX96", sqrtPriceX96);
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
