@@ -5684,6 +5684,9 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.mintOptions(posIdList, positionSize, 0, 0, 0);
 
+        editCollateral(ct0, Alice, 0);
+        editCollateral(ct1, Alice, 0);
+
         vm.expectRevert(Errors.InputListFail.selector);
         pp.liquidate(Alice, posIdList, new uint256[](0), 0, 0);
     }
