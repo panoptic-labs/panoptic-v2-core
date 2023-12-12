@@ -1569,8 +1569,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
                 .optionPositionBalance(Alice, tokenId1);
 
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
+            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
+                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
 
             (uint128 tokensRequired0, uint128 tokensRequired1) = _strangleTokensRequired(
                 tokenId1,

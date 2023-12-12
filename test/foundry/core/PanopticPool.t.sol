@@ -2981,14 +2981,8 @@ contract PanopticPoolTest is PositionUtils {
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
 
-        pp.mintOptions(posIdList, positionSize * 0, 0, 0, 0);
-
-        posIdList = new uint256[](2);
-        posIdList[0] = tokenId;
-        posIdList[1] = tokenId;
-
         vm.expectRevert(Errors.OptionsBalanceZero.selector);
-        pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);
+        pp.mintOptions(posIdList, positionSize * 0, 0, 0, 0);
     }
 
     function test_Fail_mintOptions_OTMShortCall_NotEnoughCollateral(
