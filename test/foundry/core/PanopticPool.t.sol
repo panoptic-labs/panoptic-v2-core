@@ -5549,7 +5549,7 @@ contract PanopticPoolTest is PositionUtils {
             ct1.convertToAssets(ct1.balanceOf(Alice))
         ];
 
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        (, int24 currentTickFinal, , , , , ) = pool.slot0();
 
         vm.revertTo(snapshot);
 
@@ -5559,7 +5559,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
             PanopticMath.convert1to0(
                 ct1.convertToAssets(ct1.balanceOf(Bob)),
-                TickMath.getSqrtRatioAtTick(currentTick)
+                TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
@@ -5568,7 +5568,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
                 PanopticMath.convert1to0(
                     ct1.convertToAssets(ct1.balanceOf(Bob)),
-                    TickMath.getSqrtRatioAtTick(currentTick)
+                    TickMath.getSqrtRatioAtTick(currentTickFinal)
                 ),
             $accValueBefore0,
             "liquidator lost money"
