@@ -940,6 +940,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Will revert if: account is not margin called or if the user liquidates themselves.
     /// @param liquidatee Address of the distressed account.
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...].
+    /// @param positionIdListLiquidator List of positions owned by the liquidator.
     /// @param delegation0 Amount of token0 delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
     /// @param delegation1 Amount of token1 delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
     function liquidate(
