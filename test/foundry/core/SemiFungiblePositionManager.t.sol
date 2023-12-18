@@ -3662,7 +3662,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         sfpm.mintTokenizedPosition(
             tokenIdLong,
-            uint128((positionSize * (2 ** 64 - 1)) / 2 ** 64),
+            uint128(Math.mulDiv64(positionSize, (2 ** 64 - 1))),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
@@ -3702,7 +3702,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
         sfpm.burnTokenizedPosition(
             tokenIdLong,
-            uint128((positionSize * (2 ** 64 - 1)) / 2 ** 64),
+            uint128(Math.mulDiv64(positionSize, (2 ** 64 - 1))),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
