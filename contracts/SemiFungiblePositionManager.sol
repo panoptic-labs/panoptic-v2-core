@@ -570,7 +570,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /// @notice update user position data following a token transfer
-    /// @dev token transfers are only allowed if you transfer your entire balance of a given tokenId and the recipient has none
+    /// @dev token transfers are only allowed if you transfer your entire liquidity of a given chunk and the recipient has none
     /// @param from The address of the sender
     /// @param to The address of the recipient
     /// @param id The tokenId being transferred'
@@ -616,9 +616,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 (s_accountFeesBase[positionKey_to] != 0)
             ) revert Errors.TransferFailed();
 
-            // Revert if not all balance is transferred
+            // Revert if sender has long positions in that chunk or the entire liquidity is not being transferred
             uint256 fromLiq = s_accountLiquidity[positionKey_from];
-            if (fromLiq.rightSlot() != liquidityChunk.liquidity()) revert Errors.TransferFailed();
+            if (fromLiq != liquidityChunk.liquidity()) revert Errors.TransferFailed();
 
             int256 fromBase = s_accountFeesBase[positionKey_from];
 
@@ -1339,7 +1339,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param tokenType The tokenType of the position (the token it started as)
     /// @param tickLower The lower end of the tick range for the position (int24)
     /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (removedLiquidity:netLiquidity -> rightSlot:leftSlot)
+    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
     function getAccountLiquidity(
         address univ3pool,
         address owner,
