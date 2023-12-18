@@ -3662,7 +3662,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         sfpm.mintTokenizedPosition(
             tokenIdLong,
-            uint128(Math.mulDiv64(positionSize, (2 ** 64 - 1))),
+            uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
@@ -3671,38 +3671,40 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         uint256 swapSize = 10 ** 20;
 
-        router.exactInputSingle(
-            ISwapRouter.ExactInputSingleParams(
-                isWETH == 0 ? token0 : token1,
-                isWETH == 1 ? token0 : token1,
-                fee,
-                Bob,
-                block.timestamp,
-                swapSize,
-                0,
-                0
-            )
-        );
+        for (uint256 i = 0; i < 500; ++i) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
 
-        router.exactOutputSingle(
-            ISwapRouter.ExactOutputSingleParams(
-                isWETH == 1 ? token0 : token1,
-                isWETH == 0 ? token0 : token1,
-                fee,
-                Bob,
-                block.timestamp,
-                swapSize - (swapSize * fee) / 1_000_000,
-                type(uint256).max,
-                0
-            )
-        );
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize - (swapSize * fee) / 1_000_000,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
 
         changePrank(Alice);
 
         // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
         sfpm.burnTokenizedPosition(
             tokenIdLong,
-            uint128(Math.mulDiv64(positionSize, (2 ** 64 - 1))),
+            uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
