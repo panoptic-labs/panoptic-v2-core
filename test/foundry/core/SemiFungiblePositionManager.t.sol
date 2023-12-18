@@ -3615,11 +3615,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     function test_Success_PremiumDOSPrevention(
         uint256 x,
         uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed,
-        uint256 swapSize
+        int256 strikeSeed
     ) public {
-        _initPool(x);
+        _initPool(0);
 
         (int24 width, int24 strike) = PositionUtils.getInRangeSW(
             widthSeed,
@@ -3628,7 +3626,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick
         );
 
-        populatePositionData(width, strike, positionSizeSeed);
+        populatePositionData(width, strike, type(uint256).max);
 
         /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
         uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
@@ -3661,20 +3659,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // mint a long position with 1 wei of liquidity less than available, resulting in a huge multiplier
-        uint256 longPositionSize = isWETH == 0
-            ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSize)
-            : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSize);
 
         sfpm.mintTokenizedPosition(
             tokenIdLong,
-            uint128(longPositionSize),
+            uint128((positionSize * (2 ** 64 - 1)) / 2 ** 64),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
 
         changePrank(Bob);
 
-        swapSize = bound(swapSize, 10 ** 15, 10 ** 19);
+        uint256 swapSize = 10 ** 20;
 
         router.exactInputSingle(
             ISwapRouter.ExactInputSingleParams(
@@ -3707,7 +3702,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
         sfpm.burnTokenizedPosition(
             tokenIdLong,
-            uint128(longPositionSize),
+            uint128((positionSize * (2 ** 64 - 1)) / 2 ** 64),
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
