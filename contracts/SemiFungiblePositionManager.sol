@@ -1080,10 +1080,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             collectedAmounts
         );
 
-        s_accountPremiumOwed[positionKey] = s_accountPremiumOwed[positionKey].add(deltaPremiumOwed);
-        s_accountPremiumGross[positionKey] = s_accountPremiumGross[positionKey].add(
-            deltaPremiumGross
-        );
+        // note: these are allowed to overflow because the alternative results in a possible DOS with stuck positions at high multipliers
+        // protocols that make use of these values should/will implement a cap to the liquidity utilization to prevent extremely high long premium multipliers
+        // when most of the liquidity is removed. There is no need for such a cap
+        unchecked {
+            s_accountPremiumOwed[positionKey] =
+                s_accountPremiumOwed[positionKey] +
+                deltaPremiumOwed;
+            s_accountPremiumGross[positionKey] =
+                s_accountPremiumGross[positionKey] +
+                deltaPremiumGross;
+        }
     }
 
     /// @notice Compute the feesGrowth * liquidity / 2**128 by reading feeGrowthInside0LastX128 and feeGrowthInside1LastX128 from univ3pool.positions.
