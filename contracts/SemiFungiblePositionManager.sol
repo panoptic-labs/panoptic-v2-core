@@ -618,7 +618,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             // Revert if sender has long positions in that chunk or the entire liquidity is not being transferred
             uint256 fromLiq = s_accountLiquidity[positionKey_from];
-            if (fromLiq != liquidityChunk) revert Errors.TransferFailed();
+            if (fromLiq != liquidityChunk.liquidity()) revert Errors.TransferFailed();
 
             int256 fromBase = s_accountFeesBase[positionKey_from];
 
