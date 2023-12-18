@@ -3000,7 +3000,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
         uint256 tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
             0,
-            bound(optionRatio, 1, 128),
+            bound(optionRatio, 1, 127),
             isWETH,
             0,
             1,
