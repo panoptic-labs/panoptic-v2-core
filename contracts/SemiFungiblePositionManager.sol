@@ -570,7 +570,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /// @notice update user position data following a token transfer
-    /// @dev token transfers are only allowed if you transfer your entire balance of a given tokenId and the recipient has none
+    /// @dev token transfers are only allowed if you transfer your entire liquidity of a given chunk and the recipient has none
     /// @param from The address of the sender
     /// @param to The address of the recipient
     /// @param id The tokenId being transferred'
@@ -1339,7 +1339,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param tokenType The tokenType of the position (the token it started as)
     /// @param tickLower The lower end of the tick range for the position (int24)
     /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (removedLiquidity:netLiquidity -> rightSlot:leftSlot)
+    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
     function getAccountLiquidity(
         address univ3pool,
         address owner,
