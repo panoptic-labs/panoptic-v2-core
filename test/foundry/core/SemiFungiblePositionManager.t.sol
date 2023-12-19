@@ -25,7 +25,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
-import {ReenterMint, ReenterBurn, ReenterInitialize} from "../testUtils/ReentrancyMocks.sol";
+import {ReenterMint, ReenterBurn, Reenter1155Initialize} from "../testUtils/ReentrancyMocks.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -3658,7 +3658,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         int256 strikeSeed,
         uint256 positionSizeSeed
     ) public {
-        _initPool(x);
+        _initWorld(x);
 
         (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
             widthSeed,
@@ -3681,25 +3681,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
-        // but will attempt to callback with mintTokenizedPosition on any other call
-        vm.etch(address(pool), address(new ReenterInitialize()).code);
+        // allow Alice to try to initialize and then reenter when getting the onERC1155Received callback
+        vm.etch(address(Alice), address(new Reenter1155Initialize()).code);
 
-        ReenterInitialize(address(pool)).construct(
-            ReenterInitialize.Slot0(
-                TickMath.getSqrtRatioAtTick(currentTick),
-                currentTick,
-                0,
-                0,
-                0,
-                0,
-                true
-            ),
-            address(token0),
-            address(token1),
-            fee,
-            tickSpacing
-        );
+        Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
         vm.expectRevert(Errors.ReentrantCall.selector);
 
