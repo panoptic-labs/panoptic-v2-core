@@ -54,7 +54,7 @@ contract ReenterBurn {
     }
 
     fallback() external {
-        if (activated)
+        if (!activated)
             SemiFungiblePositionManagerHarness(msg.sender).burnTokenizedPosition(
                 uint256(0).addUniv3pool(PanopticMath.getPoolId(address(this))),
                 0,
@@ -112,7 +112,7 @@ contract ReenterMint {
     }
 
     fallback() external {
-        if (activated)
+        if (!activated)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(0, 0, 0, 0);
     }
 }
@@ -164,9 +164,9 @@ contract ReenterInitialize {
     }
 
     fallback() external {
-        if (activated)
+        if (!activated)
             SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(token0, token1, fee);
-        if (activated)
+        if (!activated)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(0, 0, 0, 0);
     }
 }
