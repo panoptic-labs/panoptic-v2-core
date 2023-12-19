@@ -67,6 +67,8 @@ contract ReenterBurn {
 }
 
 contract ReenterMint {
+    using TokenId for uint256;
+
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
 
@@ -117,7 +119,12 @@ contract ReenterMint {
         activated = true;
 
         if (reenter)
-            SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(0, 0, 0, 0);
+            SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
+                uint256(0).addUniv3pool(PanopticMath.getPoolId(address(this))),
+                0,
+                0,
+                0
+            );
     }
 }
 
