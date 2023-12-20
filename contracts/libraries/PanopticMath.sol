@@ -331,7 +331,7 @@ library PanopticMath {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
             // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
-            if (sqrtPriceX96 < 340275971719517849884101479065584693834) {
+            if (sqrtPriceX96 < type(uint128).max) {
                 return Math.mulDiv192(amount, uint256(sqrtPriceX96) ** 2);
             } else {
                 return Math.mulDiv128(amount, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
@@ -348,7 +348,7 @@ library PanopticMath {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
             // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
-            if (sqrtPriceX96 < 340275971719517849884101479065584693834) {
+            if (sqrtPriceX96 < type(uint128).max) {
                 return Math.mulDiv(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
             } else {
                 return Math.mulDiv(amount, 2 ** 128, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
@@ -365,7 +365,7 @@ library PanopticMath {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
             // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
-            if (sqrtPriceX96 < 340275971719517849884101479065584693834) {
+            if (sqrtPriceX96 < type(uint128).max) {
                 int256 absResult = Math
                     .mulDiv192(Math.absUint(amount), uint256(sqrtPriceX96) ** 2)
                     .toInt256();
@@ -388,7 +388,7 @@ library PanopticMath {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
             // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
-            if (sqrtPriceX96 < 340275971719517849884101479065584693834) {
+            if (sqrtPriceX96 < type(uint128).max) {
                 int256 absResult = Math
                     .mulDiv(Math.absUint(amount), 2 ** 192, uint256(sqrtPriceX96) ** 2)
                     .toInt256();
