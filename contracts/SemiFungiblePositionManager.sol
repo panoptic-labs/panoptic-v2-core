@@ -432,7 +432,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
     /// @notice Called by the pool after executing a swap during an ITM option mint/burn.
     /// @dev Pays the pool tokens owed for the swap from the payer (always the caller)
-    /// amount0Delta and amount1Delta can both be 0 if no tokens were swapped.
     /// @param amount0Delta The amount of token0 that was sent (negative) or must be received (positive) by the pool by
     /// the end of the swap. If positive, the callback must send that amount of token0 to the pool.
     /// @param amount1Delta The amount of token1 that was sent (negative) or must be received (positive) by the pool by
@@ -454,6 +453,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             : address(decoded.poolFeatures.token1);
 
         // Transform the amount to pay to uint256 (take positive one from amount0 and amount1)
+        // the pool will always pass one delta with a positive sign and one with a negative sign or zero,
+        // so this logic always picks the correct delta to pay
         uint256 amountToPay = amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta);
 
         // Pay the required token from the payer to the caller of this contract
