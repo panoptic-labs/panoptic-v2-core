@@ -15,6 +15,8 @@ library LeftRight {
     using LeftRight for int256;
     uint256 internal constant LEFT_HALF_BIT_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
+    int256 internal constant LEFT_HALF_BIT_MASK_INT =
+        int256(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000));
     int256 internal constant RIGHT_HALF_BIT_MASK = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
     /*//////////////////////////////////////////////////////////////
@@ -61,7 +63,7 @@ library LeftRight {
             // prevent the right slot from leaking into the left one in the case of a positive sign change
             // ff + 1 = (1)00, but we want just ff + 1 = 00
             return
-                (self & int256(LEFT_HALF_BIT_MASK)) +
+                (self & LEFT_HALF_BIT_MASK_INT) +
                 (int256(int128(self) + int128(right)) & RIGHT_HALF_BIT_MASK);
         }
     }
@@ -76,7 +78,7 @@ library LeftRight {
             // prevent the right slot from leaking into the left one in the case of a positive sign change
             // ff + 1 = (1)00, but we want just ff + 1 = 00
             return
-                (self & int256(LEFT_HALF_BIT_MASK)) +
+                (self & LEFT_HALF_BIT_MASK_INT) +
                 (int256(int128(self) + right) & RIGHT_HALF_BIT_MASK);
         }
     }
