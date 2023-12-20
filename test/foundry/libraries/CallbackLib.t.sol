@@ -77,7 +77,7 @@ contract CallbackLibTest is Test {
         // ensure pool can be created
         vm.assume(tokenA != tokenB);
         vm.assume(tokenA > address(0));
-        vm.assume(pool > address(0));
+        vm.assume(wrongPool > address(0));
 
         // pick a valid pool fee from those available on the factory
         fee = availablePoolFees[bound(fee, 0, 3)];
@@ -86,6 +86,8 @@ contract CallbackLibTest is Test {
         // create the Uniswap pool (tokens are random do not actually need to exist for the purposes of this test)
         address pool = factory.getPool(tokenA, tokenB, fee);
         pool = pool == address(0) ? factory.createPool(tokenA, tokenB, fee) : pool;
+
+        vm.assume(pool > address(0));
 
         // ensure we are validating an incorrect pool address
         vm.assume(wrongPool != pool);
