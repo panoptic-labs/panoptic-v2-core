@@ -52,6 +52,7 @@ contract CallbackLibTest is Test {
         // ensure pool can be created
         vm.assume(tokenA != tokenB);
         vm.assume(tokenA > address(0));
+        vm.assume(pool > address(0));
 
         // ensure pool does not match with parameters
         vm.assume(pool != factory.getPool(tokenA, tokenB, fee));
@@ -76,6 +77,7 @@ contract CallbackLibTest is Test {
         // ensure pool can be created
         vm.assume(tokenA != tokenB);
         vm.assume(tokenA > address(0));
+        vm.assume(pool > address(0));
 
         // pick a valid pool fee from those available on the factory
         fee = availablePoolFees[bound(fee, 0, 3)];
