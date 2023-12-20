@@ -35,7 +35,7 @@ contract CallbackLibTest is Test {
         // now, check if the computed address of the pool from the claimed features is correct
         CallbackLib.validateCallback(
             pool,
-            address(factory),
+            factory,
             CallbackLib.PoolFeatures({token0: tokenA, token1: tokenB, fee: uint24(fee)})
         );
     }
@@ -59,7 +59,7 @@ contract CallbackLibTest is Test {
         vm.expectRevert(Errors.InvalidUniswapCallback.selector);
         CallbackLib.validateCallback(
             pool,
-            address(factory),
+            factory,
             CallbackLib.PoolFeatures({token0: tokenA, token1: tokenB, fee: uint24(fee)})
         );
     }
@@ -91,7 +91,7 @@ contract CallbackLibTest is Test {
         vm.expectRevert(Errors.InvalidUniswapCallback.selector);
         CallbackLib.validateCallback(
             wrongPool,
-            address(factory),
+            factory,
             CallbackLib.PoolFeatures({token0: tokenA, token1: tokenB, fee: fee})
         );
     }
