@@ -25,7 +25,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
-import {ReenterMint, ReenterBurn, Reenter1155Initialize} from "../testUtils/ReentrancyMocks.sol";
+import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -3627,6 +3627,126 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         ReenterMint(address(pool)).construct(
             ReenterMint.Slot0(
+                TickMath.getSqrtRatioAtTick(currentTick),
+                currentTick,
+                0,
+                0,
+                0,
+                0,
+                true
+            ),
+            address(token0),
+            address(token1),
+            fee,
+            tickSpacing
+        );
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    // make sure single transfers check reentrancy lock state
+    function test_Fail_TransferSingle_ReentrancyLock(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
+        // but will attempt to callback with mintTokenizedPosition on any other call
+        vm.etch(address(pool), address(new ReenterTransferSingle()).code);
+
+        ReenterTransferSingle(address(pool)).construct(
+            ReenterTransferSingle.Slot0(
+                TickMath.getSqrtRatioAtTick(currentTick),
+                currentTick,
+                0,
+                0,
+                0,
+                0,
+                true
+            ),
+            address(token0),
+            address(token1),
+            fee,
+            tickSpacing
+        );
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    // make sure batch transfers check reentrancy lock state
+    function test_Fail_TransferBatch_ReentrancyLock(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
+        // but will attempt to callback with mintTokenizedPosition on any other call
+        vm.etch(address(pool), address(new ReenterTransferBatch()).code);
+
+        ReenterTransferBatch(address(pool)).construct(
+            ReenterTransferBatch.Slot0(
                 TickMath.getSqrtRatioAtTick(currentTick),
                 currentTick,
                 0,
