@@ -127,7 +127,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     bool internal constant MINT = false;
     bool internal constant BURN = true;
 
-    // ν = 2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
+    // ν = 1/2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
     // Similar to vega in options because the liquidity utilization is somewhat reflective of the implied volatility (IV),
     // and vegoid modifies the sensitivity of the stremia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
@@ -217,7 +217,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
               spread = ν*(liquidity removed from that strike)/(netLiquidity remaining at that strike)
                      = ν*R/N
 
-        For an arbitrary parameter 0 <= ν <= 1. This way, the gross_feesCollectedX128 will be given by: 
+        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by: 
 
               gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N) 
                                       = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N         
