@@ -147,7 +147,7 @@ library LeftRight {
     /// @param self The int256 (full 256 bits) to be cleared in its left half
     /// @return self with the left slot cleared
     function clearLeftSlot(int256 self) internal pure returns (int256) {
-        return self & LEFT_HALF_BIT_MASK_INT;
+        return self & RIGHT_HALF_BIT_MASK;
     }
 
     /*//////////////////////////////////////////////////////////////

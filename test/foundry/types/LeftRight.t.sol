@@ -69,6 +69,11 @@ contract LeftRightTest is Test {
         );
     }
 
+    function test_Success_RightSlot_clear(int256 x) public {
+        x = harness.clearRightSlot(x);
+        assertEq(int128(harness.rightSlot(x)), 0, "Right slot not fully cleared");
+    }
+
     // LEFT SLOT
     function test_Success_LeftSlot_Uint128_In_Uint256(uint128 y) public {
         uint256 x = 0;
@@ -89,6 +94,11 @@ contract LeftRightTest is Test {
         x = harness.toLeftSlot(x, y);
         assertEq(int128(harness.leftSlot(x)), y);
         assertEq(int128(harness.rightSlot(x)), 0);
+    }
+
+    function test_Success_LeftSlot_clear(int256 x) public {
+        x = harness.clearLeftSlot(x);
+        assertEq(int128(harness.leftSlot(x)), 0, "Right slot not fully cleared");
     }
 
     // BOTH
