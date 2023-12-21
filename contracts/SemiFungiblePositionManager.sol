@@ -19,6 +19,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
@@ -1291,6 +1292,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // (the graphed equations include this factor without separating it)
         unchecked {
             uint256 totalLiquidity = netLiquidity + removedLiquidity;
+            console2.log("totalLiquidity", totalLiquidity);
+            console2.log("netLiquidity", netLiquidity);
+            console2.log("removedLiquidity", removedLiquidity);
+            console2.log("collected0", collectedAmounts.rightSlot());
+            console2.log("collected1", collectedAmounts.leftSlot());
 
             uint128 premium0X64_base;
             uint128 premium1X64_base;
