@@ -3235,9 +3235,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 premiumToken0,
                 FullMath.mulDiv(
                     uint128(
-                        int128(
-                            int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq))
-                        ) - feesBase0
+                        int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
+                            feesBase0
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3247,9 +3246,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 premiumtoken1,
                 FullMath.mulDiv(
                     uint128(
-                        int128(
-                            int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq))
-                        ) - feesBase1
+                        int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
+                            feesBase1
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3288,9 +3286,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 IERC20Partial(token0).balanceOf(Alice),
                 uint256(type(uint128).max) +
                     uint128(
-                        int128(
-                            int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq))
-                        ) - feesBase0
+                        int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
+                            feesBase0
                     ),
                 10
             );
@@ -3298,9 +3295,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 IERC20Partial(token1).balanceOf(Alice),
                 uint256(type(uint128).max) +
                     uint128(
-                        int128(
-                            int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq))
-                        ) - feesBase1
+                        int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
+                            feesBase1
                     ),
                 10
             );
