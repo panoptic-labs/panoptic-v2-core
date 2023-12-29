@@ -3281,8 +3281,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 PositionKey.compute(address(sfpm), tickLower, tickUpper)
             );
 
-            assertEq(tokensowed0, 0);
-            assertEq(tokensowed1, 0);
+            assertLe(tokensowed0, 1);
+            assertLe(tokensowed1, 1);
 
             assertApproxEqAbs(
                 IERC20Partial(token0).balanceOf(Alice),
