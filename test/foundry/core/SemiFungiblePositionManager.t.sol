@@ -2339,15 +2339,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // the swap at mint generates a small amount of fees that need to be accounted for (the burned amount is excluded even though it is technically collected)
         // this is because the totalCollected value that gets returned is used for premia calculation, and the burned amount originally left the caller
         assertEq(totalCollected.rightSlot(), 0);
-        assertEq(uint128(totalCollected.leftSlot()), tokensOwed1);
+        assertApproxEqAbs(uint128(totalCollected.leftSlot()), tokensOwed1, 1);
 
         assertEq(totalSwapped.rightSlot(), 0);
         assertEq(totalSwapped.leftSlot(), -amount1MovedBurn - int256(amount1[1]));
 
         // ensure correct amount of tokens were collected and sent to the minter
-        assertEq(
+        assertApproxEqAbs(
             balance1Final,
-            balance1Before + uint256(amount1[1]) + uint256(amount1MovedBurn) + tokensOwed1
+            balance1Before + uint256(amount1[1]) + uint256(amount1MovedBurn) + tokensOwed1,
+            1
         );
     }
 
@@ -3157,11 +3158,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 .positions(PositionKey.compute(address(sfpm), tickLower, tickUpper));
             assertEq(
                 feesBase0,
-                int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq)))
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq)))
             );
             assertEq(
                 feesBase1,
-                int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq)))
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq)))
             );
         }
 
@@ -3234,8 +3235,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 premiumToken0,
                 FullMath.mulDiv(
                     uint128(
-                        int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
-                            feesBase0
+                        int128(
+                            int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq))
+                        ) - feesBase0
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3245,8 +3247,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 premiumtoken1,
                 FullMath.mulDiv(
                     uint128(
-                        int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
-                            feesBase1
+                        int128(
+                            int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq))
+                        ) - feesBase1
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3285,8 +3288,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 IERC20Partial(token0).balanceOf(Alice),
                 uint256(type(uint128).max) +
                     uint128(
-                        int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
-                            feesBase0
+                        int128(
+                            int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq))
+                        ) - feesBase0
                     ),
                 10
             );
@@ -3294,8 +3298,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 IERC20Partial(token1).balanceOf(Alice),
                 uint256(type(uint128).max) +
                     uint128(
-                        int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
-                            feesBase1
+                        int128(
+                            int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq))
+                        ) - feesBase1
                     ),
                 10
             );
@@ -3448,14 +3453,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         changePrank(Alice);
         sfpm.mintTokenizedPosition(tokenId1, positionSize, TickMath.MAX_TICK, TickMath.MIN_TICK);
 
-        assertEq(
+        assertApproxEqAbs(
             int256(IERC20Partial(token0).balanceOf(Alice)),
-            int256(balanceBefore0) + int256(tokensOwed0) - $amount0Moved
+            int256(balanceBefore0) + int256(tokensOwed0) - $amount0Moved,
+            1
         );
 
-        assertEq(
+        assertApproxEqAbs(
             int256(IERC20Partial(token1).balanceOf(Alice)),
-            int256(balanceBefore1) + int256(tokensOwed1) - $amount1Moved
+            int256(balanceBefore1) + int256(tokensOwed1) - $amount1Moved,
+            1
         );
 
         twoWaySwap(swapSizeSeed);
