@@ -3776,4 +3776,51 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             d1 = -(swapAmount > 0 ? swapAmount : (-swapAmount * price) / 10 ** 6);
         }
     }
+
+    function test_Fail_RemovedLiquidity_Overflow() public {
+        _initPool(0);
+
+        // need a super wide position to exxagerate position size units
+        _cacheWorldState(USDC_WETH_30);
+        sfpm.initializeAMMPool(token0, token1, fee);
+
+        int24 width = 4090;
+        int24 strike = 0;
+        populatePositionData(width, strike, 0, 0);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(1_000_000),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
+
+        for (uint256 i = 0; i < 10; i++) {
+            sfpm.mintTokenizedPosition(tokenId, uint128(922), TickMath.MIN_TICK, TickMath.MAX_TICK);
+
+            sfpm.burnTokenizedPosition(tokenId, uint128(462), TickMath.MIN_TICK, TickMath.MAX_TICK);
+        }
+
+        vm.expectRevert();
+        sfpm.burnTokenizedPosition(
+            tokenId,
+            uint128(10 * (922 - 462)),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
 }
