@@ -3236,7 +3236,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 FullMath.mulDiv(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
-                            feesBase0
+                            feesBase0 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))
+                            ) - feesBase0
+                            : int128(0)
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3247,7 +3252,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 FullMath.mulDiv(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
-                            feesBase1
+                            feesBase1 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))
+                            ) - feesBase1
+                            : int128(0)
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3287,7 +3297,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 uint256(type(uint128).max) +
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
-                            feesBase0
+                            feesBase0 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))
+                            ) - feesBase0
+                            : int128(0)
                     ),
                 10
             );
@@ -3296,7 +3311,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 uint256(type(uint128).max) +
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
-                            feesBase1
+                            feesBase1 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))
+                            ) - feesBase1
+                            : int128(0)
                     ),
                 10
             );
