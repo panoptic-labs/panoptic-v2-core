@@ -19,6 +19,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
@@ -1430,6 +1431,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         tempChunk
                     );
                     amountToCollect = feesBase.sub(s_accountFeesBase[positionKey]);
+                    console2.log("amountToCollect", amountToCollect);
 
                     // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
                     // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
