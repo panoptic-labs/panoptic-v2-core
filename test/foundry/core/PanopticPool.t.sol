@@ -5538,6 +5538,10 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(address(pp));
 
+        // delegate bobs entire balance so we don't have the protocol loss in his unutilized collateral as a source of error
+        deal(address(ct0), Bob, ct0.convertToShares(type(uint96).max));
+        deal(address(ct1), Bob, ct1.convertToShares(type(uint96).max));
+
         ct0.delegate(Bob, Alice, type(uint96).max);
         ct1.delegate(Bob, Alice, type(uint96).max);
 
