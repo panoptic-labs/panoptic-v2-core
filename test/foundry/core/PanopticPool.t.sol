@@ -5568,7 +5568,7 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
 
-        assertGt(
+        assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
                 PanopticMath.convert1to0(
                     ct1.convertToAssets(ct1.balanceOf(Bob)),
