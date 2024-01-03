@@ -734,9 +734,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     leg,
                     tickLower,
                     tickUpper,
-                    effectiveLiquidityLimitX32 < MAX_SPREAD
-                        ? effectiveLiquidityLimitX32
-                        : MAX_SPREAD
+                    uint64(Math.min(effectiveLiquidityLimitX32, MAX_SPREAD))
                 );
             }
             unchecked {
@@ -1188,8 +1186,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     sqrtPriceX96
                 );
 
-                uint256 diffCross = thresholdCross - balanceCross;
-                uint256 bonusCross = diffCross < balanceCross / 2 ? diffCross : balanceCross / 2;
+                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
 
                 // convert that bonus to tokens 0 and 1
                 bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));

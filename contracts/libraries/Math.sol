@@ -39,8 +39,24 @@ library Math {
     /// @param a the first number
     /// @param b the second number
     /// @return the min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    /// @notice Compute the min of the incoming `a` and `b`.
+    /// @param a the first number
+    /// @param b the second number
+    /// @return the min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
     function min(int256 a, int256 b) internal pure returns (int256) {
         return a < b ? a : b;
+    }
+
+    /// @notice Compute the max of the incoming `a` and `b`.
+    /// @param a the first number
+    /// @param b the second number
+    /// @return the max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
+    function max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a > b ? a : b;
     }
 
     /// @notice Compute the max of the incoming `a` and `b`.
