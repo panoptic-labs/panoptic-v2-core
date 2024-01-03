@@ -231,6 +231,9 @@ contract PanopticPoolTest is PositionUtils {
     int256 $ITMSpread0;
     int256 $ITMSpread1;
 
+    int256 $shareDelta0;
+    int256 $shareDelta1;
+
     int256 $tokenData0;
     int256 $tokenData1;
 
@@ -240,6 +243,8 @@ contract PanopticPoolTest is PositionUtils {
 
     int256 $balanceDelta0;
     int256 $balanceDelta1;
+
+    int256 $combinedBalance0;
 
     uint256 currentValue0;
     uint256 currentValue1;
@@ -1351,11 +1356,15 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    // convert signed int to assets
+    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
+        return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
+    }
+
     // "virtual" deposit or withdrawal from an account without changing the share price
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
-        int256 assetDelta = (shareDelta > 0 ? int8(1) : -1) *
-            int256(ct.convertToAssets(uint256(Math.abs(shareDelta))));
+        int256 assetDelta = convertToAssets(ct, shareDelta);
         vm.store(
             address(ct),
             bytes32(uint256(8)),
@@ -5481,6 +5490,10 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
         }
 
+        // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
+        $shareDelta0 = int256(ct0.balanceOf(Alice));
+        $shareDelta1 = int256(ct1.balanceOf(Alice));
+
         twoWaySwap(swapSizeSeed);
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
@@ -5568,6 +5581,9 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
 
+        $shareDelta0 = int256(ct0.balanceOf(Alice)) - $shareDelta0;
+        $shareDelta1 = int256(ct1.balanceOf(Alice)) - $shareDelta1;
+
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
                 PanopticMath.convert1to0(
@@ -5576,6 +5592,33 @@ contract PanopticPoolTest is PositionUtils {
                 ),
             $accValueBefore0,
             "liquidator lost money"
+        );
+
+        // get total balance for Alice
+        $combinedBalance0 =
+            $tokenData0.rightSlot() +
+            PanopticMath.convert1to0(
+                $tokenData1.rightSlot(),
+                TickMath.getSqrtRatioAtTick(currentTickFinal)
+            );
+
+        // make sure value outlay for Alice matches the bonus structure closely
+        assertEq(
+            convertToAssets(ct0, $shareDelta0) +
+                PanopticMath.convert1to0(
+                    convertToAssets(ct1, $shareDelta1),
+                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                ),
+            Math.min(
+                $combinedBalance0 / 2,
+                $tokenData0.leftSlot() +
+                    PanopticMath.convert1to0(
+                        $tokenData1.leftSlot(),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    ) -
+                    $combinedBalance0
+            ),
+            "liquidatee was debited incorrect bonus value"
         );
     }
 
