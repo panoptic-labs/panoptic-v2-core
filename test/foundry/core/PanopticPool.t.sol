@@ -5533,14 +5533,14 @@ contract PanopticPoolTest is PositionUtils {
             ct1.getAccountMarginDetails(Alice, TWAPtick, $positionBalanceArray, $expectedPremia1)
         );
 
+        // delegate bobs entire balance so we don't have the protocol loss in his unutilized collateral as a source of error
+        deal(address(ct0), Bob, ct0.convertToShares(type(uint96).max));
+        deal(address(ct1), Bob, ct1.convertToShares(type(uint96).max));
+
         // simulate burning all options to compare against the liquidation
         uint256 snapshot = vm.snapshot();
 
         changePrank(address(pp));
-
-        // delegate bobs entire balance so we don't have the protocol loss in his unutilized collateral as a source of error
-        deal(address(ct0), Bob, ct0.convertToShares(type(uint96).max));
-        deal(address(ct1), Bob, ct1.convertToShares(type(uint96).max));
 
         ct0.delegate(Bob, Alice, type(uint96).max);
         ct1.delegate(Bob, Alice, type(uint96).max);
