@@ -1199,9 +1199,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 tokenToPay += intrinsicValue;
             }
 
-            // only return positive paidAmount
-            paidAmount = tokenToPay < 0 ? int128(0) : int128(tokenToPay);
-
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
