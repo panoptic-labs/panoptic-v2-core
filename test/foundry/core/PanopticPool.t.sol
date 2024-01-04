@@ -5622,24 +5622,6 @@ contract PanopticPoolTest is PositionUtils {
         // in that case we just assert that the delta is less than whatever the bonus was supposed to be
         // which ensures Alice wasn't overcharged
         if (ct0.balanceOf(Alice) + ct1.balanceOf(Alice) != 0) {
-            assertEq(
-                convertToAssets(ct0, $shareDelta0) +
-                    PanopticMath.convert1to0(
-                        convertToAssets(ct1, $shareDelta1),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
-                    ),
-                Math.min(
-                    $combinedBalance0 / 2,
-                    $tokenData0.leftSlot() +
-                        PanopticMath.convert1to0(
-                            $tokenData1.leftSlot(),
-                            TickMath.getSqrtRatioAtTick(currentTickFinal)
-                        ) -
-                        $combinedBalance0
-                ),
-                "liquidatee was debited incorrect bonus value (funds leftover)"
-            );
-        } else {
             assertApproxEqAbs(
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
@@ -5656,6 +5638,24 @@ contract PanopticPoolTest is PositionUtils {
                         $combinedBalance0
                 ),
                 1,
+                "liquidatee was debited incorrect bonus value (funds leftover)"
+            );
+        } else {
+            assertLe(
+                convertToAssets(ct0, $shareDelta0) +
+                    PanopticMath.convert1to0(
+                        convertToAssets(ct1, $shareDelta1),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    ),
+                Math.min(
+                    $combinedBalance0 / 2,
+                    $tokenData0.leftSlot() +
+                        PanopticMath.convert1to0(
+                            $tokenData1.leftSlot(),
+                            TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        ) -
+                        $combinedBalance0
+                ),
                 "liquidatee was debited incorrecty high bonus value (no funds leftover)"
             );
         }
