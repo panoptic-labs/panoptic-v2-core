@@ -5615,6 +5615,10 @@ contract PanopticPoolTest is PositionUtils {
         console2.log("$tokenData1.leftSlot()", $tokenData1.leftSlot());
         console2.log("$shareDelta0", convertToAssets(ct0, $shareDelta0));
         console2.log("$shareDelta1", convertToAssets(ct1, $shareDelta1));
+        console2.log("shareDeltaLiquidatee0", shareDeltasLiquidatee[0]);
+        console2.log("shareDeltaLiquidatee1", shareDeltasLiquidatee[1]);
+        console2.log("sharedeltapost0", (int256(ct0.balanceOf(Alice)) - $shareDelta0));
+        console2.log("sharedeltapost1", (int256(ct1.balanceOf(Alice)) - $shareDelta1));
         // make sure value outlay for Alice matches the bonus structure closely
         assertEq(
             convertToAssets(ct0, $shareDelta0) +
