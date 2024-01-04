@@ -1165,7 +1165,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 shortAmount,
         int128 swappedAmount,
         int128 currentPositionPremium
-    ) external onlyPanopticPool returns (int128 paidAmount, int128 realizedPremium) {
+    ) external onlyPanopticPool returns (int128, int128 realizedPremium) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1211,6 +1211,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
             s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)));
+
+            return (int128(tokenToPay), realizedPremium);
         }
     }
 
