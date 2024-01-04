@@ -5602,6 +5602,13 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
+        console2.log("$combinedBalance0", $combinedBalance0);
+        console2.log("$tokenData0.rightSlot()", $tokenData0.rightSlot());
+        console2.log("$tokenData1.rightSlot()", $tokenData1.rightSlot());
+        console2.log("$tokenData0.leftSlot()", $tokenData0.leftSlot());
+        console2.log("$tokenData1.leftSlot()", $tokenData1.leftSlot());
+        console2.log("$shareDelta0", convertToAssets(ct0, $shareDelta0));
+        console2.log("$shareDelta1", convertToAssets(ct1, $shareDelta1));
         // make sure value outlay for Alice matches the bonus structure closely
         assertEq(
             convertToAssets(ct0, $shareDelta0) +
@@ -5609,7 +5616,7 @@ contract PanopticPoolTest is PositionUtils {
                     convertToAssets(ct1, $shareDelta1),
                     TickMath.getSqrtRatioAtTick(currentTickFinal)
                 ),
-            Math.min(
+            -Math.min(
                 $combinedBalance0 / 2,
                 $tokenData0.leftSlot() +
                     PanopticMath.convert1to0(
