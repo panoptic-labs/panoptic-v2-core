@@ -5554,17 +5554,12 @@ contract PanopticPoolTest is PositionUtils {
         ct0.delegate(Bob, Alice, type(uint96).max);
         ct1.delegate(Bob, Alice, type(uint96).max);
 
-        int256[2] memory shareDeltasLiquidatee = [
-            int256(ct0.balanceOf(Alice)),
-            int256(ct1.balanceOf(Alice))
-        ];
-
         changePrank(Alice);
         pp.burnOptions($posIdLists[1], new uint256[](0), 0, 0);
 
-        shareDeltasLiquidatee = [
-            int256(ct0.balanceOf(Alice)) - shareDeltasLiquidatee[0],
-            int256(ct1.balanceOf(Alice)) - shareDeltasLiquidatee[1]
+        int256[2] memory balancesPostBurn = [
+            int256(ct0.balanceOf(Alice)),
+            int256(ct1.balanceOf(Alice))
         ];
 
         (, int24 currentTickFinal, , , , , ) = pool.slot0();
@@ -5581,6 +5576,9 @@ contract PanopticPoolTest is PositionUtils {
             );
 
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
+
+        $shareDelta0 = balancesPostBurn[0] - int256(ct0.balanceOf(Alice));
+        $shareDelta1 = balancesPostBurn[1] - int256(ct1.balanceOf(Alice));
 
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
@@ -5605,13 +5603,13 @@ contract PanopticPoolTest is PositionUtils {
         console2.log("$tokenData1.rightSlot()", $tokenData1.rightSlot());
         console2.log("$tokenData0.leftSlot()", $tokenData0.leftSlot());
         console2.log("$tokenData1.leftSlot()", $tokenData1.leftSlot());
-        console2.log("$shareDelta0", convertToAssets(ct0, shareDeltasLiquidatee[0]));
-        console2.log("$shareDelta1", convertToAssets(ct1, shareDeltasLiquidatee[1]));
+        console2.log("$shareDelta0", convertToAssets(ct0, $shareDelta0));
+        console2.log("$shareDelta1", convertToAssets(ct1, $shareDelta1));
         // make sure value outlay for Alice matches the bonus structure closely
         assertEq(
-            convertToAssets(ct0, shareDeltasLiquidatee[0]) +
+            convertToAssets(ct0, $shareDelta0) +
                 PanopticMath.convert1to0(
-                    convertToAssets(ct1, shareDeltasLiquidatee[1]),
+                    convertToAssets(ct1, $shareDelta1),
                     TickMath.getSqrtRatioAtTick(currentTickFinal)
                 ),
             -Math.min(
