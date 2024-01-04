@@ -5490,6 +5490,10 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
         }
 
+        // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
+        $shareDelta0 = int256(ct0.balanceOf(Alice));
+        $shareDelta1 = int256(ct1.balanceOf(Alice));
+
         twoWaySwap(swapSizeSeed);
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
@@ -5554,12 +5558,17 @@ contract PanopticPoolTest is PositionUtils {
         ct0.delegate(Bob, Alice, type(uint96).max);
         ct1.delegate(Bob, Alice, type(uint96).max);
 
+        int256[2] memory shareDeltasLiquidatee = [
+            int256(ct0.balanceOf(Alice)),
+            int256(ct1.balanceOf(Alice))
+        ];
+
         changePrank(Alice);
         pp.burnOptions($posIdLists[1], new uint256[](0), 0, 0);
 
-        int256[2] memory balancesPostBurn = [
-            int256(ct0.balanceOf(Alice)),
-            int256(ct1.balanceOf(Alice))
+        shareDeltasLiquidatee = [
+            int256(ct0.balanceOf(Alice)) - shareDeltasLiquidatee[0],
+            int256(ct1.balanceOf(Alice)) - shareDeltasLiquidatee[1]
         ];
 
         (, int24 currentTickFinal, , , , , ) = pool.slot0();
@@ -5575,10 +5584,13 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
+
+
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
 
-        $shareDelta0 = balancesPostBurn[0] - int256(ct0.balanceOf(Alice));
-        $shareDelta1 = balancesPostBurn[1] - int256(ct1.balanceOf(Alice));
+        // take the difference between the share deltas after burn and after mint - that should be the bonus
+        $shareDelta0 = (int256(ct0.balanceOf(Alice)) - $shareDelta0) - shareDeltasLiquidatee[0];
+        $shareDelta1 = (int256(ct1.balanceOf(Alice)) - $shareDelta0) - shareDeltasLiquidatee[1];
 
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
