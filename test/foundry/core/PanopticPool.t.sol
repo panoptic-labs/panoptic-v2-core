@@ -5584,8 +5584,6 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
-
-
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
