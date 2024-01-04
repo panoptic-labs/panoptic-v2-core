@@ -5588,7 +5588,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = (int256(ct0.balanceOf(Alice)) - $shareDelta0) - shareDeltasLiquidatee[0];
-        $shareDelta1 = (int256(ct1.balanceOf(Alice)) - $shareDelta0) - shareDeltasLiquidatee[1];
+        $shareDelta1 = (int256(ct1.balanceOf(Alice)) - $shareDelta1) - shareDeltasLiquidatee[1];
 
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
