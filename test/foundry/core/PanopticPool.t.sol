@@ -234,6 +234,9 @@ contract PanopticPoolTest is PositionUtils {
     int256 $shareDelta0;
     int256 $shareDelta1;
 
+    int256 $shareDelta0Bob;
+    int256 $shareDelta1Bob;
+
     int256 $tokenData0;
     int256 $tokenData1;
 
@@ -5605,7 +5608,7 @@ contract PanopticPoolTest is PositionUtils {
             "liquidator lost money"
         );
 
-        // get total balance for Alice
+        // get total balance for Alice before liquidation
         $combinedBalance0 =
             $tokenData0.rightSlot() +
             PanopticMath.convert1to0(
@@ -5613,21 +5616,59 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
-        console2.log("$combinedBalance0", $combinedBalance0);
-        console2.log("$tokenData0.rightSlot()", $tokenData0.rightSlot());
-        console2.log("$tokenData1.rightSlot()", $tokenData1.rightSlot());
-        console2.log("$tokenData0.leftSlot()", $tokenData0.leftSlot());
-        console2.log("$tokenData1.leftSlot()", $tokenData1.leftSlot());
-        console2.log("$shareDelta0", convertToAssets(ct0, $shareDelta0));
-        console2.log("$shareDelta1", convertToAssets(ct1, $shareDelta1));
-        // make sure value outlay for Alice matches the bonus structure closely
-        assertEq(
-            convertToAssets(ct0, $shareDelta0) +
-                PanopticMath.convert1to0(
-                    convertToAssets(ct1, $shareDelta1),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+        // make sure value outlay for Alice matches the bonus structure
+        // if Alice is completely insolvent the deltas will be wrong because
+        // some of the bonus will come from PLPs
+        // in that case we just assert that the delta is less than whatever the bonus was supposed to be
+        // which ensures Alice wasn't overcharged
+        if (ct0.balanceOf(Alice) + ct1.balanceOf(Alice) != 0) {
+            assertEq(
+                convertToAssets(ct0, $shareDelta0) +
+                    PanopticMath.convert1to0(
+                        convertToAssets(ct1, $shareDelta1),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    ),
+                Math.min(
+                    $combinedBalance0 / 2,
+                    $tokenData0.leftSlot() +
+                        PanopticMath.convert1to0(
+                            $tokenData1.leftSlot(),
+                            TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        ) -
+                        $combinedBalance0
                 ),
-            -Math.min(
+                "liquidatee was debited incorrect bonus value (funds leftover)"
+            );
+        } else {
+            assertLe(
+                convertToAssets(ct0, $shareDelta0) +
+                    PanopticMath.convert1to0(
+                        convertToAssets(ct1, $shareDelta1),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    ),
+                Math.min(
+                    $combinedBalance0 / 2,
+                    $tokenData0.leftSlot() +
+                        PanopticMath.convert1to0(
+                            $tokenData1.leftSlot(),
+                            TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        ) -
+                        $combinedBalance0
+                ),
+                "liquidatee was debited incorrecty high bonus value (no funds leftover)"
+            );
+        }
+
+        assertEq(
+            int256(
+                ct0.convertToAssets(ct0.balanceOf(Bob)) +
+                    PanopticMath.convert1to0(
+                        ct1.convertToAssets(ct1.balanceOf(Bob)),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    ) -
+                    $accValueBefore0
+            ),
+            Math.min(
                 $combinedBalance0 / 2,
                 $tokenData0.leftSlot() +
                     PanopticMath.convert1to0(
@@ -5636,7 +5677,7 @@ contract PanopticPoolTest is PositionUtils {
                     ) -
                     $combinedBalance0
             ),
-            "liquidatee was debited incorrect bonus value"
+            "liquidator did not receive correct bonus"
         );
     }
 
