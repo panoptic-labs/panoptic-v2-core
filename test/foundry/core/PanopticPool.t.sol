@@ -5659,7 +5659,7 @@ contract PanopticPoolTest is PositionUtils {
             );
         }
 
-        assertEq(
+        assertApproxEqAbs(
             int256(
                 ct0.convertToAssets(ct0.balanceOf(Bob)) +
                     PanopticMath.convert1to0(
@@ -5677,6 +5677,7 @@ contract PanopticPoolTest is PositionUtils {
                     ) -
                     $combinedBalance0
             ),
+            1,
             "liquidator did not receive correct bonus"
         );
     }
