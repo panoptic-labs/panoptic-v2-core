@@ -5490,10 +5490,6 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
         }
 
-        // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
-        $shareDelta0 = int256(ct0.balanceOf(Alice));
-        $shareDelta1 = int256(ct1.balanceOf(Alice));
-
         twoWaySwap(swapSizeSeed);
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
@@ -5581,8 +5577,8 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
 
-        $shareDelta0 = int256(ct0.balanceOf(Alice)) - $shareDelta0;
-        $shareDelta1 = int256(ct1.balanceOf(Alice)) - $shareDelta1;
+        $shareDelta0 = int256(ct0.balanceOf(Alice)) - int256(balancesPostBurn[0]);
+        $shareDelta1 = int256(ct1.balanceOf(Alice)) - int256(balancesPostBurn[1]);
 
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
