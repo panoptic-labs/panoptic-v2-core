@@ -5490,10 +5490,6 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
         }
 
-        // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
-        $shareDelta0 = int256(ct0.balanceOf(Alice));
-        $shareDelta1 = int256(ct1.balanceOf(Alice));
-
         twoWaySwap(swapSizeSeed);
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
@@ -5545,6 +5541,10 @@ contract PanopticPoolTest is PositionUtils {
         $tokenData1 = int256(
             ct1.getAccountMarginDetails(Alice, TWAPtick, $positionBalanceArray, $expectedPremia1)
         );
+
+        // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
+        $shareDelta0 = int256(ct0.balanceOf(Alice));
+        $shareDelta1 = int256(ct1.balanceOf(Alice));
 
         // delegate bobs entire balance so we don't have the protocol loss in his unutilized collateral as a source of error
         deal(address(ct0), Bob, ct0.convertToShares(type(uint96).max));
