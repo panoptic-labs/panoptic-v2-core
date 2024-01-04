@@ -5640,7 +5640,7 @@ contract PanopticPoolTest is PositionUtils {
                 "liquidatee was debited incorrect bonus value (funds leftover)"
             );
         } else {
-            assertLe(
+            assertApproxEqAbs(
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, $shareDelta1),
@@ -5655,6 +5655,7 @@ contract PanopticPoolTest is PositionUtils {
                         ) -
                         $combinedBalance0
                 ),
+                1,
                 "liquidatee was debited incorrecty high bonus value (no funds leftover)"
             );
         }
