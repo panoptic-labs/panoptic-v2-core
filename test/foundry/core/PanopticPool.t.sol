@@ -5633,7 +5633,7 @@ contract PanopticPoolTest is PositionUtils {
                     $tokenData0.leftSlot() +
                         PanopticMath.convert1to0(
                             $tokenData1.leftSlot(),
-                            TickMath.getSqrtRatioAtTick(currentTickFinal)
+                            TickMath.getSqrtRatioAtTick(TWAPtick)
                         ) -
                         $combinedBalance0
                 ),
@@ -5652,7 +5652,7 @@ contract PanopticPoolTest is PositionUtils {
                     $tokenData0.leftSlot() +
                         PanopticMath.convert1to0(
                             $tokenData1.leftSlot(),
-                            TickMath.getSqrtRatioAtTick(currentTickFinal)
+                            TickMath.getSqrtRatioAtTick(TWAPtick)
                         ) -
                         $combinedBalance0
                 ),
@@ -5674,7 +5674,7 @@ contract PanopticPoolTest is PositionUtils {
                 $tokenData0.leftSlot() +
                     PanopticMath.convert1to0(
                         $tokenData1.leftSlot(),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     ) -
                     $combinedBalance0
             ),
