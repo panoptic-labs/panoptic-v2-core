@@ -984,6 +984,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 premia.leftSlot()
             );
 
+            console2.log("balanceOfLiquidatee0", s_collateralToken0.balanceOf(_liquidatee));
+            console2.log("balanceOfLiquidatee1", s_collateralToken1.balanceOf(_liquidatee));
+
             (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 tokenData0,
                 tokenData1,
@@ -1016,6 +1019,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
         console2.log("liquidationBonus0", liquidationBonus0);
         console2.log("liquidationBonus1", liquidationBonus1);
+        console2.log("tokenData0.rightSlot()", tokenData1.rightSlot());
+        console2.log("tokenData1.rightSlot()", tokenData1.rightSlot());
+        console2.log("tokenData0.leftSlot()", tokenData1.leftSlot());
+        console2.log("tokenData1.leftSlot()", tokenData1.leftSlot());
 
         // revoke the delegated amount plus the bonus amount.
 
