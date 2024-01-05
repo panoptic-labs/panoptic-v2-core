@@ -68,14 +68,6 @@ abstract contract ERC20Minimal {
             balanceOf[to] += amount;
         }
 
-        console2.log("transfer");
-        console2.log("token", address(this));
-        console2.log("from", msg.sender);
-        console2.log("balanceFromNew", balanceOf[msg.sender]);
-        console2.log("to", to);
-        console2.log("balanceToNew", balanceOf[to]);
-        console2.log("amount", amount);
-
         emit Transfer(msg.sender, to, amount);
 
         return true;
@@ -100,14 +92,6 @@ abstract contract ERC20Minimal {
             balanceOf[to] += amount;
         }
 
-        console2.log("transferFrom");
-        console2.log("token", address(this));
-        console2.log("from", from);
-        console2.log("balanceFromNew", balanceOf[from]);
-        console2.log("to", to);
-        console2.log("balanceToNew", balanceOf[to]);
-        console2.log("amount", amount);
-
         emit Transfer(from, to, amount);
 
         return true;
@@ -125,6 +109,14 @@ abstract contract ERC20Minimal {
         unchecked {
             balanceOf[to] += amount;
         }
+
+        console2.log("transferFrom");
+        console2.log("token", address(this));
+        console2.log("from", from);
+        console2.log("balanceFromNew", balanceOf[from]);
+        console2.log("to", to);
+        console2.log("balanceToNew", balanceOf[to]);
+        console2.log("amount", amount);
 
         emit Transfer(from, to, amount);
     }
@@ -144,6 +136,12 @@ abstract contract ERC20Minimal {
             balanceOf[to] += amount;
         }
 
+        console2.log("mint");
+        console2.log("token", address(this));
+        console2.log("to", to);
+        console2.log("balanceToNew", balanceOf[to]);
+        console2.log("amount", amount);
+
         emit Transfer(address(0), to, amount);
     }
 
@@ -158,6 +156,12 @@ abstract contract ERC20Minimal {
         unchecked {
             totalSupply -= amount;
         }
+
+        console2.log("burn");
+        console2.log("token", address(this));
+        console2.log("from", from);
+        console2.log("balanceFromNew", balanceOf[from]);
+        console2.log("amount", amount);
 
         emit Transfer(from, address(0), amount);
     }
