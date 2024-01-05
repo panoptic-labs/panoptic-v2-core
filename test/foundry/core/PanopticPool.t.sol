@@ -5615,6 +5615,13 @@ contract PanopticPoolTest is PositionUtils {
                 $tokenData1.rightSlot(),
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
+        console2.log("T! tokenData0 RS", $tokenData0.rightSlot());
+        console2.log("T! tokenData1 RS", $tokenData1.rightSlot());
+        console2.log("T! tokendata0 LS", $tokenData0.leftSlot());
+        console2.log("T! tokendata1 LS", $tokenData1.leftSlot());
+        console2.log("T! currentTickFinal", currentTickFinal);
+        console2.log("T! sqrtRatio", TickMath.getSqrtRatioAtTick(currentTickFinal));
+        console2.log("combinedBalance0", $combinedBalance0);
 
         // make sure value outlay for Alice matches the bonus structure
         // if Alice is completely insolvent the deltas will be wrong because
