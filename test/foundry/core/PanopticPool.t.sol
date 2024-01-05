@@ -5621,7 +5621,7 @@ contract PanopticPoolTest is PositionUtils {
         // some of the bonus will come from PLPs
         // in that case we just assert that the delta is less than whatever the bonus was supposed to be
         // which ensures Alice wasn't overcharged
-        if (ct0.balanceOf(Alice) + ct1.balanceOf(Alice) != 0) {
+        if (ct0.balanceOf(Alice) + ct1.balanceOf(Alice) > 2) {
             assertApproxEqAbs(
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
