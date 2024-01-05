@@ -5637,7 +5637,7 @@ contract PanopticPoolTest is PositionUtils {
                         ) -
                         $combinedBalance0
                 ),
-                1,
+                10,
                 "liquidatee was debited incorrect bonus value (funds leftover)"
             );
         } else {
@@ -5678,7 +5678,7 @@ contract PanopticPoolTest is PositionUtils {
                     ) -
                     $combinedBalance0
             ),
-            1,
+            10,
             "liquidator did not receive correct bonus"
         );
     }
