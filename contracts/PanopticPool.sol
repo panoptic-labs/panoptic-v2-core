@@ -985,7 +985,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
 
             console2.log("balanceOfLiquidatee0", s_collateralToken0.balanceOf(_liquidatee));
+            console2.log("tokenData0.rightSlot()", tokenData0.rightSlot());
             console2.log("balanceOfLiquidatee1", s_collateralToken1.balanceOf(_liquidatee));
+            console2.log("tokenData1.rightSlot()", tokenData1.rightSlot());
 
             (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 tokenData0,
