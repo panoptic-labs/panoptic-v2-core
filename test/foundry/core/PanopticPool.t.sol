@@ -5673,16 +5673,14 @@ contract PanopticPoolTest is PositionUtils {
                 "liquidatee was debited incorrecty high bonus value (no funds leftover)"
             );
         }
-
         assertApproxEqAbs(
             int256(
                 ct0.convertToAssets(ct0.balanceOf(Bob)) +
                     PanopticMath.convert1to0(
                         ct1.convertToAssets(ct1.balanceOf(Bob)),
                         TickMath.getSqrtRatioAtTick(currentTickFinal)
-                    ) -
-                    $accValueBefore0
-            ),
+                    )
+            ) - int256($accValueBefore0),
             Math.min(
                 $combinedBalance0 / 2,
                 $tokenData0.leftSlot() +
