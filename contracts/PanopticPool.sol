@@ -1019,9 +1019,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
         console2.log("liquidationBonus0", liquidationBonus0);
         console2.log("liquidationBonus1", liquidationBonus1);
-        console2.log("tokenData0.rightSlot()", tokenData1.rightSlot());
+        console2.log("tokenData0.rightSlot()", tokenData0.rightSlot());
         console2.log("tokenData1.rightSlot()", tokenData1.rightSlot());
-        console2.log("tokenData0.leftSlot()", tokenData1.leftSlot());
+        console2.log("tokenData0.leftSlot()", tokenData0.leftSlot());
         console2.log("tokenData1.leftSlot()", tokenData1.leftSlot());
 
         // revoke the delegated amount plus the bonus amount.
