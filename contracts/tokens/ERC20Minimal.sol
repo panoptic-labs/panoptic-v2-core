@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
+import "forge-std/Test.sol";
 
 /// @title Minimal efficient ERC20 implementation without metadata
 /// @author Axicon Labs Limited
@@ -67,6 +68,14 @@ abstract contract ERC20Minimal {
             balanceOf[to] += amount;
         }
 
+        console2.log("transfer");
+        console2.log("token", address(this));
+        console2.log("from", msg.sender);
+        console2.log("balanceFromNew", balanceOf[msg.sender]);
+        console2.log("to", to);
+        console2.log("balanceToNew", balanceOf[to]);
+        console2.log("amount", amount);
+
         emit Transfer(msg.sender, to, amount);
 
         return true;
@@ -90,6 +99,14 @@ abstract contract ERC20Minimal {
         unchecked {
             balanceOf[to] += amount;
         }
+
+        console2.log("transferFrom");
+        console2.log("token", address(this));
+        console2.log("from", from);
+        console2.log("balanceFromNew", balanceOf[from]);
+        console2.log("to", to);
+        console2.log("balanceToNew", balanceOf[to]);
+        console2.log("amount", amount);
 
         emit Transfer(from, to, amount);
 
