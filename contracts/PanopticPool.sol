@@ -1225,6 +1225,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             console2.log("balance1", balance1);
             console2.log("paid0", paid0);
             console2.log("paid1", paid1);
+            console2.log("sqrtPriceX96Twap", sqrtPriceX96Twap);
             console2.log("sqrtPriceX96", sqrtPriceX96Final);
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator

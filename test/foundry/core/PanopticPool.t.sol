@@ -5621,6 +5621,8 @@ contract PanopticPoolTest is PositionUtils {
         console2.log("T! tokendata1 LS", $tokenData1.leftSlot());
         console2.log("T! currentTickFinal", currentTickFinal);
         console2.log("T! sqrtRatio", TickMath.getSqrtRatioAtTick(currentTickFinal));
+        console2.log("T! TWAPtick", TWAPtick);
+        console2.log("T! sqrtTWAPtick", TickMath.getSqrtRatioAtTick(TWAPtick));
         console2.log("combinedBalance0", $combinedBalance0);
 
         // make sure value outlay for Alice matches the bonus structure
