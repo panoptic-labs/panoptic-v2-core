@@ -940,14 +940,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param liquidatee Address of the distressed account.
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...].
     /// @param positionIdListLiquidator List of positions owned by the liquidator.
-    /// @param delegation0 Amount of token0 delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
-    /// @param delegation1 Amount of token1 delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
+    /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
     function liquidate(
         address liquidatee,
         uint256[] calldata positionIdList,
         uint256[] calldata positionIdListLiquidator,
-        uint256 delegation0,
-        uint256 delegation1
+        uint256 delegations
     ) external {
         address _liquidatee = liquidatee;
         _validatePositionList(_liquidatee, positionIdList, 0);
@@ -957,6 +955,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 tokenData0;
         uint256 tokenData1;
+        int256 premia;
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
@@ -964,7 +963,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
                 revert Errors.StaleTWAP();
 
-            (int256 premia, uint256[2][] memory positionBalanceArray) = _calculateAccumulatedPremia(
+            uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
+            (premia, positionBalanceArray) = _calculateAccumulatedPremia(
                 _liquidatee,
                 positionIdList,
                 COMPUTE_ALL_PREMIA,
@@ -986,8 +986,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             console2.log("balanceOfLiquidatee0", s_collateralToken0.balanceOf(_liquidatee));
             console2.log("tokenData0.rightSlot()", tokenData0.rightSlot());
+            console2.log("tokenData0.leftSlot()", tokenData0.leftSlot());
             console2.log("balanceOfLiquidatee1", s_collateralToken1.balanceOf(_liquidatee));
-            console2.log("tokenData1.rightSlot()", tokenData1.rightSlot());
 
             (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 tokenData0,
@@ -1001,8 +1001,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Perform the specified delegation from `msg.sender` to `liquidatee`
         // Works like a transfer, so the liquidator must possess all the tokens they are delegating, resulting in no net supply change
         // If not enough tokens are delegated for the positions of `liquidatee` to be closed, the liquidation will fail
-        s_collateralToken0.delegate(msg.sender, _liquidatee, delegation0);
-        s_collateralToken1.delegate(msg.sender, _liquidatee, delegation1);
+        s_collateralToken0.delegate(msg.sender, _liquidatee, delegations.rightSlot());
+        s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
         // burn all options from the liquidatee
         (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
@@ -1018,7 +1018,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenData1,
             Math.getSqrtRatioAtTick(twapTick),
             Math.getSqrtRatioAtTick(finalTick),
-            netExchanged
+            netExchanged,
+            premia
         );
         console2.log("liquidationBonus0", liquidationBonus0);
         console2.log("liquidationBonus1", liquidationBonus1);
@@ -1033,12 +1034,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_collateralToken0.revoke(
                 msg.sender,
                 _liquidatee,
-                uint256(int256(delegation0) + liquidationBonus0)
+                uint256(int256(uint256(delegations.rightSlot())) + liquidationBonus0)
             );
             s_collateralToken1.revoke(
                 msg.sender,
                 _liquidatee,
-                uint256(int256(delegation1) + liquidationBonus1)
+                uint256(int256(uint256(delegations.leftSlot())) + liquidationBonus1)
             );
         }
         {
@@ -1176,6 +1177,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
     /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user.
     /// @param netExchanged The net exchanged value of the closed portfolio
+    /// @param premia premium across all positions being liquidated present in tokenData
     /// @return bonus0 bonus amount for token0
     /// @return bonus1 bonus amount for token1
     function getLiquidationBonus(
@@ -1183,7 +1185,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tokenData1,
         uint160 sqrtPriceX96Twap,
         uint160 sqrtPriceX96Final,
-        int256 netExchanged
+        int256 netExchanged,
+        int256 premia
     ) internal pure returns (int256 bonus0, int256 bonus1) {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
@@ -1217,8 +1220,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
             }
 
-            int256 balance0 = int256(uint256(tokenData0.rightSlot()));
+            // negative premium (owed to the liquidatee) is credited to the collateral balance
+            // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
+            int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
+                Math.min(premia.rightSlot(), 0);
             int256 balance1 = int256(uint256(tokenData1.rightSlot()));
+            -Math.min(premia.leftSlot(), 0);
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());

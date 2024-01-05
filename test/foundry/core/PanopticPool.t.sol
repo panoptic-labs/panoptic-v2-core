@@ -5587,7 +5587,12 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
-        pp.liquidate(Alice, $posIdLists[1], new uint256[](0), type(uint96).max, type(uint96).max);
+        pp.liquidate(
+            Alice,
+            $posIdLists[1],
+            new uint256[](0),
+            uint256(type(uint96).max).toLeftSlot(type(uint96).max)
+        );
 
         console2.log("shareDeltaLiquidatee0", shareDeltasLiquidatee[0]);
         console2.log("shareDeltaLiquidatee1", shareDeltasLiquidatee[1]);
@@ -5759,7 +5764,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId2;
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList, new uint256[](0), 0, 0);
+        pp.liquidate(Alice, posIdList, new uint256[](0), 0);
     }
 
     function test_Fail_liquidate_validatePositionIdListLiquidator(
@@ -5805,7 +5810,7 @@ contract PanopticPoolTest is PositionUtils {
         editCollateral(ct1, Alice, 0);
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList, new uint256[](0), 0, 0);
+        pp.liquidate(Alice, posIdList, new uint256[](0), 0);
     }
 
     function test_Fail_liquidate_StaleTWAP(uint256 x, int256 tickDeltaSeed) public {
@@ -5829,7 +5834,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.expectRevert(Errors.StaleTWAP.selector);
-        pp.liquidate(Alice, new uint256[](0), new uint256[](0), 0, 0);
+        pp.liquidate(Alice, new uint256[](0), new uint256[](0), 0);
     }
 
     function test_Fail_liquidate_NotMarginCalled(
@@ -5973,6 +5978,6 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Bob);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
-        pp.liquidate(Alice, $posIdLists[1], new uint256[](0), 0, 0);
+        pp.liquidate(Alice, $posIdLists[1], new uint256[](0), 0);
     }
 }
