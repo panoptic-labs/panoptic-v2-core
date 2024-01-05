@@ -5613,7 +5613,7 @@ contract PanopticPoolTest is PositionUtils {
             $tokenData0.rightSlot() +
             PanopticMath.convert1to0(
                 $tokenData1.rightSlot(),
-                TickMath.getSqrtRatioAtTick(currentTickFinal)
+                TickMath.getSqrtRatioAtTick(TWAPtick)
             );
         console2.log("T! tokenData0 RS", $tokenData0.rightSlot());
         console2.log("T! tokenData1 RS", $tokenData1.rightSlot());
