@@ -413,7 +413,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // Decode the mint callback data
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, address(FACTORY), decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, FACTORY, decoded.poolFeatures);
         // Sends the amount0Owed and amount1Owed quantities provided
         if (amount0Owed > 0)
             SafeTransferLib.safeTransferFrom(
@@ -446,7 +446,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // Decode the swap callback data, checks that the UniswapV3Pool has the correct address.
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, address(FACTORY), decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, FACTORY, decoded.poolFeatures);
 
         // Extract the address of the token to be sent (amount0 -> token0, amount1 -> token1)
         address token = amount0Delta > 0
