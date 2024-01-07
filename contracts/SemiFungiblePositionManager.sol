@@ -1087,10 +1087,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         }
 
         // position has been touched, update s_accountFeesBase with the latest values from the pool.positions
+        // round up the stored feesbase to minimize Δfeesbase when we next calculate it
         s_accountFeesBase[positionKey] = _getFeesBase(
             _univ3pool,
             updatedLiquidity,
-            _liquidityChunk
+            _liquidityChunk,
+            true
         );
     }
 
@@ -1125,10 +1127,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param univ3pool the Uniswap pool.
     /// @param liquidity the total amount of liquidity in the AMM for the specific position
     /// @param liquidityChunk has lower tick, upper tick, and liquidity amount to mint
+    /// @param roundUp if true, round up the feesBase, otherwise round down
+    /// @dev stored fees base is rounded up and the current fees base is rounded down to minimize the amount of fees collected (Δfeesbase) in favor of the protocol
     function _getFeesBase(
         IUniswapV3Pool univ3pool,
         uint128 liquidity,
-        uint256 liquidityChunk
+        uint256 liquidityChunk,
+        bool roundUp
     ) private view returns (int256 feesBase) {
         // now collect fee growth within the liquidity chunk in `liquidityChunk`
         // this is the fee accumulated in Uniswap for this chunk of liquidity
@@ -1151,9 +1156,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         /// This is not a problem in Uniswap v3 because the fees are always calculated by taking the difference of the feeGrowths,
         /// so that the net different is always positive.
         /// So by using int128 instead of uint128, we remove the need to handle extremely large underflows and simply allow it to be negative
-        feesBase = int256(0)
-            .toRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
-            .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
+        feesBase = roundUp
+            ? int256(0)
+                .toRightSlot(
+                    int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, liquidity)))
+                )
+                .toLeftSlot(
+                    int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, liquidity)))
+                )
+            : int256(0)
+                .toRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
+                .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
     }
 
     /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap v3 pool; return the amount moved.
@@ -1241,9 +1254,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 isLong
     ) internal returns (int256 collectedOut) {
         uint128 startingLiquidity = currentLiquidity.rightSlot();
-        int256 amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk).sub(
-            s_accountFeesBase[positionKey]
-        );
+        // round down current fees base to minimize Δfeesbase
+        // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+        // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+        // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+        int256 amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk, false)
+            .subRect(s_accountFeesBase[positionKey]);
 
         if (isLong == 1) {
             amountToCollect = amountToCollect.sub(movedInLeg);
@@ -1445,7 +1461,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         netLiquidity,
                         tempChunk
                     );
-                    amountToCollect = feesBase.sub(s_accountFeesBase[positionKey]);
+                    // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+                    // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+                    // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+                    amountToCollect = feesBase.subRect(s_accountFeesBase[positionKey]);
                 }
 
                 (uint256 deltaPremiumOwed, uint256 deltaPremiumGross) = _getPremiaDeltas(
