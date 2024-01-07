@@ -221,6 +221,17 @@ contract LeftRightHarness {
     }
 
     /**
+     * @notice Subtract two int256 bit LeftRight-encoded words; rectify to 0 on negative result.
+     * @param x the minuend
+     * @param y the subtrahend
+     * @return z the difference x - y
+     */
+    function subRect(int256 x, int256 y) public view returns (int256) {
+        int256 r = LeftRight.sub(x, y);
+        return r;
+    }
+
+    /**
      * @notice Multiply two int256 bit LeftRight-encoded words; revert on overflow.
      * @param x the multiplicand
      * @param y the multiplier
