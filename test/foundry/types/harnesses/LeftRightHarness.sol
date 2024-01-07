@@ -227,7 +227,7 @@ contract LeftRightHarness {
      * @return z the difference x - y
      */
     function subRect(int256 x, int256 y) public view returns (int256) {
-        int256 r = LeftRight.sub(x, y);
+        int256 r = LeftRight.subRect(x, y);
         return r;
     }
 
