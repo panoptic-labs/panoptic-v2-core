@@ -538,37 +538,58 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     TRANSFER HOOK IMPLEMENTATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice called after batch transfers (NOT mints or burns)
-    /// @param from The address of the sender
-    /// @param to The address of the recipient
-    /// @param ids The tokenIds being transferred
-    /// @param amounts The amounts of each token being transferred
-    function afterTokenTransfer(
+    /// @notice Transfer a single token from one user to another
+    /// @dev supports token approvals
+    /// @param from the user to transfer tokens from
+    /// @param to the user to transfer tokens to
+    /// @param id the ERC1155 token id to transfer
+    /// @param amount the amount of tokens to transfer
+    /// @param data optional data to include in the receive hook
+    function safeTransferFrom(
         address from,
         address to,
-        uint256[] memory ids,
-        uint256[] memory amounts
-    ) internal override {
+        uint256 id,
+        uint256 amount,
+        bytes calldata data
+    ) public override {
+        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
+        // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
+        if (s_poolContext[id.univ3pool()].locked) revert Errors.ReentrantCall();
+
+        // update the position data
+        registerTokenTransfer(from, to, id, amount);
+
+        // transfer the token (note that all state updates are completed before reentrancy is possible through onReceived callbacks)
+        super.safeTransferFrom(from, to, id, amount, data);
+    }
+
+    /// @notice Transfer multiple tokens from one user to another
+    /// @dev supports token approvals
+    /// @dev ids and amounts must be of equal length
+    /// @param from the user to transfer tokens from
+    /// @param to the user to transfer tokens to
+    /// @param ids the ERC1155 token ids to transfer
+    /// @param amounts the amounts of tokens to transfer
+    /// @param data optional data to include in the receive hook
+    function safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] calldata ids,
+        uint256[] calldata amounts,
+        bytes calldata data
+    ) public override {
+        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
+        // so just check if there is an active reentrancy lock for the relevant pool on each token
         for (uint256 i = 0; i < ids.length; ) {
+            if (s_poolContext[ids[i].univ3pool()].locked) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, ids[i], amounts[i]);
             unchecked {
                 ++i;
             }
         }
-    }
 
-    /// @notice called after single transfers (NOT mints or burns)
-    /// @param from The address of the sender
-    /// @param to The address of the recipient
-    /// @param id The tokenId being transferred
-    /// @param amount The amount of the token being transferred
-    function afterTokenTransfer(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount
-    ) internal override {
-        registerTokenTransfer(from, to, id, amount);
+        // transfer the token (note that all state updates are completed before reentrancy is possible)
+        super.safeBatchTransferFrom(from, to, ids, amounts, data);
     }
 
     /// @notice update user position data following a token transfer
