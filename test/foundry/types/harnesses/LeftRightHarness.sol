@@ -68,11 +68,6 @@ contract LeftRightHarness {
         return r;
     }
 
-    function clearRightSlot(int256 self) public view returns (int256) {
-        int256 r = LeftRight.clearRightSlot(self);
-        return r;
-    }
-
     /*//////////////////////////////////////////////////////////////
                               LEFT SLOT
     //////////////////////////////////////////////////////////////*/
@@ -131,11 +126,6 @@ contract LeftRightHarness {
      */
     function toLeftSlot(int256 self, int128 left) public view returns (int256) {
         int256 r = LeftRight.toLeftSlot(self, left);
-        return r;
-    }
-
-    function clearLeftSlot(int256 self) public view returns (int256) {
-        int256 r = LeftRight.clearLeftSlot(self);
         return r;
     }
 

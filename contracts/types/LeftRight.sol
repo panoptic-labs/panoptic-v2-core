@@ -84,13 +84,6 @@ library LeftRight {
         }
     }
 
-    /// @notice Clear the "right" slot from a int256 bit pattern.
-    /// @param self The int256 (full 256 bits) to be cleared in its right half
-    /// @return self with the right slot cleared
-    function clearRightSlot(int256 self) internal pure returns (int256) {
-        return self & LEFT_HALF_BIT_MASK_INT;
-    }
-
     /*//////////////////////////////////////////////////////////////
                               LEFT SLOT
     //////////////////////////////////////////////////////////////*/
@@ -142,13 +135,6 @@ library LeftRight {
         unchecked {
             return self + (int256(left) << 128);
         }
-    }
-
-    /// @notice Clear the "left" slot from a int256 bit pattern.
-    /// @param self The int256 (full 256 bits) to be cleared in its left half
-    /// @return self with the left slot cleared
-    function clearLeftSlot(int256 self) internal pure returns (int256) {
-        return self & RIGHT_HALF_BIT_MASK;
     }
 
     /*//////////////////////////////////////////////////////////////
