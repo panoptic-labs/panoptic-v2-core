@@ -371,10 +371,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             poolId = PanopticMath.getFinalPoolId(poolId, token0, token1, fee);
         }
         // store the poolId => UniswapV3Pool information in a mapping
-        // `locked` can be initialized to false because the pool address makes the slot nonzero
+        // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
+        // note: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
         s_poolContext[poolId] = PoolAddressAndLock({
             pool: IUniswapV3Pool(univ3pool),
-            locked: false
+            locked: s_poolContext[poolId].locked
         });
 
         // store the UniswapV3Pool => poolId information in a mapping

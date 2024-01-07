@@ -37,6 +37,8 @@ contract ReenterBurn {
     address public token1;
     uint24 public fee;
 
+    bool activated;
+
     function construct(
         Slot0 memory _slot0,
         address _token0,
@@ -52,16 +54,21 @@ contract ReenterBurn {
     }
 
     fallback() external {
-        SemiFungiblePositionManagerHarness(msg.sender).burnTokenizedPosition(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(this))),
-            0,
-            0,
-            0
-        );
+        bool reenter = !activated;
+        activated = true;
+        if (reenter)
+            SemiFungiblePositionManagerHarness(msg.sender).burnTokenizedPosition(
+                uint256(0).addUniv3pool(PanopticMath.getPoolId(address(this))),
+                0,
+                0,
+                0
+            );
     }
 }
 
 contract ReenterMint {
+    using TokenId for uint256;
+
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
 
@@ -91,6 +98,8 @@ contract ReenterMint {
     address public token1;
     uint24 public fee;
 
+    bool activated;
+
     function construct(
         Slot0 memory _slot0,
         address _token0,
@@ -106,6 +115,49 @@ contract ReenterMint {
     }
 
     fallback() external {
-        SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(0, 0, 0, 0);
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter)
+            SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
+                uint256(0).addUniv3pool(PanopticMath.getPoolId(address(this))),
+                0,
+                0,
+                0
+            );
+    }
+}
+
+// through ERC1155 transfer
+contract Reenter1155Initialize {
+    address public token0;
+    address public token1;
+    uint24 public fee;
+    uint64 poolId;
+
+    bool activated;
+
+    function construct(address _token0, address _token1, uint24 _fee, uint64 _poolId) public {
+        token0 = _token0;
+        token1 = _token1;
+        fee = _fee;
+        poolId = _poolId;
+    }
+
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes memory
+    ) public returns (bytes4) {
+        bool reenter = !activated;
+        activated = true;
+
+        if (reenter)
+            SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(token0, token1, fee);
+        if (reenter)
+            SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(poolId, 0, 0, 0);
+        return this.onERC1155Received.selector;
     }
 }
