@@ -195,7 +195,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         // Decode the mint callback data
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, address(univ3Factory), decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, univ3Factory, decoded.poolFeatures);
 
         // Sends the amount0Owed and amount1Owed quantities provided
         if (amount0Owed > 0)

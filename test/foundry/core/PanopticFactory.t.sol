@@ -471,7 +471,7 @@ contract PanopticFactoryTest is Test {
         // Decode the mint callback data
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, address(V3FACTORY), decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, V3FACTORY, decoded.poolFeatures);
 
         // Sends the amount0Owed and amount1Owed quantities provided
         if (amount0Owed > 0)

@@ -93,7 +93,7 @@ abstract contract ERC1155 {
         uint256 id,
         uint256 amount,
         bytes calldata data
-    ) public {
+    ) public virtual {
         if (!(msg.sender == from || isApprovedForAll[from][msg.sender])) revert NotAuthorized();
 
         balanceOf[from][id] -= amount;
@@ -102,8 +102,6 @@ abstract contract ERC1155 {
         unchecked {
             balanceOf[to][id] += amount;
         }
-
-        afterTokenTransfer(from, to, id, amount);
 
         emit TransferSingle(msg.sender, from, to, id, amount);
 
@@ -155,8 +153,6 @@ abstract contract ERC1155 {
                 ++i;
             }
         }
-
-        afterTokenTransfer(from, to, ids, amounts);
 
         emit TransferBatch(msg.sender, from, to, ids, amounts);
 
@@ -238,34 +234,4 @@ abstract contract ERC1155 {
 
         emit TransferSingle(msg.sender, from, address(0), id, amount);
     }
-
-    /*//////////////////////////////////////////////////////////////
-                            TRANSFER HOOKS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Internal hook to be called after a batch token transfer
-    /// @dev this can be implemented in a child contract to add additional logic
-    /// @param from the user to transfer tokens from
-    /// @param to the user to transfer tokens to
-    /// @param ids the ERC1155 token ids being transferred
-    /// @param amounts the amounts of tokens to transfer
-    function afterTokenTransfer(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts
-    ) internal virtual;
-
-    /// @notice Internal hook to be called after a single token transfer
-    /// @dev this can be implemented in a child contract to add additional logic
-    /// @param from the user to transfer tokens from
-    /// @param to the user to transfer tokens to
-    /// @param id the ERC1155 token id being transferred
-    /// @param amount the amount of tokens to transfer
-    function afterTokenTransfer(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount
-    ) internal virtual;
 }
