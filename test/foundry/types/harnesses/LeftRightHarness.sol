@@ -47,17 +47,6 @@ contract LeftRightHarness {
     }
 
     /**
-     * @notice Write the "right" slot to a uint256.
-     * @param self the original full uint256 bit pattern to be written to.
-     * @param right the bit pattern to write into the full pattern in the right half.
-     * @return self with right added to its right 128 bits.
-     */
-    function toRightSlot(uint256 self, int128 right) public view returns (uint256) {
-        uint256 r = LeftRight.toRightSlot(self, right);
-        return r;
-    }
-
-    /**
      * @notice Write the "right" slot to an int256.
      * @param self the original full int256 bit pattern to be written to.
      * @param right the bit pattern to write into the full pattern in the right half.

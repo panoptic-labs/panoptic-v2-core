@@ -29,11 +29,27 @@ contract LeftRightTest is Test {
         assertEq(uint128(harness.rightSlot(x)), y);
     }
 
+    function test_Success_RightSlot_Uint128_In_Uint256_noLeaking(uint256 x, uint128 y) public {
+        uint128 originalLeft = harness.leftSlot(x);
+        x = harness.toRightSlot(x, y);
+        assertEq(harness.leftSlot(x), originalLeft, "Right slot input overflowed into left slot");
+    }
+
     function test_Success_RightSlot_Uint128_In_Int256(uint128 y) public {
         int256 x = 0;
         x = harness.toRightSlot(x, y);
         assertEq(int128(harness.leftSlot(x)), 0);
         assertEq(int128(harness.rightSlot(x)), int128(y));
+    }
+
+    function test_Success_RightSlot_Uint128_In_Int256_noLeaking(int256 x, uint128 y) public {
+        int128 originalLeft = harness.leftSlot(x);
+        x = harness.toRightSlot(x, y);
+        assertEq(
+            int128(harness.leftSlot(x)),
+            originalLeft,
+            "Right slot input overflowed into left slot"
+        );
     }
 
     function test_Success_RightSlot_Int128_In_Int256(int128 y) public {
@@ -43,11 +59,14 @@ contract LeftRightTest is Test {
         assertEq(int128(harness.rightSlot(x)), y);
     }
 
-    function test_Fail_toRightSlot(int128 right) public {
-        right = int128(bound(right, -type(int128).max, -1));
-
-        vm.expectRevert(Errors.LeftRightInputError.selector);
-        harness.toRightSlot(uint256(0), right);
+    function test_Success_RightSlot_int128_In_Int256_noLeaking(int256 x, int128 y) public {
+        int128 originalLeft = harness.leftSlot(x);
+        x = harness.toRightSlot(x, y);
+        assertEq(
+            int128(harness.leftSlot(x)),
+            originalLeft,
+            "Right slot input overflowed into left slot"
+        );
     }
 
     // LEFT SLOT
