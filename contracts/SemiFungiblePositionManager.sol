@@ -1220,18 +1220,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ) internal returns (int256 collectedOut) {
         uint128 startingLiquidity = currentLiquidity.rightSlot();
         // round down current fees base to minimize Δfeesbase
-        int256 amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk, false)
-            .sub(s_accountFeesBase[positionKey]);
-
         // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
         // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
         // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-        amountToCollect = amountToCollect.rightSlot() >= 0
-            ? amountToCollect
-            : amountToCollect.clearRightSlot();
-        amountToCollect = amountToCollect.leftSlot() >= 0
-            ? amountToCollect
-            : amountToCollect.clearLeftSlot();
+        int256 amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk, false)
+            .subRect(s_accountFeesBase[positionKey]);
 
         if (isLong == 1) {
             amountToCollect = amountToCollect.sub(movedInLeg);
@@ -1429,17 +1422,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         netLiquidity,
                         tempChunk
                     );
-                    amountToCollect = feesBase.sub(s_accountFeesBase[positionKey]);
-
                     // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
                     // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
                     // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-                    amountToCollect = amountToCollect.rightSlot() >= 0
-                        ? amountToCollect
-                        : amountToCollect.clearRightSlot();
-                    amountToCollect = amountToCollect.leftSlot() >= 0
-                        ? amountToCollect
-                        : amountToCollect.clearLeftSlot();
+                    amountToCollect = feesBase.subRect(s_accountFeesBase[positionKey]);
                 }
 
                 (uint256 deltaPremiumOwed, uint256 deltaPremiumGross) = _getPremiaDeltas(
