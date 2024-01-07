@@ -443,14 +443,14 @@ contract LeftRightTest is Test {
             if ((y - u > y && u > 0) || (y - u < y && u < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.sub(x, xx);
+                int256 other = harness.subRect(x, xx);
             } else if ((z - v > z && v > 0) || (z - v < z && v < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.sub(x, xx);
+                int256 other = harness.subRect(x, xx);
             } else {
                 // normal case
-                int256 other = harness.sub(x, xx);
+                int256 other = harness.subRect(x, xx);
                 assertEq(int128(harness.leftSlot(other)), y - u > 0 ? y - u : int128(0));
                 assertEq(int128(harness.rightSlot(other)), z - v > 0 ? z - v : int128(0));
             }
