@@ -695,7 +695,7 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_convert0to1_PriceX192_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -719,7 +719,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -738,7 +738,7 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_convert0to1_PriceX192_Int(int256 amount, uint256 sqrtPriceSeed) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -764,7 +764,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -788,7 +788,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -810,7 +810,7 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_convert1to0_PriceX192_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -834,7 +834,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -853,7 +853,7 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_convert1to0_PriceX192_Int(int256 amount, uint256 sqrtPriceSeed) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -880,7 +880,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
@@ -904,7 +904,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, 340275971719517849884101479065584693833)
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
         );
 
         uint256 priceX192 = uint256(sqrtPrice) ** 2;
