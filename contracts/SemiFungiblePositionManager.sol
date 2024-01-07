@@ -980,8 +980,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint128 updatedLiquidity;
         uint256 isLong = TokenId.isLong(_tokenId, _leg);
         uint256 currentLiquidity = s_accountLiquidity[positionKey]; //cache
-
-        unchecked {
+        {
             // did we have liquidity already deployed in Uniswap for this chunk range from some past mint?
 
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
@@ -1012,14 +1011,20 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     // so we revert in this case
                     revert Errors.NotEnoughLiquidity();
                 } else {
-                    // we want to move less than what already sits in uniswap, no problem:
-                    updatedLiquidity = startingLiquidity - chunkLiquidity;
+                    // startingLiquidity is >= chunkLiquidity, so no possible underflow
+                    unchecked {
+                        // we want to move less than what already sits in uniswap, no problem:
+                        updatedLiquidity = startingLiquidity - chunkLiquidity;
+                    }
                 }
 
                 /// @dev If the isLong flag is 1=long and the position is minted, then this is opening a long position
                 /// @dev so the amount of short liquidity should increase.
                 if (!_isBurn) {
-                    removedLiquidity += chunkLiquidity;
+                    // we can't remove more liquidity than we add in the first place, so this can't overflow
+                    unchecked {
+                        removedLiquidity += chunkLiquidity;
+                    }
                 }
             }
 
