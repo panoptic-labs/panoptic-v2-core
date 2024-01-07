@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
+import {Math} from "@libraries/Math.sol";
 
 /// @title Pack two separate data (each of 128bit) into a single 256-bit slot; 256bit-to-128bit packing methods.
 /// @author Axicon Labs Limited
@@ -283,6 +284,28 @@ library LeftRight {
             if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
 
             return z.toRightSlot(right128).toLeftSlot(left128);
+        }
+    }
+
+    /// @notice Subtract two int256 bit LeftRight-encoded words; revert on overflow.
+    /// @notice rectify difference x - y to 0 if negative
+    /// @param x the minuend
+    /// @param y the subtrahend
+    /// @return z the difference x - y
+    function subRect(int256 x, int256 y) internal pure returns (int256 z) {
+        unchecked {
+            int256 left256 = int256(x.leftSlot()) - y.leftSlot();
+            int128 left128 = int128(left256);
+
+            int256 right256 = int256(x.rightSlot()) - y.rightSlot();
+            int128 right128 = int128(right256);
+
+            if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
+
+            return
+                z.toRightSlot(int128(Math.max(right128, 0))).toLeftSlot(
+                    int128(Math.max(left128, 0))
+                );
         }
     }
 
