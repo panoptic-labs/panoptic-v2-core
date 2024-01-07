@@ -3718,6 +3718,112 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertApproxEqAbs(premium1Short, premium1ShortOld, premiaError1[0]);
     }
 
+    // make sure that we allow the premium to overflow and it does not revert when too much is accumulated with a huge multiplier
+    function test_Success_PremiumDOSPrevention(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed
+    ) public {
+        _initPool(0);
+
+        (int24 width, int24 strike) = PositionUtils.getInRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, type(uint256).max);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenIdShort,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            1,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        // mint a long position with 1 wei of liquidity less than available, resulting in a huge multiplier
+
+        sfpm.mintTokenizedPosition(
+            tokenIdLong,
+            uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        changePrank(Bob);
+
+        uint256 swapSize = 10 ** 20;
+
+        for (uint256 i = 0; i < 500; ++i) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
+
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize - (swapSize * fee) / 1_000_000,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
+
+        changePrank(Alice);
+
+        // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
+        sfpm.burnTokenizedPosition(
+            tokenIdLong,
+            uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        sfpm.burnTokenizedPosition(
+            tokenIdShort,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                  SANITY
     //////////////////////////////////////////////////////////////*/

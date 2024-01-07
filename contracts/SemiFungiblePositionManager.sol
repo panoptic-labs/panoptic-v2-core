@@ -1081,10 +1081,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             collectedAmounts
         );
 
-        s_accountPremiumOwed[positionKey] = s_accountPremiumOwed[positionKey].add(deltaPremiumOwed);
-        s_accountPremiumGross[positionKey] = s_accountPremiumGross[positionKey].add(
-            deltaPremiumGross
-        );
+        // note: these are allowed to overflow because the alternative results in a possible DOS with stuck positions at high multipliers
+        // protocols that make use of these values should/will implement a cap to the liquidity utilization to prevent extremely high long premium multipliers
+        // when most of the liquidity is removed. There is no need for such a cap
+        unchecked {
+            s_accountPremiumOwed[positionKey] =
+                s_accountPremiumOwed[positionKey] +
+                deltaPremiumOwed;
+            s_accountPremiumGross[positionKey] =
+                s_accountPremiumGross[positionKey] +
+                deltaPremiumGross;
+        }
     }
 
     /// @notice Compute the feesGrowth * liquidity / 2**128 by reading feeGrowthInside0LastX128 and feeGrowthInside1LastX128 from univ3pool.positions.
@@ -1270,20 +1277,24 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         unchecked {
             uint256 totalLiquidity = netLiquidity + removedLiquidity;
 
-            uint128 premium0X64_base;
-            uint128 premium1X64_base;
+            uint256 premium0X64_base;
+            uint256 premium1X64_base;
 
             {
                 uint128 collected0 = uint128(collectedAmounts.rightSlot());
                 uint128 collected1 = uint128(collectedAmounts.leftSlot());
 
                 // compute the base premium as collected * total / net^2 (from Eqn 3)
-                premium0X64_base = Math
-                    .mulDiv(collected0, totalLiquidity * 2 ** 64, netLiquidity ** 2)
-                    .toUint128();
-                premium1X64_base = Math
-                    .mulDiv(collected1, totalLiquidity * 2 ** 64, netLiquidity ** 2)
-                    .toUint128();
+                premium0X64_base = Math.mulDiv(
+                    collected0,
+                    totalLiquidity * 2 ** 64,
+                    netLiquidity ** 2
+                );
+                premium1X64_base = Math.mulDiv(
+                    collected1,
+                    totalLiquidity * 2 ** 64,
+                    netLiquidity ** 2
+                );
             }
 
             {
@@ -1293,12 +1304,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     // compute the owed premium (from Eqn 3)
                     uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
 
-                    premium0X64_owed = Math
-                        .mulDiv(premium0X64_base, numerator, totalLiquidity)
-                        .toUint128();
-                    premium1X64_owed = Math
-                        .mulDiv(premium1X64_base, numerator, totalLiquidity)
-                        .toUint128();
+                    premium0X64_owed = uint128(
+                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity)
+                    );
+                    premium1X64_owed = uint128(
+                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity)
+                    );
 
                     deltaPremiumOwed = uint256(0).toRightSlot(premium0X64_owed).toLeftSlot(
                         premium1X64_owed
@@ -1315,12 +1326,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         totalLiquidity *
                         removedLiquidity +
                         ((removedLiquidity ** 2) / 2 ** (VEGOID));
-                    premium0X64_gross = Math
-                        .mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
-                        .toUint128();
-                    premium1X64_gross = Math
-                        .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
-                        .toUint128();
+                    premium0X64_gross = uint128(
+                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
+                    );
+                    premium1X64_gross = uint128(
+                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
+                    );
                     deltaPremiumGross = uint256(0).toRightSlot(premium0X64_gross).toLeftSlot(
                         premium1X64_gross
                     );
