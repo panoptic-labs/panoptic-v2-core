@@ -25,7 +25,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
-import {ReenterMint, ReenterBurn} from "../testUtils/ReentrancyMocks.sol";
+import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -1803,65 +1803,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                          OUT-OF-RANGE MINTS: -
     //////////////////////////////////////////////////////////////*/
 
-    function test_Fail_mintTokenizedPosition_ReentrancyLock(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick
-        );
-
-        populatePositionData(width, strike, positionSizeSeed);
-
-        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
-        // but will attempt to callback with mintTokenizedPosition on any other call
-        vm.etch(address(pool), address(new ReenterMint()).code);
-
-        ReenterMint(address(pool)).construct(
-            ReenterMint.Slot0(
-                TickMath.getSqrtRatioAtTick(currentTick),
-                currentTick,
-                0,
-                0,
-                0,
-                0,
-                true
-            ),
-            address(token0),
-            address(token1),
-            fee,
-            tickSpacing
-        );
-
-        vm.expectRevert(Errors.ReentrantCall.selector);
-
-        sfpm.mintTokenizedPosition(
-            tokenId,
-            uint128(positionSize),
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-    }
-
     function test_Fail_mintTokenizedPosition_positionSize0(
         uint256 x,
         uint256 widthSeed,
@@ -2339,15 +2280,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // the swap at mint generates a small amount of fees that need to be accounted for (the burned amount is excluded even though it is technically collected)
         // this is because the totalCollected value that gets returned is used for premia calculation, and the burned amount originally left the caller
         assertEq(totalCollected.rightSlot(), 0);
-        assertEq(uint128(totalCollected.leftSlot()), tokensOwed1);
+        assertApproxEqAbs(uint128(totalCollected.leftSlot()), tokensOwed1, 1);
 
         assertEq(totalSwapped.rightSlot(), 0);
         assertEq(totalSwapped.leftSlot(), -amount1MovedBurn - int256(amount1[1]));
 
         // ensure correct amount of tokens were collected and sent to the minter
-        assertEq(
+        assertApproxEqAbs(
             balance1Final,
-            balance1Before + uint256(amount1[1]) + uint256(amount1MovedBurn) + tokensOwed1
+            balance1Before + uint256(amount1[1]) + uint256(amount1MovedBurn) + tokensOwed1,
+            1
         );
     }
 
@@ -2557,77 +2499,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             int256(IERC20Partial(token1).balanceOf(Alice)),
             int256(balance1Before) + amount1MovedBurn,
             10
-        );
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                               BURNING: +
-    //////////////////////////////////////////////////////////////*/
-
-    function test_Fail_burnTokenizedPosition_ReentrancyLock(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed,
-        uint256 positionSizeBurnSeed
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick
-        );
-
-        populatePositionData(width, strike, positionSizeSeed, positionSizeBurnSeed);
-
-        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        sfpm.mintTokenizedPosition(
-            tokenId,
-            uint128(positionSize),
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-
-        // replace the Uniswap pool with a mock that responds correctly to queries but calls back on
-        // any other operations
-        vm.etch(address(pool), address(new ReenterBurn()).code);
-
-        ReenterBurn(address(pool)).construct(
-            ReenterBurn.Slot0(
-                TickMath.getSqrtRatioAtTick(currentTick),
-                currentTick,
-                0,
-                0,
-                0,
-                0,
-                true
-            ),
-            address(token0),
-            address(token1),
-            fee,
-            tickSpacing
-        );
-
-        vm.expectRevert(Errors.ReentrantCall.selector);
-
-        sfpm.burnTokenizedPosition(
-            tokenId,
-            uint128(positionSizeBurn),
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
         );
     }
 
@@ -2916,6 +2787,113 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         sfpm.safeTransferFrom(Alice, Bob, tokenId, transferSize, "");
     }
 
+    // mint a short leg, long some of that leg, then transfer the long leg
+    // should fail as you shouldnt be able to transfer removedliquidity
+    function test_Fail_afterTokenTransfer_LongChunkTransferredSolo(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenId1,
+            uint128(positionSize * 2),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            1,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenId2,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        vm.expectRevert(Errors.TransferFailed.selector);
+
+        sfpm.safeTransferFrom(Alice, Bob, tokenId2, positionSize, "");
+    }
+
+    // mint a position with a long and short touch to a leg then transfer it
+    // should fail as you shouldnt be able to transfer removedliquidity
+    function test_Fail_afterTokenTransfer_LongChunkAndShortChunk(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed,
+        uint256 optionRatio
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            bound(optionRatio, 1, 127),
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        tokenId1 = tokenId1.addLeg(1, 1, isWETH, 1, 1, 1, strike, width);
+
+        sfpm.mintTokenizedPosition(
+            tokenId1,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        vm.expectRevert(Errors.TransferFailed.selector);
+
+        sfpm.safeTransferFrom(Alice, Bob, tokenId1, positionSize, "");
+    }
+
     function test_Fail_afterTokenTransfer_RecipientAlreadyOwns(
         uint256 x,
         uint256 widthSeed,
@@ -3050,11 +3028,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 .positions(PositionKey.compute(address(sfpm), tickLower, tickUpper));
             assertEq(
                 feesBase0,
-                int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq)))
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq)))
             );
             assertEq(
                 feesBase1,
-                int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq)))
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq)))
             );
         }
 
@@ -3128,7 +3106,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 FullMath.mulDiv(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
-                            feesBase0
+                            feesBase0 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))
+                            ) - feesBase0
+                            : int128(0)
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3139,7 +3122,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 FullMath.mulDiv(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
-                            feesBase1
+                            feesBase1 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))
+                            ) - feesBase1
+                            : int128(0)
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
@@ -3171,15 +3159,20 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 PositionKey.compute(address(sfpm), tickLower, tickUpper)
             );
 
-            assertEq(tokensowed0, 0);
-            assertEq(tokensowed1, 0);
+            assertLe(tokensowed0, 1);
+            assertLe(tokensowed1, 1);
 
             assertApproxEqAbs(
                 IERC20Partial(token0).balanceOf(Alice),
                 uint256(type(uint128).max) +
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
-                            feesBase0
+                            feesBase0 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))
+                            ) - feesBase0
+                            : int128(0)
                     ),
                 10
             );
@@ -3188,7 +3181,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 uint256(type(uint128).max) +
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
-                            feesBase1
+                            feesBase1 >
+                            0
+                            ? int128(
+                                int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))
+                            ) - feesBase1
+                            : int128(0)
                     ),
                 10
             );
@@ -3341,14 +3339,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         changePrank(Alice);
         sfpm.mintTokenizedPosition(tokenId1, positionSize, TickMath.MAX_TICK, TickMath.MIN_TICK);
 
-        assertEq(
+        assertApproxEqAbs(
             int256(IERC20Partial(token0).balanceOf(Alice)),
-            int256(balanceBefore0) + int256(tokensOwed0) - $amount0Moved
+            int256(balanceBefore0) + int256(tokensOwed0) - $amount0Moved,
+            1
         );
 
-        assertEq(
+        assertApproxEqAbs(
             int256(IERC20Partial(token1).balanceOf(Alice)),
-            int256(balanceBefore1) + int256(tokensOwed1) - $amount1Moved
+            int256(balanceBefore1) + int256(tokensOwed1) - $amount1Moved,
+            1
         );
 
         twoWaySwap(swapSizeSeed);
@@ -3611,6 +3611,407 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertApproxEqAbs(premium1Short, premium1ShortOld, premiaError1[0]);
     }
 
+    // make sure that we allow the premium to overflow and it does not revert when too much is accumulated with a huge multiplier
+    function test_Success_PremiumDOSPrevention(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed
+    ) public {
+        _initPool(0);
+
+        (int24 width, int24 strike) = PositionUtils.getInRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, type(uint256).max);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenIdShort = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenIdShort,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            1,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        // mint a long position with 1 wei of liquidity less than available, resulting in a huge multiplier
+
+        sfpm.mintTokenizedPosition(
+            tokenIdLong,
+            uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        changePrank(Bob);
+
+        uint256 swapSize = 10 ** 20;
+
+        for (uint256 i = 0; i < 500; ++i) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
+
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize - (swapSize * fee) / 1_000_000,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
+
+        changePrank(Alice);
+
+        // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
+        sfpm.burnTokenizedPosition(
+            tokenIdLong,
+            uint128(Math.mulDiv(positionSize, (2 ** 64 - 1), 2 ** 64)),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        sfpm.burnTokenizedPosition(
+            tokenIdShort,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                               REENTRANCY
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fail_mintTokenizedPosition_ReentrancyLock(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
+        // but will attempt to callback with mintTokenizedPosition on any other call
+        vm.etch(address(pool), address(new ReenterMint()).code);
+
+        ReenterMint(address(pool)).construct(
+            ReenterMint.Slot0(
+                TickMath.getSqrtRatioAtTick(currentTick),
+                currentTick,
+                0,
+                0,
+                0,
+                0,
+                true
+            ),
+            address(token0),
+            address(token1),
+            fee,
+            tickSpacing
+        );
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    // make sure single transfers check reentrancy lock state
+    function test_Fail_TransferSingle_ReentrancyLock(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
+        // but will attempt to callback with mintTokenizedPosition on any other call
+        vm.etch(address(pool), address(new ReenterTransferSingle()).code);
+
+        ReenterTransferSingle(address(pool)).construct(
+            ReenterTransferSingle.Slot0(
+                TickMath.getSqrtRatioAtTick(currentTick),
+                currentTick,
+                0,
+                0,
+                0,
+                0,
+                true
+            ),
+            address(token0),
+            address(token1),
+            fee,
+            tickSpacing
+        );
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    // make sure batch transfers check reentrancy lock state
+    function test_Fail_TransferBatch_ReentrancyLock(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // replace the Uniswap pool with a mock contract that can answer some queries correctly,
+        // but will attempt to callback with mintTokenizedPosition on any other call
+        vm.etch(address(pool), address(new ReenterTransferBatch()).code);
+
+        ReenterTransferBatch(address(pool)).construct(
+            ReenterTransferBatch.Slot0(
+                TickMath.getSqrtRatioAtTick(currentTick),
+                currentTick,
+                0,
+                0,
+                0,
+                0,
+                true
+            ),
+            address(token0),
+            address(token1),
+            fee,
+            tickSpacing
+        );
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    // make sure reentrancy lock state is persisted through pool init
+    function test_Fail_mintTokenizedPosition_ReentrancyLock_Uninitialized(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initWorld(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        // allow Alice to try to initialize and then reenter when getting the onERC1155Received callback
+        vm.etch(address(Alice), address(new Reenter1155Initialize()).code);
+
+        Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    function test_Fail_burnTokenizedPosition_ReentrancyLock(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed,
+        uint256 positionSizeBurnSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed, positionSizeBurnSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        // replace the Uniswap pool with a mock that responds correctly to queries but calls back on
+        // any other operations
+        vm.etch(address(pool), address(new ReenterBurn()).code);
+
+        ReenterBurn(address(pool)).construct(
+            ReenterBurn.Slot0(
+                TickMath.getSqrtRatioAtTick(currentTick),
+                currentTick,
+                0,
+                0,
+                0,
+                0,
+                true
+            ),
+            address(token0),
+            address(token1),
+            fee,
+            tickSpacing
+        );
+
+        vm.expectRevert(Errors.ReentrantCall.selector);
+
+        sfpm.burnTokenizedPosition(
+            tokenId,
+            uint128(positionSizeBurn),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                                  SANITY
     //////////////////////////////////////////////////////////////*/
@@ -3668,5 +4069,52 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             d0 = swapAmount > 0 ? (swapAmount * 10 ** 6) / price : -swapAmount;
             d1 = -(swapAmount > 0 ? swapAmount : (-swapAmount * price) / 10 ** 6);
         }
+    }
+
+    function test_Fail_RemovedLiquidity_Overflow() public {
+        _initPool(0);
+
+        // need a super wide position to exxagerate position size units
+        _cacheWorldState(USDC_WETH_30);
+        sfpm.initializeAMMPool(token0, token1, fee);
+
+        int24 width = 4090;
+        int24 strike = 0;
+        populatePositionData(width, strike, 0, 0);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(1_000_000),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
+
+        for (uint256 i = 0; i < 10; i++) {
+            sfpm.mintTokenizedPosition(tokenId, uint128(922), TickMath.MIN_TICK, TickMath.MAX_TICK);
+
+            sfpm.burnTokenizedPosition(tokenId, uint128(462), TickMath.MIN_TICK, TickMath.MAX_TICK);
+        }
+
+        vm.expectRevert();
+        sfpm.burnTokenizedPosition(
+            tokenId,
+            uint128(10 * (922 - 462)),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
     }
 }

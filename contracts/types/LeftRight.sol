@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
+import {Math} from "@libraries/Math.sol";
 
 /// @title Pack two separate data (each of 128bit) into a single 256-bit slot; 256bit-to-128bit packing methods.
 /// @author Axicon Labs Limited
@@ -13,6 +14,10 @@ import {Errors} from "@libraries/Errors.sol";
 library LeftRight {
     using LeftRight for uint256;
     using LeftRight for int256;
+    uint256 internal constant LEFT_HALF_BIT_MASK =
+        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
+    int256 internal constant LEFT_HALF_BIT_MASK_INT =
+        int256(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000));
     int256 internal constant RIGHT_HALF_BIT_MASK = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
     /*//////////////////////////////////////////////////////////////
@@ -36,6 +41,7 @@ library LeftRight {
     /// @dev All toRightSlot functions add bits to the right slot without clearing it first
     /// @dev Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
     /// @dev Therefore, the assumption must not be made that the bits will be cleared while using these helpers
+    /// @dev Note that the values *within* the slots are allowed to overflow, but overflows are contained and will not leak into the other slot
 
     /// @notice Write the "right" slot to a uint256.
     /// @param self the original full uint256 bit pattern to be written to
@@ -43,18 +49,9 @@ library LeftRight {
     /// @return self with incoming right added (not overwritten, but added) to its right 128 bits
     function toRightSlot(uint256 self, uint128 right) internal pure returns (uint256) {
         unchecked {
-            return self + uint256(right);
-        }
-    }
-
-    /// @notice Write the "right" slot to a uint256.
-    /// @param self the original full uint256 bit pattern to be written to
-    /// @param right the bit pattern to write into the full pattern in the right half
-    /// @return self with right added to its right 128 bits
-    function toRightSlot(uint256 self, int128 right) internal pure returns (uint256) {
-        if (right < 0) revert Errors.LeftRightInputError();
-        unchecked {
-            return self + uint256(int256(right));
+            // prevent the right slot from leaking into the left one in the case of an overflow
+            // ff + 1 = (1)00, but we want just ff + 1 = 00
+            return (self & LEFT_HALF_BIT_MASK) + uint256(uint128(self) + right);
         }
     }
 
@@ -64,7 +61,11 @@ library LeftRight {
     /// @return self with right added to its right 128 bits
     function toRightSlot(int256 self, uint128 right) internal pure returns (int256) {
         unchecked {
-            return self + int256(uint256(right));
+            // prevent the right slot from leaking into the left one in the case of a positive sign change
+            // ff + 1 = (1)00, but we want just ff + 1 = 00
+            return
+                (self & LEFT_HALF_BIT_MASK_INT) +
+                (int256(int128(self) + int128(right)) & RIGHT_HALF_BIT_MASK);
         }
     }
 
@@ -75,7 +76,11 @@ library LeftRight {
     function toRightSlot(int256 self, int128 right) internal pure returns (int256) {
         // bit mask needed in case rightHalfBitPattern < 0 due to 2's complement
         unchecked {
-            return self + (int256(right) & RIGHT_HALF_BIT_MASK);
+            // prevent the right slot from leaking into the left one in the case of a positive sign change
+            // ff + 1 = (1)00, but we want just ff + 1 = 00
+            return
+                (self & LEFT_HALF_BIT_MASK_INT) +
+                (int256(int128(self) + right) & RIGHT_HALF_BIT_MASK);
         }
     }
 
@@ -100,6 +105,7 @@ library LeftRight {
     /// @dev All toLeftSlot functions add bits to the left slot without clearing it first
     /// @dev Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
     /// @dev Therefore, the assumption must not be made that the bits will be cleared while using these helpers
+    /// @dev Note that the values *within* the slots are allowed to overflow, but overflows are contained and will not leak into the other slot
 
     /// @notice Write the "left" slot to a uint256 bit pattern.
     /// @param self the original full uint256 bit pattern to be written to
@@ -264,6 +270,28 @@ library LeftRight {
             if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
 
             return z.toRightSlot(right128).toLeftSlot(left128);
+        }
+    }
+
+    /// @notice Subtract two int256 bit LeftRight-encoded words; revert on overflow.
+    /// @notice rectify difference x - y to 0 if negative
+    /// @param x the minuend
+    /// @param y the subtrahend
+    /// @return z the difference x - y
+    function subRect(int256 x, int256 y) internal pure returns (int256 z) {
+        unchecked {
+            int256 left256 = int256(x.leftSlot()) - y.leftSlot();
+            int128 left128 = int128(left256);
+
+            int256 right256 = int256(x.rightSlot()) - y.rightSlot();
+            int128 right128 = int128(right256);
+
+            if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
+
+            return
+                z.toRightSlot(int128(Math.max(right128, 0))).toLeftSlot(
+                    int128(Math.max(left128, 0))
+                );
         }
     }
 
