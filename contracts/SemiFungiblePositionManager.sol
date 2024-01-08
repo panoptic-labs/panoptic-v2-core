@@ -127,7 +127,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     bool internal constant MINT = false;
     bool internal constant BURN = true;
 
-    // ν = 2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
+    // ν = 1/2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
     // Similar to vega in options because the liquidity utilization is somewhat reflective of the implied volatility (IV),
     // and vegoid modifies the sensitivity of the stremia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
@@ -217,7 +217,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
               spread = ν*(liquidity removed from that strike)/(netLiquidity remaining at that strike)
                      = ν*R/N
 
-        For an arbitrary parameter 0 <= ν <= 1. This way, the gross_feesCollectedX128 will be given by: 
+        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by: 
 
               gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N) 
                                       = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N         
@@ -371,10 +371,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             poolId = PanopticMath.getFinalPoolId(poolId, token0, token1, fee);
         }
         // store the poolId => UniswapV3Pool information in a mapping
-        // `locked` can be initialized to false because the pool address makes the slot nonzero
+        // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
+        // note: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
         s_poolContext[poolId] = PoolAddressAndLock({
             pool: IUniswapV3Pool(univ3pool),
-            locked: false
+            locked: s_poolContext[poolId].locked
         });
 
         // store the UniswapV3Pool => poolId information in a mapping
@@ -412,7 +413,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // Decode the mint callback data
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, address(FACTORY), decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, FACTORY, decoded.poolFeatures);
         // Sends the amount0Owed and amount1Owed quantities provided
         if (amount0Owed > 0)
             SafeTransferLib.safeTransferFrom(
@@ -432,7 +433,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
     /// @notice Called by the pool after executing a swap during an ITM option mint/burn.
     /// @dev Pays the pool tokens owed for the swap from the payer (always the caller)
-    /// amount0Delta and amount1Delta can both be 0 if no tokens were swapped.
     /// @param amount0Delta The amount of token0 that was sent (negative) or must be received (positive) by the pool by
     /// the end of the swap. If positive, the callback must send that amount of token0 to the pool.
     /// @param amount1Delta The amount of token1 that was sent (negative) or must be received (positive) by the pool by
@@ -446,7 +446,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // Decode the swap callback data, checks that the UniswapV3Pool has the correct address.
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, address(FACTORY), decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, FACTORY, decoded.poolFeatures);
 
         // Extract the address of the token to be sent (amount0 -> token0, amount1 -> token1)
         address token = amount0Delta > 0
@@ -454,6 +454,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             : address(decoded.poolFeatures.token1);
 
         // Transform the amount to pay to uint256 (take positive one from amount0 and amount1)
+        // the pool will always pass one delta with a positive sign and one with a negative sign or zero,
+        // so this logic always picks the correct delta to pay
         uint256 amountToPay = amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta);
 
         // Pay the required token from the payer to the caller of this contract
@@ -536,41 +538,62 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     TRANSFER HOOK IMPLEMENTATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice called after batch transfers (NOT mints or burns)
-    /// @param from The address of the sender
-    /// @param to The address of the recipient
-    /// @param ids The tokenIds being transferred
-    /// @param amounts The amounts of each token being transferred
-    function afterTokenTransfer(
+    /// @notice Transfer a single token from one user to another
+    /// @dev supports token approvals
+    /// @param from the user to transfer tokens from
+    /// @param to the user to transfer tokens to
+    /// @param id the ERC1155 token id to transfer
+    /// @param amount the amount of tokens to transfer
+    /// @param data optional data to include in the receive hook
+    function safeTransferFrom(
         address from,
         address to,
-        uint256[] memory ids,
-        uint256[] memory amounts
-    ) internal override {
+        uint256 id,
+        uint256 amount,
+        bytes calldata data
+    ) public override {
+        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
+        // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
+        if (s_poolContext[id.univ3pool()].locked) revert Errors.ReentrantCall();
+
+        // update the position data
+        registerTokenTransfer(from, to, id, amount);
+
+        // transfer the token (note that all state updates are completed before reentrancy is possible through onReceived callbacks)
+        super.safeTransferFrom(from, to, id, amount, data);
+    }
+
+    /// @notice Transfer multiple tokens from one user to another
+    /// @dev supports token approvals
+    /// @dev ids and amounts must be of equal length
+    /// @param from the user to transfer tokens from
+    /// @param to the user to transfer tokens to
+    /// @param ids the ERC1155 token ids to transfer
+    /// @param amounts the amounts of tokens to transfer
+    /// @param data optional data to include in the receive hook
+    function safeBatchTransferFrom(
+        address from,
+        address to,
+        uint256[] calldata ids,
+        uint256[] calldata amounts,
+        bytes calldata data
+    ) public override {
+        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
+        // so just check if there is an active reentrancy lock for the relevant pool on each token
         for (uint256 i = 0; i < ids.length; ) {
+            if (s_poolContext[ids[i].univ3pool()].locked) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, ids[i], amounts[i]);
             unchecked {
                 ++i;
             }
         }
-    }
 
-    /// @notice called after single transfers (NOT mints or burns)
-    /// @param from The address of the sender
-    /// @param to The address of the recipient
-    /// @param id The tokenId being transferred
-    /// @param amount The amount of the token being transferred
-    function afterTokenTransfer(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount
-    ) internal override {
-        registerTokenTransfer(from, to, id, amount);
+        // transfer the token (note that all state updates are completed before reentrancy is possible)
+        super.safeBatchTransferFrom(from, to, ids, amounts, data);
     }
 
     /// @notice update user position data following a token transfer
-    /// @dev token transfers are only allowed if you transfer your entire balance of a given tokenId and the recipient has none
+    /// @dev token transfers are only allowed if you transfer your entire liquidity of a given chunk and the recipient has none
     /// @param from The address of the sender
     /// @param to The address of the recipient
     /// @param id The tokenId being transferred'
@@ -616,9 +639,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 (s_accountFeesBase[positionKey_to] != 0)
             ) revert Errors.TransferFailed();
 
-            // Revert if not all balance is transferred
+            // Revert if sender has long positions in that chunk or the entire liquidity is not being transferred
             uint256 fromLiq = s_accountLiquidity[positionKey_from];
-            if (fromLiq.rightSlot() != liquidityChunk.liquidity()) revert Errors.TransferFailed();
+            if (fromLiq != liquidityChunk.liquidity()) revert Errors.TransferFailed();
 
             int256 fromBase = s_accountFeesBase[positionKey_from];
 
@@ -957,8 +980,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint128 updatedLiquidity;
         uint256 isLong = TokenId.isLong(_tokenId, _leg);
         uint256 currentLiquidity = s_accountLiquidity[positionKey]; //cache
-
-        unchecked {
+        {
             // did we have liquidity already deployed in Uniswap for this chunk range from some past mint?
 
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
@@ -989,14 +1011,20 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     // so we revert in this case
                     revert Errors.NotEnoughLiquidity();
                 } else {
-                    // we want to move less than what already sits in uniswap, no problem:
-                    updatedLiquidity = startingLiquidity - chunkLiquidity;
+                    // startingLiquidity is >= chunkLiquidity, so no possible underflow
+                    unchecked {
+                        // we want to move less than what already sits in uniswap, no problem:
+                        updatedLiquidity = startingLiquidity - chunkLiquidity;
+                    }
                 }
 
                 /// @dev If the isLong flag is 1=long and the position is minted, then this is opening a long position
                 /// @dev so the amount of short liquidity should increase.
                 if (!_isBurn) {
-                    removedLiquidity += chunkLiquidity;
+                    // we can't remove more liquidity than we add in the first place, so this can't overflow
+                    unchecked {
+                        removedLiquidity += chunkLiquidity;
+                    }
                 }
             }
 
@@ -1059,10 +1087,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         }
 
         // position has been touched, update s_accountFeesBase with the latest values from the pool.positions
+        // round up the stored feesbase to minimize Δfeesbase when we next calculate it
         s_accountFeesBase[positionKey] = _getFeesBase(
             _univ3pool,
             updatedLiquidity,
-            _liquidityChunk
+            _liquidityChunk,
+            true
         );
     }
 
@@ -1080,20 +1110,30 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             collectedAmounts
         );
 
-        s_accountPremiumOwed[positionKey] = s_accountPremiumOwed[positionKey].add(deltaPremiumOwed);
-        s_accountPremiumGross[positionKey] = s_accountPremiumGross[positionKey].add(
-            deltaPremiumGross
-        );
+        // note: these are allowed to overflow because the alternative results in a possible DOS with stuck positions at high multipliers
+        // protocols that make use of these values should/will implement a cap to the liquidity utilization to prevent extremely high long premium multipliers
+        // when most of the liquidity is removed. There is no need for such a cap
+        unchecked {
+            s_accountPremiumOwed[positionKey] =
+                s_accountPremiumOwed[positionKey] +
+                deltaPremiumOwed;
+            s_accountPremiumGross[positionKey] =
+                s_accountPremiumGross[positionKey] +
+                deltaPremiumGross;
+        }
     }
 
     /// @notice Compute the feesGrowth * liquidity / 2**128 by reading feeGrowthInside0LastX128 and feeGrowthInside1LastX128 from univ3pool.positions.
     /// @param univ3pool the Uniswap pool.
     /// @param liquidity the total amount of liquidity in the AMM for the specific position
     /// @param liquidityChunk has lower tick, upper tick, and liquidity amount to mint
+    /// @param roundUp if true, round up the feesBase, otherwise round down
+    /// @dev stored fees base is rounded up and the current fees base is rounded down to minimize the amount of fees collected (Δfeesbase) in favor of the protocol
     function _getFeesBase(
         IUniswapV3Pool univ3pool,
         uint128 liquidity,
-        uint256 liquidityChunk
+        uint256 liquidityChunk,
+        bool roundUp
     ) private view returns (int256 feesBase) {
         // now collect fee growth within the liquidity chunk in `liquidityChunk`
         // this is the fee accumulated in Uniswap for this chunk of liquidity
@@ -1116,9 +1156,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         /// This is not a problem in Uniswap v3 because the fees are always calculated by taking the difference of the feeGrowths,
         /// so that the net different is always positive.
         /// So by using int128 instead of uint128, we remove the need to handle extremely large underflows and simply allow it to be negative
-        feesBase = int256(0)
-            .toRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
-            .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
+        feesBase = roundUp
+            ? int256(0)
+                .toRightSlot(
+                    int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, liquidity)))
+                )
+                .toLeftSlot(
+                    int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, liquidity)))
+                )
+            : int256(0)
+                .toRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
+                .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
     }
 
     /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap v3 pool; return the amount moved.
@@ -1206,9 +1254,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 isLong
     ) internal returns (int256 collectedOut) {
         uint128 startingLiquidity = currentLiquidity.rightSlot();
-        int256 amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk).sub(
-            s_accountFeesBase[positionKey]
-        );
+        // round down current fees base to minimize Δfeesbase
+        // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+        // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+        // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+        int256 amountToCollect = _getFeesBase(univ3pool, startingLiquidity, liquidityChunk, false)
+            .subRect(s_accountFeesBase[positionKey]);
 
         if (isLong == 1) {
             amountToCollect = amountToCollect.sub(movedInLeg);
@@ -1269,20 +1320,24 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         unchecked {
             uint256 totalLiquidity = netLiquidity + removedLiquidity;
 
-            uint128 premium0X64_base;
-            uint128 premium1X64_base;
+            uint256 premium0X64_base;
+            uint256 premium1X64_base;
 
             {
                 uint128 collected0 = uint128(collectedAmounts.rightSlot());
                 uint128 collected1 = uint128(collectedAmounts.leftSlot());
 
                 // compute the base premium as collected * total / net^2 (from Eqn 3)
-                premium0X64_base = Math
-                    .mulDiv(collected0, totalLiquidity * 2 ** 64, netLiquidity ** 2)
-                    .toUint128();
-                premium1X64_base = Math
-                    .mulDiv(collected1, totalLiquidity * 2 ** 64, netLiquidity ** 2)
-                    .toUint128();
+                premium0X64_base = Math.mulDiv(
+                    collected0,
+                    totalLiquidity * 2 ** 64,
+                    netLiquidity ** 2
+                );
+                premium1X64_base = Math.mulDiv(
+                    collected1,
+                    totalLiquidity * 2 ** 64,
+                    netLiquidity ** 2
+                );
             }
 
             {
@@ -1292,12 +1347,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     // compute the owed premium (from Eqn 3)
                     uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
 
-                    premium0X64_owed = Math
-                        .mulDiv(premium0X64_base, numerator, totalLiquidity)
-                        .toUint128();
-                    premium1X64_owed = Math
-                        .mulDiv(premium1X64_base, numerator, totalLiquidity)
-                        .toUint128();
+                    premium0X64_owed = uint128(
+                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity)
+                    );
+                    premium1X64_owed = uint128(
+                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity)
+                    );
 
                     deltaPremiumOwed = uint256(0).toRightSlot(premium0X64_owed).toLeftSlot(
                         premium1X64_owed
@@ -1314,12 +1369,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         totalLiquidity *
                         removedLiquidity +
                         ((removedLiquidity ** 2) / 2 ** (VEGOID));
-                    premium0X64_gross = Math
-                        .mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
-                        .toUint128();
-                    premium1X64_gross = Math
-                        .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
-                        .toUint128();
+                    premium0X64_gross = uint128(
+                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
+                    );
+                    premium1X64_gross = uint128(
+                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
+                    );
                     deltaPremiumGross = uint256(0).toRightSlot(premium0X64_gross).toLeftSlot(
                         premium1X64_gross
                     );
@@ -1339,7 +1394,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param tokenType The tokenType of the position (the token it started as)
     /// @param tickLower The lower end of the tick range for the position (int24)
     /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (removedLiquidity:netLiquidity -> rightSlot:leftSlot)
+    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
     function getAccountLiquidity(
         address univ3pool,
         address owner,
@@ -1406,7 +1461,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         netLiquidity,
                         tempChunk
                     );
-                    amountToCollect = feesBase.sub(s_accountFeesBase[positionKey]);
+                    // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+                    // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+                    // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+                    amountToCollect = feesBase.subRect(s_accountFeesBase[positionKey]);
                 }
 
                 (uint256 deltaPremiumOwed, uint256 deltaPremiumGross) = _getPremiaDeltas(

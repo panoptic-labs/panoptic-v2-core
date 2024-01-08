@@ -13,20 +13,6 @@ contract ERC1155MinimalHarness is ERC1155 {
     function mint(address account, uint256 id, uint256 amount) public {
         _mint(account, id, amount);
     }
-
-    function afterTokenTransfer(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts
-    ) internal virtual override {}
-
-    function afterTokenTransfer(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount
-    ) internal virtual override {}
 }
 
 contract ERC1155Minimal is Test {
