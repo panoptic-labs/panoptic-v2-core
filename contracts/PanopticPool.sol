@@ -20,7 +20,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -984,11 +983,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 premia.leftSlot()
             );
 
-            console2.log("balanceOfLiquidatee0", s_collateralToken0.balanceOf(_liquidatee));
-            console2.log("tokenData0.rightSlot()", tokenData0.rightSlot());
-            console2.log("tokenData0.leftSlot()", tokenData0.leftSlot());
-            console2.log("balanceOfLiquidatee1", s_collateralToken1.balanceOf(_liquidatee));
-
             (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 tokenData0,
                 tokenData1,
@@ -1021,15 +1015,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             netExchanged,
             premia
         );
-        console2.log("liquidationBonus0", liquidationBonus0);
-        console2.log("liquidationBonus1", liquidationBonus1);
-        console2.log("tokenData0.rightSlot()", tokenData0.rightSlot());
-        console2.log("tokenData1.rightSlot()", tokenData1.rightSlot());
-        console2.log("tokenData0.leftSlot()", tokenData0.leftSlot());
-        console2.log("tokenData1.leftSlot()", tokenData1.leftSlot());
 
         // revoke the delegated amount plus the bonus amount.
-
         {
             s_collateralToken0.revoke(
                 msg.sender,
@@ -1229,15 +1216,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
-
-            console2.log("balance0", balance0);
-            console2.log("balance1", balance1);
-            console2.log("paid0", paid0);
-            console2.log("paid1", paid1);
-            console2.log("netExchanged0", netExchanged.rightSlot());
-            console2.log("netExchanged1", netExchanged.leftSlot());
-            console2.log("sqrtPriceX96Twap", sqrtPriceX96Twap);
-            console2.log("sqrtPriceX96", sqrtPriceX96Final);
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
