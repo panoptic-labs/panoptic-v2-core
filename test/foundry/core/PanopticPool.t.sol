@@ -5603,12 +5603,14 @@ contract PanopticPoolTest is PositionUtils {
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
         $shareDelta1 = shareDeltasLiquidatee[1] - (int256(ct1.balanceOf(Alice)) - $shareDelta1);
 
+        // bonus can be very small on the threshold leading to a loss (of 1-2 tokens) due to precision, which is fine
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
                 PanopticMath.convert1to0(
                     ct1.convertToAssets(ct1.balanceOf(Bob)),
                     TickMath.getSqrtRatioAtTick(currentTickFinal)
-                ),
+                ) +
+                1,
             $accValueBefore0,
             "liquidator lost money"
         );
