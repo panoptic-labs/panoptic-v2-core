@@ -5594,11 +5594,6 @@ contract PanopticPoolTest is PositionUtils {
             uint256(type(uint96).max).toLeftSlot(type(uint96).max)
         );
 
-        console2.log("shareDeltaLiquidatee0", shareDeltasLiquidatee[0]);
-        console2.log("shareDeltaLiquidatee1", shareDeltasLiquidatee[1]);
-        console2.log("sharedeltapost0", (int256(ct0.balanceOf(Alice)) - $shareDelta0));
-        console2.log("sharedeltapost1", (int256(ct1.balanceOf(Alice)) - $shareDelta1));
-
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
         $shareDelta1 = shareDeltasLiquidatee[1] - (int256(ct1.balanceOf(Alice)) - $shareDelta1);
@@ -5622,15 +5617,6 @@ contract PanopticPoolTest is PositionUtils {
                 $tokenData1.rightSlot(),
                 TickMath.getSqrtRatioAtTick(TWAPtick)
             );
-        console2.log("T! tokenData0 RS", $tokenData0.rightSlot());
-        console2.log("T! tokenData1 RS", $tokenData1.rightSlot());
-        console2.log("T! tokendata0 LS", $tokenData0.leftSlot());
-        console2.log("T! tokendata1 LS", $tokenData1.leftSlot());
-        console2.log("T! currentTickFinal", currentTickFinal);
-        console2.log("T! sqrtRatio", TickMath.getSqrtRatioAtTick(currentTickFinal));
-        console2.log("T! TWAPtick", TWAPtick);
-        console2.log("T! sqrtTWAPtick", TickMath.getSqrtRatioAtTick(TWAPtick));
-        console2.log("combinedBalance0", $combinedBalance0);
 
         // make sure value outlay for Alice matches the bonus structure
         // if Alice is completely insolvent the deltas will be wrong because
