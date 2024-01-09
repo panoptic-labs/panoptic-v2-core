@@ -938,14 +938,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Will revert if: account is not margin called or if the user liquidates themselves.
     /// @param liquidatee Address of the distressed account.
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...].
-    /// @param delegation0 Amount of token0 delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
-    /// @param delegation1 Amount of token1 delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
+    /// @param positionIdListLiquidator List of positions owned by the liquidator.
+    /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
     function liquidate(
         address liquidatee,
         uint256[] calldata positionIdList,
         uint256[] calldata positionIdListLiquidator,
-        uint256 delegation0,
-        uint256 delegation1
+        uint256 delegations
     ) external {
         address _liquidatee = liquidatee;
         _validatePositionList(_liquidatee, positionIdList, 0);
@@ -955,6 +954,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 tokenData0;
         uint256 tokenData1;
+        int256 premia;
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
@@ -962,7 +962,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
                 revert Errors.StaleTWAP();
 
-            (int256 premia, uint256[2][] memory positionBalanceArray) = _calculateAccumulatedPremia(
+            uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
+            (premia, positionBalanceArray) = _calculateAccumulatedPremia(
                 _liquidatee,
                 positionIdList,
                 COMPUTE_ALL_PREMIA,
@@ -994,11 +995,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Perform the specified delegation from `msg.sender` to `liquidatee`
         // Works like a transfer, so the liquidator must possess all the tokens they are delegating, resulting in no net supply change
         // If not enough tokens are delegated for the positions of `liquidatee` to be closed, the liquidation will fail
-        s_collateralToken0.delegate(msg.sender, _liquidatee, delegation0);
-        s_collateralToken1.delegate(msg.sender, _liquidatee, delegation1);
+        s_collateralToken0.delegate(msg.sender, _liquidatee, delegations.rightSlot());
+        s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
         // burn all options from the liquidatee
-        (, , int256 netExchanged) = _burnAllOptionsFrom(
+        (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
             _liquidatee,
             Constants.MIN_V3POOL_TICK,
             Constants.MAX_V3POOL_TICK,
@@ -1006,26 +1007,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         // compute bonus amounts using latest tick data
-        (, int24 finalTick, , , , , ) = s_univ3pool.slot0();
         (int256 liquidationBonus0, int256 liquidationBonus1) = getLiquidationBonus(
             tokenData0,
             tokenData1,
+            Math.getSqrtRatioAtTick(twapTick),
             Math.getSqrtRatioAtTick(finalTick),
-            netExchanged
+            netExchanged,
+            premia
         );
 
         // revoke the delegated amount plus the bonus amount.
-
         {
             s_collateralToken0.revoke(
                 msg.sender,
                 _liquidatee,
-                uint256(int256(delegation0) + liquidationBonus0)
+                uint256(int256(uint256(delegations.rightSlot())) + liquidationBonus0)
             );
             s_collateralToken1.revoke(
                 msg.sender,
                 _liquidatee,
-                uint256(int256(delegation1) + liquidationBonus1)
+                uint256(int256(uint256(delegations.leftSlot())) + liquidationBonus1)
             );
         }
         {
@@ -1160,21 +1161,29 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Check that the account is liquidatable, get the split of bonus0 and bonus1 amounts.
     /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot.
     /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot.
-    /// @param sqrtPriceX96 The current sqrt(price) of the AMM.
+    /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
+    /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user.
     /// @param netExchanged The net exchanged value of the closed portfolio
+    /// @param premia premium across all positions being liquidated present in tokenData
     /// @return bonus0 bonus amount for token0
     /// @return bonus1 bonus amount for token1
     function getLiquidationBonus(
         uint256 tokenData0,
         uint256 tokenData1,
-        uint160 sqrtPriceX96,
-        int256 netExchanged
+        uint160 sqrtPriceX96Twap,
+        uint160 sqrtPriceX96Final,
+        int256 netExchanged,
+        int256 premia
     ) internal pure returns (int256 bonus0, int256 bonus1) {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
                 // compute the ratio of token0 to total collateral requirements
-                uint256 required0 = PanopticMath.convert0to1(tokenData0.leftSlot(), sqrtPriceX96);
+                // evaluate at TWAP price to keep consistentcy with solvency calculations
+                uint256 required0 = PanopticMath.convert0to1(
+                    tokenData0.leftSlot(),
+                    sqrtPriceX96Twap
+                );
                 uint256 required1 = tokenData1.leftSlot();
                 uint256 requiredRatioX128 = (required0 << 128) / (required0 + required1);
 
@@ -1182,7 +1191,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenData0,
                     tokenData1,
                     0,
-                    sqrtPriceX96
+                    sqrtPriceX96Twap
                 );
 
                 uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
@@ -1193,13 +1202,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 bonus1 = int256(
                     PanopticMath.convert0to1(
                         Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                        sqrtPriceX96
+                        sqrtPriceX96Final
                     )
                 );
             }
 
-            int256 balance0 = int256(uint256(tokenData0.rightSlot()));
-            int256 balance1 = int256(uint256(tokenData1.rightSlot()));
+            // negative premium (owed to the liquidatee) is credited to the collateral balance
+            // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
+            int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
+                Math.max(premia.rightSlot(), 0);
+            int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
+                Math.max(premia.leftSlot(), 0);
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
@@ -1221,10 +1234,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
                 bonus1 += Math.min(
                     balance1 - paid1,
-                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96)
+                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
                 );
                 bonus0 -= Math.min(
-                    PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96),
+                    PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
                     paid0 - balance0
                 );
             } else if ((paid1 > balance1)) {
@@ -1238,10 +1251,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
                 bonus0 += Math.min(
                     balance0 - paid0,
-                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96)
+                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
                 );
                 bonus1 -= Math.min(
-                    PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96),
+                    PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
                     paid1 - balance1
                 );
             }
