@@ -583,10 +583,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // For the sake of simplicity assets can only be withdrawn through the redeem function
         uint256 available = s_poolAssets;
         uint256 balance = convertToAssets(balanceOf[owner]);
-        return
-            s_panopticPool.numberOfPositions(owner) == 0
-                ? available > balance ? balance : available
-                : 0;
+        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
 
     /// @notice Returns the amount of shares that would be burned to withdraw a given amount of assets.
@@ -652,10 +649,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
         uint256 available = convertToShares(s_poolAssets);
         uint256 balance = balanceOf[owner];
-        return
-            s_panopticPool.numberOfPositions(owner) == 0
-                ? available > balance ? balance : available
-                : 0;
+        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
 
     /// @notice returns the amount of assets resulting from a given amount of shares being redeemed
@@ -783,9 +777,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         (2 * int256(_currentTick - strike - range)) / range
                     );
                 }
-                maxNumRangesFromStrike = currNumRangesFromStrike > maxNumRangesFromStrike
-                    ? currNumRangesFromStrike
-                    : maxNumRangesFromStrike;
+
+                maxNumRangesFromStrike = Math.max(currNumRangesFromStrike, maxNumRangesFromStrike);
 
                 uint256 tokenType = positionId.tokenType(leg);
 
@@ -1242,9 +1235,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
-                int256 swapCommission = intrinsicValue < 0
-                    ? -(s_ITMSpreadFee * intrinsicValue) / DECIMALS_128
-                    : (s_ITMSpreadFee * intrinsicValue) / DECIMALS_128;
+                int256 swapCommission = Math.abs((s_ITMSpreadFee * intrinsicValue) / DECIMALS_128);
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
                 exchangedAmount = intrinsicValue + swapCommission;
