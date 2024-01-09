@@ -1224,8 +1224,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
             int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
                 Math.max(premia.rightSlot(), 0);
-            int256 balance1 = int256(uint256(tokenData1.rightSlot()));
-            -Math.max(premia.leftSlot(), 0);
+            int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
+                Math.max(premia.leftSlot(), 0);
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
