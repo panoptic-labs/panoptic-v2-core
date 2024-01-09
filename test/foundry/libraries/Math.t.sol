@@ -125,6 +125,27 @@ contract MathTest is Test {
         harness.mulDiv96(input, input);
     }
 
+    function test_Success_mulDiv128(uint128 a, uint128 b) public {
+        uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 128);
+        uint256 returnedResult = harness.mulDiv128(a, b);
+
+        assertEq(expectedResult, returnedResult);
+    }
+
+    function test_Fail_mulDiv128() public {
+        uint256 input = type(uint256).max;
+
+        vm.expectRevert();
+        harness.mulDiv128(input, input);
+    }
+
+    function test_Success_mulDiv128RoundingUp(uint128 a, uint128 b) public {
+        uint256 expectedResult = FullMath.mulDivRoundingUp(a, b, 2 ** 128);
+        uint256 returnedResult = harness.mulDiv128RoundingUp(a, b);
+
+        assertEq(expectedResult, returnedResult);
+    }
+
     function test_Success_mulDiv192(uint128 a, uint128 b) public {
         uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 192);
         uint256 returnedResult = harness.mulDiv192(a, b);

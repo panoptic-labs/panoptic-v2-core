@@ -399,7 +399,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^64) with full precision. Throws if result overflows a uint256 or denominator == 0.
+    /// @notice Calculates floor(a×b÷2^64) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
@@ -461,7 +461,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^96) with full precision. Throws if result overflows a uint256 or denominator == 0.
+    /// @notice Calculates floor(a×b÷2^96) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
@@ -523,7 +523,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^128) with full precision. Throws if result overflows a uint256 or denominator == 0.
+    /// @notice Calculates floor(a×b÷2^128) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
@@ -585,7 +585,21 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^192) with full precision. Throws if result overflows a uint256 or denominator == 0.
+    /// @notice Calculates ceil(a×b÷2^128) with full precision. Throws if result overflows a uint256.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return result The 256-bit result
+    function mulDiv128RoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        unchecked {
+            result = mulDiv128(a, b);
+            if (mulmod(a, b, 2 ** 128) > 0) {
+                require(result < type(uint256).max);
+                result++;
+            }
+        }
+    }
+
+    /// @notice Calculates floor(a×b÷2^192) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
