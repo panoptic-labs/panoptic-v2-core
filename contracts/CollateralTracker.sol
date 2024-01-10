@@ -1030,7 +1030,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
     function refund(address delegatee, uint256 assets) external onlyPanopticPool {
         // round up in favor of the protocol
-        balanceOf[delegatee] -= Math.mulDivRoundingUp(assets, totalSupply, totalAssets());
+        balanceOf[delegatee] -= convertToShares(assets);
     }
 
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
