@@ -1113,11 +1113,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // Liquidator must delegate the notional amount of tokens needed for exercising.
-        s_collateralToken0.delegate(msg.sender, account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.delegate(msg.sender, account, uint128(delegatedAmounts.leftSlot()));
+        // The protocol delegates some virtual shares to ensure the burn can be settled.
+        s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
+        s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
 
-        // Rescue and liquidate positions
+        // Liquidate positions
         // Note: tick limits are not applied here since it is not the exercisor's position being liquidated
         _burnAllOptionsFrom(account, 0, 0, touchedId);
 
@@ -1126,8 +1126,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
 
-        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
-        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
+        s_collateralToken0.refund(
+            account,
+            msg.sender,
+            delegatedAmounts.rightSlot() - refundAmounts.rightSlot()
+        );
+        s_collateralToken1.refund(
+            account,
+            msg.sender,
+            delegatedAmounts.leftSlot() - refundAmounts.leftSlot()
+        );
+
+        // refund the protocol any virtual shares
+        s_collateralToken0.refund(msg.sender, uint128(delegatedAmounts.rightSlot()));
+        s_collateralToken1.refund(msg.sender, uint128(delegatedAmounts.leftSlot()));
 
         // update the current tick after any ITM swaps
         (, currentTick, , , , , ) = s_univ3pool.slot0();

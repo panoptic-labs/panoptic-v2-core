@@ -1016,6 +1016,23 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _transferFrom(delegator, delegatee, shares);
     }
 
+    /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
+    /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @param delegatee The delegatee to send shares to - the recipient of the shares.
+    /// @param assets The assets to which the shares delegated correspond.
+    function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
+        balanceOf[delegatee] += convertToShares(assets);
+    }
+
+    /// @notice Refunds delegated tokens back to the protocol
+    /// @dev Assumes that `delegatee` has enough money to pay for the refund
+    /// @param delegatee The account refunding tokens to 'delegatee'.
+    /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
+    function refund(address delegatee, uint256 assets) external onlyPanopticPool {
+        // round up in favor of the protocol
+        balanceOf[delegatee] -= Math.mulDivRoundingUp(assets, totalSupply, totalAssets());
+    }
+
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
     /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate).
     /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate).
@@ -1079,7 +1096,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev Assumes that the refunder has enough money to pay for the refund
     /// @dev can handle negative refund amounts that go from refundee to refunder in the case of high exercise fees.
     /// @param refunder The account refunding tokens to 'refundee'.
-    /// @param refundee The amount being refunded to.
+    /// @param refundee The account being refunded to.
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
         if (assets > 0) {
