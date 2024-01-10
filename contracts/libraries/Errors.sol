@@ -45,6 +45,9 @@ library Errors {
     /// @notice Invalid input in LeftRight library.
     error LeftRightInputError();
 
+    /// @notice A liquidation was initiated from an account that had one or more positions open
+    error LiquidatorHasOpenPositions();
+
     /// @notice None of the forced exercised legs are exerciseable (they are all in-the-money)
     error NoLegsExercisable();
 
@@ -88,6 +91,10 @@ library Errors {
 
     /// @notice Function has been called while reentrancy lock is active
     error ReentrantCall();
+
+    /// @notice The current tick is too far away from the calculated Uniswap TWAP
+    /// This is a safeguard against extreme price manipulation during liquidations
+    error StaleTWAP();
 
     /// @notice Too many positions open (above limit per account)
     error TooManyPositionsOpen();
