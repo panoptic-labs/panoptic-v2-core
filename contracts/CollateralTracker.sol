@@ -1029,7 +1029,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev Assumes that `delegatee` has enough money to pay for the refund
     /// @dev burns virtual/temporary shares after a position has been settled - the total supply is not affected.
     /// @param delegatee The account refunding tokens to 'delegatee'.
-    /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
+    /// @param assets The amount of assets to which the shares to refund to the protocol correspond.
     function refund(address delegatee, uint256 assets) external onlyPanopticPool {
         balanceOf[delegatee] -= convertToShares(assets);
     }
