@@ -220,6 +220,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
     mapping(address account => mapping(uint256 tokenId => mapping(uint256 leg => uint256 premiaGrowth)))
         internal s_options;
 
+    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total `shortLiquidity`
+    /// totalGrossPremium = shortLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
+    /// Used to compute the denominator for the fraction of premium available to sellers to collect
+    mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
+
+    /// @dev per-chunk mapping tokens owed to sellers that have been settled and are now available
+    /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
+    /// It decreases when sellers close positions and collect the premium they are owed
+    mapping(bytes32 chunkKey => uint256 settledTokens) internal s_settledTokens;
+
     /// @dev Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot)
     ///    poolUtilizations when minted (left)    liquidity=ERC1155 balance (right)
     ///        token0          token1
