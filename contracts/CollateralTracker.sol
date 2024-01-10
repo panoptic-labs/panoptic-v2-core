@@ -1018,6 +1018,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @dev mints virtual/temporary shares so a position can be settled - the total supply is not affected.
     /// @param delegatee The delegatee to send shares to - the recipient of the shares.
     /// @param assets The assets to which the shares delegated correspond.
     function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
@@ -1026,6 +1027,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Refunds delegated tokens back to the protocol
     /// @dev Assumes that `delegatee` has enough money to pay for the refund
+    /// @dev burns virtual/temporary shares after a position has been settled - the total supply is not affected.
     /// @param delegatee The account refunding tokens to 'delegatee'.
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
     function refund(address delegatee, uint256 assets) external onlyPanopticPool {

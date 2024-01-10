@@ -1117,7 +1117,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
         s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
 
-        // Liquidate positions
+        // Exercise the option
         // Note: tick limits are not applied here since it is not the exercisor's position being liquidated
         _burnAllOptionsFrom(account, 0, 0, touchedId);
 
@@ -1126,6 +1126,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
 
+        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         s_collateralToken0.refund(
             account,
             msg.sender,
@@ -1137,7 +1138,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
         );
 
-        // refund the protocol any virtual shares
+        // refund the protocol any virtual shares after settling the difference with the exercisor
         s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
         s_collateralToken1.refund(account, uint128(delegatedAmounts.leftSlot()));
 
