@@ -1129,12 +1129,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.refund(
             account,
             msg.sender,
-            delegatedAmounts.rightSlot() - refundAmounts.rightSlot()
+            refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
         );
         s_collateralToken1.refund(
             account,
             msg.sender,
-            delegatedAmounts.leftSlot() - refundAmounts.leftSlot()
+            refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
         );
 
         // refund the protocol any virtual shares
