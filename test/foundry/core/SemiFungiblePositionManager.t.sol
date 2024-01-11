@@ -1018,7 +1018,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -1028,7 +1028,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(totalSwapped.rightSlot(), $amount0Moved);
         assertEq(totalSwapped.leftSlot(), $amount1Moved);
@@ -1082,7 +1082,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -1092,7 +1092,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(totalSwapped.rightSlot(), $amount0Moved);
         assertEq(totalSwapped.leftSlot(), $amount1Moved);
@@ -1198,7 +1198,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 int128(expectedLiq)
             );
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -1208,7 +1208,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertApproxEqAbs(
             totalSwapped.rightSlot(),
@@ -1278,7 +1278,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -1288,7 +1288,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(totalSwapped.rightSlot(), $amount0Moved);
         assertEq(totalSwapped.leftSlot(), $amount1Moved);
@@ -1371,7 +1371,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             positionSize,
             TickMath.MAX_TICK - 1,
@@ -1381,7 +1381,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(totalSwapped.rightSlot(), 0);
         assertEq(totalSwapped.leftSlot(), int256(amount1) + amount1Moved);
@@ -1470,7 +1470,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MAX_TICK - 1,
@@ -1480,7 +1480,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
         assertEq(totalSwapped.rightSlot(), int256(amount0) + amount0Moved);
         assertEq(totalSwapped.leftSlot(), 0);
 
@@ -1571,7 +1571,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             positionSize,
             TickMath.MAX_TICK - 1,
@@ -1581,7 +1581,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(totalSwapped.rightSlot(), amount0s + $amount0Moveds[0] + $amount0Moveds[1]);
         assertEq(totalSwapped.leftSlot(), amount1s + $amount1Moveds[0] + $amount1Moveds[1]);
@@ -1703,7 +1703,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             positionSizes[1],
             TickMath.MAX_TICK - 1,
@@ -1713,7 +1713,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(totalSwapped.rightSlot(), amount0s + $amount0Moveds[1] + $amount0Moveds[2]);
         assertEq(totalSwapped.leftSlot(), amount1s + $amount1Moveds[1] + $amount1Moveds[2]);
@@ -2090,7 +2090,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // price changes afters swap at mint so we need to update the price
         (currentSqrtPriceX96, , , , , , ) = pool.slot0();
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             uint128(positionSizeBurn),
             TickMath.MIN_TICK,
@@ -2102,7 +2102,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         assertApproxEqAbs(totalSwapped.rightSlot(), -$amount0MovedBurn, 10);
         assertApproxEqAbs(totalSwapped.leftSlot(), -$amount1MovedBurn, 10);
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertEq(sfpm.balanceOf(Alice, tokenId), positionSize - positionSizeBurn);
 
@@ -2221,7 +2221,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 int128(expectedLiqBurn)
             ) - 1;
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             uint128(positionSizeBurn),
             TickMath.MAX_TICK - 1,
@@ -2279,8 +2279,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // the swap at mint generates a small amount of fees that need to be accounted for (the burned amount is excluded even though it is technically collected)
         // this is because the totalCollected value that gets returned is used for premia calculation, and the burned amount originally left the caller
-        assertEq(totalCollected.rightSlot(), 0);
-        assertApproxEqAbs(uint128(totalCollected.leftSlot()), tokensOwed1, 1);
+        assertEq(collectedByLeg[0].rightSlot()+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
+        assertApproxEqAbs(uint128(collectedByLeg[0].leftSlot()), tokensOwed1, 1);
 
         assertEq(totalSwapped.rightSlot(), 0);
         assertEq(totalSwapped.leftSlot(), -amount1MovedBurn - int256(amount1[1]));
@@ -2445,7 +2445,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                         )
                 );
 
-        (int256 totalCollected, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             uint128(positionSizeBurn),
             TickMath.MIN_TICK,
@@ -2455,7 +2455,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
         assertEq(newTick, currentTick);
 
-        assertEq(totalCollected, 0);
+        assertEq(collectedByLeg[0]+collectedByLeg[1]+collectedByLeg[2]+collectedByLeg[3], 0);
 
         assertApproxEqAbs(
             totalSwapped.rightSlot(),
