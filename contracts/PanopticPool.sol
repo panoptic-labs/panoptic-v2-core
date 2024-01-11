@@ -640,12 +640,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal returns (uint128 poolUtilizations, int24) {
         // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
         // Switch order of tickLimits to create "swapAtMint" flag
-        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            tickLimitHigh,
-            tickLimitLow
-        );
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm
+            .mintTokenizedPosition(tokenId, positionSize, tickLimitHigh, tickLimitLow);
 
         // cache tickSpacing
         int24 tickSpacing = s_tickSpacing;
@@ -665,22 +661,40 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (poolUtilizations, newTick);
     }
 
-    function updateSettlementPostMint(uint256 tokenId, uint256[4] memory collectedByLeg, uint128 positionSize, int24 tickSpacing) internal {
+    function updateSettlementPostMint(
+        uint256 tokenId,
+        uint256[4] memory collectedByLeg,
+        uint128 positionSize,
+        int24 tickSpacing
+    ) internal {
         for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-            bytes32 chunkKey = keccak256(abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg)));
+            bytes32 chunkKey = keccak256(
+                abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+            );
             // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
             s_settledTokens[chunkKey] += collectedByLeg[leg];
             if (tokenId.isLong(leg) == 0) {
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize, tickSpacing);
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize,
+                    tickSpacing
+                );
 
                 // shortLiquidity (total sold) = removedLiquidity + netLiquidity
                 uint256 shortLiquidity;
                 {
-                    uint256 accountLiquidities = sfpm.getAccountLiquidity(address(s_univ3pool), address(this), tokenId.tokenType(leg), liquidityChunk.tickLower(), liquidityChunk.tickUpper());
+                    uint256 accountLiquidities = sfpm.getAccountLiquidity(
+                        address(s_univ3pool),
+                        address(this),
+                        tokenId.tokenType(leg),
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper()
+                    );
                     // removed + net
                     shortLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
                 }
-                // We need to adjust the grossPremiumLast value such that the result of 
+                // We need to adjust the grossPremiumLast value such that the result of
                 // (grossPremium - adjustedGrossPremiumLast)*updatedShortLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*shortLiquidityBeforeMint/2**64
                 // G: total gross premium
                 // S: shortLiquidityBeforeMint
@@ -689,7 +703,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // L: current grossPremiumLast value
                 // Ln: updated grossPremiumLast value
                 // S * (C - L) = G
-                // (S + R) * (C - Ln) = G 
+                // (S + R) * (C - Ln) = G
                 //
                 // S = G/(C-L)
                 // (G/(C-L) + R) * (C - Ln) = G
@@ -706,10 +720,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     liquidityChunk.tickUpper(),
                     type(int24).max,
                     0
-                ); 
+                );
                 // get G
-                gross0 = Math.mulDiv64(shortLiquidity, gross0 - s_grossPremiumLast[chunkKey].rightSlot());
-                gross1 = Math.mulDiv64(shortLiquidity, gross1 - s_grossPremiumLast[chunkKey].leftSlot());
+                gross0 = Math.mulDiv64(
+                    shortLiquidity,
+                    gross0 - s_grossPremiumLast[chunkKey].rightSlot()
+                );
+                gross1 = Math.mulDiv64(
+                    shortLiquidity,
+                    gross1 - s_grossPremiumLast[chunkKey].leftSlot()
+                );
             }
         }
     }
