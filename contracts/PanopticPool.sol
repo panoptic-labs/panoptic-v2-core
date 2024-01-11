@@ -590,7 +590,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenId,
             tickStateCallContext,
             positionSize,
-            positionIdList,
             tickLimitLow,
             tickLimitHigh
         );
@@ -628,7 +627,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position to be minted.
     /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param positionSize The size of the position, expressed in terms of the asset.
-    /// @param positionIdList The existing positions held by the user.
     /// @param tickLimitLow The lower slippage limit on the tick.
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
@@ -637,18 +635,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tokenId,
         uint256 tickStateCallContext,
         uint128 positionSize,
-        uint256[] calldata positionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128 poolUtilizations, int24) {
         // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
         // Switch order of tickLimits to create "swapAtMint" flag
-        (, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             positionSize,
             tickLimitHigh,
             tickLimitLow
         );
+
+        // cache tickSpacing
+        int24 tickSpacing = s_tickSpacing;
+
+        updateSettlementPostMint(tokenId, collectedByLeg, positionSize, tickSpacing);
 
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
@@ -656,10 +658,60 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickStateCallContext.updateCurrentTick(newTick),
             tokenId,
             positionSize,
-            totalSwapped
+            totalSwapped,
+            tickSpacing
         );
 
         return (poolUtilizations, newTick);
+    }
+
+    function updateSettlementPostMint(uint256 tokenId, uint256[4] memory collectedByLeg, uint128 positionSize, int24 tickSpacing) internal {
+        for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+            bytes32 chunkKey = keccak256(abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg)));
+            // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
+            s_settledTokens[chunkKey] += collectedByLeg[leg];
+            if (tokenId.isLong(leg) == 0) {
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize, tickSpacing);
+
+                // shortLiquidity (total sold) = removedLiquidity + netLiquidity
+                uint256 shortLiquidity;
+                {
+                    uint256 accountLiquidities = sfpm.getAccountLiquidity(address(s_univ3pool), address(this), tokenId.tokenType(leg), liquidityChunk.tickLower(), liquidityChunk.tickUpper());
+                    // removed + net
+                    shortLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
+                }
+                // We need to adjust the grossPremiumLast value such that the result of 
+                // (grossPremium - adjustedGrossPremiumLast)*updatedShortLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*shortLiquidityBeforeMint/2**64
+                // G: total gross premium
+                // S: shortLiquidityBeforeMint
+                // P: shortLiquidityPostMint
+                // C: current grossPremium value
+                // L: current grossPremiumLast value
+                // Ln: updated grossPremiumLast value
+                // S * (C - L) = G
+                // (S + R) * (C - Ln) = G 
+                //
+                // S = G/(C-L)
+                // (G/(C-L) + R) * (C - Ln) = G
+                // CG/(C-L) + CR - LnG/(C-L) - LnR = G
+                // CG/(C-L) + CR  - G = LnG/(C-L) + LnR
+                // CG/(C-L) + CR  - G = Ln(G/(C-L) + R)
+                //
+                // (CS + CR - G)/(S + R) = Ln
+                (uint256 gross0, uint256 gross1) = sfpm.getAccountPremium(
+                    address(s_univ3pool),
+                    address(this),
+                    tokenId.tokenType(leg),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper(),
+                    type(int24).max,
+                    0
+                ); 
+                // get G
+                gross0 = Math.mulDiv64(shortLiquidity, gross0 - s_grossPremiumLast[chunkKey].rightSlot());
+                gross1 = Math.mulDiv64(shortLiquidity, gross1 - s_grossPremiumLast[chunkKey].leftSlot());
+            }
+        }
     }
 
     /// @notice Pay the commission fees for creating the options and update internal state.
@@ -668,6 +720,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped How much was swapped (if in-the-money position).
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
     /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
@@ -675,13 +728,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tickStateCallContext,
         uint256 tokenId,
         uint128 positionSize,
-        int256 totalSwapped
+        int256 totalSwapped,
+        int24 tickSpacing
     ) internal returns (uint128) {
         // compute how much of tokenId is long and short positions
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
             positionSize,
-            s_tickSpacing
+            tickSpacing
         );
 
         int128 utilization0 = s_collateralToken0.takeCommissionAddData(
