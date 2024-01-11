@@ -1142,10 +1142,34 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int24 currentTick = tickStateCallContext.currentTick();
             int24 medianTick = tickStateCallContext.medianTick();
             // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
-            if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
-                utilization = DECIMALS_128 + 1;
-            } else {
-                utilization = _poolUtilization();
+            int24 deviation = int24(Math.abs(currentTick - medianTick));
+
+            utilization = _poolUtilization();
+
+            if (deviation > int24(s_tickDeviation)) {
+                if (longAmount > 0) {
+                    // price has moved beyond tickDeviation and there is a long leg, the requirement is 100% for long+short options (set utilization to 10_001 > DECIMALS)
+                    utilization = DECIMALS_128 + 1;
+                } else {
+                    // price has moved beyond tickDeviation but the position doesn't have any long legs, then utilization for the short legs will scale
+                    // according to the tick deviation. Specifically, the expression for the utilization is:
+                    /**
+                      UTILIZATION
+                             ^
+                      100% - |_______.       ._________
+                             |        .     . 
+                             |         .   .   
+                             |          . .     
+      current utilization  - |           v      
+                             |                
+                             +-------+---+---+------->   TICK DEVIATION = (CURRENT - MEDIAN)
+                                  -s_tD  0  +s_tD
+                    */
+                    // utilization = currentUtilization + (DECIMALS - currentUtilization) * abs(currentTick - medianTick) / s_tickDeviation
+                    utilization +=
+                        ((DECIMALS_128 - _poolUtilization()) * deviation) /
+                        int24(s_tickDeviation);
+                }
             }
         }
     }
