@@ -5635,25 +5635,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                         );
 
-                    uint256 c2 = 10_000 - sellCollateralRatio;
+                    uint256 c2 = FixedPoint96.Q96 - sellCollateralRatio;
 
                     // ITM
                     if (
                         ((atTick < (legLowerTick)) && (tokenType == 1)) ||
                         ((atTick >= (legUpperTick)) && (tokenType == 0))
                     ) {
-                        uint256 c3 = c2 * (FixedPoint96.Q96 - ratio);
-                        return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c3) / 10_000);
+                        return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
                         uint256 c3 = FullMath.mulDiv(
-                            c2,
+                            notionalMoved,
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
                         );
-                        return tokensRequired += uint128((notionalMoved * c3) / 10_000);
+                        return tokensRequired += uint128(c3);
                     }
                 }
             } else {
