@@ -1625,7 +1625,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     // access control on delegate/revoke/settlement functions
-    function test_Fail_All_OnlyPanopticPool(address caller) public{
+    function test_Fail_All_OnlyPanopticPool(address caller) public {
         vm.assume(caller != address(panopticPool));
 
         vm.prank(caller);
