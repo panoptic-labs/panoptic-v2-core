@@ -71,7 +71,10 @@ library LiquidityChunk {
         uint128 amount
     ) internal pure returns (uint256) {
         unchecked {
-            return (uint256(uint24(_tickLower)) << 232) + (uint256(uint24(_tickUpper)) << 208) + uint256(amount);        
+            return
+                (uint256(uint24(_tickLower)) << 232) +
+                (uint256(uint24(_tickUpper)) << 208) +
+                uint256(amount);
         }
     }
 
