@@ -1113,11 +1113,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // Liquidator must delegate the notional amount of tokens needed for exercising.
-        s_collateralToken0.delegate(msg.sender, account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.delegate(msg.sender, account, uint128(delegatedAmounts.leftSlot()));
+        // The protocol delegates some virtual shares to ensure the burn can be settled.
+        s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
+        s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
 
-        // Rescue and liquidate positions
+        // Exercise the option
         // Note: tick limits are not applied here since it is not the exercisor's position being liquidated
         _burnAllOptionsFrom(account, 0, 0, touchedId);
 
@@ -1126,8 +1126,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
 
-        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
-        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
+        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
+        s_collateralToken0.refund(
+            account,
+            msg.sender,
+            refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
+        );
+        s_collateralToken1.refund(
+            account,
+            msg.sender,
+            refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
+        );
+
+        // refund the protocol any virtual shares after settling the difference with the exercisor
+        s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
+        s_collateralToken1.refund(account, uint128(delegatedAmounts.leftSlot()));
 
         // update the current tick after any ITM swaps
         (, currentTick, , , , , ) = s_univ3pool.slot0();
