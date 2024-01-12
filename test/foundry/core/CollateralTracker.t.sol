@@ -1516,7 +1516,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1,
                 type(uint104).max
             );
-            
+
             // approve collateral tracker to move tokens on Alice's behalf
             IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
             IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
