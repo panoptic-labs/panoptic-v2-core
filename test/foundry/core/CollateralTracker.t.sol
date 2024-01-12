@@ -1354,6 +1354,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // give Bob the max amount of tokens
         _grantTokens(Bob);
 
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+
         // deposit a number of assets determined via fuzzing
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(assets, Bob);
@@ -1404,7 +1408,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 type(uint104).max
             );
 
-            // approve collateral tracker to move tokens on Bob's behalf
+            // approve collateral tracker to move tokens on Alice's behalf
             IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
             IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
 
@@ -1512,6 +1516,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1,
                 type(uint104).max
             );
+            
+            // approve collateral tracker to move tokens on Alice's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
+            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
 
             // deposit a number of assets determined via fuzzing
             // equal deposits for both collateral token pairs for testing purposes
@@ -1577,8 +1585,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(Bob, Alice, int256(uint256(shares)), collateralToken0);
-        panopticPool.refund(Bob, Alice, int256(uint256(shares)), collateralToken1);
+        panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken0);
+        panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken1);
 
         // check delegatee balance after
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
@@ -1612,9 +1620,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(Bob, Alice, -int256(uint256(assets)), collateralToken0);
+        panopticPool.refund(Alice, Bob, -int256(uint256(assets)), collateralToken0);
 
-        panopticPool.refund(Bob, Alice, -int256(uint256(assets)), collateralToken1);
+        panopticPool.refund(Alice, Bob, -int256(uint256(assets)), collateralToken1);
 
         // check delegatee balance after
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
@@ -1625,7 +1633,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     // access control on delegate/revoke/settlement functions
-    function test_Fail_All_OnlyPanopticPool(address caller) public {
+    function test_Fail_All_OnlyPanopticPool(uint256 x, address caller) public {
+        _initWorld(x);
         vm.assume(caller != address(panopticPool));
 
         vm.prank(caller);
