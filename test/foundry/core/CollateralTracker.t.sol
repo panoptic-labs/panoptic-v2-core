@@ -1581,8 +1581,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // check delegator balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
 
         // invoke delegate transactions from the Panoptic pool
         panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken0);
@@ -1592,8 +1592,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
         uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
 
-        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+        assertApproxEqAbs(sharesBefore0 - sharesAfter0, shares, 5);
+        assertApproxEqAbs(sharesBefore1 - sharesAfter1, shares, 5);
     }
 
     function test_success_refund_negative(uint256 x, uint104 assets) public {
