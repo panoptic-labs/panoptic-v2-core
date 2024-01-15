@@ -1516,8 +1516,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
                         ); // calls -> strike/price
 
-                    // compute the collateral expression (c2 intermediate for clarity)
-                    uint256 c2 = DECIMALS - uint256(int256(_sellCollateralRatio(utilization)));
+                    // compute the collateral requirement depending on whether the position is ITM & out-of-range or ITM and in-range:
 
                     /// ITM and out-of-range
                     if (
@@ -1525,7 +1524,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         ((atTick >= (strike + oneSidedRange)) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
                     ) {
                         /**
-                                    Short put BPR = 100% - (100% - SCR)*(price/strike)
+                                    Short put BPR = 100% - (price/strike) + SCR
 
                            BUYING
                            POWER
@@ -1533,34 +1532,36 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                          
                                          ^               .         .
                                          |        <- ITM . <-ATM-> . OTM ->
-                                  100% - |--__           .    .    .
-                                         |    ¯¯--__     .    .    .
-                                         |          ¯¯--__    .    .
-                                   SCR - |               .¯¯--__________
-                                         |               .    .    .
-                                         +---------------+----+----+--->   current
-                                         0              Pa  strike Pb       price
+                           100% + SCR% - |--__           .    .    .
+                                  100% - | . .¯¯--__     .    .    .
+                                         |    .     ¯¯--__    .    .
+                                   SCR - |    .          .¯¯--__________
+                                         |    .          .    .    .
+                                         +----+----------+----+----+--->   current
+                                         0   Liqui-     Pa  strike Pb       price
+                                             dation
+                                             price = SCR*strike                                         
                          */
 
-                        uint256 c3 = c2 * (Constants.FP96 - ratio);
+                        uint256 c2 = Constants.FP96 - ratio;
 
                         // compute the tokens required
-                        // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(1-ratio) + SCR*amountMoved
-                        required += (Math.mulDiv96(amountMoved, c3) / DECIMALS);
+                        // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
+                        required += Math.mulDiv96(amountMoved, c2);
                     } else {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
-                        //  required = (1-sellCollateral) * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateral
+                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
                         uint160 scaleFactor = Math.getSqrtRatioAtTick(2 * oneSidedRange);
                         uint256 c3 = Math.mulDiv(
-                            c2,
+                            amountMoved,
                             scaleFactor - ratio,
                             scaleFactor + Constants.FP96
                         );
                         // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(scaleFactor-ratio)/(scaleFactor+1) + SCR*amountMoved
-                        required += ((amountMoved * c3) / DECIMALS);
+                        required += c3;
                     }
                 }
             }
