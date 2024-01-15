@@ -5618,7 +5618,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 tokensRequired = uint128(
                     FullMath.mulDiv(notionalMoved, sellCollateralRatio, 10_000)
                 );
-
                 // OTM
                 if (
                     ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
@@ -5635,13 +5634,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                         );
 
-                    uint256 c2 = FixedPoint96.Q96 - ratio;
-
                     // ITM
                     if (
                         ((atTick < (legLowerTick)) && (tokenType == 1)) ||
                         ((atTick >= (legUpperTick)) && (tokenType == 0))
                     ) {
+                        uint256 c2 = FixedPoint96.Q96 - ratio;
+
                         return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                     } else {
                         // ATM
