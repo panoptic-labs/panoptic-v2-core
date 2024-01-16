@@ -217,11 +217,12 @@ contract LeftRightTest is Test {
         xx = harness.toRightSlot(xx, v);
 
         unchecked {
-            uint256 other = harness.add(x, xx);
+            uint256 other = harness.addUnchecked(x, xx);
             assertEq(uint128(harness.leftSlot(other)), y + u);
             assertEq(uint128(harness.rightSlot(other)), z + v);
         }
     }
+
 
     function test_Success_AddUintInt(uint128 y, uint128 z, int128 u, int128 v) public {
         uint256 x = 0;
