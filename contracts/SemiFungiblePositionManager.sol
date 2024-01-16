@@ -1113,14 +1113,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // note: these are allowed to overflow because the alternative results in a possible DOS with stuck positions at high multipliers
         // protocols that make use of these values should/will implement a cap to the liquidity utilization to prevent extremely high long premium multipliers
         // when most of the liquidity is removed. There is no need for such a cap
-        unchecked {
-            s_accountPremiumOwed[positionKey] =
-                s_accountPremiumOwed[positionKey] +
-                deltaPremiumOwed;
-            s_accountPremiumGross[positionKey] =
-                s_accountPremiumGross[positionKey] +
-                deltaPremiumGross;
-        }
+        s_accountPremiumOwed[positionKey] =
+            s_accountPremiumOwed[positionKey].addUnchecked(deltaPremiumOwed);
+        s_accountPremiumGross[positionKey] =
+            s_accountPremiumGross[positionKey].addUnchecked(deltaPremiumGross);
     }
 
     /// @notice Compute the feesGrowth * liquidity / 2**128 by reading feeGrowthInside0LastX128 and feeGrowthInside1LastX128 from univ3pool.positions.
@@ -1471,9 +1467,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     amountToCollect
                 );
                 // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+                // allow rollover to remain consistent with actual behavior
                 acctPremia = isLong == 1
-                    ? acctPremia.add(deltaPremiumOwed)
-                    : acctPremia.add(deltaPremiumGross);
+                    ? acctPremia.addUnchecked(deltaPremiumOwed)
+                    : acctPremia.addUnchecked(deltaPremiumGross);
             }
         }
 
