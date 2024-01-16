@@ -1650,27 +1650,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     s_tickSpacing
                 );
 
-                uint256[2] memory premiumAccumulators;
+                uint256 premiumAccumulators;
                 {
                     uint256 tokenType = TokenId.tokenType(tokenId, leg);
-                    (premiumAccumulators[0], premiumAccumulators[1]) = sfpm.getAccountPremium(
-                        address(s_univ3pool),
-                        address(this),
-                        tokenType,
-                        liquidityChunk.tickLower(),
-                        liquidityChunk.tickUpper(),
-                        atTick,
-                        isLong
+                    int24 _atTick = atTick;
+                    (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm
+                        .getAccountPremium(
+                            address(s_univ3pool),
+                            address(this),
+                            tokenType,
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            _atTick,
+                            isLong
+                        );
+                    premiumAccumulators = uint256(0).toRightSlot(premiumAccumulator0).toLeftSlot(
+                        premiumAccumulator1
                     );
                 }
 
                 unchecked {
-                    uint256[2] memory premiumAccumulatorsLast;
-                    {
-                        uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
-                        premiumAccumulatorsLast[0] = premiumAccumulatorLast.rightSlot();
-                        premiumAccumulatorsLast[1] = premiumAccumulatorLast.leftSlot();
-                    }
+                    uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
 
                     // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
                     // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
@@ -1679,11 +1679,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    ((
-                                        premiumAccumulators[0] >= premiumAccumulatorsLast[0]
-                                            ? premiumAccumulators[0] - premiumAccumulatorsLast[0]
-                                            : premiumAccumulators[0] +
-                                                (type(uint128).max - premiumAccumulatorsLast[0])
+                                    (uint256(
+                                        premiumAccumulators.rightSlot() >=
+                                            premiumAccumulatorLast.rightSlot()
+                                            ? premiumAccumulators.rightSlot() -
+                                                premiumAccumulatorLast.rightSlot()
+                                            : premiumAccumulators.rightSlot() +
+                                                (type(uint128).max -
+                                                    premiumAccumulatorLast.rightSlot())
                                     ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
@@ -1691,11 +1694,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    ((
-                                        premiumAccumulators[1] >= premiumAccumulatorsLast[1]
-                                            ? premiumAccumulators[1] - premiumAccumulatorsLast[1]
-                                            : premiumAccumulators[1] +
-                                                (type(uint128).max - premiumAccumulatorsLast[1])
+                                    (uint256(
+                                        premiumAccumulators.leftSlot() >=
+                                            premiumAccumulatorLast.leftSlot()
+                                            ? premiumAccumulators.leftSlot() -
+                                                premiumAccumulatorLast.leftSlot()
+                                            : premiumAccumulators.leftSlot() +
+                                                (type(uint128).max -
+                                                    premiumAccumulatorLast.leftSlot())
                                     ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
