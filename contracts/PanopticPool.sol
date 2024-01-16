@@ -1643,31 +1643,40 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
             if ((isLong == 1) || computeAllPremia) {
-                uint256 tokenType = TokenId.tokenType(tokenId, leg);
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
                     leg,
                     positionSize,
                     s_tickSpacing
                 );
-
-                (uint256 premiumAccumulator0, uint256 premiumAccumulator1) = sfpm.getAccountPremium(
-                    address(s_univ3pool),
-                    address(this),
-                    tokenType,
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper(),
-                    atTick,
-                    isLong
-                );
+                
+                uint256[2] memory premiumAccumulators;
+                {
+                    uint256 tokenType = TokenId.tokenType(tokenId, leg);
+                    (premiumAccumulators[0], premiumAccumulators[1]) = sfpm.getAccountPremium(
+                        address(s_univ3pool),
+                        address(this),
+                        tokenType,
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        atTick,
+                        isLong
+                    );
+                }
 
                 unchecked {
-                    uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
+                    uint256[2] memory premiumAccumulatorsLast;
+                    {
+                        uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
+                        premiumAccumulatorsLast[0] = premiumAccumulatorLast.rightSlot();
+                        premiumAccumulatorsLast[1] = premiumAccumulatorLast.leftSlot();
+                    }
                     int256 legPremia = int256(0)
                         .toRightSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulator0 - premiumAccumulatorLast.rightSlot()) *
+                                    ((premiumAccumulators[0] >= premiumAccumulatorsLast[0] ? premiumAccumulators[0] - premiumAccumulatorsLast[0] :
+                                    premiumAccumulators[0] + (type(uint128).max - premiumAccumulatorsLast[0])) *
                                         (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
@@ -1675,7 +1684,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulator1 - premiumAccumulatorLast.leftSlot()) *
+                                    ((premiumAccumulators[1] >= premiumAccumulatorsLast[1] ? premiumAccumulators[1] - premiumAccumulatorsLast[1] :
+                                    premiumAccumulators[1] + (type(uint128).max - premiumAccumulatorsLast[1])) *
                                         (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
