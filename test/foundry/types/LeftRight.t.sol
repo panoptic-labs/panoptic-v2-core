@@ -223,7 +223,6 @@ contract LeftRightTest is Test {
         }
     }
 
-
     function test_Success_AddUintInt(uint128 y, uint128 z, int128 u, int128 v) public {
         uint256 x = 0;
         x = harness.toLeftSlot(x, y);

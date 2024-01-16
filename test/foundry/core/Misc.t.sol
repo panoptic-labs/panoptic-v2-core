@@ -13,6 +13,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
+
 contract SwapperC {
     function uniswapV3SwapCallback(
         int256 amount0Delta,
@@ -62,16 +63,22 @@ contract SwapperC {
     }
 
     function mint(IUniswapV3Pool pool, int24 tickLower, int24 tickUpper, uint128 liquidity) public {
-        pool.mint(address(this), tickLower, tickUpper, liquidity, abi.encode(
-            CallbackLib.CallbackData({
-                poolFeatures: CallbackLib.PoolFeatures({
-                    token0: pool.token0(),
-                    token1: pool.token1(),
-                    fee: pool.fee()
-                }),
-                payer: msg.sender
-            })
-        ));
+        pool.mint(
+            address(this),
+            tickLower,
+            tickUpper,
+            liquidity,
+            abi.encode(
+                CallbackLib.CallbackData({
+                    poolFeatures: CallbackLib.PoolFeatures({
+                        token0: pool.token0(),
+                        token1: pool.token1(),
+                        fee: pool.fee()
+                    }),
+                    payer: msg.sender
+                })
+            )
+        );
     }
 
     function burn(IUniswapV3Pool pool, int24 tickLower, int24 tickUpper, uint128 liquidity) public {
@@ -97,13 +104,13 @@ contract SwapperC {
                     }),
                     payer: msg.sender
                 })
-        ));
+            )
+        );
     }
-    
-    }
+}
 
 // mostly just fixed one-off tests/PoC
-contract Misctest is Test, PositionUtils{
+contract Misctest is Test, PositionUtils {
     using TokenId for uint256;
     // the instance of SFPM we are testing
     SemiFungiblePositionManager sfpm;
@@ -152,16 +159,24 @@ contract Misctest is Test, PositionUtils{
 
         // This price causes exactly one unit of liquidity to be minted
         // above here reverts b/c 0 liquidity cannot be minted
-        IUniswapV3Pool(uniPool).initialize(10**17 * 2**96);
+        IUniswapV3Pool(uniPool).initialize(10 ** 17 * 2 ** 96);
 
-        factory = new PanopticFactory(address(token1), sfpm, V3FACTORY, poolReference, collateralReference);
+        factory = new PanopticFactory(
+            address(token1),
+            sfpm,
+            V3FACTORY,
+            poolReference,
+            collateralReference
+        );
 
         token0.mint(Deployer, type(uint104).max);
         token1.mint(Deployer, type(uint104).max);
         token0.approve(address(factory), type(uint104).max);
         token1.approve(address(factory), type(uint104).max);
 
-        pp = PanopticPool(address(factory.deployNewPool(address(token0), address(token1), 500, 1337)));
+        pp = PanopticPool(
+            address(factory.deployNewPool(address(token0), address(token1), 500, 1337))
+        );
 
         changePrank(Alice);
 
@@ -175,7 +190,7 @@ contract Misctest is Test, PositionUtils{
         token1.approve(address(ct1), type(uint104).max);
 
         ct0.deposit(type(uint104).max, Alice);
-        ct1.deposit(type(uint104).max, Alice);        
+        ct1.deposit(type(uint104).max, Alice);
 
         changePrank(Bob);
 
@@ -186,9 +201,8 @@ contract Misctest is Test, PositionUtils{
         token1.approve(address(ct1), type(uint104).max);
 
         ct0.deposit(type(uint104).max, Bob);
-        ct1.deposit(type(uint104).max, Bob);       
+        ct1.deposit(type(uint104).max, Bob);
     }
-
 
     function test_success_PremiumRollover() public {
         SwapperC swapperc = new SwapperC();
@@ -199,43 +213,43 @@ contract Misctest is Test, PositionUtils{
         token1.approve(address(swapperc), type(uint128).max);
 
         // move back to price=1
-        swapperc.swapTo(uniPool, 2**96);
+        swapperc.swapTo(uniPool, 2 ** 96);
 
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -10, 10, 10**18);
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        // L = 1    
+        // L = 1
         uniPool.liquidity();
 
         uint256 tokenId = uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
-                0,
-                1,
-                1,
-                0,
-                0,
-                0,
-                0,
-                4094
-            );    
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            4094
+        );
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
-        
+
         changePrank(Bob);
         // mint 1 liquidity unit of wideish centered position
         pp.mintOptions(posIdList, 3, 0, 0, 0);
 
         changePrank(Swapper);
-        swapperc.burn(uniPool, -10, 10, 10**18);
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        // L = 2    
+        // L = 2
         uniPool.liquidity();
 
         // accumulate the maximum fees per liq SFPM supports
-        accruePoolFeesInRange(address(uniPool), 1, 2**64-1, 2**64-1);
+        accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 2 ** 64 - 1);
 
         changePrank(Swapper);
-        swapperc.mint(uniPool, -10, 10, 10**18);
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
         changePrank(Bob);
         // works fine
@@ -245,27 +259,35 @@ contract Misctest is Test, PositionUtils{
 
         changePrank(Alice);
 
-        // lock in almost-overflowed fees per liquidity 
+        // lock in almost-overflowed fees per liquidity
         pp.mintOptions(posIdList, 1000, 0, 0, 0);
 
         changePrank(Swapper);
-        swapperc.burn(uniPool, -10, 10, 10**18);
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
         // overflow back to ~1_000_000 (fees per liq)
         accruePoolFeesInRange(address(uniPool), 413, 1_000_000, 1_000_000);
-        
+
         // this should behave like the actual accumulator does and rollover, not revert on overflow
-        (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(address(uniPool), address(pp), 0, -20470, 20470, 0, 0);
+        (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
+            address(uniPool),
+            address(pp),
+            0,
+            -20470,
+            20470,
+            0,
+            0
+        );
         assertEq(premium0, 44646762138360822200777);
         assertEq(premium1, 44646762138360822200777);
 
         changePrank(Swapper);
-        swapperc.mint(uniPool, -10, 10, 10**18);
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
         changePrank(Alice);
-        
+
         // tough luck... PLPs just stole ~2**64 tokens per liquidity Alice had because of an overflow
         // Alice can be frontrun if her transaction goes to a public mempool (or is otherwise anticipated),
-        // so the cost of the attack is just ~2**64 * active liquidity (shown here to be as low as 1 even with initial full-range!) 
+        // so the cost of the attack is just ~2**64 * active liquidity (shown here to be as low as 1 even with initial full-range!)
         // + fee to move price initially (if applicable)
         // The solution is to wrap around the overflow once (so if the accumulator goes down, the fees are acc_current + (acc_max - acc_prev)
         // If it overflows multiple times, we leave some fees unclaimed, but that's fine. Can't be exploited.

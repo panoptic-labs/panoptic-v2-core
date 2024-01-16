@@ -1649,7 +1649,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     positionSize,
                     s_tickSpacing
                 );
-                
+
                 uint256[2] memory premiumAccumulators;
                 {
                     uint256 tokenType = TokenId.tokenType(tokenId, leg);
@@ -1675,18 +1675,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulators[0] >= premiumAccumulatorsLast[0] ? premiumAccumulators[0] - premiumAccumulatorsLast[0] :
-                                    premiumAccumulators[0] + (type(uint128).max - premiumAccumulatorsLast[0])) *
-                                        (liquidityChunk.liquidity())) / 2 ** 64
+                                    ((
+                                        premiumAccumulators[0] >= premiumAccumulatorsLast[0]
+                                            ? premiumAccumulators[0] - premiumAccumulatorsLast[0]
+                                            : premiumAccumulators[0] +
+                                                (type(uint128).max - premiumAccumulatorsLast[0])
+                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulators[1] >= premiumAccumulatorsLast[1] ? premiumAccumulators[1] - premiumAccumulatorsLast[1] :
-                                    premiumAccumulators[1] + (type(uint128).max - premiumAccumulatorsLast[1])) *
-                                        (liquidityChunk.liquidity())) / 2 ** 64
+                                    ((
+                                        premiumAccumulators[1] >= premiumAccumulatorsLast[1]
+                                            ? premiumAccumulators[1] - premiumAccumulatorsLast[1]
+                                            : premiumAccumulators[1] +
+                                                (type(uint128).max - premiumAccumulatorsLast[1])
+                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         );

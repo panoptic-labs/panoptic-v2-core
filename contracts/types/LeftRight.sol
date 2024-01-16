@@ -294,14 +294,17 @@ library LeftRight {
                 );
         }
     }
-    
+
     /// @notice Adds two leftRights, allowing overflow to occur within slots without leaking into the other slot
     /// @param x the augend
     /// @param y the addend
     /// @return z the sum x + y
     function addUnchecked(uint256 x, uint256 y) internal pure returns (uint256 z) {
         unchecked {
-            return z.toRightSlot(x.rightSlot() + y.rightSlot()).toLeftSlot(x.leftSlot() + y.leftSlot());
+            return
+                z.toRightSlot(x.rightSlot() + y.rightSlot()).toLeftSlot(
+                    x.leftSlot() + y.leftSlot()
+                );
         }
     }
 
