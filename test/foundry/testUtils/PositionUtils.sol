@@ -1219,10 +1219,12 @@ contract PositionUtils is Test {
         // distribute accrued fee amount to Uniswap pool
         deal(
             IUniswapV3Pool(uniPool).token0(),
+            uniPool,
             (IUniswapV3Pool(uniPool).liquidity() * posFees0) / posLiq
         );
         deal(
             IUniswapV3Pool(uniPool).token1(),
+            uniPool,
             (IUniswapV3Pool(uniPool).liquidity() * posFees1) / posLiq
         );
 
