@@ -1671,6 +1671,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         premiumAccumulatorsLast[0] = premiumAccumulatorLast.rightSlot();
                         premiumAccumulatorsLast[1] = premiumAccumulatorLast.leftSlot();
                     }
+
+                    // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
+                    // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
+                    // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
                     int256 legPremia = int256(0)
                         .toRightSlot(
                             int128(
