@@ -607,10 +607,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // For the sake of simplicity assets can only be withdrawn through the redeem function
         uint256 available = s_poolAssets;
         uint256 balance = convertToAssets(balanceOf[owner]);
-        return
-            s_panopticPool.numberOfPositions(owner) == 0
-                ? available > balance ? balance : available
-                : 0;
+        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
 
     /// @notice Returns the amount of shares that would be burned to withdraw a given amount of assets.
@@ -676,10 +673,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
         uint256 available = convertToShares(s_poolAssets);
         uint256 balance = balanceOf[owner];
-        return
-            s_panopticPool.numberOfPositions(owner) == 0
-                ? available > balance ? balance : available
-                : 0;
+        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
 
     /// @notice returns the amount of assets resulting from a given amount of shares being redeemed
@@ -738,100 +732,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /*//////////////////////////////////////////////////////////////
                         ACCOUNTING LOGIC
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Compute a liquidator's potential bonus during liquidation of an account. The bonus depends on degree of distress (0% bonus at 100% collateral).
-    /// @param account The account to be liquidated.
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
-    /// @param otherTokenData The token data of the other collateral token in the Panoptic Pool (with tokenBalance in right slot and required collateral in the left slot).
-    /// @param twapTick Tick at which the collateral requirement will be evaluated at(Uniswap TWAP tick at time of call).
-    /// @param sqrtPriceX96 The sqrt price to 96 bit precision.
-    /// @param premium The premium of the open positions.
-    /// @return bonusAmounts LeftRight encoding for the bonus paid in each token in the Panoptic Pool to the liquidator.
-    /// @return tokenData LeftRight encoding with tokenbalance, ie assets, (in the right slot) and amount required in collateral (left slot).
-    function computeBonus(
-        address account,
-        uint256[2][] memory positionBalanceArray,
-        uint256 otherTokenData,
-        int24 twapTick,
-        uint160 sqrtPriceX96,
-        int128 premium
-    ) external view returns (int256 bonusAmounts, uint256 tokenData) {
-        // Check status for each token, returns tokenData variable that contains userBalance (right Slot) and
-        // tokens required (left slot) for the account to be healthy (have enough collateral/margin)
-        tokenData = _getAccountMargin(account, twapTick, positionBalanceArray, premium);
-
-        // Need a valid price to compute the bonus
-        if (sqrtPriceX96 == 0) return (bonusAmounts, tokenData);
-
-        // value of the token balance for both tokens 0 and 1:
-        // otherTokenData is token0, which is provided as an input and used to compute the tokenValue when a nonzero sqrtPriceX96 value is provided
-        // computes value as "realValue"/sqrtPrice -> token1.balance/sqrtPrice + token0.balance*sqrtPrice
-        // this avoids squaring sqrtPrice
-        uint256 token1TotalValue;
-        uint256 tokenValue;
-        unchecked {
-            token1TotalValue = (tokenData.rightSlot() * Constants.FP96) / sqrtPriceX96;
-        }
-        unchecked {
-            tokenValue =
-                // token1.balance/sqrtPrice + token0.balance*sqrtPrice
-                token1TotalValue +
-                Math.mulDiv96(otherTokenData.rightSlot(), sqrtPriceX96);
-        }
-
-        // value of the required collateral
-        // otherTokenData is token0, which is provided as an input and used to compute the tokenValue when a nonzero sqrtPriceX96 value is provided
-        // computes value as "realValue"/sqrtPrice -> token1.required/sqrtPrice + token0.required*sqrtPrice
-        uint256 requiredValue;
-        unchecked {
-            requiredValue =
-                (tokenData.leftSlot() * Constants.FP96) /
-                sqrtPriceX96 +
-                Math.mulDiv96(otherTokenData.leftSlot(), sqrtPriceX96);
-        }
-
-        // What fraction of the collateral value is in token1
-        // computes (token1.balance/sqrtPrice) / (token1.balance/sqrtPrice + token0.balance*sqrtPrice)
-        uint256 valueRatio1;
-        unchecked {
-            valueRatio1 =
-                (tokenData.rightSlot() * Constants.FP96 * DECIMALS) /
-                tokenValue /
-                sqrtPriceX96;
-        }
-
-        // Position must be margin called (token value is less than required collateral)
-        if (tokenValue >= requiredValue) revert Errors.NotMarginCalled();
-
-        int128 bonus0;
-        int128 bonus1;
-        unchecked {
-            bonus0 = int128(
-                int256(
-                    otherTokenData.leftSlot() < otherTokenData.rightSlot() // If required is less than balance of that specific token (ie. user uses cross-collateralization), then seize all that collateral and use that as the bonus
-                        ? ((tokenValue) * (DECIMALS - valueRatio1) * Constants.FP96) / sqrtPriceX96 // else, the bonus is just (requiredValue - tokenValue)
-                        : ((requiredValue - tokenValue) *
-                            (DECIMALS - valueRatio1) *
-                            Constants.FP96) / sqrtPriceX96
-                )
-            );
-
-            bonus1 = int128(
-                int256(
-                    tokenData.leftSlot() < tokenData.rightSlot() // If required is less than balance of that specific token (ie. user uses cross-collateralization), then seize all that collateral and use that as the bonus
-                        ? Math.mulDiv96((tokenValue) * (valueRatio1), sqrtPriceX96) // else, the bonus is just (requiredValue - tokenValue)
-                        : Math.mulDiv96((requiredValue - tokenValue) * (valueRatio1), sqrtPriceX96)
-                )
-            );
-
-            // store bonus amounts as actual amounts by dividing by DECIMALS_128
-            bonusAmounts = bonusAmounts.toRightSlot(bonus0 / DECIMALS_128).toLeftSlot(
-                bonus1 / DECIMALS_128
-            );
-        }
-
-        return (bonusAmounts, tokenData);
-    }
 
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
     /// @dev This one computes the cost of calling the forceExercise function on a position:
@@ -901,9 +801,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         (2 * int256(_currentTick - strike - range)) / range
                     );
                 }
-                maxNumRangesFromStrike = currNumRangesFromStrike > maxNumRangesFromStrike
-                    ? currNumRangesFromStrike
-                    : maxNumRangesFromStrike;
+
+                maxNumRangesFromStrike = Math.max(currNumRangesFromStrike, maxNumRangesFromStrike);
 
                 uint256 tokenType = positionId.tokenType(leg);
 
@@ -1141,6 +1040,24 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _transferFrom(delegator, delegatee, shares);
     }
 
+    /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
+    /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @dev mints virtual/temporary shares so a position can be settled - the total supply is not affected.
+    /// @param delegatee The delegatee to send shares to - the recipient of the shares.
+    /// @param assets The assets to which the shares delegated correspond.
+    function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
+        balanceOf[delegatee] += convertToShares(assets);
+    }
+
+    /// @notice Refunds delegated tokens back to the protocol
+    /// @dev Assumes that `delegatee` has enough money to pay for the refund
+    /// @dev burns virtual/temporary shares after a position has been settled - the total supply is not affected.
+    /// @param delegatee The account refunding tokens to 'delegatee'.
+    /// @param assets The amount of assets to which the shares to refund to the protocol correspond.
+    function refund(address delegatee, uint256 assets) external onlyPanopticPool {
+        balanceOf[delegatee] -= convertToShares(assets);
+    }
+
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
     /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate).
     /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate).
@@ -1204,7 +1121,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev Assumes that the refunder has enough money to pay for the refund
     /// @dev can handle negative refund amounts that go from refundee to refunder in the case of high exercise fees.
     /// @param refunder The account refunding tokens to 'refundee'.
-    /// @param refundee The amount being refunded to.
+    /// @param refundee The account being refunded to.
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
         if (assets > 0) {
@@ -1282,6 +1199,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shortAmount The amount of shorts to be exercised (if any).
     /// @param swappedAmount The amount of tokens potentially swapped.
     /// @param currentPositionPremium The position premium.
+    /// @return paidAmount The amount of tokens paid when closing that position.
     /// @return realizedPremium The final premium paid/collected after accounting for available funds.
     function exercise(
         address optionOwner,
@@ -1289,7 +1207,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 shortAmount,
         int128 swappedAmount,
         int128 currentPositionPremium
-    ) external onlyPanopticPool returns (int128 realizedPremium) {
+    ) external onlyPanopticPool returns (int128, int128 realizedPremium) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1335,6 +1253,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
             s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)));
+
+            return (int128(tokenToPay), realizedPremium);
         }
     }
 
@@ -1356,9 +1276,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
-                int256 swapCommission = intrinsicValue < 0
-                    ? -(s_ITMSpreadFee * intrinsicValue) / DECIMALS_128
-                    : (s_ITMSpreadFee * intrinsicValue) / DECIMALS_128;
+                int256 swapCommission = Math.abs((s_ITMSpreadFee * intrinsicValue) / DECIMALS_128);
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
                 exchangedAmount = intrinsicValue + swapCommission;
@@ -1421,10 +1339,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
         }
 
-        uint256 collateralAmount = convertToAssets(balanceOf[user]);
-
         // add/subtract the accumulated premia to the collateral amount
-        uint256 netBalance = collateralAmount;
+        uint256 netBalance = convertToAssets(balanceOf[user]);
         if (premiumAllPositions > 0) {
             unchecked {
                 netBalance += uint256(uint128(premiumAllPositions));
@@ -1624,8 +1540,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
                         ); // calls -> strike/price
 
-                    // compute the collateral expression (c2 intermediate for clarity)
-                    uint256 c2 = DECIMALS - uint256(int256(_sellCollateralRatio(utilization)));
+                    // compute the collateral requirement depending on whether the position is ITM & out-of-range or ITM and in-range:
 
                     /// ITM and out-of-range
                     if (
@@ -1633,7 +1548,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         ((atTick >= (strike + oneSidedRange)) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
                     ) {
                         /**
-                                    Short put BPR = 100% - (100% - SCR)*(price/strike)
+                                    Short put BPR = 100% - (price/strike) + SCR
 
                            BUYING
                            POWER
@@ -1641,34 +1556,36 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                          
                                          ^               .         .
                                          |        <- ITM . <-ATM-> . OTM ->
-                                  100% - |--__           .    .    .
-                                         |    ¯¯--__     .    .    .
-                                         |          ¯¯--__    .    .
-                                   SCR - |               .¯¯--__________
-                                         |               .    .    .
-                                         +---------------+----+----+--->   current
-                                         0              Pa  strike Pb       price
+                           100% + SCR% - |--__           .    .    .
+                                  100% - | . .¯¯--__     .    .    .
+                                         |    .     ¯¯--__    .    .
+                                   SCR - |    .          .¯¯--__________
+                                         |    .          .    .    .
+                                         +----+----------+----+----+--->   current
+                                         0   Liqui-     Pa  strike Pb       price
+                                             dation
+                                             price = SCR*strike                                         
                          */
 
-                        uint256 c3 = c2 * (Constants.FP96 - ratio);
+                        uint256 c2 = Constants.FP96 - ratio;
 
                         // compute the tokens required
-                        // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(1-ratio) + SCR*amountMoved
-                        required += (Math.mulDiv96(amountMoved, c3) / DECIMALS);
+                        // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
+                        required += Math.mulDiv96(amountMoved, c2);
                     } else {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
-                        //  required = (1-sellCollateral) * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateral
+                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
                         uint160 scaleFactor = Math.getSqrtRatioAtTick(2 * oneSidedRange);
                         uint256 c3 = Math.mulDiv(
-                            c2,
+                            amountMoved,
                             scaleFactor - ratio,
                             scaleFactor + Constants.FP96
                         );
                         // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(scaleFactor-ratio)/(scaleFactor+1) + SCR*amountMoved
-                        required += ((amountMoved * c3) / DECIMALS);
+                        required += c3;
                     }
                 }
             }
@@ -1922,9 +1839,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             // A negative pool utilization is used to denote a position which is a strangle
             // at low pool utilization's strangle legs are evaluated at 2x capital efficiency
+
+            uint64 poolUtilization0 = uint64(poolUtilization);
+            uint64 poolUtilization1 = uint64(poolUtilization >> 64);
+
+            // add 1 to handle poolUtilization = 0
+
             poolUtilization =
-                uint128(uint64(-int64(uint64(poolUtilization)))) +
-                (uint128(uint64(-int64(uint64(poolUtilization >> 64)))) << 64);
+                uint128(uint64(-int64(poolUtilization0 == 0 ? 1 : poolUtilization0))) +
+                (uint128(uint64(-int64(poolUtilization1 == 0 ? 1 : poolUtilization1))) << 64);
 
             return
                 strangleRequired = _getRequiredCollateralSingleLegNoPartner(

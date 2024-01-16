@@ -123,9 +123,9 @@ abstract contract ERC20Minimal {
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value.
         unchecked {
-            totalSupply += amount;
             balanceOf[to] += amount;
         }
+        totalSupply += amount;
 
         emit Transfer(address(0), to, amount);
     }
