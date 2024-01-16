@@ -191,7 +191,6 @@ contract Misctest is Test, PositionUtils{
 
 
     function test_success_PremiumRollover() public {
-
         SwapperC swapperc = new SwapperC();
         changePrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -272,7 +271,7 @@ contract Misctest is Test, PositionUtils{
         // If it overflows multiple times, we leave some fees unclaimed, but that's fine. Can't be exploited.
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
-        // make sure Alice actually is credited fees
+        // make sure Alice is credited (not debited!) a reasonable amount of fees
         assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore), 997570);
     }
 }
