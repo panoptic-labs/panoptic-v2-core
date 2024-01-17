@@ -353,7 +353,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         address univ3pool = FACTORY.getPool(token0, token1, fee);
 
         // reverts if the Uni v3 pool has not been initialized
-        if (address(univ3pool) == address(0)) revert Errors.UniswapPoolNotInitialized();
+        if (univ3pool == address(0)) revert Errors.UniswapPoolNotInitialized();
 
         // return if the pool has already been initialized in SFPM
         // @dev pools can be initialized from a Panoptic pool or by calling initializeAMMPool directly, reverting
@@ -1111,14 +1111,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // note: these are allowed to overflow because the alternative results in a possible DOS with stuck positions at high multipliers
         // protocols that make use of these values should/will implement a cap to the liquidity utilization to prevent extremely high long premium multipliers
         // when most of the liquidity is removed. There is no need for such a cap
-        unchecked {
-            s_accountPremiumOwed[positionKey] =
-                s_accountPremiumOwed[positionKey] +
-                deltaPremiumOwed;
-            s_accountPremiumGross[positionKey] =
-                s_accountPremiumGross[positionKey] +
-                deltaPremiumGross;
-        }
+        s_accountPremiumOwed[positionKey] = s_accountPremiumOwed[positionKey].addUnchecked(
+            deltaPremiumOwed
+        );
+        s_accountPremiumGross[positionKey] = s_accountPremiumGross[positionKey].addUnchecked(
+            deltaPremiumGross
+        );
     }
 
     /// @notice Compute the feesGrowth * liquidity / 2**128 by reading feeGrowthInside0LastX128 and feeGrowthInside1LastX128 from univ3pool.positions.
@@ -1201,7 +1199,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // amount0 The amount of token0 that was paid to mint the given amount of liquidity
         // amount1 The amount of token1 that was paid to mint the given amount of liquidity
         // no need to safecast to int from uint here as the max position size is int128
-        // from msg.sender to the uniswap pool, stored as negative value to represent amount debited
         movedAmounts = int256(0).toRightSlot(int128(int256(amount0))).toLeftSlot(
             int128(int256(amount1))
         );
@@ -1299,8 +1296,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @notice Function that updates the Owed and Gross account liquidities.
     /// @param currentLiquidity netLiquidity (right) and removedLiquidity (left) at the start of the transaction
     /// @param collectedAmounts total amount of tokens (token0 and token1) collected from Uniswap.
-    /// @return deltaPremiumOwed The extra premium (per liquidity X64) to be added to the owed accumulator for token0 (right) and token1 (right)
-    /// @return deltaPremiumGross The extra premium (per liquidity X64) to be added to the gross accumulator for token0 (right) and token1 (right)
+    /// @return deltaPremiumOwed The extra premium (per liquidity X64) to be added to the owed accumulator for token0 (right) and token1 (left)
+    /// @return deltaPremiumGross The extra premium (per liquidity X64) to be added to the gross accumulator for token0 (right) and token1 (left)
     function _getPremiaDeltas(
         uint256 currentLiquidity,
         uint256 collectedAmounts
@@ -1431,7 +1428,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 isLong
     ) external view returns (uint128 premiumToken0, uint128 premiumToken1) {
         bytes32 positionKey = keccak256(
-            abi.encodePacked(address(univ3pool), owner, tokenType, tickLower, tickUpper)
+            abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper)
         );
 
         // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
@@ -1470,9 +1467,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     amountToCollect
                 );
                 // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+                // allow rollover to remain consistent with actual behavior
                 acctPremia = isLong == 1
-                    ? acctPremia.add(deltaPremiumOwed)
-                    : acctPremia.add(deltaPremiumGross);
+                    ? acctPremia.addUnchecked(deltaPremiumOwed)
+                    : acctPremia.addUnchecked(deltaPremiumGross);
             }
         }
 

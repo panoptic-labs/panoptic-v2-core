@@ -194,6 +194,14 @@ contract PanopticPoolHarness is PanopticPool {
         collateralToken.delegate(delegator, delegatee, assets);
     }
 
+    function delegate(
+        address delegatee,
+        uint128 assets,
+        CollateralTracker collateralToken
+    ) external {
+        collateralToken.delegate(msg.sender, delegatee, assets);
+    }
+
     // mimics an internal Panoptic pool  revoke call onto the collateral tracker
     function revoke(
         address delegator,
@@ -202,6 +210,23 @@ contract PanopticPoolHarness is PanopticPool {
         CollateralTracker collateralToken
     ) external {
         collateralToken.revoke(delegator, delegatee, requestedAmount);
+    }
+
+    function refund(
+        address delegator,
+        address delegatee,
+        int256 requestedAmount,
+        CollateralTracker collateralToken
+    ) external {
+        collateralToken.refund(delegator, delegatee, requestedAmount);
+    }
+
+    function refund(
+        address delegatee,
+        uint256 requestedAmount,
+        CollateralTracker collateralToken
+    ) external {
+        collateralToken.refund(delegatee, requestedAmount);
     }
 
     function getTWAP() external returns (int24 twapTick) {
@@ -1319,7 +1344,48 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
     }
 
-    // transfer from delgatee to delegator
+    function test_Success_delegate_virtual(uint256 x, uint104 assets) public {
+        // fuzz
+        _initWorld(x);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+
+        // deposit a number of assets determined via fuzzing
+        // equal deposits for both collateral token pairs for testing purposes
+        collateralToken0.deposit(assets, Bob);
+        collateralToken1.deposit(assets, Bob);
+
+        // get amount of shares being delegated
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+
+        uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
+
+        // invoke delegate transactions from the Panoptic pool
+        panopticPool.delegate(Alice, assets, collateralToken0);
+
+        panopticPool.delegate(Alice, assets, collateralToken1);
+
+        // check delegatee balance after
+        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
+        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
+
+        // make sure share price stays the same
+        assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
+
+        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
+        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+    }
+
+    // transfer from delegatee to delegator
     function test_Success_revoke(uint256 x, uint104 shares) public {
         {
             // fuzz
@@ -1342,7 +1408,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 type(uint104).max
             );
 
-            // approve collateral tracker to move tokens on Bob's behalf
+            // approve collateral tracker to move tokens on Alice's behalf
             IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
             IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
 
@@ -1427,6 +1493,172 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 assetsAfter0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
 
         assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
+    }
+
+    function test_Success_refund_virtual(uint256 x, uint104 shares) public {
+        {
+            // fuzz
+            _initWorld(x);
+
+            // Invoke all interactions with the Collateral Tracker from user Alice
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            uint256 assetsToken0 = bound(
+                convertToAssets(shares, collateralToken0),
+                1,
+                type(uint104).max
+            );
+            uint256 assetsToken1 = bound(
+                convertToAssets(shares, collateralToken1),
+                1,
+                type(uint104).max
+            );
+
+            // approve collateral tracker to move tokens on Alice's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
+            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
+
+            // deposit a number of assets determined via fuzzing
+            // equal deposits for both collateral token pairs for testing purposes
+            collateralToken0.deposit(uint128(assetsToken0), Alice);
+            collateralToken1.deposit(uint128(assetsToken1), Alice);
+        }
+
+        // check delegator balance before
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+
+        uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
+
+        // invoke delegate transactions from the Panoptic pool
+        panopticPool.refund(Alice, shares, collateralToken0);
+        panopticPool.refund(Alice, shares, collateralToken1);
+
+        // make sure share price stays the same
+        assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
+
+        // check delegatee balance after
+        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
+        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
+
+        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
+        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+    }
+
+    function test_success_refund_positive(uint256 x, uint104 shares) public {
+        {
+            // fuzz
+            _initWorld(x);
+
+            // Invoke all interactions with the Collateral Tracker from user Alice
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            uint256 assetsToken0 = bound(
+                convertToAssets(shares, collateralToken0),
+                1,
+                type(uint104).max
+            );
+            uint256 assetsToken1 = bound(
+                convertToAssets(shares, collateralToken1),
+                1,
+                type(uint104).max
+            );
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
+            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
+
+            // deposit a number of assets determined via fuzzing
+            // equal deposits for both collateral token pairs for testing purposes
+            collateralToken0.deposit(uint128(assetsToken0), Alice);
+            collateralToken1.deposit(uint128(assetsToken1), Alice);
+        }
+
+        // check delegator balance before
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+
+        // invoke delegate transactions from the Panoptic pool
+        panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken0);
+        panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken1);
+
+        // check delegatee balance after
+        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
+        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
+
+        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
+        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+    }
+
+    function test_success_refund_negative(uint256 x, uint104 assets) public {
+        // fuzz
+        _initWorld(x);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+
+        // deposit a number of assets determined via fuzzing
+        // equal deposits for both collateral token pairs for testing purposes
+        collateralToken0.deposit(assets, Bob);
+        collateralToken1.deposit(assets, Bob);
+
+        // check delegatee balance before
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+
+        // invoke delegate transactions from the Panoptic pool
+        panopticPool.refund(Alice, Bob, -int256(uint256(assets)), collateralToken0);
+
+        panopticPool.refund(Alice, Bob, -int256(uint256(assets)), collateralToken1);
+
+        // check delegatee balance after
+        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
+        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
+
+        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
+        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+    }
+
+    // access control on delegate/revoke/settlement functions
+    function test_Fail_All_OnlyPanopticPool(uint256 x, address caller) public {
+        _initWorld(x);
+        vm.assume(caller != address(panopticPool));
+
+        vm.prank(caller);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.delegate(address(0), address(0), 0);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.delegate(address(0), 0);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.refund(address(0), 0);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.revoke(address(0), address(0), 0);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.refund(address(0), address(0), 0);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.takeCommissionAddData(0, 0, 0, 0);
+
+        vm.expectRevert(Errors.NotPanopticPool.selector);
+        collateralToken0.exercise(address(0), 0, 0, 0, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -5618,7 +5850,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 tokensRequired = uint128(
                     FullMath.mulDiv(notionalMoved, sellCollateralRatio, 10_000)
                 );
-
                 // OTM
                 if (
                     ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
@@ -5635,25 +5866,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                         );
 
-                    uint256 c2 = 10_000 - sellCollateralRatio;
-
                     // ITM
                     if (
                         ((atTick < (legLowerTick)) && (tokenType == 1)) ||
                         ((atTick >= (legUpperTick)) && (tokenType == 0))
                     ) {
-                        uint256 c3 = c2 * (FixedPoint96.Q96 - ratio);
-                        return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c3) / 10_000);
+                        uint256 c2 = FixedPoint96.Q96 - ratio;
+
+                        return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
                         uint256 c3 = FullMath.mulDiv(
-                            c2,
+                            notionalMoved,
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
                         );
-                        return tokensRequired += uint128((notionalMoved * c3) / 10_000);
+                        return tokensRequired += uint128(c3);
                     }
                 }
             } else {
@@ -5905,25 +6135,23 @@ contract CollateralTrackerTest is Test, PositionUtils {
                                 Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
                             );
 
-                        uint256 c2 = 10_000 - uint128(baseCollateralRatio);
-
                         // ITM
                         if (
                             ((atTick < (legLowerTick)) && (tokenType == 1)) ||
                             ((atTick >= (legUpperTick)) && (tokenType == 0))
                         ) {
-                            uint256 c3 = c2 * (FixedPoint96.Q96 - ratio);
-                            tokensRequired += uint128(Math.mulDiv96(notionalMoved, c3) / 10_000);
+                            uint256 c2 = FixedPoint96.Q96 - ratio;
+                            tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                         } else {
                             // ATM
                             uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
                             uint256 c3 = FullMath.mulDiv(
-                                c2,
+                                notionalMoved,
                                 scaleFactor - ratio,
                                 scaleFactor + FixedPoint96.Q96
                             );
-                            tokensRequired += uint128((notionalMoved * c3) / 10_000);
+                            tokensRequired += uint128(c3);
                         }
                     }
                 }

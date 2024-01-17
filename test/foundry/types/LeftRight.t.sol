@@ -192,6 +192,37 @@ contract LeftRightTest is Test {
         }
     }
 
+    function test_Success_AddUintsUnchecked(uint128 y, uint128 z, uint128 u, uint128 v) public {
+        uint256 x = 0;
+        x = harness.toLeftSlot(x, y);
+        x = harness.toRightSlot(x, z);
+        assertEq(uint128(harness.leftSlot(x)), y);
+        assertEq(uint128(harness.rightSlot(x)), z);
+
+        // try swapping order
+        x = 0;
+        x = harness.toRightSlot(x, y);
+        x = harness.toLeftSlot(x, z);
+        assertEq(uint128(harness.leftSlot(x)), z);
+        assertEq(uint128(harness.rightSlot(x)), y);
+
+        x = 0;
+        x = harness.toLeftSlot(x, y);
+        x = harness.toRightSlot(x, z);
+        assertEq(uint128(harness.leftSlot(x)), y);
+        assertEq(uint128(harness.rightSlot(x)), z);
+
+        uint256 xx = 0;
+        xx = harness.toLeftSlot(xx, u);
+        xx = harness.toRightSlot(xx, v);
+
+        unchecked {
+            uint256 other = harness.addUnchecked(x, xx);
+            assertEq(uint128(harness.leftSlot(other)), y + u);
+            assertEq(uint128(harness.rightSlot(other)), z + v);
+        }
+    }
+
     function test_Success_AddUintInt(uint128 y, uint128 z, int128 u, int128 v) public {
         uint256 x = 0;
         x = harness.toLeftSlot(x, y);

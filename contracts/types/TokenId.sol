@@ -126,13 +126,7 @@ library TokenId {
         }
     }
 
-    /// @notice Get the associated risk partner of the leg index (generally another leg index in the position).
-    /// @notice that returning the riskPartner for any leg is 0 by default, this does not necessarily imply that token 1 (index 0)
-    /// @notice is the risk partner of that leg. We are assuming here that the position has been validated before this and that
-    /// @notice the risk partner of any leg always makes sense in this way. A leg btw. does not need to have a risk partner.
-    /// @notice the point here is that this function is very low level and must be used with utmost care because it comes down
-    /// @notice to the caller to interpret whether 00 means "no risk partner" or "risk partner leg index 0".
-    /// @notice But in general we can return 00, 01, 10, and 11 meaning the partner is leg 0, 1, 2, or 3.
+    /// @notice Get the associated risk partner of the leg index (generally another leg index in the position if enabled or the same leg index if no partner).
     /// @param self the tokenId in the SFPM representing an option position
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return the leg index of `legIndex`'s risk partner.

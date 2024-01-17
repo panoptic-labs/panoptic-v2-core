@@ -1197,11 +1197,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // Liquidator must delegate the notional amount of tokens needed for exercising.
-        s_collateralToken0.delegate(msg.sender, account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.delegate(msg.sender, account, uint128(delegatedAmounts.leftSlot()));
+        // The protocol delegates some virtual shares to ensure the burn can be settled.
+        s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
+        s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
 
-        // Rescue and liquidate positions
+        // Exercise the option
         // Note: tick limits are not applied here since it is not the exercisor's position being liquidated
         _burnAllOptionsFrom(account, 0, 0, touchedId);
 
@@ -1210,8 +1210,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
 
-        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
-        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
+        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
+        s_collateralToken0.refund(
+            account,
+            msg.sender,
+            refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
+        );
+        s_collateralToken1.refund(
+            account,
+            msg.sender,
+            refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
+        );
+
+        // refund the protocol any virtual shares after settling the difference with the exercisor
+        s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
+        s_collateralToken1.refund(account, uint128(delegatedAmounts.leftSlot()));
 
         // update the current tick after any ITM swaps
         (, currentTick, , , , , ) = s_univ3pool.slot0();
@@ -1714,7 +1727,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
             if ((isLong == 1) || computeAllPremia) {
-                uint256 tokenType = TokenId.tokenType(tokenId, leg);
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
                     leg,
@@ -1722,32 +1734,63 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     s_tickSpacing
                 );
 
-                (uint256 premiumAccumulator0, uint256 premiumAccumulator1) = sfpm.getAccountPremium(
-                    address(s_univ3pool),
-                    address(this),
-                    tokenType,
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper(),
-                    atTick,
-                    isLong
-                );
+                uint256 premiumAccumulators;
+                {
+                    uint256 tokenType = TokenId.tokenType(tokenId, leg);
+                    int24 _atTick = atTick;
+                    (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm
+                        .getAccountPremium(
+                            address(s_univ3pool),
+                            address(this),
+                            tokenType,
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            _atTick,
+                            isLong
+                        );
+                    premiumAccumulators = uint256(0).toRightSlot(premiumAccumulator0).toLeftSlot(
+                        premiumAccumulator1
+                    );
+                }
 
                 unchecked {
                     uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
+
+                    // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
+                    // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
+                    // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
                     int256 legPremia = int256(0)
                         .toRightSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulator0 - premiumAccumulatorLast.rightSlot()) *
-                                        (liquidityChunk.liquidity())) / 2 ** 64
+                                    (uint256(
+                                        premiumAccumulators.rightSlot() >=
+                                            premiumAccumulatorLast.rightSlot()
+                                            ? premiumAccumulators.rightSlot() -
+                                                premiumAccumulatorLast.rightSlot()
+                                            : premiumAccumulators.rightSlot() +
+                                                uint256(
+                                                    type(uint128).max -
+                                                        premiumAccumulatorLast.rightSlot()
+                                                )
+                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulator1 - premiumAccumulatorLast.leftSlot()) *
-                                        (liquidityChunk.liquidity())) / 2 ** 64
+                                    (uint256(
+                                        premiumAccumulators.leftSlot() >=
+                                            premiumAccumulatorLast.leftSlot()
+                                            ? premiumAccumulators.leftSlot() -
+                                                premiumAccumulatorLast.leftSlot()
+                                            : premiumAccumulators.leftSlot() +
+                                                uint256(
+                                                    type(uint128).max -
+                                                        premiumAccumulatorLast.leftSlot()
+                                                )
+                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         );

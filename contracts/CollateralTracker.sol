@@ -1016,6 +1016,24 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _transferFrom(delegator, delegatee, shares);
     }
 
+    /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
+    /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @dev mints virtual/temporary shares so a position can be settled - the total supply is not affected.
+    /// @param delegatee The delegatee to send shares to - the recipient of the shares.
+    /// @param assets The assets to which the shares delegated correspond.
+    function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
+        balanceOf[delegatee] += convertToShares(assets);
+    }
+
+    /// @notice Refunds delegated tokens back to the protocol
+    /// @dev Assumes that `delegatee` has enough money to pay for the refund
+    /// @dev burns virtual/temporary shares after a position has been settled - the total supply is not affected.
+    /// @param delegatee The account refunding tokens to 'delegatee'.
+    /// @param assets The amount of assets to which the shares to refund to the protocol correspond.
+    function refund(address delegatee, uint256 assets) external onlyPanopticPool {
+        balanceOf[delegatee] -= convertToShares(assets);
+    }
+
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
     /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate).
     /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate).
@@ -1079,7 +1097,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev Assumes that the refunder has enough money to pay for the refund
     /// @dev can handle negative refund amounts that go from refundee to refunder in the case of high exercise fees.
     /// @param refunder The account refunding tokens to 'refundee'.
-    /// @param refundee The amount being refunded to.
+    /// @param refundee The account being refunded to.
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
         if (assets > 0) {
@@ -1498,8 +1516,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
                         ); // calls -> strike/price
 
-                    // compute the collateral expression (c2 intermediate for clarity)
-                    uint256 c2 = DECIMALS - uint256(int256(_sellCollateralRatio(utilization)));
+                    // compute the collateral requirement depending on whether the position is ITM & out-of-range or ITM and in-range:
 
                     /// ITM and out-of-range
                     if (
@@ -1507,7 +1524,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         ((atTick >= (strike + oneSidedRange)) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
                     ) {
                         /**
-                                    Short put BPR = 100% - (100% - SCR)*(price/strike)
+                                    Short put BPR = 100% - (price/strike) + SCR
 
                            BUYING
                            POWER
@@ -1515,34 +1532,36 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                          
                                          ^               .         .
                                          |        <- ITM . <-ATM-> . OTM ->
-                                  100% - |--__           .    .    .
-                                         |    ¯¯--__     .    .    .
-                                         |          ¯¯--__    .    .
-                                   SCR - |               .¯¯--__________
-                                         |               .    .    .
-                                         +---------------+----+----+--->   current
-                                         0              Pa  strike Pb       price
+                           100% + SCR% - |--__           .    .    .
+                                  100% - | . .¯¯--__     .    .    .
+                                         |    .     ¯¯--__    .    .
+                                   SCR - |    .          .¯¯--__________
+                                         |    .          .    .    .
+                                         +----+----------+----+----+--->   current
+                                         0   Liqui-     Pa  strike Pb       price
+                                             dation
+                                             price = SCR*strike                                         
                          */
 
-                        uint256 c3 = c2 * (Constants.FP96 - ratio);
+                        uint256 c2 = Constants.FP96 - ratio;
 
                         // compute the tokens required
-                        // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(1-ratio) + SCR*amountMoved
-                        required += (Math.mulDiv96(amountMoved, c3) / DECIMALS);
+                        // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
+                        required += Math.mulDiv96(amountMoved, c2);
                     } else {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
-                        //  required = (1-sellCollateral) * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateral
+                        //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
                         uint160 scaleFactor = Math.getSqrtRatioAtTick(2 * oneSidedRange);
                         uint256 c3 = Math.mulDiv(
-                            c2,
+                            amountMoved,
                             scaleFactor - ratio,
                             scaleFactor + Constants.FP96
                         );
                         // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(scaleFactor-ratio)/(scaleFactor+1) + SCR*amountMoved
-                        required += ((amountMoved * c3) / DECIMALS);
+                        required += c3;
                     }
                 }
             }

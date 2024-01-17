@@ -996,7 +996,8 @@ contract PositionUtils is Test {
 
             return zeroForOne ? (amountSpecified, -amountOut) : (-amountOut, amountSpecified);
         } else {
-            int256 amountIn = int256(
+            int256 amountIn;
+            try
                 router.exactOutputSingle(
                     ISwapRouter.ExactOutputSingleParams({
                         tokenIn: zeroForOne ? token0 : token1,
@@ -1009,8 +1010,11 @@ contract PositionUtils is Test {
                         sqrtPriceLimitX96: 0
                     })
                 )
-            );
-
+            returns (uint256 _amountIn) {
+                amountIn = int256(_amountIn);
+            } catch {
+                vm.assume(false);
+            }
             vm.revertTo(0);
 
             return zeroForOne ? (amountIn, amountSpecified) : (amountSpecified, amountIn);
@@ -1219,10 +1223,12 @@ contract PositionUtils is Test {
         // distribute accrued fee amount to Uniswap pool
         deal(
             IUniswapV3Pool(uniPool).token0(),
+            uniPool,
             (IUniswapV3Pool(uniPool).liquidity() * posFees0) / posLiq
         );
         deal(
             IUniswapV3Pool(uniPool).token1(),
+            uniPool,
             (IUniswapV3Pool(uniPool).liquidity() * posFees1) / posLiq
         );
 
