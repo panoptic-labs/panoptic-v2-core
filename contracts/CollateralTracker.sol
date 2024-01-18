@@ -1174,16 +1174,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs to be exercised (if any).
     /// @param shortAmount The amount of shorts to be exercised (if any).
     /// @param swappedAmount The amount of tokens potentially swapped.
-    /// @param currentPositionPremium The position premium.
+    /// @param realizedPremium Premium to settle on the current positions.
     /// @return paidAmount The amount of tokens paid when closing that position.
-    /// @return realizedPremium The final premium paid/collected after accounting for available funds.
     function exercise(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
-        int128 currentPositionPremium
-    ) external onlyPanopticPool returns (int128, int128 realizedPremium) {
+        int128 realizedPremium
+    ) external onlyPanopticPool returns (int128) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1191,7 +1190,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
             realizedPremium = int128(
                 Math.min(
-                    currentPositionPremium,
+                    realizedPremium,
                     int256(IERC20Partial(s_underlyingToken).balanceOf(address(s_panopticPool))) -
                         updatedAssets
                 )
@@ -1230,7 +1229,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)));
 
-            return (int128(tokenToPay), realizedPremium);
+            return (int128(tokenToPay));
         }
     }
 

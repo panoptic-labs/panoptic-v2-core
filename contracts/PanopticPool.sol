@@ -416,14 +416,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // if position exists, then compute premia for that position
             if (positionSize != 0) {
                 // increment the allPositionsPremia accumulator
-                int256 positionPremia = _getPremia(
+                (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulators) = _getPremia(
                     tokenId,
                     positionSize,
                     c_user,
                     computeAllPremia,
                     atTick
                 );
-                portfolioPremium = portfolioPremium.add(positionPremia);
+                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg)
+                    if (premiaByLeg[leg] > 0) {
+                        bytes32 chunkKey = keccak256(
+                            abi.encodePacked(
+                                tokenId.strike(leg),
+                                tokenId.width(leg),
+                                tokenId.tokenType(leg)
+                            )
+                        );
+
+                        (uint256 availablePremium, , ,) = getAvailablePremium(getShortLiquidity(tokenId, leg, s_tickSpacing), leg, chunkKey, uint256(premiaByLeg[leg]), premiumAccumulators[leg]);
+                        portfolioPremium = portfolioPremium.add(int256(availablePremium));
+                    } else {
+                        portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
+                    }
             }
 
             unchecked {
@@ -432,6 +446,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
         return (portfolioPremium, balances);
     }
+
+
 
     /// @notice Check for slippage violation given the incoming tick limits and extract current price information from the AMM.
     /// @dev If the current price is beyond the slippage bounds a reversion is thrown.
@@ -501,7 +517,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, ) = _burnOptions(
+        (int24 medianTick, int24 newTick, , ,) = _burnOptions(
             tokenId,
             msg.sender,
             tickLimitLow,
@@ -526,7 +542,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, ) = _burnAllOptionsFrom(
+        (int24 medianTick, int24 newTick, , ,) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,
@@ -681,7 +697,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tickSpacing
                 );
 
-                // shortLiquidity (total sold) = removedLiquidity + netLiquidity
+                // shortLiquidity (total sold) = removedLiquidity + netLiquidity (includes R, newly minted liquidity)
                 uint256 shortLiquidity;
                 {
                     uint256 accountLiquidities = sfpm.getAccountLiquidity(
@@ -698,7 +714,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // (grossPremium - adjustedGrossPremiumLast)*updatedShortLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*shortLiquidityBeforeMint/2**64
                 // G: total gross premium
                 // S: shortLiquidityBeforeMint
-                // P: shortLiquidityPostMint
+                // R: positionLiquidity
                 // C: current grossPremium value
                 // L: current grossPremiumLast value
                 // Ln: updated grossPremiumLast value
@@ -711,8 +727,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // CG/(C-L) + CR  - G = LnG/(C-L) + LnR
                 // CG/(C-L) + CR  - G = Ln(G/(C-L) + R)
                 //
-                // (CS + CR - G)/(S + R) = Ln
-                (uint256 gross0, uint256 gross1) = sfpm.getAccountPremium(
+                // (C(S + R) - G)/(S + R) = Ln
+                uint256[2] memory grossCurrent;
+                (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
                     address(s_univ3pool),
                     address(this),
                     tokenId.tokenType(leg),
@@ -721,17 +738,106 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     type(int24).max,
                     0
                 );
-                // get G
-                gross0 = Math.mulDiv64(
-                    shortLiquidity,
-                    gross0 - s_grossPremiumLast[chunkKey].rightSlot()
-                );
-                gross1 = Math.mulDiv64(
-                    shortLiquidity,
-                    gross1 - s_grossPremiumLast[chunkKey].leftSlot()
-                );
+                
+                uint256[2] memory grossNew;
+                unchecked {
+                    // get G
+                    grossNew[0] = (shortLiquidity - liquidityChunk.liquidity())*(grossCurrent[0] - s_grossPremiumLast[chunkKey].rightSlot())/2**64;
+                    grossNew[1] = (shortLiquidity - liquidityChunk.liquidity())*(grossCurrent[1] - s_grossPremiumLast[chunkKey].leftSlot())/2**64;
+
+                    // (C(S + R) - G)/(S + R) = Ln
+                    grossNew[0] = (grossCurrent[0] * shortLiquidity / 2**64 - grossNew[0]) * 2**64 / shortLiquidity;
+                    grossNew[1] = (grossCurrent[1] * shortLiquidity / 2**64 - grossNew[1]) * 2**64 / shortLiquidity;
+
+                    // update grossPremiumLast
+                    s_grossPremiumLast[chunkKey] = uint256(0).toRightSlot(uint128(grossNew[0])).toLeftSlot(uint128(grossNew[1]));
+                }
             }
         }
+    }
+
+    function getAvailablePremium( bytes32 chunkKey, uint256 premiumOwed, uint256[2] memory premiumAccumulators) internal view returns (uint256, uint256, uint256, uint256 shortLiquidity, uint256) {
+        unchecked {
+
+            uint256 settledTokens = s_settledTokens[chunkKey];
+            uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
+            // long premium only accumulates as it is settled, so compute the ratio
+            // of total settled tokens in a chunk to total premium owed to sellers and multiply
+            // cap the ratio at 1 (it can be greater than one if some seller forfeits enough premium)
+            return(uint256(0).toRightSlot(
+                uint128(Math.min(premiumOwed.rightSlot()*settledTokens/((premiumAccumulators[0] - grossPremiumLast)*shortLiquidity/2**64), premiumOwed.rightSlot()))
+            ).toLeftSlot(
+               uint128(Math.min(premiumOwed.leftSlot()*settledTokens/((premiumAccumulators[1] - grossPremiumLast)*shortLiquidity/2**64), premiumOwed.leftSlot()))
+            ), settledTokens, grossPremiumLast, shortLiquidity);
+        }
+    }
+
+    function getShortLiquidity(uint256 tokenId, uint256 leg, int24 tickSpacing) internal view returns (uint256 shortLiquidity) {
+        unchecked {
+          // shortLiquidity (total sold) = removedLiquidity + netLiquidity
+            
+            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg, s_tickSpacing);
+            uint256 tokenType = tokenId.tokenType(leg);
+            uint256 accountLiquidities = sfpm.getAccountLiquidity(
+                address(s_univ3pool),
+                address(this),
+                tokenType,
+                tickLower,
+                tickUpper
+            );
+            // removed + net
+            shortLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
+        }
+    }
+
+    function updateSettlementPostBurn(
+        address owner,
+        uint256 tokenId,
+        uint256[4] memory collectedByLeg,
+        uint128 positionSize,
+        int24 tickSpacing
+    ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg) {
+        uint256[2][4] memory premiumAccumulators;
+
+        // compute accumulated fees
+        (premiaByLeg, premiumAccumulators) = _getPremia(
+            tokenId,
+            positionSize,
+            owner,
+            COMPUTE_ALL_PREMIA,
+            type(int24).max
+        );
+
+        bytes32[4] memory chunkKeys;
+        // update settled tokens first so availability of short premium is correct
+        for (uint256 leg = 0; leg < premiaByLeg.length;) {
+            uint256 _tokenId = tokenId;
+            chunkKeys[leg] = keccak256(
+                    abi.encodePacked(_tokenId.strike(leg), _tokenId.width(leg), _tokenId.tokenType(leg))
+                );
+            // collected from Uniswap 
+            uint256 settledTokens = collectedByLeg[leg];
+
+            // (will be) paid by long legs
+            if (premiaByLeg[leg] < 0) settledTokens += uint256(-premiaByLeg[leg]);
+
+            s_settledTokens[chunkKeys[leg]] += settledTokens;
+        }
+
+        // then, for short positions get the available premium and do a settlement update  
+        for (uint256 leg = 0; leg < premiaByLeg.length;) {
+            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize,
+                    tickSpacing
+                );
+            if (collectedByLeg[leg] > 0) {
+                (uint256 availablePremium, uint256 settledTokens, uint256 grossPremiumLast, uint256 shortLiquidity) = getAvailablePremium(getShortLiquidity(tokenId, leg, tickSpacing)-liquidityChunk.liquidity(), chunkKeys[leg], uint256(premiaByLeg[leg]), premiumAccumulators[leg]);
+            } 
+            realizedPremia = realizedPremia.add(premiaByLeg[leg]);
+        }
+        
     }
 
     /// @notice Pay the commission fees for creating the options and update internal state.
@@ -868,15 +974,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint256[] calldata positionIdList
-    ) internal returns (int24 medianTick, int24 newTick, int256 netPaid) {
+    ) internal returns (int24 medianTick, int24 newTick, int256 netPaid, int256 premiasOwed, int256[4][] memory) {
         int256 paidAmounts;
+        int256[4][] memory premiasByLeg = new int256[4][](positionIdList.length);
         for (uint256 i = 0; i < positionIdList.length; ) {
-            (medianTick, newTick, paidAmounts) = _burnOptions(
+            int256 premiaOwed;
+            (medianTick, newTick, paidAmounts, premiaOwed, premiasByLeg[i]) = _burnOptions(
                 positionIdList[i],
                 owner,
                 tickLimitLow,
                 tickLimitHigh
             );
+            premiaOwed = premiasOwed.add(premiaOwed);
             netPaid = netPaid.add(paidAmounts);
             unchecked {
                 ++i;
@@ -897,7 +1006,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (int24 medianTick, int24 newTick, int256 paidAmounts) {
+    ) internal returns (int24 medianTick, int24 newTick, int256 paidAmounts, int256 premiaOwed, int256[4] memory premiaByLeg) {
         // Ensure that the current price is within the tick limits
         int24 currentTick;
         (currentTick, medianTick, tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
@@ -908,8 +1017,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
         // burn position and do exercise checks
-        int256 premiaOwed;
-        (premiaOwed, newTick, paidAmounts) = _burnAndHandleExercise(
+        (premiaOwed, premiaByLeg, newTick, paidAmounts) = _burnAndHandleExercise(
             tokenId,
             positionSize,
             owner,
@@ -959,10 +1067,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (int256 realizedPremia, int24 newTick, int256 paidAmounts) {
+    ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg, int24 newTick, int256 paidAmounts) {
         // burn the option in sfpm, switch order of tickLimits to create "swapAtMint" flag
         int256 totalSwapped;
-        (, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
+        uint256[4] memory collectedByLeg;
+        int24 tickSpacing = s_tickSpacing;
+
+        uint256 shortLiquidity = getShortLiquidity(tokenId, leg, tickSpacing);
+        (collectedByLeg, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             positionSize,
             tickLimitHigh,
@@ -971,47 +1083,46 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         updateMedian(newTick);
 
-        // compute accumulated fees
-        int256 currentPositionPremia = _getPremia(
-            tokenId,
-            positionSize,
-            owner,
-            COMPUTE_ALL_PREMIA,
-            type(int24).max
-        );
+        int256 longAmounts;
+        int256 shortAmounts;
+        {
+        int24 tickSpacing = s_tickSpacing;
+        uint256 _tokenId = tokenId;
+        uint128 _positionSize = positionSize;
+        (realizedPremia, premiaByLeg) = updateSettlementPostBurn(owner, _tokenId, collectedByLeg, _positionSize, tickSpacing);
 
         // compute option amounts if exercise was necessary
-        (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize,
-            s_tickSpacing
+        (longAmounts, shortAmounts) = PanopticMath.computeExercisedAmounts(
+            _tokenId,
+            _positionSize,
+            tickSpacing
         );
-
+        }
         // exercise the option and take the commission and addData
 
         {
-            (int128 paid0, int128 realized0) = s_collateralToken0.exercise(
+            int128 paid0 = s_collateralToken0.exercise(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 totalSwapped.rightSlot(),
-                currentPositionPremia.rightSlot()
+                realizedPremia.rightSlot()
             );
             paidAmounts = paidAmounts.toRightSlot(paid0);
-            realizedPremia = realizedPremia.toRightSlot(realized0);
         }
 
         {
-            (int128 paid1, int128 realized1) = s_collateralToken1.exercise(
+            int128 paid1 = s_collateralToken1.exercise(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 totalSwapped.leftSlot(),
-                currentPositionPremia.leftSlot()
+                realizedPremia.leftSlot()
             );
             paidAmounts = paidAmounts.toLeftSlot(paid1);
-            realizedPremia = realizedPremia.toLeftSlot(realized1);
         }
+
+        return (realizedPremia, premiaByLeg, newTick, paidAmounts);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1083,7 +1194,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
         // burn all options from the liquidatee
-        (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
+        (, int24 finalTick, int256 netExchanged, , ) = _burnAllOptionsFrom(
             _liquidatee,
             Constants.MIN_V3POOL_TICK,
             Constants.MAX_V3POOL_TICK,
@@ -1715,14 +1826,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false).
     /// @param atTick The tick at which the premia is calculated -> use (atTick < type(int24).max) to compute it
     /// up to current block. atTick = type(int24).max will only consider fees as of the last on-chain transaction.
-    /// @return premia The computed premia (LeftRight-packed) of the option position for tokens 0 (right slot) and 1 (left slot).
     function _getPremia(
         uint256 tokenId,
         uint128 positionSize,
         address owner,
         bool computeAllPremia,
         int24 atTick
-    ) internal view returns (int256 premia) {
+    ) internal view returns (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulators) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
@@ -1733,25 +1843,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     positionSize,
                     s_tickSpacing
                 );
-
-                uint256 premiumAccumulators;
-                {
-                    uint256 tokenType = TokenId.tokenType(tokenId, leg);
-                    int24 _atTick = atTick;
-                    (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm
-                        .getAccountPremium(
-                            address(s_univ3pool),
-                            address(this),
-                            tokenType,
-                            liquidityChunk.tickLower(),
-                            liquidityChunk.tickUpper(),
-                            _atTick,
-                            isLong
-                        );
-                    premiumAccumulators = uint256(0).toRightSlot(premiumAccumulator0).toLeftSlot(
-                        premiumAccumulator1
-                    );
-                }
+                uint256 tokenType = tokenId.tokenType(leg);
+                uint256[2] memory premiumAccumulators;
+                (premiumAccumulators[0], premiumAccumulators[1]) = sfpm.getAccountPremium(
+                    address(s_univ3pool),
+                    address(this),
+                    tokenType,
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper(),
+                    atTick,
+                    isLong
+                );
 
                 unchecked {
                     uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
@@ -1759,16 +1861,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
                     // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
                     // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
-                    int256 legPremia = int256(0)
+                    premiaByLeg[leg] = int256(0)
                         .toRightSlot(
                             int128(
                                 int256(
                                     (uint256(
-                                        premiumAccumulators.rightSlot() >=
+                                        premiumAccumulators[0] >=
                                             premiumAccumulatorLast.rightSlot()
-                                            ? premiumAccumulators.rightSlot() -
+                                            ? premiumAccumulators[0] -
                                                 premiumAccumulatorLast.rightSlot()
-                                            : premiumAccumulators.rightSlot() +
+                                            : premiumAccumulators[0] +
                                                 uint256(
                                                     type(uint128).max -
                                                         premiumAccumulatorLast.rightSlot()
@@ -1781,11 +1883,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             int128(
                                 int256(
                                     (uint256(
-                                        premiumAccumulators.leftSlot() >=
+                                        premiumAccumulators[1] >=
                                             premiumAccumulatorLast.leftSlot()
-                                            ? premiumAccumulators.leftSlot() -
+                                            ? premiumAccumulators[1] -
                                                 premiumAccumulatorLast.leftSlot()
-                                            : premiumAccumulators.leftSlot() +
+                                            : premiumAccumulators[1] +
                                                 uint256(
                                                     type(uint128).max -
                                                         premiumAccumulatorLast.leftSlot()
@@ -1795,10 +1897,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             )
                         );
 
-                    if (isLong == 0) {
-                        premia = premia.add(legPremia);
-                    } else {
-                        premia = premia.sub(legPremia);
+                    if (isLong == 1) {
+                        premiaByLeg[leg] = -premiaByLeg[leg];
                     }
                 }
             }
