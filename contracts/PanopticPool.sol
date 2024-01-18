@@ -701,7 +701,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                 // new shortLiquidity (total sold) = removedLiquidity + netLiquidity (S + R)
                 uint256 shortLiquidity = getShortLiquidity(tokenId, leg, tickSpacing);
-                
+
                 // We need to adjust the grossPremiumLast value such that the result of
                 // (grossPremium - adjustedGrossPremiumLast)*updatedShortLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*shortLiquidityBeforeMint/2**64
                 // G: total gross premium
@@ -850,25 +850,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
             if (premiaByLeg[leg] < 0) settledTokens.add(uint256(-premiaByLeg[leg]));
 
             if (collectedByLeg[leg] > 0) {
-                uint256 positionLiquidity = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize,
-                    tickSpacing
-                ).liquidity();
+                uint256 positionLiquidity = PanopticMath
+                    .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
+                    .liquidity();
 
                 uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
 
                 // new shortLiquidity (total sold) = removedLiquidity + netLiquidity (S - R)
                 uint256 shortLiquidity = getShortLiquidity(tokenId, leg, tickSpacing);
                 uint256 availablePremium = getAvailablePremium(
-                        shortLiquidity - positionLiquidity,
-                        chunkKey,
-                        settledTokens,
-                        grossPremiumLast,
-                        uint256(premiaByLeg[leg]),
-                        premiumAccumulatorsByLeg[leg]
-                    );
+                    shortLiquidity - positionLiquidity,
+                    chunkKey,
+                    settledTokens,
+                    grossPremiumLast,
+                    uint256(premiaByLeg[leg]),
+                    premiumAccumulatorsByLeg[leg]
+                );
 
                 // subtract settled tokens sent to seller
                 s_settledTokens[chunkKey] = settledTokens.sub(availablePremium);
@@ -896,19 +893,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // get G
                     grossNew[0] =
                         ((shortLiquidity + positionLiquidity) *
-                            (premiumAccumulatorsByLeg[leg][0] - s_grossPremiumLast[chunkKey].rightSlot())) /
+                            (premiumAccumulatorsByLeg[leg][0] -
+                                s_grossPremiumLast[chunkKey].rightSlot())) /
                         2 ** 64;
                     grossNew[1] =
                         ((shortLiquidity + positionLiquidity) *
-                            (premiumAccumulatorsByLeg[leg][1] - s_grossPremiumLast[chunkKey].leftSlot())) /
+                            (premiumAccumulatorsByLeg[leg][1] -
+                                s_grossPremiumLast[chunkKey].leftSlot())) /
                         2 ** 64;
 
                     // (C(S + R) - G)/(S + R) = Ln
                     grossNew[0] =
-                        (((premiumAccumulatorsByLeg[leg][0] * shortLiquidity) / 2 ** 64 - grossNew[0]) * 2 ** 64) /
+                        (((premiumAccumulatorsByLeg[leg][0] * shortLiquidity) /
+                            2 ** 64 -
+                            grossNew[0]) * 2 ** 64) /
                         shortLiquidity;
                     grossNew[1] =
-                        (((premiumAccumulatorsByLeg[leg][1] * shortLiquidity) / 2 ** 64 - grossNew[1]) * 2 ** 64) /
+                        (((premiumAccumulatorsByLeg[leg][1] * shortLiquidity) /
+                            2 ** 64 -
+                            grossNew[1]) * 2 ** 64) /
                         shortLiquidity;
 
                     // update grossPremiumLast
@@ -1959,15 +1962,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
                 uint256 tokenType = tokenId.tokenType(leg);
 
-                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = sfpm.getAccountPremium(
-                    address(s_univ3pool),
-                    address(this),
-                    tokenType,
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper(),
-                    atTick,
-                    isLong
-                );
+                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = sfpm
+                    .getAccountPremium(
+                        address(s_univ3pool),
+                        address(this),
+                        tokenType,
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        atTick,
+                        isLong
+                    );
 
                 unchecked {
                     uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
@@ -1980,7 +1984,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             int128(
                                 int256(
                                     (uint256(
-                                        premiumAccumulatorsByLeg[leg][0] >= premiumAccumulatorLast.rightSlot()
+                                        premiumAccumulatorsByLeg[leg][0] >=
+                                            premiumAccumulatorLast.rightSlot()
                                             ? premiumAccumulatorsByLeg[leg][0] -
                                                 premiumAccumulatorLast.rightSlot()
                                             : premiumAccumulatorsByLeg[leg][0] +
@@ -1996,7 +2001,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             int128(
                                 int256(
                                     (uint256(
-                                        premiumAccumulatorsByLeg[leg][1] >= premiumAccumulatorLast.leftSlot()
+                                        premiumAccumulatorsByLeg[leg][1] >=
+                                            premiumAccumulatorLast.leftSlot()
                                             ? premiumAccumulatorsByLeg[leg][1] -
                                                 premiumAccumulatorLast.leftSlot()
                                             : premiumAccumulatorsByLeg[leg][1] +
