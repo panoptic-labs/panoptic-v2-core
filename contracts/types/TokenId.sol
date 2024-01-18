@@ -65,6 +65,9 @@ library TokenId {
     // This mask is used to clear all bits except for the option ratios
     uint256 internal constant OPTION_RATIO_MASK =
         0x0000000000FE_0000000000FE_0000000000FE_0000000000FE_0000000000000000;
+    // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType)
+    uint256 internal constant CHUNK_MASK = 
+        0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
     // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
@@ -459,7 +462,10 @@ library TokenId {
 
         // loop through the 4 (possible) legs in the tokenId `self`
         unchecked {
+            // extract strike, width, and tokenType
+            uint256 chunkData = (self & CHUNK_MASK) >> 64;
             for (uint256 i = 0; i < 4; ++i) {
+
                 if (self.optionRatio(i) == 0) {
                     // final leg in this position identified;
                     // make sure any leg above this are zero as well
@@ -467,6 +473,14 @@ library TokenId {
                     if ((self >> (64 + 48 * i)) != 0) revert Errors.InvalidTokenIdParameter(1);
 
                     break; // we are done iterating over potential legs
+                }
+
+                // prevent legs touching the same chunks - all chunks in the position must be discrete
+                uint256 numLegs = self.countLegs();
+                for (uint256 j = i + 1; j < numLegs; ++j) {
+                    if (uint48(chunkData >> 48*i) == uint48(chunkData >> 48*j)) {
+                        revert Errors.InvalidTokenIdParameter(6);
+                    }
                 }
                 // now validate this ith leg in the position:
 
