@@ -1,6 +1,6 @@
 [profile.default]
 src = 'contracts'
-test = 'DF'
+test = 'test/foundry'
 out = 'artifacts/contracts'
 libs = ['lib']
 no_match_path = "contracts/*"
