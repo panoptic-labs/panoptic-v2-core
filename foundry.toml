@@ -1,6 +1,6 @@
 [profile.default]
 src = 'contracts'
-test = 'test/foundry'
+test = 'DF'
 out = 'artifacts/contracts'
 libs = ['lib']
 no_match_path = "contracts/*"
@@ -14,7 +14,7 @@ eth_rpc_url = "https://eth-mainnet.g.alchemy.com/v2/vevMezCXoFshwV190wQcekYwQflc
 fork_block_number = 18963715
 
 [profile.ci_sizes]
-optimizer_runs = 18_000
+optimizer_runs = 500
 test = 'DO_NOT_COMPILE'
 
 [profile.ci_sizes_ir]
