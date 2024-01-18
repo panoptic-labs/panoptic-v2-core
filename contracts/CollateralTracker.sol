@@ -1187,15 +1187,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
-            // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            realizedPremium = int128(
-                Math.min(
-                    realizedPremium,
-                    int256(IERC20Partial(s_underlyingToken).balanceOf(address(s_panopticPool))) -
-                        updatedAssets
-                )
-            );
-
             // add premium to be paid/collected on position close
             int256 tokenToPay = -realizedPremium;
 
