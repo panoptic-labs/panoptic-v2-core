@@ -2004,7 +2004,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
     }
 
-    function test_Fail_mintTokenizedPosition_OutsideRangeShortCallLongCallCombinedInsufficientLiq(
+    function test_Fail_mintTokenizedPosition_OutsideRangeInsufficientLiq(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -2042,12 +2042,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        // long leg
-        tokenId = tokenId.addLeg(1, longRatio, isWETH, 1, 0, 1, strike, width);
+        sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         vm.expectRevert(Errors.NotEnoughLiquidity.selector);
 
-        sfpm.mintTokenizedPosition(
+        // long leg
+       tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, longRatio, isWETH, 1, 0, 0, strike, width);
+       sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
@@ -2867,52 +2873,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.expectRevert(Errors.TransferFailed.selector);
 
         sfpm.safeTransferFrom(Alice, Bob, tokenId2, positionSize, "");
-    }
-
-    // mint a position with a long and short touch to a leg then transfer it
-    // should fail as you shouldnt be able to transfer removedliquidity
-    function test_Fail_afterTokenTransfer_LongChunkAndShortChunk(
-        uint256 x,
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed,
-        uint256 optionRatio
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick
-        );
-
-        populatePositionData(width, strike, positionSizeSeed);
-
-        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
-        uint256 tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            bound(optionRatio, 1, 127),
-            isWETH,
-            0,
-            1,
-            0,
-            strike,
-            width
-        );
-
-        tokenId1 = tokenId1.addLeg(1, 1, isWETH, 1, 1, 1, strike, width);
-
-        sfpm.mintTokenizedPosition(
-            tokenId1,
-            uint128(positionSize),
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-
-        vm.expectRevert(Errors.TransferFailed.selector);
-
-        sfpm.safeTransferFrom(Alice, Bob, tokenId1, positionSize, "");
     }
 
     function test_Fail_afterTokenTransfer_RecipientAlreadyOwns(

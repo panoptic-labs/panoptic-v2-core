@@ -266,8 +266,8 @@ contract Misctest is Test, PositionUtils {
         changePrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        // overflow back to ~10_000_000 (fees per liq)
-        accruePoolFeesInRange(address(uniPool), 412639631, 10_000_000, 10_000_000);
+        // overflow back to ~1_000_000_000_000 (fees per liq)
+        accruePoolFeesInRange(address(uniPool), 412639631, 1_000_000_000_000, 1_000_000_000_000);
 
         // this should behave like the actual accumulator does and rollover, not revert on overflow
         (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
@@ -279,8 +279,8 @@ contract Misctest is Test, PositionUtils {
             0,
             0
         );
-        assertEq(premium0, type(uint128).max);
-        assertEq(premium1, type(uint128).max);
+        assertEq(premium0, 340282366920938463444927863358058659840);
+        assertEq(premium1, 44704247211996718928643);
 
         changePrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -294,12 +294,14 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
         // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
-        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0), -7);
+        // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
+        // she could have still earned some fees, but now the accumulation is frozen forever.
+        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0), -999638);
 
-        // but all of fees on token 1 since the premium accumulator did not overflow (!)
+        // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
         assertEq(
             int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
-            9_999_998
+            999_999_999_998
         );
     }
 }
