@@ -1754,6 +1754,18 @@ contract PanopticPoolTest is PositionUtils {
         pool.burn(tickLower, tickUpper, 0);
 
         (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
+
+        // we have not settled any accrued premium yet, so the calculated amount should be 0
+        assertEq(premium0, 0);
+        assertEq(premium1, 0);
+
+        changePrank(Bob);
+        
+        // settle premium by minting another position touching the same chunk, triggering a collect
+        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+
+        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
+
         assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
         assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
     }

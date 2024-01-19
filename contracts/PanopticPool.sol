@@ -1081,11 +1081,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 newTick,
             int256 netPaid,
             int256 premiasOwed,
-            int256[4][] memory
+            int256[4][] memory premiasByLeg
         )
     {
         int256 paidAmounts;
-        int256[4][] memory premiasByLeg = new int256[4][](positionIdList.length);
+        premiasByLeg = new int256[4][](positionIdList.length);
         for (uint256 i = 0; i < positionIdList.length; ) {
             int256 premiaOwed;
             (medianTick, newTick, paidAmounts, premiaOwed, premiasByLeg[i]) = _burnOptions(
