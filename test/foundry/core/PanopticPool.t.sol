@@ -1760,7 +1760,7 @@ contract PanopticPoolTest is PositionUtils {
         assertEq(premium1, 0);
 
         changePrank(Bob);
-        
+
         // settle premium by minting another position touching the same chunk, triggering a collect
         pp.mintOptions(posIdList, positionSize, 0, 0, 0);
 
