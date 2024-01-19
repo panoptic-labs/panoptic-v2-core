@@ -946,7 +946,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @dev  - burns any new liquidity in the AMM needed (via _burnLiquidity)
     /// @dev  - tracks all amounts minted and burned
     /// @dev to burn a position, the opposing position is "created" through this function
-    /// but we need to pass in a flag to indicate that so the shortLiquidity is updated.
+    /// but we need to pass in a flag to indicate that so the removedLiquidity is updated.
     /// @param _univ3pool the Uniswap pool.
     /// @param _tokenId the option position
     /// @param _leg the leg index that needs to be modified
@@ -995,7 +995,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 updatedLiquidity = startingLiquidity + chunkLiquidity;
 
                 /// @dev If the isLong flag is 0=short but the position was burnt, then this is closing a long position
-                /// @dev so the amount of short liquidity should decrease.
+                /// @dev so the amount of removed liquidity should decrease.
                 if (_isBurn) {
                     removedLiquidity -= chunkLiquidity;
                 }
@@ -1018,7 +1018,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 }
 
                 /// @dev If the isLong flag is 1=long and the position is minted, then this is opening a long position
-                /// @dev so the amount of short liquidity should increase.
+                /// @dev so the amount of removed liquidity should increase.
                 if (!_isBurn) {
                     // we can't remove more liquidity than we add in the first place, so this can't overflow
                     unchecked {

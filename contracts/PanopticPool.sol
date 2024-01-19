@@ -138,7 +138,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // The minimum amount of time, in seconds, permitted between mini/median TWAP updates.
     uint256 internal constant MEDIAN_PERIOD = 60;
 
-    /// @dev The maximum allowed ratio for a single chunk, defined as: shortLiquidity / netLiquidity
+    /// @dev The maximum allowed ratio for a single chunk, defined as: totalLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
@@ -220,8 +220,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     mapping(address account => mapping(uint256 tokenId => mapping(uint256 leg => uint256 premiaGrowth)))
         internal s_options;
 
-    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total `shortLiquidity`
-    /// totalGrossPremium = shortLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
+    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`
+    /// totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
     /// Used to compute the denominator for the fraction of premium available to sellers to collect
     mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
 
@@ -431,7 +431,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
 
                         uint256 availablePremium = getAvailablePremium(
-                            getShortLiquidity(tokenId, leg, s_tickSpacing),
+                            getTotalLiquidity(tokenId, leg, s_tickSpacing),
                             s_settledTokens[chunkKey],
                             s_grossPremiumLast[chunkKey],
                             uint256(premiaByLeg[leg]),
@@ -490,7 +490,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position.
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position.
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     /// @param tickLimitLow The lower tick slippagelimit.
     /// @param tickLimitHigh The upper tick slippagelimit.
@@ -567,7 +567,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position.
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position.
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     /// @param tickLimitLow The lower tick slippagelimit.
     /// @param tickLimitHigh The upper tick slippagelimit.
@@ -702,27 +702,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tickSpacing
                 );
 
-                // new shortLiquidity (total sold) = removedLiquidity + netLiquidity (S + R)
-                uint256 shortLiquidity = getShortLiquidity(tokenId, leg, tickSpacing);
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (S + R)
+                uint256 totalLiquidity = getTotalLiquidity(tokenId, leg, tickSpacing);
 
                 // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedShortLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*shortLiquidityBeforeMint/2**64
+                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
                 // G: total gross premium
-                // S: shortLiquidityBeforeMint
+                // T: tLiquidityBeforeMinttotal
                 // R: positionLiquidity
                 // C: current grossPremium value
                 // L: current grossPremiumLast value
                 // Ln: updated grossPremiumLast value
-                // S * (C - L) = G
-                // (S + R) * (C - Ln) = G
+                // T * (C - L) = G
+                // (T + R) * (C - Ln) = G
                 //
-                // S = G/(C-L)
+                // T = G/(C-L)
                 // (G/(C-L) + R) * (C - Ln) = G
                 // CG/(C-L) + CR - LnG/(C-L) - LnR = G
                 // CG/(C-L) + CR  - G = LnG/(C-L) + LnR
                 // CG/(C-L) + CR  - G = Ln(G/(C-L) + R)
                 //
-                // (C(S + R) - G)/(S + R) = Ln
+                // (C(T + R) - G)/(T + R) = Ln
                 uint256[2] memory grossCurrent;
                 (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
                     address(s_univ3pool),
@@ -738,21 +738,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 unchecked {
                     // get G
                     grossNew[0] =
-                        ((shortLiquidity - liquidityChunk.liquidity()) *
+                        ((totalLiquidity - liquidityChunk.liquidity()) *
                             (grossCurrent[0] - s_grossPremiumLast[chunkKey].rightSlot())) /
                         2 ** 64;
                     grossNew[1] =
-                        ((shortLiquidity - liquidityChunk.liquidity()) *
+                        ((totalLiquidity - liquidityChunk.liquidity()) *
                             (grossCurrent[1] - s_grossPremiumLast[chunkKey].leftSlot())) /
                         2 ** 64;
 
                     // (C(S + R) - G)/(S + R) = Ln
                     grossNew[0] =
-                        (((grossCurrent[0] * shortLiquidity) / 2 ** 64 - grossNew[0]) * 2 ** 64) /
-                        shortLiquidity;
+                        (((grossCurrent[0] * totalLiquidity) / 2 ** 64 - grossNew[0]) * 2 ** 64) /
+                        totalLiquidity;
                     grossNew[1] =
-                        (((grossCurrent[1] * shortLiquidity) / 2 ** 64 - grossNew[1]) * 2 ** 64) /
-                        shortLiquidity;
+                        (((grossCurrent[1] * totalLiquidity) / 2 ** 64 - grossNew[1]) * 2 ** 64) /
+                        totalLiquidity;
 
                     // update grossPremiumLast
                     s_grossPremiumLast[chunkKey] = uint256(0)
@@ -764,7 +764,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     function getAvailablePremium(
-        uint256 shortLiquidity,
+        uint256 totalLiquidity,
         uint256 settledTokens,
         uint256 grossPremiumLast,
         uint256 premiumOwed,
@@ -775,9 +775,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // of total settled tokens in a chunk to total premium owed to sellers and multiply
             // cap the ratio at 1 (it can be greater than one if some seller forfeits enough premium)
             uint256 accumulated0 = ((premiumAccumulators[0] - grossPremiumLast.rightSlot()) *
-                shortLiquidity) / 2 ** 64;
+                totalLiquidity) / 2 ** 64;
             uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
-                shortLiquidity) / 2 ** 64;
+                totalLiquidity) / 2 ** 64;
             return (
                 uint256(0)
                     .toRightSlot(
@@ -802,13 +802,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    function getShortLiquidity(
+    function getTotalLiquidity(
         uint256 tokenId,
         uint256 leg,
         int24 tickSpacing
-    ) internal view returns (uint256 shortLiquidity) {
+    ) internal view returns (uint256 totalLiquidity) {
         unchecked {
-            // shortLiquidity (total sold) = removedLiquidity + netLiquidity
+            // totalLiquidity (total sold) = removedLiquidity + netLiquidity
 
             (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg, tickSpacing);
             uint256 tokenType = tokenId.tokenType(leg);
@@ -820,7 +820,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 tickUpper
             );
             // removed + net
-            shortLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
+            totalLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
         }
     }
 
@@ -860,10 +860,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                 uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
 
-                // new shortLiquidity (total sold) = removedLiquidity + netLiquidity (S - R)
-                uint256 shortLiquidity = getShortLiquidity(tokenId, leg, tickSpacing);
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (S - R)
+                uint256 totalLiquidity = getTotalLiquidity(tokenId, leg, tickSpacing);
                 uint256 availablePremium = getAvailablePremium(
-                    shortLiquidity + positionLiquidity,
+                    totalLiquidity + positionLiquidity,
                     settledTokens,
                     grossPremiumLast,
                     uint256(premiaByLeg[leg]),
@@ -874,51 +874,51 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 s_settledTokens[chunkKey] = settledTokens.sub(availablePremium);
 
                 // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedShortLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*shortLiquidityBeforeMint/2**64
+                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
                 // G: total gross premium
-                // S: shortLiquidityBeforeMint
+                // T: totalLiquidityBeforeMint
                 // R: positionLiquidity
                 // C: current grossPremium value
                 // L: current grossPremiumLast value
                 // Ln: updated grossPremiumLast value
-                // S * (C - L) = G
-                // (S - R) * (C - Ln) = G
+                // T * (C - L) = G
+                // (T - R) * (C - Ln) = G
                 //
-                // S = G/(C-L)
+                // T = G/(C-L)
                 // (G/(C-L) - R) * (C - Ln) = G
                 // CG/(C-L) - CR - LnG/(C-L) + LnR = G
                 // CG/(C-L) - CR  - G = LnG/(C-L) - LnR
                 // CG/(C-L) - CR  - G = Ln(G/(C-L) - R)
                 //
-                // (C(S - R) - G)/(S - R) = Ln
+                // (C(T - R) - G)/(T - R) = Ln
                 uint256[2] memory grossNew;
                 unchecked {
                     // if there's still liquidity, compute the new grossPremiumLast
                     // otherwise, we just reset grossPremiumLast to the current grossPremium
-                    if (shortLiquidity != 0) {
+                    if (totalLiquidity != 0) {
                         // get G
                         grossNew[0] =
-                            ((shortLiquidity + positionLiquidity) *
+                            ((totalLiquidity + positionLiquidity) *
                                 (premiumAccumulatorsByLeg[leg][0] -
                                     s_grossPremiumLast[chunkKey].rightSlot())) /
                             2 ** 64;
                         grossNew[1] =
-                            ((shortLiquidity + positionLiquidity) *
+                            ((totalLiquidity + positionLiquidity) *
                                 (premiumAccumulatorsByLeg[leg][1] -
                                     s_grossPremiumLast[chunkKey].leftSlot())) /
                             2 ** 64;
 
                         // (C(S + R) - G)/(S + R) = Ln
                         grossNew[0] =
-                            (((premiumAccumulatorsByLeg[leg][0] * shortLiquidity) /
+                            (((premiumAccumulatorsByLeg[leg][0] * totalLiquidity) /
                                 2 ** 64 -
                                 grossNew[0]) * 2 ** 64) /
-                            shortLiquidity;
+                            totalLiquidity;
                         grossNew[1] =
-                            (((premiumAccumulatorsByLeg[leg][1] * shortLiquidity) /
+                            (((premiumAccumulatorsByLeg[leg][1] * totalLiquidity) /
                                 2 ** 64 -
                                 grossNew[1]) * 2 ** 64) /
-                            shortLiquidity;
+                            totalLiquidity;
                     } else {
                         grossNew[0] = premiumAccumulatorsByLeg[leg][0];
                         grossNew[1] = premiumAccumulatorsByLeg[leg][1];
@@ -983,7 +983,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Store user option data. Track fees collected for the options.
     /// @dev Computes and stores the option data for each leg.
     /// @param mintTokenId The id of the minted option position.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     function _addUserOption(uint256 mintTokenId, uint64 effectiveLiquidityLimitX32) internal {
         // Update the position list hash (hash = XOR of all keccak256(tokenId)). Remove hash by XOR'ing again
@@ -1913,7 +1913,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param leg The leg of the option position (used to check if long or short).
     /// @param tickLower The lower tick of the chunk.
     /// @param tickUpper The upper tick of the chunk.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     function _checkLiquiditySpread(
         uint256 tokenId,
@@ -1930,13 +1930,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickUpper
         );
         uint128 netLiquidity = accountLiquidities.rightSlot();
-        uint128 shortLiquidity = accountLiquidities.leftSlot();
+        uint128 totalLiquidity = accountLiquidities.leftSlot();
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
-        if ((shortLiquidity == 0) && (netLiquidity == 0)) return;
+        if ((totalLiquidity == 0) && (netLiquidity == 0)) return;
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
-            effectiveLiquidityFactorX32 = (uint256(shortLiquidity) * 2 ** 32) / netLiquidity;
+            effectiveLiquidityFactorX32 = (uint256(totalLiquidity) * 2 ** 32) / netLiquidity;
         }
 
         // put a limit on how much new liquidity in one transaction can be deployed into this leg
