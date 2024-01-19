@@ -1119,7 +1119,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(realLiq, expectedLiq);
     }
 
-    function test_Success_mintTokenizedPosition_OutOfRangeShortCallLongCallCombined(
+    function test_Success_mintTokenizedPosition_OutOfRangeShortCallLongCall(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -1158,19 +1158,19 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // long leg
-        tokenId = tokenId.addLeg(1, longRatio, isWETH, 1, 0, 1, strike, width);
+        uint256 longTokenId = uint256(0).addUniv3pool(poolId).addLeg(0, longRatio, isWETH, 1, 0, 0, strike, width);
 
         // we can't use the populated values because they don't account for the option ratios, so must recalculate
         expectedLiq = isWETH == 0
             ? LiquidityAmounts.getLiquidityForAmount0(
                 sqrtLower,
                 sqrtUpper,
-                positionSize * (shortRatio - longRatio)
+                positionSize * shortRatio
             )
             : LiquidityAmounts.getLiquidityForAmount1(
                 sqrtLower,
                 sqrtUpper,
-                positionSize * (shortRatio - longRatio)
+                positionSize * shortRatio
             );
         uint256 removedLiq = isWETH == 0
             ? LiquidityAmounts.getLiquidityForAmount0(
@@ -1200,9 +1200,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 int128(expectedLiq)
             );
 
-        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, ) = sfpm
             .mintTokenizedPosition(
                 tokenId,
+                uint128(positionSize),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
+
+        (uint256[4] memory collectedByLegLong, int256 totalSwappedLong, int24 newTick) = sfpm
+            .mintTokenizedPosition(
+                longTokenId,
                 uint128(positionSize),
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
@@ -1212,6 +1220,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(newTick, currentTick);
 
         assertEq(collectedByLeg[0] + collectedByLeg[1] + collectedByLeg[2] + collectedByLeg[3], 0);
+        assertEq(collectedByLegLong[0] + collectedByLegLong[1] + collectedByLegLong[2] + collectedByLegLong[3], 0);
 
         assertApproxEqAbs(
             totalSwapped.rightSlot(),
@@ -1224,7 +1233,35 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             uint256($amount1Moved / 1_000_000 + 10)
         );
 
+        $amount0Moved = sqrtUpper < currentSqrtPriceX96
+            ? int256(0)
+            : SqrtPriceMath.getAmount0Delta(
+                sqrtLower < currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtLower,
+                sqrtUpper,
+                -int128(int256(removedLiq))
+            );
+
+        $amount1Moved = sqrtLower > currentSqrtPriceX96
+            ? int256(0)
+            : SqrtPriceMath.getAmount1Delta(
+                sqrtLower,
+                sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
+                -int128(int256(removedLiq))
+            );
+            
+        assertApproxEqAbs(  
+            totalSwappedLong.rightSlot(),
+            $amount0Moved,
+            uint256($amount0Moved / 1_000_000 + 10)
+        );
+        assertApproxEqAbs(
+            totalSwappedLong.leftSlot(),
+            $amount1Moved,
+            uint256($amount1Moved / 1_000_000 + 10)
+        );
+
         assertEq(sfpm.balanceOf(Alice, tokenId), positionSize);
+        assertEq(sfpm.balanceOf(Alice, longTokenId), positionSize);
 
         uint256 accountLiquidities = sfpm.getAccountLiquidity(
             address(pool),
@@ -1235,12 +1272,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         assertEq(accountLiquidities.leftSlot(), removedLiq);
-        assertApproxEqAbs(accountLiquidities.rightSlot(), expectedLiq, 10);
+        assertApproxEqAbs(accountLiquidities.rightSlot(), expectedLiq - removedLiq, 10);
 
         (uint256 realLiq, , , uint256 tokensOwed0, uint256 tokensOwed1) = pool.positions(
             keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
         );
-        assertApproxEqAbs(realLiq, expectedLiq, 10);
+        assertApproxEqAbs(realLiq, expectedLiq - removedLiq, 10);
         assertEq(tokensOwed0, 0);
         assertEq(tokensOwed1, 0);
 
