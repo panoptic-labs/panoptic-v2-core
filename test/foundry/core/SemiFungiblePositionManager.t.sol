@@ -1158,7 +1158,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // long leg
-        uint256 longTokenId = uint256(0).addUniv3pool(poolId).addLeg(0, longRatio, isWETH, 1, 0, 0, strike, width);
+        uint256 longTokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            longRatio,
+            isWETH,
+            1,
+            0,
+            0,
+            strike,
+            width
+        );
 
         // we can't use the populated values because they don't account for the option ratios, so must recalculate
         expectedLiq = isWETH == 0
@@ -1200,13 +1209,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 int128(expectedLiq)
             );
 
-        (uint256[4] memory collectedByLeg, int256 totalSwapped, ) = sfpm
-            .mintTokenizedPosition(
-                tokenId,
-                uint128(positionSize),
-                TickMath.MIN_TICK,
-                TickMath.MAX_TICK
-            );
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, ) = sfpm.mintTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
 
         (uint256[4] memory collectedByLegLong, int256 totalSwappedLong, int24 newTick) = sfpm
             .mintTokenizedPosition(
@@ -1220,7 +1228,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(newTick, currentTick);
 
         assertEq(collectedByLeg[0] + collectedByLeg[1] + collectedByLeg[2] + collectedByLeg[3], 0);
-        assertEq(collectedByLegLong[0] + collectedByLegLong[1] + collectedByLegLong[2] + collectedByLegLong[3], 0);
+        assertEq(
+            collectedByLegLong[0] +
+                collectedByLegLong[1] +
+                collectedByLegLong[2] +
+                collectedByLegLong[3],
+            0
+        );
 
         assertApproxEqAbs(
             totalSwapped.rightSlot(),
@@ -1248,8 +1262,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
                 -int128(int256(removedLiq))
             );
-            
-        assertApproxEqAbs(  
+
+        assertApproxEqAbs(
             totalSwappedLong.rightSlot(),
             $amount0Moved,
             uint256($amount0Moved / 1_000_000 + 10)
@@ -2457,7 +2471,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // long leg
-        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(0, longRatio, isWETH, 1, 0, 0, strike, width);
+        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            longRatio,
+            isWETH,
+            1,
+            0,
+            0,
+            strike,
+            width
+        );
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -2482,49 +2505,53 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // it may seem counterintuitive not to simply calculate from the net liquidity, but since this is the way the math is actually done in the contract,
         // precision losses would make the results too different
-        int256[2] memory amount0MovedsBurn = [TickMath.getSqrtRatioAtTick(tickUpper) < currentSqrtPriceX96
-            ? int256(0)
-            : SqrtPriceMath.getAmount0Delta(
-                TickMath.getSqrtRatioAtTick(tickLower) < currentSqrtPriceX96
-                    ? currentSqrtPriceX96
-                    : TickMath.getSqrtRatioAtTick(tickLower),
-                TickMath.getSqrtRatioAtTick(tickUpper),
-                int128(expectedRemovedLiqBurn)
-            ),
-                -(
-                    TickMath.getSqrtRatioAtTick(tickUpper) < currentSqrtPriceX96
-                        ? int256(0)
-                        : SqrtPriceMath.getAmount0Delta(
-                            TickMath.getSqrtRatioAtTick(tickLower) < currentSqrtPriceX96
-                                ? currentSqrtPriceX96
-                                : TickMath.getSqrtRatioAtTick(tickLower),
-                            TickMath.getSqrtRatioAtTick(tickUpper),
-                            int128(expectedAddedLiqBurn)
-                        )
-                )];
+        int256[2] memory amount0MovedsBurn = [
+            TickMath.getSqrtRatioAtTick(tickUpper) < currentSqrtPriceX96
+                ? int256(0)
+                : SqrtPriceMath.getAmount0Delta(
+                    TickMath.getSqrtRatioAtTick(tickLower) < currentSqrtPriceX96
+                        ? currentSqrtPriceX96
+                        : TickMath.getSqrtRatioAtTick(tickLower),
+                    TickMath.getSqrtRatioAtTick(tickUpper),
+                    int128(expectedRemovedLiqBurn)
+                ),
+            -(
+                TickMath.getSqrtRatioAtTick(tickUpper) < currentSqrtPriceX96
+                    ? int256(0)
+                    : SqrtPriceMath.getAmount0Delta(
+                        TickMath.getSqrtRatioAtTick(tickLower) < currentSqrtPriceX96
+                            ? currentSqrtPriceX96
+                            : TickMath.getSqrtRatioAtTick(tickLower),
+                        TickMath.getSqrtRatioAtTick(tickUpper),
+                        int128(expectedAddedLiqBurn)
+                    )
+            )
+        ];
 
-        int256[2] memory amount1MovedsBurn = [TickMath.getSqrtRatioAtTick(tickLower) > currentSqrtPriceX96
-            ? int256(0)
-            : SqrtPriceMath.getAmount1Delta(
-                TickMath.getSqrtRatioAtTick(tickLower),
-                TickMath.getSqrtRatioAtTick(tickUpper) > currentSqrtPriceX96
-                    ? currentSqrtPriceX96
-                    : TickMath.getSqrtRatioAtTick(tickUpper),
-                int128(expectedRemovedLiqBurn)
-            ), -
-                (
-                    TickMath.getSqrtRatioAtTick(tickLower) > currentSqrtPriceX96
-                        ? int256(0)
-                        : SqrtPriceMath.getAmount1Delta(
-                            TickMath.getSqrtRatioAtTick(tickLower),
-                            TickMath.getSqrtRatioAtTick(tickUpper) > currentSqrtPriceX96
-                                ? currentSqrtPriceX96
-                                : TickMath.getSqrtRatioAtTick(tickUpper),
-                            int128(expectedAddedLiqBurn)
-                        )
-                )];
+        int256[2] memory amount1MovedsBurn = [
+            TickMath.getSqrtRatioAtTick(tickLower) > currentSqrtPriceX96
+                ? int256(0)
+                : SqrtPriceMath.getAmount1Delta(
+                    TickMath.getSqrtRatioAtTick(tickLower),
+                    TickMath.getSqrtRatioAtTick(tickUpper) > currentSqrtPriceX96
+                        ? currentSqrtPriceX96
+                        : TickMath.getSqrtRatioAtTick(tickUpper),
+                    int128(expectedRemovedLiqBurn)
+                ),
+            -(
+                TickMath.getSqrtRatioAtTick(tickLower) > currentSqrtPriceX96
+                    ? int256(0)
+                    : SqrtPriceMath.getAmount1Delta(
+                        TickMath.getSqrtRatioAtTick(tickLower),
+                        TickMath.getSqrtRatioAtTick(tickUpper) > currentSqrtPriceX96
+                            ? currentSqrtPriceX96
+                            : TickMath.getSqrtRatioAtTick(tickUpper),
+                        int128(expectedAddedLiqBurn)
+                    )
+            )
+        ];
 
-        (uint256[4] memory collectedByLegLong, int256 totalSwappedLong,) = sfpm
+        (uint256[4] memory collectedByLegLong, int256 totalSwappedLong, ) = sfpm
             .burnTokenizedPosition(
                 tokenIdLong,
                 uint128(positionSizeBurn),
@@ -2544,7 +2571,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         assertEq(newTick, currentTick);
 
         assertEq(collectedByLeg[0] + collectedByLeg[1] + collectedByLeg[2] + collectedByLeg[3], 0);
-        assertEq(collectedByLegLong[0] + collectedByLegLong[1] + collectedByLegLong[2] + collectedByLegLong[3], 0);
+        assertEq(
+            collectedByLegLong[0] +
+                collectedByLegLong[1] +
+                collectedByLegLong[2] +
+                collectedByLegLong[3],
+            0
+        );
 
         assertApproxEqAbs(
             totalSwapped.rightSlot(),
