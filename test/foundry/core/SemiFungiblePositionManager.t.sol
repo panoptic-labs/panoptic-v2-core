@@ -2052,8 +2052,17 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.expectRevert(Errors.NotEnoughLiquidity.selector);
 
         // long leg
-       tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, longRatio, isWETH, 1, 0, 0, strike, width);
-       sfpm.mintTokenizedPosition(
+        tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+            0,
+            longRatio,
+            isWETH,
+            1,
+            0,
+            0,
+            strike,
+            width
+        );
+        sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
             TickMath.MIN_TICK,
