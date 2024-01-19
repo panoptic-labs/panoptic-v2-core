@@ -441,15 +441,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     } else {
                         portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
                     }
+                    unchecked {
+                        ++leg;
+                    }
+                }
+
                 unchecked {
-                    ++leg;
+                    ++k;
                 }
             }
-
-            unchecked {
-                ++k;
-            }
-        }
         }
         return (portfolioPremium, balances);
     }
@@ -774,14 +774,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // long premium only accumulates as it is settled, so compute the ratio
             // of total settled tokens in a chunk to total premium owed to sellers and multiply
             // cap the ratio at 1 (it can be greater than one if some seller forfeits enough premium)
-            uint256 accumulated0 = (premiumAccumulators[0] - grossPremiumLast.rightSlot()) * shortLiquidity / 2 **64;
-            uint256 accumulated1 = (premiumAccumulators[1] - grossPremiumLast.leftSlot()) * shortLiquidity / 2 **64;
+            uint256 accumulated0 = ((premiumAccumulators[0] - grossPremiumLast.rightSlot()) *
+                shortLiquidity) / 2 ** 64;
+            uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
+                shortLiquidity) / 2 ** 64;
             return (
                 uint256(0)
                     .toRightSlot(
                         uint128(
                             Math.min(
-                                (uint256(premiumOwed.rightSlot()) * settledTokens.rightSlot()) / (accumulated0 == 0 ? type(uint256).max : accumulated0),
+                                (uint256(premiumOwed.rightSlot()) * settledTokens.rightSlot()) /
+                                    (accumulated0 == 0 ? type(uint256).max : accumulated0),
                                 premiumOwed.rightSlot()
                             )
                         )
@@ -789,7 +792,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     .toLeftSlot(
                         uint128(
                             Math.min(
-                                (uint256(premiumOwed.leftSlot()) * settledTokens.leftSlot()) / (accumulated1 == 0 ? type(uint256).max : accumulated1),
+                                (uint256(premiumOwed.leftSlot()) * settledTokens.leftSlot()) /
+                                    (accumulated1 == 0 ? type(uint256).max : accumulated1),
                                 premiumOwed.leftSlot()
                             )
                         )
