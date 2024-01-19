@@ -210,11 +210,6 @@ contract LeftRightHarness {
         return r;
     }
 
-    function addUnchecked(uint256 x, uint256 y) public view returns (uint256) {
-        uint256 r = LeftRight.addUnchecked(x, y);
-        return r;
-    }
-
     /**
      * @notice Subtract two int256 bit LeftRight-encoded words; rectify to 0 on negative result.
      * @param x the minuend

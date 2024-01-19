@@ -1983,34 +1983,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    (uint256(
-                                        premiumAccumulatorsByLeg[leg][0] >=
-                                            premiumAccumulatorLast.rightSlot()
-                                            ? premiumAccumulatorsByLeg[leg][0] -
-                                                premiumAccumulatorLast.rightSlot()
-                                            : premiumAccumulatorsByLeg[leg][0] +
-                                                uint256(
-                                                    type(uint128).max -
-                                                        premiumAccumulatorLast.rightSlot()
-                                                )
-                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
+                                    ((premiumAccumulatorsByLeg[leg][0] -
+                                        premiumAccumulatorLast.rightSlot()) *
+                                        (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    (uint256(
-                                        premiumAccumulatorsByLeg[leg][1] >=
-                                            premiumAccumulatorLast.leftSlot()
-                                            ? premiumAccumulatorsByLeg[leg][1] -
-                                                premiumAccumulatorLast.leftSlot()
-                                            : premiumAccumulatorsByLeg[leg][1] +
-                                                uint256(
-                                                    type(uint128).max -
-                                                        premiumAccumulatorLast.leftSlot()
-                                                )
-                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
+                                    ((premiumAccumulatorsByLeg[leg][1] -
+                                        premiumAccumulatorLast.leftSlot()) *
+                                        (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         );

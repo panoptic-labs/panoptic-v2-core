@@ -107,6 +107,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @dev Uses the LeftRight packaging methods for uint256/int256 to store 128bit values
     using LeftRight for int256;
     using LeftRight for uint256;
+    using Math for uint256;
 
     using TokenId for uint256; // an option position
     using LiquidityChunk for uint256; // a leg within an option position `tokenId`
@@ -1108,15 +1109,16 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             collectedAmounts
         );
 
-        // note: these are allowed to overflow because the alternative results in a possible DOS with stuck positions at high multipliers
-        // protocols that make use of these values should/will implement a cap to the liquidity utilization to prevent extremely high long premium multipliers
-        // when most of the liquidity is removed. There is no need for such a cap
-        s_accountPremiumOwed[positionKey] = s_accountPremiumOwed[positionKey].addUnchecked(
-            deltaPremiumOwed
-        );
-        s_accountPremiumGross[positionKey] = s_accountPremiumGross[positionKey].addUnchecked(
-            deltaPremiumGross
-        );
+        // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
+        // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
+        // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
+        (s_accountPremiumOwed[positionKey], s_accountPremiumGross[positionKey]) = LeftRight
+            .addCapped(
+                s_accountPremiumOwed[positionKey],
+                deltaPremiumOwed,
+                s_accountPremiumGross[positionKey],
+                deltaPremiumGross
+            );
     }
 
     /// @notice Compute the feesGrowth * liquidity / 2**128 by reading feeGrowthInside0LastX128 and feeGrowthInside1LastX128 from univ3pool.positions.
@@ -1294,6 +1296,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /// @notice Function that updates the Owed and Gross account liquidities.
+    /// @dev Returned accumulators are capped at the max value (2**128 - 1) for each token if they overflow.
     /// @param currentLiquidity netLiquidity (right) and removedLiquidity (left) at the start of the transaction
     /// @param collectedAmounts total amount of tokens (token0 and token1) collected from Uniswap.
     /// @return deltaPremiumOwed The extra premium (per liquidity X64) to be added to the owed accumulator for token0 (right) and token1 (left)
@@ -1342,12 +1345,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     // compute the owed premium (from Eqn 3)
                     uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
 
-                    premium0X64_owed = uint128(
-                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity)
-                    );
-                    premium1X64_owed = uint128(
-                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity)
-                    );
+                    premium0X64_owed = Math
+                        .mulDiv(premium0X64_base, numerator, totalLiquidity)
+                        .toUint128Capped();
+                    premium1X64_owed = Math
+                        .mulDiv(premium1X64_base, numerator, totalLiquidity)
+                        .toUint128Capped();
 
                     deltaPremiumOwed = uint256(0).toRightSlot(premium0X64_owed).toLeftSlot(
                         premium1X64_owed
@@ -1364,12 +1367,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         totalLiquidity *
                         removedLiquidity +
                         ((removedLiquidity ** 2) / 2 ** (VEGOID));
-                    premium0X64_gross = uint128(
-                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
-                    );
-                    premium1X64_gross = uint128(
-                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
-                    );
+
+                    premium0X64_gross = Math
+                        .mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
+                        .toUint128Capped();
+                    premium1X64_gross = Math
+                        .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
+                        .toUint128Capped();
+
                     deltaPremiumGross = uint256(0).toRightSlot(premium0X64_gross).toLeftSlot(
                         premium1X64_gross
                     );
@@ -1426,15 +1431,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 tickUpper,
         int24 atTick,
         uint256 isLong
-    ) external view returns (uint128 premiumToken0, uint128 premiumToken1) {
+    ) external view returns (uint128, uint128) {
         bytes32 positionKey = keccak256(
             abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper)
         );
-
-        // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
-        uint256 acctPremia = isLong == 1
-            ? s_accountPremiumOwed[positionKey]
-            : s_accountPremiumGross[positionKey];
 
         // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
         if (atTick < type(int24).max) {
@@ -1462,20 +1462,35 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     amountToCollect = uint256(feesBase.subRect(s_accountFeesBase[positionKey]));
                 }
 
-                (uint256 deltaPremiumOwed, uint256 deltaPremiumGross) = _getPremiaDeltas(
+                (uint256 premiumOwed, uint256 premiumGross) = _getPremiaDeltas(
                     accountLiquidities,
                     amountToCollect
                 );
-                // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
-                // allow rollover to remain consistent with actual behavior
-                acctPremia = isLong == 1
-                    ? acctPremia.addUnchecked(deltaPremiumOwed)
-                    : acctPremia.addUnchecked(deltaPremiumGross);
-            }
-        }
 
-        premiumToken0 = acctPremia.rightSlot();
-        premiumToken1 = acctPremia.leftSlot();
+                // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
+                // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
+                // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
+                (premiumOwed, premiumGross) = LeftRight.addCapped(
+                    s_accountPremiumOwed[positionKey],
+                    premiumOwed,
+                    s_accountPremiumGross[positionKey],
+                    premiumGross
+                );
+
+                return (
+                    isLong == 1
+                        ? (premiumOwed.rightSlot(), premiumOwed.leftSlot())
+                        : (premiumGross.rightSlot(), premiumGross.leftSlot())
+                );
+            }
+        } else {
+            // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+            uint256 acctPremia = isLong == 1
+                ? s_accountPremiumOwed[positionKey]
+                : s_accountPremiumGross[positionKey];
+
+            return (acctPremia.rightSlot(), acctPremia.leftSlot());
+        }
     }
 
     /// @notice Return the feesBase associated with a given position.

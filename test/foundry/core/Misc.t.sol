@@ -246,7 +246,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         // accumulate the maximum fees per liq SFPM supports
-        accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 2 ** 64 - 1);
+        accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 0);
 
         changePrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -255,18 +255,19 @@ contract Misctest is Test, PositionUtils {
         // works fine
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
-        uint256 balanceBefore = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         changePrank(Alice);
 
         // lock in almost-overflowed fees per liquidity
-        pp.mintOptions(posIdList, 1000, 0, 0, 0);
+        pp.mintOptions(posIdList, 1_000_000_000, 0, 0, 0);
 
         changePrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        // overflow back to ~1_000_000 (fees per liq)
-        accruePoolFeesInRange(address(uniPool), 413, 1_000_000, 1_000_000);
+        // overflow back to ~10_000_000 (fees per liq)
+        accruePoolFeesInRange(address(uniPool), 412639631, 10_000_000, 10_000_000);
 
         // this should behave like the actual accumulator does and rollover, not revert on overflow
         (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
@@ -278,8 +279,8 @@ contract Misctest is Test, PositionUtils {
             0,
             0
         );
-        assertEq(premium0, 44646762138360822200777);
-        assertEq(premium1, 44646762138360822200777);
+        assertEq(premium0, type(uint128).max);
+        assertEq(premium1, type(uint128).max);
 
         changePrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -289,11 +290,16 @@ contract Misctest is Test, PositionUtils {
         // Alice can be frontrun if her transaction goes to a public mempool (or is otherwise anticipated),
         // so the cost of the attack is just ~2**64 * active liquidity (shown here to be as low as 1 even with initial full-range!)
         // + fee to move price initially (if applicable)
-        // The solution is to wrap around the overflow once (so if the accumulator goes down, the fees are acc_current + (acc_max - acc_prev)
-        // If it overflows multiple times, we leave some fees unclaimed, but that's fine. Can't be exploited.
+        // The solution is to freeze fee accumulation if one of the token accumulators overflow
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
-        // make sure Alice is credited (not debited!) a reasonable amount of fees
-        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore), 997570);
+        // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
+        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0), -7);
+
+        // but all of fees on token 1 since the premium accumulator did not overflow (!)
+        assertEq(
+            int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
+            9_999_998
+        );
     }
 }
