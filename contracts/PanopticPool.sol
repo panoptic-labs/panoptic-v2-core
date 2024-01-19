@@ -716,12 +716,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // T * (C - L) = G
                 // (T + R) * (C - Ln) = G
                 //
-                // T = G/(C-L)
-                // (G/(C-L) + R) * (C - Ln) = G
-                // CG/(C-L) + CR - LnG/(C-L) - LnR = G
-                // CG/(C-L) + CR  - G = LnG/(C-L) + LnR
-                // CG/(C-L) + CR  - G = Ln(G/(C-L) + R)
+                // T * (C - L) = (T + R) * (C - Ln)
+                // (TC - TL) / (T + R) = C - Ln
+                // Ln = C - (TC - TL)/(T + R)
+                // Ln = (CT + CR - TC + TL)/(T+R)
+                // Ln = (CR + TL)/(T+R)
                 //
+                // (old)
                 // (C(T + R) - G)/(T + R) = Ln
                 uint256[2] memory grossCurrent;
                 (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
@@ -746,7 +747,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             (grossCurrent[1] - s_grossPremiumLast[chunkKey].leftSlot())) /
                         2 ** 64;
 
-                    // (C(S + R) - G)/(S + R) = Ln
+                    // (C(T + R) - G)/(T + R) = Ln
+                    // Ln = (CR + TL)/(T+R)
                     grossNew[0] =
                         (((grossCurrent[0] * totalLiquidity) / 2 ** 64 - grossNew[0]) * 2 ** 64) /
                         totalLiquidity;
@@ -860,7 +862,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                 uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
 
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (S - R)
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
                 uint256 totalLiquidity = getTotalLiquidity(tokenId, leg, tickSpacing);
                 uint256 availablePremium = getAvailablePremium(
                     totalLiquidity + positionLiquidity,
@@ -884,12 +886,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // T * (C - L) = G
                 // (T - R) * (C - Ln) = G
                 //
-                // T = G/(C-L)
-                // (G/(C-L) - R) * (C - Ln) = G
-                // CG/(C-L) - CR - LnG/(C-L) + LnR = G
-                // CG/(C-L) - CR  - G = LnG/(C-L) - LnR
-                // CG/(C-L) - CR  - G = Ln(G/(C-L) - R)
+                // T * (C - L) = (T - R) * (C - Ln)
+                // (TC - TL) / (T - R) = C - Ln
+                // Ln = C - (CT - LT) / (T - R)
+                // Ln = (CT - CR - CT + LT) / (T-R)
+                // Ln = (LT - CR) / (T-R)
                 //
+                // (old)
                 // (C(T - R) - G)/(T - R) = Ln
                 uint256[2] memory grossNew;
                 unchecked {
@@ -908,7 +911,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                     s_grossPremiumLast[chunkKey].leftSlot())) /
                             2 ** 64;
 
-                        // (C(S + R) - G)/(S + R) = Ln
+                        // (C(T - R) - G)/(T - R) = Ln
                         grossNew[0] =
                             (((premiumAccumulatorsByLeg[leg][0] * totalLiquidity) /
                                 2 ** 64 -
