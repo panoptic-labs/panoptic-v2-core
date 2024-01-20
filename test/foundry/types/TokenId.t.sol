@@ -1273,6 +1273,16 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addTokenType(tokenId, 1, 1);
         }
 
+        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
+            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
+                vm.assume(
+                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
+                        tokenId.width(legIndex) == tokenId.width(j) &&
+                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
+                );
+            }
+        }
+
         // will fail as risk partners must have the same asset
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 4));
         harness.validate(tokenId);
