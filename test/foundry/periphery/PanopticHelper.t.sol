@@ -640,7 +640,6 @@ contract PanopticHelperTest is PositionUtils {
             inputLeg[i] = _Leg;
         }
 
-        
         for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
             for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
                 vm.assume(
@@ -790,7 +789,6 @@ contract PanopticHelperTest is PositionUtils {
             inputLeg[i] = _Leg;
         }
 
-
         for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
             for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
                 vm.assume(
@@ -939,7 +937,6 @@ contract PanopticHelperTest is PositionUtils {
             inputLeg[i] = _Leg;
         }
 
-
         for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
             for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
                 vm.assume(
@@ -949,7 +946,7 @@ contract PanopticHelperTest is PositionUtils {
                 );
             }
         }
-        
+
         tokenId.validate();
         PanopticHelper.Leg[] memory unwrappedLeg = ph.unwrapTokenId(tokenId);
 
