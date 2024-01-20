@@ -1699,7 +1699,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[1] = tokenId2;
 
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
-                .calculateAccumulatedFeesBatch(Alice, posIdList);
+                .calculateAccumulatedFeesBatch(Alice, false, posIdList);
             assertEq(uint128(premium0), expectedPremia[0]);
             assertEq(uint128(premium1), expectedPremia[1]);
             assertEq(posBalanceArray[0][0], tokenId);
@@ -1753,18 +1753,33 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
 
-        (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
+        (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            false,
+            posIdList
+        );
 
-        // we have not settled any accrued premium yet, so the calculated amount should be 0
+        // we have not settled any accrued premium yet, so the calculated amount (excluding pending premium) should be 0
         assertEq(premium0, 0);
         assertEq(premium1, 0);
+
+        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
+
+        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
+        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
 
         changePrank(Bob);
 
         // settle premium by minting another position touching the same chunk, triggering a collect
         pp.mintOptions(posIdList, positionSize, 0, 0, 0);
 
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
+        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
+
+        // now that we have settled, the results should be the same
+        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
+        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
+
+        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
 
         assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
         assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
@@ -4489,7 +4504,11 @@ contract PanopticPoolTest is PositionUtils {
 
         updateIntrinsicValueBurn(longAmounts, shortAmounts);
 
-        ($expectedPremia0, $expectedPremia1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
+        ($expectedPremia0, $expectedPremia1, ) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            true,
+            posIdList
+        );
 
         changePrank(Bob);
 
@@ -4608,6 +4627,11 @@ contract PanopticPoolTest is PositionUtils {
                 : -int256(uint256(-$balanceDelta0));
 
             $balanceDelta1 = int256(exerciseFeeAmounts[1]) - $intrinsicValue1 + $expectedPremia1;
+
+            console2.log("$balanceDelta1", $balanceDelta1);
+            console2.log("exerciseFeeAmounts[1]", exerciseFeeAmounts[1]);
+            console2.log("$intrinsicValue1", $intrinsicValue1);
+            console2.log("$expectedPremia1", $expectedPremia1);
 
             $balanceDelta1 = $balanceDelta1 > 0
                 ? int256(uint256($balanceDelta1))
@@ -5547,7 +5571,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         ($expectedPremia0, $expectedPremia1, $positionBalanceArray) = pp
-            .calculateAccumulatedFeesBatch(Alice, $posIdLists[1]);
+            .calculateAccumulatedFeesBatch(Alice, true, $posIdLists[1]);
 
         $tokenData0 = int256(
             ct0.getAccountMarginDetails(Alice, TWAPtick, $positionBalanceArray, $expectedPremia0)

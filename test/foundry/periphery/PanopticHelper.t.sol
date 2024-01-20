@@ -992,7 +992,7 @@ contract PanopticHelperTest is PositionUtils {
             pp.mintOptions(posIdList, positionSizes[1], 0, 0, 0);
 
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
-                .calculateAccumulatedFeesBatch(Alice, posIdList);
+                .calculateAccumulatedFeesBatch(Alice, false, posIdList);
 
             tokenData0 = ct0.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium0);
             tokenData1 = ct1.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium1);
