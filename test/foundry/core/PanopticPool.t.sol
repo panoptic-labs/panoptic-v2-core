@@ -4216,6 +4216,18 @@ contract PanopticPoolTest is PositionUtils {
                 tokenTypes[i]
             );
         }
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            // make sure there are no double-touched chunks
+            for (uint256 j = 0; j < i; ++j) {
+                vm.assume(
+                    widths[i] != widths[j] ||
+                        strikes[i] != strikes[j] ||
+                        tokenTypes[i] != tokenTypes[j]
+                );
+            }
+        }
+
         if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
         if (numLegs == 2)
             populatePositionData(
@@ -4416,6 +4428,18 @@ contract PanopticPoolTest is PositionUtils {
                 currentTick
             );
         }
+
+        for (uint256 i = 0; i < numLegs; ++i) {
+            // make sure there are no double-touched chunks
+            for (uint256 j = 0; j < i; ++j) {
+                vm.assume(
+                    widths[i] != widths[j] ||
+                        strikes[i] != strikes[j] ||
+                        tokenTypes[i] != tokenTypes[j]
+                );
+            }
+        }
+
         if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
         if (numLegs == 2)
             populatePositionData(
