@@ -916,6 +916,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     _isBurn
                 );
 
+                collectedByLeg[_leg] = _totalCollected;
+
                 unchecked {
                     // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
                     amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
@@ -926,7 +928,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             totalMoved = totalMoved.add(_moved);
             itmAmounts = itmAmounts.add(_itmAmounts);
-            collectedByLeg[leg] = _totalCollected;
 
             unchecked {
                 ++leg;

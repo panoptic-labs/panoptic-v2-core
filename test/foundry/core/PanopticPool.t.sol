@@ -3696,27 +3696,26 @@ contract PanopticPoolTest is PositionUtils {
             : -((notionalVals[0] * tickSpacing) / 10_000);
 
         assertApproxEqAbs(
-            balanceBefores[0],
-            uint256(
-                int256(uint256(type(uint104).max)) -
-                    ITMSpread -
-                    notionalVals[0] -
-                    notionalVals[1] -
-                    (shortAmounts.rightSlot() * 10) /
-                    10_000 +
-                    int128(tokensOwed0)
-            ),
+            int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
+            -ITMSpread -
+                notionalVals[0] -
+                notionalVals[1] -
+                (shortAmounts.rightSlot() * 10) /
+                10_000 +
+                int128(tokensOwed0),
             (uint256(int256(shortAmounts.rightSlot())) + tokensOwed0) /
                 1_000_000 +
                 (expectedSwaps[0] + expectedSwaps[1]) /
                 100 +
-                10
+                10,
+            "Incorrect token0 delta"
         );
 
         assertApproxEqAbs(
-            balanceBefores[1],
-            uint256(type(uint104).max) + tokensOwed1,
-            tokensOwed1 / 1_000_000 + 10
+            int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
+            int256(uint256(tokensOwed1)),
+            tokensOwed1 / 1_000_000 + 10,
+            "Incorrect token1 delta"
         );
     }
 
@@ -4597,18 +4596,18 @@ contract PanopticPoolTest is PositionUtils {
         pp.forceExercise(Alice, posIdList, new uint256[](0), new uint256[](0));
 
         assertApproxEqAbs(
-            int256(ct0.balanceOf(Bob)),
-            int256(uint256(type(uint104).max)) -
-                (exerciseFeeAmounts[0] < 0 ? -1 : int8(1)) *
+            int256(ct0.balanceOf(Bob)) - int256(uint256(type(uint104).max)),
+            -(exerciseFeeAmounts[0] < 0 ? -1 : int8(1)) *
                 int256(ct0.convertToShares(uint256(Math.abs(exerciseFeeAmounts[0])))),
-            10
+            10,
+            "Incorrect balance delta for token0 (Force Exercisor)"
         );
         assertApproxEqAbs(
-            int256(ct1.balanceOf(Bob)),
-            int256(uint256(type(uint104).max)) -
-                (exerciseFeeAmounts[1] < 0 ? -1 : int8(1)) *
+            int256(ct1.balanceOf(Bob)) - int256(uint256(type(uint104).max)),
+            -(exerciseFeeAmounts[1] < 0 ? -1 : int8(1)) *
                 int256(ct1.convertToShares(uint256(Math.abs(exerciseFeeAmounts[1])))),
-            10
+            10,
+            "Incorrect balance delta for token1 (Force Exercisor)"
         );
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), 0);
@@ -4652,26 +4651,27 @@ contract PanopticPoolTest is PositionUtils {
 
             $balanceDelta1 = int256(exerciseFeeAmounts[1]) - $intrinsicValue1 + $expectedPremia1;
 
-            console2.log("$balanceDelta1", $balanceDelta1);
-            console2.log("exerciseFeeAmounts[1]", exerciseFeeAmounts[1]);
-            console2.log("$intrinsicValue1", $intrinsicValue1);
-            console2.log("$expectedPremia1", $expectedPremia1);
-
             $balanceDelta1 = $balanceDelta1 > 0
                 ? int256(uint256($balanceDelta1))
                 : -int256(uint256(-$balanceDelta1));
 
             assertApproxEqAbs(
-                ct0.convertToAssets(ct0.balanceOf(Alice)),
-                uint256(int256(lastCollateralBalance0[Alice]) + $balanceDelta0),
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) -
+                    int256(lastCollateralBalance0[Alice]),
+                $balanceDelta0,
                 uint256(
                     int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_000_000 + 10)
-                )
+                ),
+                "Incorrect balance delta for token0 (Force Exercisee)"
             );
             assertApproxEqAbs(
-                ct1.convertToAssets(ct1.balanceOf(Alice)),
-                uint256(int256(lastCollateralBalance1[Alice]) + $balanceDelta1),
-                uint256(int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10))
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) -
+                    int256(lastCollateralBalance1[Alice]),
+                $balanceDelta1,
+                uint256(
+                    int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10)
+                ),
+                "Incorrect balance delta for token1 (Force Exercisee)"
             );
         }
     }
@@ -5595,7 +5595,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         ($expectedPremia0, $expectedPremia1, $positionBalanceArray) = pp
-            .calculateAccumulatedFeesBatch(Alice, true, $posIdLists[1]);
+            .calculateAccumulatedFeesBatch(Alice, false, $posIdLists[1]);
 
         $tokenData0 = int256(
             ct0.getAccountMarginDetails(Alice, TWAPtick, $positionBalanceArray, $expectedPremia0)

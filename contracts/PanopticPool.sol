@@ -707,6 +707,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
             // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
             s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+
             if (tokenId.isLong(leg) == 0) {
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
@@ -868,9 +869,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
 
             // (will be) paid by long legs
-            if (premiaByLeg[leg] < 0) settledTokens.add(uint256(-premiaByLeg[leg]));
-
-            if (premiaByLeg[leg] > 0) {
+            if (premiaByLeg[leg] <= 0) {
+                settledTokens = settledTokens.add(uint256(-premiaByLeg[leg]));
+                realizedPremia = realizedPremia.add(premiaByLeg[leg]);
+            } else {
                 uint256 positionLiquidity = PanopticMath
                     .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
                     .liquidity();
@@ -888,7 +890,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
 
                 // subtract settled tokens sent to seller
-                s_settledTokens[chunkKey] = settledTokens.sub(availablePremium);
+                settledTokens = settledTokens.sub(availablePremium);
+
+                // add available premium to amount that should be settled
+                realizedPremia = realizedPremia.add(int256(availablePremium));
 
                 // We need to adjust the grossPremiumLast value such that the result of
                 // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
@@ -949,7 +954,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 }
             }
 
-            realizedPremia = realizedPremia.add(premiaByLeg[leg]);
+            // update settled tokens in storage with all local deltas
+            s_settledTokens[chunkKey] = settledTokens;
+
             unchecked {
                 ++leg;
             }
