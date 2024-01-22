@@ -386,15 +386,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             s_AddrToPoolIdData[univ3pool] = uint256(poolId) + 2 ** 255;
         }
         emit PoolInitialized(univ3pool);
-
-        return;
-
-        // this disables `memoryguard` when compiling this contract via IR
-        // it is classed as a potentially unsafe assembly block by the compiler, but is in fact safe
-        // we need this because enabling `memoryguard` and therefore StackLimitEvader increases the size of the contract significantly beyond the size limit
-        assembly {
-            mstore(0, 0xFA20F71C)
-        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -706,29 +697,24 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // Revert if the pool not been previously initialized
         if (univ3pool == IUniswapV3Pool(address(0))) revert Errors.UniswapPoolNotInitialized();
 
-        bool swapAtMint;
-        {
-            if (tickLimitLow > tickLimitHigh) {
-                swapAtMint = true;
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-            }
-        }
         // initialize some variables returned by the _createPositionInAMM function
         int256 itmAmounts;
 
-        {
-            // calls a function that loops through each leg of tokenId and mints/burns liquidity in Uni v3 pool
-            (totalMoved, collectedByLeg, itmAmounts) = _createPositionInAMM(
-                univ3pool,
-                tokenId,
-                positionSize,
-                isBurn
-            );
-        }
+        // calls a function that loops through each leg of tokenId and mints/burns liquidity in Uni v3 pool
+        (totalMoved, collectedByLeg, itmAmounts) = _createPositionInAMM(
+            univ3pool,
+            tokenId,
+            positionSize,
+            isBurn
+        );
 
-        // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
-        if ((itmAmounts != 0) && (swapAtMint)) {
-            totalMoved = swapInAMM(univ3pool, itmAmounts).add(totalMoved);
+        if (tickLimitLow > tickLimitHigh) {
+            // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
+            if ((itmAmounts != 0)) {
+                totalMoved = swapInAMM(univ3pool, itmAmounts).add(totalMoved);
+            }
+
+            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
         }
 
         // Get the current tick of the Uniswap pool, check slippage
