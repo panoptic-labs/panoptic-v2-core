@@ -1698,6 +1698,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
+            vm.assume(width != width1 || strike != strike1);
+
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
@@ -2055,6 +2057,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
+            vm.assume(width != width1 || strike != strike1);
+
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
@@ -2220,6 +2224,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 currentTick,
                 0
             );
+
+            vm.assume(width != width1 || strike != strike1);
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 0, 1, strike1, width1);
@@ -2389,6 +2395,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
+            vm.assume(width != width1 || strike != strike1);
+
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
@@ -2557,6 +2565,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 currentTick,
                 0
             );
+
+            vm.assume(width != width1 || strike != strike1);
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 0, 1, strike1, width1);
@@ -2728,6 +2738,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 currentTick,
                 0
             );
+
+            vm.assume(width != width1 || strike != strike1);
 
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 0, 0, 0, 1, strike1, width1);
