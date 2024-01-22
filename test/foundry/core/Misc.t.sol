@@ -13,6 +13,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
+import {Math} from "@libraries/Math.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -132,6 +133,9 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct1;
     PanopticHelper ph;
 
+    uint256 assetsBefore0;
+    uint256 assetsBefore1;
+
     IUniswapV3Pool uniPool;
     ERC20S token0;
     ERC20S token1;
@@ -142,6 +146,9 @@ contract Misctest is Test, PositionUtils {
     address Swapper = address(0x123456789);
     address Charlie = address(0x1234567891);
     address Seller = address(0x12345678912);
+
+    uint256[] $posIdList;
+    uint256[] $tempIdList;
 
     function setUp() public {
         vm.startPrank(Deployer);
@@ -202,6 +209,145 @@ contract Misctest is Test, PositionUtils {
 
         ct0.deposit(type(uint104).max, Bob);
         ct1.deposit(type(uint104).max, Bob);
+
+        changePrank(Charlie);
+
+        token0.mint(Charlie, type(uint104).max);
+        token1.mint(Charlie, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max, Charlie);
+        ct1.deposit(type(uint104).max, Charlie);
+    }
+
+    function test_success_settledPremiumDistribution() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 9.737% * 1.028x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        // First close Bob's position; they should receive 25% of the initial amount because no fees were paid on their position
+        // Close half (4.875%) of the removed liquidity
+        // Then close Alice's position, they should receive ~55% of the initial amount because half of the fees owed by sellers are available
+        changePrank(Alice);
+
+        pp.mintOptions($posIdList, 500_000, 0, 0, 0);
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+
+        changePrank(Charlie);
+
+        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        changePrank(Alice);
+
+        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+
+        changePrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        changePrank(Bob);
+
+        // burn Bob's position, should get 25% of fees paid (no long fees avail.)
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        $tempIdList.push($posIdList[1]);
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+
+        console2.log("Bob Delta 0", ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0);
+        console2.log("Bob Delta 1", ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1);
+
+        $posIdList[1] = $posIdList[0];
+        $posIdList[0] = $tempIdList[0];
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $tempIdList[0] = $posIdList[1];
+
+        // Burn 1/2 of the removed liq
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+
+        changePrank(Alice);
+
+        // burn Alice's position, should get 54% of fees paid back (50% + (5% long paid/75% remaining) * (2/3 owned by Alice)) '
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        $tempIdList[0] = $posIdList[0];
+        pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+
+        console2.log("Alice Delta 0", ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0);
+        console2.log("Alice Delta 1", ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1);
+
+        // Burn other half of the removed liq
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+
+        changePrank(Charlie);
+
+        // Finally, burn Charlie's posiiton, he should get 25% (25% + 10% long paid)
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
+
+        pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+
+        console2.log(
+            "Charlie Delta 0",
+            ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0
+        );
+        console2.log(
+            "Charlie Delta 1",
+            ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1
+        );
     }
 
     function test_success_PremiumRollover() public {

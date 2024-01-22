@@ -20,6 +20,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -761,6 +762,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             (grossCurrent[1] - s_grossPremiumLast[chunkKey].leftSlot())) /
                         2 ** 64;
 
+                    console2.log("calculated G (0) (mint)", grossNew[0]);
                     // (C(T + R) - G)/(T + R) = Ln
                     // Ln = (CR + TL)/(T+R)
                     grossNew[0] =
@@ -770,6 +772,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         (((grossCurrent[1] * totalLiquidity) / 2 ** 64 - grossNew[1]) * 2 ** 64) /
                         totalLiquidity;
 
+                    console2.log("new grossPremiumLast(0) (mint)", grossNew[0]);
                     // update grossPremiumLast
                     s_grossPremiumLast[chunkKey] = uint256(0)
                         .toRightSlot(uint128(grossNew[0]))
@@ -794,6 +797,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 totalLiquidity) / 2 ** 64;
             uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
                 totalLiquidity) / 2 ** 64;
+
+            console2.log("premiumAccumulators[0]", premiumAccumulators[0]);
+            console2.log("grossPremiumLast.rightSlot()", grossPremiumLast.rightSlot());
+            console2.log("accumulated0", accumulated0);
 
             return (
                 uint256(0)
@@ -889,69 +896,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     premiumAccumulatorsByLeg[leg]
                 );
 
+                console2.log("settledtokens0", settledTokens.rightSlot());
+                console2.log("owedTokens0", premiaByLeg[leg].rightSlot());
+                console2.log("availablePremium0", availablePremium.rightSlot());
+
                 // subtract settled tokens sent to seller
                 settledTokens = settledTokens.sub(availablePremium);
 
                 // add available premium to amount that should be settled
                 realizedPremia = realizedPremia.add(int256(availablePremium));
-
-                // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
-                // G: total gross premium
-                // T: totalLiquidityBeforeMint
-                // R: positionLiquidity
-                // C: current grossPremium value
-                // L: current grossPremiumLast value
-                // Ln: updated grossPremiumLast value
-                // T * (C - L) = G
-                // (T - R) * (C - Ln) = G
-                //
-                // T * (C - L) = (T - R) * (C - Ln)
-                // (TC - TL) / (T - R) = C - Ln
-                // Ln = C - (CT - LT) / (T - R)
-                // Ln = (CT - CR - CT + LT) / (T-R)
-                // Ln = (LT - CR) / (T-R)
-                //
-                // (old)
-                // (C(T - R) - G)/(T - R) = Ln
-                uint256[2] memory grossNew;
-                unchecked {
-                    // if there's still liquidity, compute the new grossPremiumLast
-                    // otherwise, we just reset grossPremiumLast to the current grossPremium
-                    if (totalLiquidity != 0) {
-                        // get G
-                        grossNew[0] =
-                            ((totalLiquidity + positionLiquidity) *
-                                (premiumAccumulatorsByLeg[leg][0] -
-                                    s_grossPremiumLast[chunkKey].rightSlot())) /
-                            2 ** 64;
-                        grossNew[1] =
-                            ((totalLiquidity + positionLiquidity) *
-                                (premiumAccumulatorsByLeg[leg][1] -
-                                    s_grossPremiumLast[chunkKey].leftSlot())) /
-                            2 ** 64;
-
-                        // (C(T - R) - G)/(T - R) = Ln
-                        grossNew[0] =
-                            (((premiumAccumulatorsByLeg[leg][0] * totalLiquidity) /
-                                2 ** 64 -
-                                grossNew[0]) * 2 ** 64) /
-                            totalLiquidity;
-                        grossNew[1] =
-                            (((premiumAccumulatorsByLeg[leg][1] * totalLiquidity) /
-                                2 ** 64 -
-                                grossNew[1]) * 2 ** 64) /
-                            totalLiquidity;
-                    } else {
-                        grossNew[0] = premiumAccumulatorsByLeg[leg][0];
-                        grossNew[1] = premiumAccumulatorsByLeg[leg][1];
-                    }
-
-                    // update grossPremiumLast
-                    s_grossPremiumLast[chunkKey] = uint256(0)
-                        .toRightSlot(uint128(grossNew[0]))
-                        .toLeftSlot(uint128(grossNew[1]));
-                }
             }
 
             // update settled tokens in storage with all local deltas
