@@ -5,7 +5,7 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticHelper} from "@contracts/periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {ERC20S} from ".../../scripts/tokens/ERC20S.sol";
+import {ERC20S} from "@scripts/tokens/ERC20S.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TokenId} from "@types/TokenId.sol";
