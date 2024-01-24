@@ -5331,13 +5331,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Success_assertAccountValue(
-        uint256 totalShares,
-        uint256 totalAssets,
-        uint256 accountShares,
-        uint256 valueAssertion
+        uint128 totalShares,
+        uint128 totalAssets,
+        uint128 accountShares,
+        uint128 minValueAssertion,
+        uint128 maxValueAssertion
     ) public {
+        vm.assume(totalShares > 0);
+
         // account has more value than asserted minimum
-        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) >= valueAssertion);
+        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) >= minValueAssertion && Math.mulDiv(accountShares, totalAssets, totalShares) <= maxValueAssertion);
 
         CollateralTrackerHarness ct = new CollateralTrackerHarness();
 
@@ -5353,17 +5356,19 @@ contract CollateralTrackerTest is Test, PositionUtils {
         changePrank(Bob);
 
         // this should not revert
-        ct.assertAccountValue(valueAssertion);
+        ct.assertAccountValue(minValueAssertion, maxValueAssertion);
     }
 
     function test_Fail_assertAccountValue(
-        uint256 totalShares,
-        uint256 totalAssets,
-        uint256 accountShares,
-        uint256 valueAssertion
+        uint128 totalShares,
+        uint128 totalAssets,
+        uint128 accountShares,
+        uint128 minValueAssertion,
+        uint128 maxValueAssertion
     ) public {
+        vm.assume(totalShares > 0);
         // account has less value than asserted minimum
-        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) < valueAssertion);
+        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) < minValueAssertion || Math.mulDiv(accountShares, totalAssets, totalShares) > maxValueAssertion);
 
         CollateralTrackerHarness ct = new CollateralTrackerHarness();
 
@@ -5378,8 +5383,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         changePrank(Bob);
 
-        vm.expectRevert(Errors.AccountValueTooLow.selector);
-        ct.assertAccountValue(valueAssertion);
+        console2.log("totalShares", totalShares);
+        console2.log("totalAssets", totalAssets);
+        console2.log("accountShares", accountShares);
+        console2.log("ct.balanceOf(Bob)", ct.balanceOf(Bob));
+
+        vm.expectRevert(Errors.AccountValueOutOfRange.selector);
+        ct.assertAccountValue(minValueAssertion, maxValueAssertion);
     }
 
     /*//////////////////////////////////////////////////////////////
