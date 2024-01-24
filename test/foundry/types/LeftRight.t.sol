@@ -5,6 +5,7 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 // Internal
 import {LeftRightHarness} from "./harnesses/LeftRightHarness.sol";
+import {LeftRight} from "@types/LeftRight.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 
@@ -14,6 +15,8 @@ import {Math} from "@libraries/Math.sol";
  * @author Axicon Labs Limited
  */
 contract LeftRightTest is Test {
+    using LeftRight for uint256;
+
     // harness
     LeftRightHarness harness;
 
@@ -444,6 +447,114 @@ contract LeftRightTest is Test {
                 assertEq(int128(harness.leftSlot(other)), y - u > 0 ? y - u : int128(0));
                 assertEq(int128(harness.rightSlot(other)), z - v > 0 ? z - v : int128(0));
             }
+        }
+    }
+
+    function test_Success_AddCapped_NoCap(uint256 x, uint256 dx, uint256 y, uint256 dy) public {
+        vm.assume(
+            uint256(x.rightSlot()) + dx.rightSlot() < type(uint128).max &&
+                uint256(y.rightSlot()) + dy.rightSlot() < type(uint128).max
+        );
+        vm.assume(
+            uint256(x.leftSlot()) + dx.leftSlot() < type(uint128).max &&
+                uint256(y.leftSlot()) + dy.leftSlot() < type(uint128).max
+        );
+        (uint256 r_x, uint256 r_y) = harness.addCapped(x, dx, y, dy);
+
+        uint256 e_x = harness.add(x, dx);
+        uint256 e_y = harness.add(y, dy);
+
+        assertEq(r_x, e_x);
+        assertEq(r_y, e_y);
+    }
+
+    // Accumulation should be frozen on right slot only
+    function test_Success_AddCapped_CapRight(uint256 x, uint256 dx, uint256 y, uint256 dy) public {
+        vm.assume(
+            uint256(x.rightSlot()) + dx.rightSlot() >= type(uint128).max ||
+                uint256(y.rightSlot()) + dy.rightSlot() >= type(uint128).max
+        );
+        vm.assume(
+            !(uint256(x.leftSlot()) + dx.leftSlot() >= type(uint128).max ||
+                uint256(y.leftSlot()) + dy.leftSlot() >= type(uint128).max)
+        );
+        (uint256 r_x, uint256 r_y) = harness.addCapped(x, dx, y, dy);
+
+        assertEq(r_x.rightSlot(), x.rightSlot());
+        assertEq(r_x.leftSlot(), x.leftSlot() + dx.leftSlot());
+        assertEq(r_y.rightSlot(), y.rightSlot());
+        assertEq(r_y.leftSlot(), y.leftSlot() + dy.leftSlot());
+    }
+
+    // Accumulation should be frozen on left slot only
+    function test_Success_AddCapped_CapLeft(uint256 x, uint256 dx, uint256 y, uint256 dy) public {
+        vm.assume(
+            uint256(x.leftSlot()) + dx.leftSlot() >= type(uint128).max ||
+                uint256(y.leftSlot()) + dy.leftSlot() >= type(uint128).max
+        );
+        vm.assume(
+            !(uint256(x.rightSlot()) + dx.rightSlot() >= type(uint128).max ||
+                uint256(y.rightSlot()) + dy.rightSlot() >= type(uint128).max)
+        );
+        (uint256 r_x, uint256 r_y) = harness.addCapped(x, dx, y, dy);
+
+        assertEq(r_x.rightSlot(), x.rightSlot() + dx.rightSlot());
+        assertEq(r_x.leftSlot(), x.leftSlot());
+        assertEq(r_y.rightSlot(), y.rightSlot() + dy.rightSlot());
+        assertEq(r_y.leftSlot(), y.leftSlot());
+    }
+
+    // Accumulation should be frozen on both slots
+    function test_Success_AddCapped_CapBoth(uint256 x, uint256 dx, uint256 y, uint256 dy) public {
+        vm.assume(
+            uint256(x.rightSlot()) + dx.rightSlot() >= type(uint128).max ||
+                uint256(y.rightSlot()) + dy.rightSlot() >= type(uint128).max
+        );
+        vm.assume(
+            uint256(x.leftSlot()) + dx.leftSlot() >= type(uint128).max ||
+                uint256(y.leftSlot()) + dy.leftSlot() >= type(uint128).max
+        );
+        (uint256 r_x, uint256 r_y) = harness.addCapped(x, dx, y, dy);
+
+        assertEq(r_x.rightSlot(), x.rightSlot());
+        assertEq(r_x.leftSlot(), x.leftSlot());
+        assertEq(r_y.rightSlot(), y.rightSlot());
+        assertEq(r_y.leftSlot(), y.leftSlot());
+    }
+
+    // combined test version for unlimited runs
+    function test_Success_AddCapped(uint256 x, uint256 dx, uint256 y, uint256 dy) public {
+        (uint256 r_x, uint256 r_y) = harness.addCapped(x, dx, y, dy);
+
+        if (
+            (uint256(x.rightSlot()) + dx.rightSlot() >= type(uint128).max ||
+                uint256(y.rightSlot()) + dy.rightSlot() >= type(uint128).max) &&
+            (uint256(x.leftSlot()) + dx.leftSlot() >= type(uint128).max ||
+                uint256(y.leftSlot()) + dy.leftSlot() >= type(uint128).max)
+        ) {
+            assertEq(r_x.rightSlot(), x.rightSlot());
+            assertEq(r_x.leftSlot(), x.leftSlot());
+            assertEq(r_y.rightSlot(), y.rightSlot());
+            assertEq(r_y.leftSlot(), y.leftSlot());
+        } else if (
+            uint256(x.rightSlot()) + dx.rightSlot() >= type(uint128).max ||
+            uint256(y.rightSlot()) + dy.rightSlot() >= type(uint128).max
+        ) {
+            assertEq(r_x.rightSlot(), x.rightSlot());
+            assertEq(r_x.leftSlot(), x.leftSlot() + dx.leftSlot());
+            assertEq(r_y.rightSlot(), y.rightSlot());
+            assertEq(r_y.leftSlot(), y.leftSlot() + dy.leftSlot());
+        } else if (
+            uint256(x.leftSlot()) + dx.leftSlot() >= type(uint128).max ||
+            uint256(y.leftSlot()) + dy.leftSlot() >= type(uint128).max
+        ) {
+            assertEq(r_x.rightSlot(), x.rightSlot() + dx.rightSlot());
+            assertEq(r_x.leftSlot(), x.leftSlot());
+            assertEq(r_y.rightSlot(), y.rightSlot() + dy.rightSlot());
+            assertEq(r_y.leftSlot(), y.leftSlot());
+        } else {
+            assertEq(r_x, harness.add(x, dx));
+            assertEq(r_y, harness.add(y, dy));
         }
     }
 

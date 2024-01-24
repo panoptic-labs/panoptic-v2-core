@@ -221,6 +221,16 @@ contract LeftRightHarness {
         return r;
     }
 
+    function addCapped(
+        uint256 x,
+        uint256 dx,
+        uint256 y,
+        uint256 dy
+    ) public view returns (uint256, uint256) {
+        (uint256 r1, uint256 r2) = LeftRight.addCapped(x, dx, y, dy);
+        return (r1, r2);
+    }
+
     /**
      * @notice Multiply two int256 bit LeftRight-encoded words; revert on overflow.
      * @param x the multiplicand
