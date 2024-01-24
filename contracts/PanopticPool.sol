@@ -1374,7 +1374,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address refunder,
         int256 refundValues,
         int24 atTick
-    ) public view returns (int256 refundAmounts) {
+    ) internal view returns (int256 refundAmounts) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         CollateralTracker collateral0 = s_collateralToken0;
         CollateralTracker collateral1 = s_collateralToken1;
@@ -1799,6 +1799,51 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                         AVAILABLE PREMIUM LOGIC
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Settle all unpaid premium for long legs on `tokenId` of `owner`.
+    /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
+    /// @dev This feature is only available when `owner` must be solvent at the current tick
+    /// @param owner The owner of the option position to make premium payments on.
+    /// @param tokenId The option position to make premium payments on.
+    /// @param positionIdList Exhaustive list of open positions in the `owner` account used for solvency check.
+    function settleLongPremium(
+        address owner,
+        uint256 tokenId,
+        uint256[] calldata positionIdList
+    ) external {
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+
+        int256 realizedPremia;
+
+        (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulatorsByLeg) = _getPremia(
+            tokenId,
+            s_positionBalance[owner][tokenId].rightSlot(),
+            owner,
+            COMPUTE_LONG_PREMIA,
+            currentTick
+        );
+
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ++leg) {
+            if (premiaByLeg[leg] < 0) {
+                // update the premium accumulator for the long position to the latest value
+                // (the entire premia delta will be settled)
+                // note that the premium accumulator for each leg is guaranteed to fit in a uint128 (original type)
+                s_options[owner][tokenId][leg] = uint256(premiumAccumulatorsByLeg[leg][0])
+                    .toLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
+
+                // update the realized premia
+                realizedPremia += premiaByLeg[leg];
+            }
+        }
+
+        s_collateralToken0.exercise(owner, 0, 0, 0, realizedPremia.rightSlot());
+        s_collateralToken1.exercise(owner, 0, 0, 0, realizedPremia.leftSlot());
+
+        _validatePositionList(owner, positionIdList, 0);
+        if (!_checkSolvency(owner, positionIdList, type(int24).max, type(int24).max, NO_BUFFER))
+            revert Errors.NotEnoughCollateral();
+    }
 
     /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added
     /// @dev Always called after `mintTokenizedPosition`

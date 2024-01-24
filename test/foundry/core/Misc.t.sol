@@ -222,6 +222,155 @@ contract Misctest is Test, PositionUtils {
         ct1.deposit(type(uint104).max, Charlie);
     }
 
+    function test_success_settleLongPremium() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        // First close Bob's position; they should receive 25% of the initial amount because no fees were paid on their position
+        // Close half (4.4468%) of the removed liquidity
+        // Then close Alice's position, they should receive ~53.3% (50%+ 2/3*5%)
+        // Close the other half of the removed liquidity (4.4468%)
+        // Finally, close Charlie's position, they should receive ~27.5% (25% + 10% * 25%)
+        changePrank(Alice);
+
+        pp.mintOptions($posIdList, 500_000, 0, 0, 0);
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+
+        changePrank(Charlie);
+
+        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        changePrank(Alice);
+
+        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+
+        changePrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+
+        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        changePrank(Bob);
+
+        // burn Bob's position, should get 25% of fees paid (no long fees avail.)
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        $tempIdList.push($posIdList[1]);
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
+            250_000,
+            "Incorrect Bob Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
+            249_999_998,
+            "Incorrect Bob Delta 1"
+        );
+
+        $posIdList[1] = $posIdList[0];
+        $posIdList[0] = $tempIdList[0];
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $tempIdList[0] = $posIdList[1];
+
+        // Burn 1/2 of the removed liq
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+
+        changePrank(Alice);
+
+        // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        $tempIdList[0] = $posIdList[0];
+        pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
+            533_333,
+            "Incorrect Alice Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
+            533_333_345,
+            "Incorrect Alice Delta 1"
+        );
+
+        // Burn other half of the removed liq
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+
+        changePrank(Charlie);
+
+        // Finally, burn Charlie's position, he should get 27.5% (25% + full 10% long paid (* 25% owned))
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
+
+        pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
+            275_000,
+            "Incorrect Charlie Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
+            275_000_008,
+            "Incorrect Charlie Delta 1"
+        );
+    }
+
     function test_success_settledPremiumDistribution() public {
         SwapperC swapperc = new SwapperC();
         changePrank(Swapper);
