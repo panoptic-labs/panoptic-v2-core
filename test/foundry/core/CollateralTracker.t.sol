@@ -5340,7 +5340,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.assume(totalShares > 0);
 
         // account has more value than asserted minimum
-        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) >= minValueAssertion && Math.mulDiv(accountShares, totalAssets, totalShares) <= maxValueAssertion);
+        vm.assume(
+            Math.mulDiv(accountShares, totalAssets, totalShares) >= minValueAssertion &&
+                Math.mulDiv(accountShares, totalAssets, totalShares) <= maxValueAssertion
+        );
 
         CollateralTrackerHarness ct = new CollateralTrackerHarness();
 
@@ -5368,7 +5371,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
     ) public {
         vm.assume(totalShares > 0);
         // account has less value than asserted minimum
-        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) < minValueAssertion || Math.mulDiv(accountShares, totalAssets, totalShares) > maxValueAssertion);
+        vm.assume(
+            Math.mulDiv(accountShares, totalAssets, totalShares) < minValueAssertion ||
+                Math.mulDiv(accountShares, totalAssets, totalShares) > maxValueAssertion
+        );
 
         CollateralTrackerHarness ct = new CollateralTrackerHarness();
 

@@ -432,7 +432,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev This function is used to protect against unexpected slippage from precision loss/rounding (e.g inflation attacks).
     /// @dev The intended pattern is to call this function after a series of deposit/mint/withdraw/redeem with `multicall`
     /// @param minAssets The minimum amount of assets that the account must have.
-    /// @param maxAssets The maximum amount of assets that the account must have. 
+    /// @param maxAssets The maximum amount of assets that the account must have.
     function assertAccountValue(uint256 minAssets, uint256 maxAssets) public {
         uint256 assets = convertToAssets(balanceOf[msg.sender]);
         if (assets < minAssets || assets > maxAssets) revert Errors.AccountValueOutOfRange();
