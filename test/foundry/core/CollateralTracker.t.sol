@@ -5368,7 +5368,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         changePrank(Bob);
         
-        vm.expectRevert(Errors.AccountValueTooLow());
+        vm.expectRevert(Errors.AccountValueTooLow.selector);
         ct.assertAccountValue(valueAssertion);
     }
 
