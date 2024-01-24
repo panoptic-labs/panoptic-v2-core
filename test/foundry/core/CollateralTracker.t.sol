@@ -5327,66 +5327,50 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        UPDATE PARAMETERS
+                          SLIPPAGE PROTECTION
     //////////////////////////////////////////////////////////////*/
 
-    // function test_Success_updateParameters(
-    //     uint256 x,
-    //     int128 commissionFeeMin,
-    //     int128 commissionFeeMax,
-    //     int128 commissionStartUtilization,
-    //     int128 sellCollateralRatio,
-    //     int128 buyCollateralRatio,
-    //     int128 exerciseCost,
-    //     uint256 maintenanceMarginRatio,
-    //     int128 targetPoolUtilization,
-    //     int128 saturatedPoolUtilization
-    // ) public {
-    //     _initWorld(x);
+    function test_Success_assertAccountValue(uint256 totalShares, uint256 totalAssets, uint256 accountShares, uint256 valueAssertion) public {
+        // account has more value than asserted minimum
+        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) >= valueAssertion);
 
-    //     // get the Collateral Token
-    //     CollateralTrackerHarness collateralToken0 = CollateralTrackerHarness(
-    //         address(panopticPool.collateralToken0())
-    //     );
+        CollateralTrackerHarness ct = new CollateralTrackerHarness();
 
-    //     PanopticPool.Parameters memory newParameters = PanopticPool.Parameters(
-    //         maintenanceMarginRatio,
-    //         commissionFee,
-    //         sellCollateralRatio,
-    //         buyCollateralRatio,
-    //         targetPoolUtilization,
-    //         saturatedPoolUtilization,
-    //         exerciseCost
-    //     );
+        // set totalShares value by dealing to a random account with a supply update
+        deal(address(ct), makeAddr("share mule"), uint128(totalShares), true);
 
-    //     // call update parameters as the panopticPool
-    //     panopticPool.updateParametersHook(newParameters);
-    //     //collateralToken0.updateParameters(newParameters);
+        // set totalAssets
+        ct.setPoolAssets(totalAssets);
 
-    //     // No need to check both tokens here as this logic is not dependent on the type of token
-    //     (
-    //         int128 s_commissionFee,
-    //         int128 s_commissionFeeMax,
-    //         int128 s_commissionStartUtilization,
-    //         int128 s_sellCollateralRatio,
-    //         int128 s_buyCollateralRatio,
-    //         int128 s_exerciseCost,
-    //         uint256 s_maintenanceMarginRatio,
-    //         int128 s_targetPoolUtilization,
-    //         int128 s_saturatedPoolUtilization
-    //     ) = collateralToken0.getSystemParameters();
+        // fund account with shares (do not update supply)
+        deal(address(ct), Bob, uint128(accountShares));
 
-    //     // // verify parameters were updated correctly
-    //     // assertEq(maintenanceMarginRatio, s_maintenanceMarginRatio);
-    //     // assertEq(commissionFeeMin, s_commissionFeeMin);
-    //     // assertEq(commissionFeeMax, s_commissionFeeMax);
-    //     // assertEq(commissionStartUtilization, s_commissionStartUtilization);
-    //     // assertEq(sellCollateralRatio, s_sellCollateralRatio);
-    //     // assertEq(buyCollateralRatio, s_buyCollateralRatio);
-    //     // assertEq(targetPoolUtilization, s_targetPoolUtilization);
-    //     // assertEq(saturatedPoolUtilization, s_saturatedPoolUtilization);
-    //     // assertEq(exerciseCost, s_exerciseCost);
-    // }
+        changePrank(Bob);
+        
+        // this should not revert
+        ct.assertAccountValue(valueAssertion);
+    }   
+
+    function test_Fail_assertAccountValue(uint256 totalShares, uint256 totalAssets, uint256 accountShares, uint256 valueAssertion) public {
+        // account has less value than asserted minimum
+        vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) < valueAssertion);
+
+        CollateralTrackerHarness ct = new CollateralTrackerHarness();
+
+        // set totalShares value by dealing to a random account with a supply update
+        deal(address(ct), makeAddr("share mule"), uint128(totalShares), true);
+
+        // set totalAssets
+        ct.setPoolAssets(totalAssets);
+
+        // fund account with shares (do not update supply)
+        deal(address(ct), Bob, uint128(accountShares));
+
+        changePrank(Bob);
+        
+        vm.expectRevert(Errors.AccountValueTooLow());
+        ct.assertAccountValue(valueAssertion);
+    }
 
     /*//////////////////////////////////////////////////////////////
                         INFORMATION TESTS

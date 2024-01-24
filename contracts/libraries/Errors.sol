@@ -6,6 +6,10 @@ pragma solidity ^0.8.0;
 library Errors {
     /// Errors are alphabetically ordered
 
+    /// @notice `assets` of a CollateralTracker account are below a user-defined minimum value
+    /// @dev emitted when the `assertAccountValue` optional slippage check fails
+    error AccountValueTooLow();
+
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();

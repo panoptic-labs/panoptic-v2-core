@@ -425,6 +425,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
+                          SLIPPAGE PROTECTION
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Asserts that the asset value of msg.sender is at least `minAssets`.
+    /// @dev This function is used to protect against unexpected slippage from precision loss/rounding (e.g inflation attacks).
+    /// @dev The intended pattern is to call this function after a series of deposit/mint with `multicall`
+    /// @param minAssets The minimum amount of assets that the caller's account must be worth.
+    function assertAccountValue(uint256 minAssets) external view {
+        if (convertToAssets(balanceOf[msg.sender]) < minAssets) revert Errors.AccountValueTooLow();
+    }
+
+    /*//////////////////////////////////////////////////////////////
                      STANDARD ERC4626 INTERFACE
     //////////////////////////////////////////////////////////////*/
 
