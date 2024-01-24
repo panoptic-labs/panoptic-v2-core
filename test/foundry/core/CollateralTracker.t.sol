@@ -5330,7 +5330,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                           SLIPPAGE PROTECTION
     //////////////////////////////////////////////////////////////*/
 
-    function test_Success_assertAccountValue(uint256 totalShares, uint256 totalAssets, uint256 accountShares, uint256 valueAssertion) public {
+    function test_Success_assertAccountValue(
+        uint256 totalShares,
+        uint256 totalAssets,
+        uint256 accountShares,
+        uint256 valueAssertion
+    ) public {
         // account has more value than asserted minimum
         vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) >= valueAssertion);
 
@@ -5346,12 +5351,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
         deal(address(ct), Bob, uint128(accountShares));
 
         changePrank(Bob);
-        
+
         // this should not revert
         ct.assertAccountValue(valueAssertion);
-    }   
+    }
 
-    function test_Fail_assertAccountValue(uint256 totalShares, uint256 totalAssets, uint256 accountShares, uint256 valueAssertion) public {
+    function test_Fail_assertAccountValue(
+        uint256 totalShares,
+        uint256 totalAssets,
+        uint256 accountShares,
+        uint256 valueAssertion
+    ) public {
         // account has less value than asserted minimum
         vm.assume(Math.mulDiv(accountShares, totalAssets, totalShares) < valueAssertion);
 
@@ -5367,7 +5377,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         deal(address(ct), Bob, uint128(accountShares));
 
         changePrank(Bob);
-        
+
         vm.expectRevert(Errors.AccountValueTooLow());
         ct.assertAccountValue(valueAssertion);
     }
