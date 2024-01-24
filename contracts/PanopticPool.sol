@@ -226,11 +226,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`
     /// totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
     /// Used to compute the denominator for the fraction of premium available to sellers to collect
+    /// LeftRight - right slot is token0, left slot is token1
     mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
 
-    /// @dev per-chunk mapping tokens owed to sellers that have been settled and are now available
+    /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
     /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
     /// It decreases when sellers close positions and collect the premium they are owed
+    /// LeftRight - right slot is token0, left slot is token1
     mapping(bytes32 chunkKey => uint256 settledTokens) internal s_settledTokens;
 
     /// @dev Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot)
@@ -433,7 +435,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         atTick
                     );
 
-                for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+                uint256 numLegs = tokenId.countLegs();
+                for (uint256 leg = 0; leg < numLegs; ) {
                     if (premiaByLeg[leg] > 0 && !includePendingPremium) {
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
@@ -680,6 +683,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // cache tickSpacing
         int24 tickSpacing = s_tickSpacing;
 
+        // update premium settlement info
         updateSettlementPostMint(tokenId, collectedByLeg, positionSize, tickSpacing);
 
         // pay commission based on total moved amount (long + short)
@@ -695,13 +699,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (poolUtilizations, newTick);
     }
 
+    /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added
+    /// @dev Always called after `mintTokenizedPosition`
+    /// @param tokenId The option position that was minted.
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position.
+    /// @param positionSize The size of the position, expressed in terms of the asset.
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     function updateSettlementPostMint(
         uint256 tokenId,
         uint256[4] memory collectedByLeg,
         uint128 positionSize,
         int24 tickSpacing
     ) internal {
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ++leg) {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
@@ -779,6 +790,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    /// @notice Query the amount of premium available for withdrawal given a certain `premiumOwed` for a chunk
+    /// @dev Based on the ratio between `settledTokens` and the total premium owed to sellers in a chunk
+    /// @dev The ratio is capped at 1 (it can be greater than one if some seller forfeits enough premium)
+    /// @param totalLiquidity The updated total liquidity amount for the chunk
+    /// @param settledTokens LeftRight accumulator for the amount of tokens that have been settled (collected or paid)
+    /// @param grossPremiumLast The `last` values used with `premiumAccumulators` to compute the total premium owed to sellers
+    /// @param premiumOwed The amount of premium owed to sellers in the chunk
+    /// @param premiumAccumulators The current values of the premium accumulators for the chunk
+    /// @return availablePremium The amount of premium available for withdrawal
     function getAvailablePremium(
         uint256 totalLiquidity,
         uint256 settledTokens,
@@ -819,6 +839,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    /// @notice Query the total amount of liquidity sold in the corresponding chunk for a position leg
+    /// @dev totalLiquidity (total sold) = removedLiquidity + netLiquidity (in AMM)
+    /// @param tokenId The option position
+    /// @param leg The leg of the option position to get `totalLiquidity for
+    //// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
     function getTotalLiquidity(
         uint256 tokenId,
         uint256 leg,
@@ -842,6 +867,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info
+    /// @dev Alwaysc called after `burnTokenizedPosition`
+    /// @param owner The owner of the option position that was burnt
+    /// @param tokenId The option position that was burnt
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
+    /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
+    /// @return realizedPremia The amount of premia owed to the user
+    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function updateSettlementPostBurn(
         address owner,
         uint256 tokenId,
@@ -860,7 +894,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             type(int24).max
         );
 
-        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ) {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
@@ -1136,6 +1171,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return medianTick the median tick for that pool
     /// @return newTick the final tick after all positions have been closed
     /// @return paidAmounts The amount of tokens paid when closing the option
+    /// @return premiaOwed The amount of premia owed to the user
+    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _burnOptions(
         uint256 tokenId,
         address owner,
