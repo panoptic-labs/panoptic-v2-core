@@ -323,10 +323,25 @@ contract Misctest is Test, PositionUtils {
         $posIdList[0] = $tempIdList[0];
         pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
 
-        $tempIdList[0] = $posIdList[1];
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        // Burn 1/2 of the removed liq
-        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+        // settle 1/2 long owed
+        pp.settleLongPremium(Bob, $posIdList[0], $posIdList);
+
+        // Bob should have paid 5% of the premium accumulated
+        assertEq(
+            assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Bob)),
+            50_001,
+            "Incorrect Bob premium paid"
+        );
+        assertEq(
+            assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Bob)),
+            50_000_018,
+            "Incorrect Bob premium paid"
+        );
+
+        $tempIdList[0] = $posIdList[1];
 
         changePrank(Alice);
 
@@ -369,6 +384,13 @@ contract Misctest is Test, PositionUtils {
             275_000_008,
             "Incorrect Charlie Delta 1"
         );
+
+        changePrank(Bob);
+
+        $tempIdList[0] = $posIdList[1];
+
+        // Burn 1/2 of the removed liq
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
     }
 
     function test_success_settledPremiumDistribution() public {

@@ -1803,24 +1803,32 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Settle all unpaid premium for long legs on `tokenId` of `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
     /// @dev This feature is only available when `owner` must be solvent at the current tick
-    /// @param owner The owner of the option position to make premium payments on.
-    /// @param tokenId The option position to make premium payments on.
-    /// @param positionIdList Exhaustive list of open positions in the `owner` account used for solvency check.
+    /// @param strike The strike price of the chunk to settle premium payments on.
+    /// @param width The width of the chunk to settle.
+    /// @param tokenType The token type of the chunk to settle.
+    /// @param owners The owner of the option position to make premium payments on.
+    /// @param tokenIds The option position to make premium payments on.
+    /// @param positionIdLists Exhaustive list of open positions in the `owner` account used for solvency check.
     function settleLongPremium(
-        address owner,
-        uint256 tokenId,
-        uint256[] calldata positionIdList
+        int24 tickLower,
+        int24 tickUpper,
+        uint256 tokenType,
+        address[] calldata owners,
+        uint256[] calldata tokenIds,
+        uint256[][] calldata positionIdLists
     ) external {
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
         int256 realizedPremia;
 
-        (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulatorsByLeg) = _getPremia(
-            tokenId,
-            s_positionBalance[owner][tokenId].rightSlot(),
-            owner,
-            COMPUTE_LONG_PREMIA,
-            currentTick
+        (uint256 premiumToken0, uint256 premiumToken1) = sfpm.getAccountPremium(
+            address(s_univ3pool),
+            address(this),
+            tokenType,
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper(),
+            currentTick,
+            1
         );
 
         uint256 numLegs = tokenId.countLegs();
@@ -1841,7 +1849,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.exercise(owner, 0, 0, 0, realizedPremia.leftSlot());
 
         _validatePositionList(owner, positionIdList, 0);
-        if (!_checkSolvency(owner, positionIdList, type(int24).max, type(int24).max, NO_BUFFER))
+        if (!_checkSolvency(owner, positionIdList, currentTick, getMedian(), NO_BUFFER))
             revert Errors.NotEnoughCollateral();
     }
 
