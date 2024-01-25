@@ -39,7 +39,7 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     using LeftRight for int256;
 
-    constructor (uint256 virtualShares) CollateralTracker(virtualShares) {}
+    constructor(uint256 virtualShares) CollateralTracker(virtualShares) {}
 
     // view deployer (panoptic pool)
     function panopticPool() external returns (PanopticPool) {
@@ -618,7 +618,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         assertEq(ct.totalSupply(), virtualShares);
     }
-
 
     /*//////////////////////////////////////////////////////////////
                         START TOKEN TESTS
