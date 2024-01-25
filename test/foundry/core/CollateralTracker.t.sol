@@ -39,8 +39,6 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     using LeftRight for int256;
 
-    constructor(uint256 virtualShares) CollateralTracker(virtualShares) {}
-
     // view deployer (panoptic pool)
     function panopticPool() external returns (PanopticPool) {
         return s_panopticPool;
@@ -172,12 +170,12 @@ contract PanopticPoolHarness is PanopticPool {
         IUniswapV3Pool uniswapPool
     ) internal {
         // Deploy collateral tokens
-        s_collateralToken0 = new CollateralTrackerHarness(10 ** 6);
-        s_collateralToken1 = new CollateralTrackerHarness(10 ** 6);
+        s_collateralToken0 = new CollateralTrackerHarness();
+        s_collateralToken1 = new CollateralTrackerHarness();
 
         // initialize the token
-        s_collateralToken0.startToken(token0, uniswapPool, this);
-        s_collateralToken1.startToken(token1, uniswapPool, this);
+        s_collateralToken0.startToken(token0, uniswapPool, this, 10 ** 6);
+        s_collateralToken1.startToken(token1, uniswapPool, this, 10 ** 6);
     }
 
     function updateParametersHook(CollateralTracker.Parameters calldata newParameters) external {
@@ -610,31 +608,29 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function setUp() public {}
 
     /*//////////////////////////////////////////////////////////////
-                             INITIALIZATION
-    //////////////////////////////////////////////////////////////*/
-
-    function test_Success_constructor(uint256 virtualShares) public {
-        CollateralTracker ct = new CollateralTracker(virtualShares);
-
-        assertEq(ct.totalSupply(), virtualShares);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                         START TOKEN TESTS
     //////////////////////////////////////////////////////////////*/
+
+    function test_Success_StartToken_constructor(uint256 virtualShares) public {
+        CollateralTracker ct = new CollateralTracker();
+        ct.startToken(token0, pool, PanopticPool(address(0)), virtualShares);
+
+        assertEq(ct.totalSupply(), virtualShares > 0 ? virtualShares : 1);
+        assertEq(ct.totalAssets(), 1);
+    }
 
     function test_Fail_startToken_alreadyInitializedToken(uint256 x) public {
         _initWorld(x);
 
         // Deploy collateral token
-        collateralToken0 = new CollateralTrackerHarness(10 ** 6);
+        collateralToken0 = new CollateralTrackerHarness();
 
         // initialize the token
-        collateralToken0.startToken(token0, pool, PanopticPool(address(0)));
+        collateralToken0.startToken(token0, pool, PanopticPool(address(0)), 10 ** 6);
 
         // fails if already initialized
         vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
-        collateralToken0.startToken(token0, pool, PanopticPool(address(0)));
+        collateralToken0.startToken(token0, pool, PanopticPool(address(0)), 10 ** 6);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -5357,7 +5353,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Math.mulDiv(accountShares, totalAssets, totalShares) <= maxValueAssertion
         );
 
-        CollateralTrackerHarness ct = new CollateralTrackerHarness(10 ** 6);
+        CollateralTrackerHarness ct = new CollateralTrackerHarness();
 
         // set totalShares value by dealing to a random account with a supply update
         deal(address(ct), makeAddr("share mule"), uint128(totalShares), true);
@@ -5388,7 +5384,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Math.mulDiv(accountShares, totalAssets, totalShares) > maxValueAssertion
         );
 
-        CollateralTrackerHarness ct = new CollateralTrackerHarness(10 ** 6);
+        CollateralTrackerHarness ct = new CollateralTrackerHarness();
 
         // set totalShares value by dealing to a random account with a supply update
         deal(address(ct), makeAddr("share mule"), uint128(totalShares), true);
@@ -5400,11 +5396,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         deal(address(ct), Bob, uint128(accountShares));
 
         changePrank(Bob);
-
-        console2.log("totalShares", totalShares);
-        console2.log("totalAssets", totalAssets);
-        console2.log("accountShares", accountShares);
-        console2.log("ct.balanceOf(Bob)", ct.balanceOf(Bob));
 
         vm.expectRevert(Errors.AccountValueOutOfRange.selector);
         ct.assertAccountValue(minValueAssertion, maxValueAssertion);

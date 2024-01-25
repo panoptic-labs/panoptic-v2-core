@@ -152,7 +152,7 @@ contract PanopticFactoryTest is Test {
             sfpm,
             V3FACTORY,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10 ** 6))
+            address(new CollateralTracker())
         );
     }
 

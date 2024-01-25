@@ -219,16 +219,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
-    constructor(uint256 virtualShares) {
-        // the virtual shares function as a multiplier for the capital requirement to manipulate the pool price
-        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
-        totalSupply = Math.max(virtualShares, 1);
-
-        // set total assets to 1
-        // the initial share price is defined by 1/virtualShares
-        s_poolAssets = 1;
-    }
-
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
     /// @dev The factory calls this function to start a new collateral tracking system for the incoming token at 'underlyingToken'.
     /// The factory will do this for each of the two tokens being tracked. Thus, the collateral tracking system does not track *both* tokens at once.
@@ -238,11 +228,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function startToken(
         address underlyingToken,
         IUniswapV3Pool uniswapPool,
-        PanopticPool panopticPool
+        PanopticPool panopticPool,
+        uint256 virtualShares
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
         s_initialized = true;
+
+        // the virtual shares function as a multiplier for the capital requirement to manipulate the pool price
+        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
+        totalSupply = Math.max(virtualShares, 1);
+
+        // set total assets to 1
+        // the initial share price is defined by 1/virtualShares
+        s_poolAssets = 1;
 
         // cache the token0 and token1 addresses from the uniswap pool
         address token0 = uniswapPool.token0();
@@ -473,7 +472,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited.
     /// @return shares The amount of shares that can be minted.
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
-        uint256 assets = totalAssets();
         return Math.mulDiv(assets, totalSupply, totalAssets());
     }
 
@@ -481,8 +479,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shares The amount of shares to be redeemed.
     /// @return assets The amount of assets that can be redeemed.
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
-        uint256 supply = totalSupply;
-        return Math.mulDiv(shares, totalAssets(), supply);
+        return Math.mulDiv(shares, totalAssets(), totalSupply);
     }
 
     /// @notice returns The maximum deposit amount.
