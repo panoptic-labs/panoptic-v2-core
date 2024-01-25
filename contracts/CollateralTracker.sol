@@ -229,16 +229,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function startToken(
         address underlyingToken,
         IUniswapV3Pool uniswapPool,
-        PanopticPool panopticPool,
-        uint256 virtualShares
+        PanopticPool panopticPool
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
         s_initialized = true;
 
-        // the virtual shares function as a multiplier for the capital requirement to manipulate the pool price
+        // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
         // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
-        totalSupply = Math.max(virtualShares, 1);
+        totalSupply = 10 ** 6;
 
         // set total assets to 1
         // the initial share price is defined by 1/virtualShares
@@ -557,9 +556,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Amount deposited = assets * (1 + commissionFee/(1-commissionFee) = assets / (1-commissionFee)
         unchecked {
             assets = Math.mulDivRoundingUp(
-                shares * DECIMALS,
+                shares * (DECIMALS - uint128(s_commissionFee)),
                 totalAssets(),
-                supply * (DECIMALS - uint128(s_commissionFee))
+                totalSupply
             );
         }
     }

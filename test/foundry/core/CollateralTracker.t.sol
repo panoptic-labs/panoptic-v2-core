@@ -174,8 +174,8 @@ contract PanopticPoolHarness is PanopticPool {
         s_collateralToken1 = new CollateralTrackerHarness();
 
         // initialize the token
-        s_collateralToken0.startToken(token0, uniswapPool, this, 10 ** 6);
-        s_collateralToken1.startToken(token1, uniswapPool, this, 10 ** 6);
+        s_collateralToken0.startToken(token0, uniswapPool, this);
+        s_collateralToken1.startToken(token1, uniswapPool, this);
     }
 
     function updateParametersHook(CollateralTracker.Parameters calldata newParameters) external {
@@ -611,12 +611,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         START TOKEN TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Success_StartToken_constructor(uint256 virtualShares) public {
+    function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
         CollateralTracker ct = new CollateralTracker();
-        ct.startToken(token0, pool, panopticPool, virtualShares);
+        ct.startToken(token0, pool, panopticPool);
 
-        assertEq(ct.totalSupply(), virtualShares > 0 ? virtualShares : 1);
+        assertEq(ct.totalSupply(), 10 ** 6);
         assertEq(ct.totalAssets(), 1);
     }
 
@@ -627,11 +627,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0 = new CollateralTrackerHarness();
 
         // initialize the token
-        collateralToken0.startToken(token0, pool, PanopticPool(address(0)), 10 ** 6);
+        collateralToken0.startToken(token0, pool, PanopticPool(address(0)));
 
         // fails if already initialized
         vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
-        collateralToken0.startToken(token0, pool, PanopticPool(address(0)), 10 ** 6);
+        collateralToken0.startToken(token0, pool, PanopticPool(address(0)));
     }
 
     /*//////////////////////////////////////////////////////////////

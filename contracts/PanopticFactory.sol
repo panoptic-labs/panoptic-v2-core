@@ -95,11 +95,6 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
     /// @dev the increase in observation cardinality when a new PanopticPool is deployed
     uint16 internal constant CARDINALITY_INCREASE = 100;
 
-    // initial share supply for the ERC4626 collateral vault
-    // the virtual shares function as a multiplier for the capital requirement to manipulate the pool price
-    // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
-    uint256 internal constant VIRTUAL_SHARES = 10 ** 6;
-
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
@@ -265,12 +260,12 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         CollateralTracker collateralTracker0 = CollateralTracker(
             Clones.clone(COLLATERAL_REFERENCE)
         );
-        collateralTracker0.startToken(token0, v3Pool, newPoolContract, VIRTUAL_SHARES);
+        collateralTracker0.startToken(token0, v3Pool, newPoolContract);
 
         CollateralTracker collateralTracker1 = CollateralTracker(
             Clones.clone(COLLATERAL_REFERENCE)
         );
-        collateralTracker1.startToken(token1, v3Pool, newPoolContract, VIRTUAL_SHARES);
+        collateralTracker1.startToken(token1, v3Pool, newPoolContract);
 
         // pass in current tick of uniswap pool to initalize Panoptic's median TWAP
         (, int24 currentTick, , , , , ) = v3Pool.slot0();
