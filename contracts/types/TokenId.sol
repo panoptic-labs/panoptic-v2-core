@@ -537,14 +537,22 @@ library TokenId {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 int24 optionStrike = self.strike(i);
-                // @note modify
-                int24 range = (self.width(i) * tickSpacing) / 2;
+                
+                /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
+                /// if (width * tickSpacing) is:
+                ///     even: tick range -> (strike - range, strike + range)
+                ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
+                (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
+                    selfWidth,
+                    tickSpacing
+                );
 
                 uint256 optionTokenType = self.tokenType(i);
 
+                // @note test update
                 if (
-                    ((optionTokenType == 1) && currentTick < (optionStrike + range)) ||
-                    ((optionTokenType == 0) && currentTick >= (optionStrike - range))
+                    ((optionTokenType == 1) && currentTick < (optionStrike + oneSidedRangeUpper)) ||
+                    ((optionTokenType == 0) && currentTick >= (optionStrike - oneSidedRangeLower))
                 ) {
                     revert Errors.OptionsNotOTM();
                 }
@@ -566,12 +574,21 @@ library TokenId {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 // compute the range of this leg/chunk
-                // @note modify
-                int24 range = (self.width(i) * tickSpacing) / 2;
+                
+                /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
+                /// if (width * tickSpacing) is:
+                ///     even: tick range -> (strike - range, strike + range)
+                ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
+                (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
+                    selfWidth,
+                    tickSpacing
+                );
+
+                // @note test update
                 // check if the price is outside this chunk
                 if (
-                    (currentTick >= (self.strike(i) + range)) ||
-                    (currentTick < (self.strike(i) - range))
+                    (currentTick >= (self.strike(i) + oneSidedRangeUpper)) ||
+                    (currentTick < (self.strike(i) - oneSidedRangeLower))
                 ) {
                     // if this leg is long and the price beyond the leg's range:
                     // this exercised ID, `self`, appears valid

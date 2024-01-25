@@ -314,9 +314,15 @@ library PanopticMath {
         uint256 asset
     ) internal pure returns (uint128) {
         unchecked {
+            // @note (sqrt upper + sqrt lower) / 2 instead of Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2)
+            // to retain percision 
+            uint160 sqrtUpper =  Math.getSqrtRatioAtTick(tickUpper);
+            uint160 sqrtLower = Math.getSqrtRatioAtTick(tickLower);
+            uint160 strikePrice = (sqrtUpper + sqrtLower) / 2;
+
             uint256 notional = asset == 0
-                ? convert0to1(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2))
-                : convert1to0(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2));
+                ? convert0to1(contractSize, strikePrice)
+                : convert1to0(contractSize, strikePrice);
 
             if (notional == 0 || notional > type(uint128).max) revert Errors.InvalidNotionalValue();
 
