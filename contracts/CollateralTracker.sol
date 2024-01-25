@@ -223,6 +223,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // the virtual shares function as a multiplier for the capital requirement to manipulate the pool price
         // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
         totalSupply = Math.max(virtualShares, 1);
+
+        // set total assets to 1
+        // the initial share price is defined by 1/virtualShares
+        s_poolAssets = 1;
     }
 
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
@@ -469,8 +473,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited.
     /// @return shares The amount of shares that can be minted.
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
-        uint256 supply = totalSupply;
-        return Math.mulDiv(assets, supply, totalAssets());
+        uint256 assets = totalAssets();
+        return Math.mulDiv(assets, totalSupply, totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
@@ -855,10 +859,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return poolUtilization the pool utilization as a fraction.
     function _poolUtilization() internal view returns (int128 poolUtilization) {
         uint256 _totalAssets = totalAssets();
-
-        if (_totalAssets == 0) {
-            return 0;
-        }
 
         unchecked {
             return int128(int256((s_inAMM * DECIMALS) / _totalAssets));
