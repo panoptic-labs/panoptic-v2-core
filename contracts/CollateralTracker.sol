@@ -495,7 +495,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
         // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
         unchecked {
-            shares = convertToShares((assets * (DECIMALS - uint128(s_commissionFee))) / DECIMALS);
+            shares = Math.mulDiv(
+                assets * (DECIMALS - uint128(s_commissionFee)),
+                totalSupply,
+                totalAssets() * DECIMALS
+            );
         }
     }
 
@@ -548,17 +552,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shares The amount of shares to be minted.
     /// @return assets The amount of assets that would be deposited.
     function previewMint(uint256 shares) public view returns (uint256 assets) {
-        uint256 supply = totalSupply;
-
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        assets = Math.mulDivRoundingUp(shares, totalAssets(), supply);
-
-        // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
+        // Amount deposited = assets * (1 + commissionFee/(1-commissionFee) = assets / (1-commissionFee)
         unchecked {
-            // round up in favor of the protocol
-            uint256 numerator = assets * (DECIMALS + uint128(s_commissionFee));
-            assets = numerator % DECIMALS == 0 ? numerator / DECIMALS : numerator / DECIMALS + 1;
+            assets = Math.mulDivRoundingUp(
+                shares * DECIMALS,
+                totalAssets(),
+                supply * (DECIMALS - uint128(s_commissionFee))
+            );
         }
     }
 
