@@ -2070,21 +2070,12 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            0,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
 
-       console2.log("before mint");
+        console2.log("before mint");
 
         pp.mintOptions(posIdList, positionSize, 0, TickMath.MIN_TICK, TickMath.MAX_TICK);
 
@@ -2110,7 +2101,8 @@ contract PanopticPoolTest is PositionUtils {
         {
             assertEq(
                 pp.positionsHash(Alice),
-                uint248(uint256(keccak256(abi.encodePacked(tokenId)))), "position hash"
+                uint248(uint256(keccak256(abi.encodePacked(tokenId)))),
+                "position hash"
             );
 
             assertEq(pp.numberOfPositions(Alice), 1, "num of positions");
@@ -2135,7 +2127,8 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqRel(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) - uint128((shortAmounts.rightSlot() * 10) / 10000),
-                0.0000001e18, "alice balance 0"
+                0.0000001e18,
+                "alice balance 0"
             );
 
             assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance 1");
@@ -2273,8 +2266,6 @@ contract PanopticPoolTest is PositionUtils {
         pp.mintOptions(posIdList, positionSize, 0, 0, 0);
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
-
-
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();

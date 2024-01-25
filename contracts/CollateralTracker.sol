@@ -1305,7 +1305,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             console2.log("long amount", longAmount);
             console2.log("short amount", shortAmount);
             console2.log("tokenToPay", tokenToPay);
-        
+
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
             if (tokenToPay > 0) {
