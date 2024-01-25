@@ -22,6 +22,8 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
+    uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
+
     /*//////////////////////////////////////////////////////////////
                               MATH HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -355,6 +357,46 @@ library PanopticMath {
             }
         }
     }
+
+    /// @notice tick one-sided range is calculated as (width * tickSpacing) / 2
+    /// the logic is abstracted from the Solmate/FixedPointMathLib.sol library
+    /// if (width * tickSpacing) is:
+    ///     even: tick range -> (strike - range, strike + range)
+    ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
+    /// Additionally, the rangeUp is always used for calculations where the one-sided range is explicitly needed
+    /// when (width * tickSpacing) is even the range will be the same, whilst when it is odd we use the rounded up value.
+    /// @param width the width of the leg.
+    /// @param tickSpacing the tick spacing of the underlying Univ3 pool.
+    function mulDivAsTicks(
+        int24 width,
+        int24 tickSpacing
+    ) external pure returns (int24 rangeDown, int24 rangeUp) {
+        /// @solidity memory-safe-assembly
+        //cache product and denominator
+        assembly {
+            // cache denominator
+            let denominator := 2
+
+            // Equivalent to require(denominator != 0 && (y == 0 || x <= type(uint256).max / y))
+            if iszero(
+                mul(denominator, iszero(mul(denominator, gt(width, div(MAX_UINT256, tickSpacing)))))
+            ) {
+                revert(0, 0)
+            }
+
+            //cache product
+            let product := mul(width, tickSpacing)
+
+            // int division result
+            rangeDown := div(product, denominator)
+
+            // If x * y modulo the denominator is strictly greater than 0,
+            // 1 is added to round up the division of x * y by the denominator.
+            rangeUp := add(gt(mod(product, denominator), 0), rangeDown)
+        }
+    }
+
+
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks

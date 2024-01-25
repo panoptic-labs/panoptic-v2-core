@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 /// @title Panoptic's tokenId: the fundamental options position.
 /// @author Axicon Labs Limited
@@ -379,10 +380,19 @@ library TokenId {
             int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
             int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
 
-            // The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            int24 oneSidedRange = (selfWidth * tickSpacing) / 2;
+            /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
+            /// if (width * tickSpacing) is:
+            ///     even: tick range -> (strike - range, strike + range)
+            ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
+            (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
+                selfWidth,
+                tickSpacing
+            );
 
-            (legLowerTick, legUpperTick) = (selfStrike - oneSidedRange, selfStrike + oneSidedRange);
+            (legLowerTick, legUpperTick) = (
+                selfStrike - oneSidedRangeLower,
+                selfStrike + oneSidedRangeUpper
+            );
 
             // Revert if the upper/lower ticks are not multiples of tickSpacing
             // Revert if the tick range extends from the strike outside of the valid tick range
@@ -527,6 +537,7 @@ library TokenId {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 int24 optionStrike = self.strike(i);
+                // @note modify
                 int24 range = (self.width(i) * tickSpacing) / 2;
 
                 uint256 optionTokenType = self.tokenType(i);
@@ -555,6 +566,7 @@ library TokenId {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 // compute the range of this leg/chunk
+                // @note modify
                 int24 range = (self.width(i) * tickSpacing) / 2;
                 // check if the price is outside this chunk
                 if (
