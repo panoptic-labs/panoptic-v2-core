@@ -219,6 +219,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
+    constructor(uint256 virtualShares) {
+        // the virtual shares function as a multiplier for the capital requirement to manipulate the pool price
+        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
+        totalSupply = Math.max(virtualShares, 1);
+    }
+
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
     /// @dev The factory calls this function to start a new collateral tracking system for the incoming token at 'underlyingToken'.
     /// The factory will do this for each of the two tokens being tracked. Thus, the collateral tracking system does not track *both* tokens at once.
@@ -464,7 +470,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return shares The amount of shares that can be minted.
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
         uint256 supply = totalSupply;
-        return supply == 0 ? assets : Math.mulDiv(assets, supply, totalAssets());
+        return Math.mulDiv(assets, supply, totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
@@ -472,7 +478,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return assets The amount of assets that can be redeemed.
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
         uint256 supply = totalSupply;
-        return supply == 0 ? shares : Math.mulDiv(shares, totalAssets(), supply);
+        return Math.mulDiv(shares, totalAssets(), supply);
     }
 
     /// @notice returns The maximum deposit amount.
@@ -544,7 +550,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        assets = supply == 0 ? shares : Math.mulDivRoundingUp(shares, totalAssets(), supply);
+        assets = Math.mulDivRoundingUp(shares, totalAssets(), supply);
 
         // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
         unchecked {
@@ -606,7 +612,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewWithdraw(uint256 assets) public view returns (uint256 shares) {
         uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
 
-        return supply == 0 ? assets : Math.mulDivRoundingUp(assets, supply, totalAssets());
+        return Math.mulDivRoundingUp(assets, supply, totalAssets());
     }
 
     /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
@@ -1032,7 +1038,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev mints virtual/temporary shares so a position can be settled - the total supply is not affected.
+    /// @dev mints ghost shares so a position can be settled - the total supply is not affected.
     /// @param delegatee The delegatee to send shares to - the recipient of the shares.
     /// @param assets The assets to which the shares delegated correspond.
     function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
@@ -1041,7 +1047,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Refunds delegated tokens back to the protocol
     /// @dev Assumes that `delegatee` has enough money to pay for the refund
-    /// @dev burns virtual/temporary shares after a position has been settled - the total supply is not affected.
+    /// @dev burns ghost shares after a position has been settled - the total supply is not affected.
     /// @param delegatee The account refunding tokens to 'delegatee'.
     /// @param assets The amount of assets to which the shares to refund to the protocol correspond.
     function refund(address delegatee, uint256 assets) external onlyPanopticPool {

@@ -32,7 +32,7 @@ contract DeployProtocol is Script {
         address poolReference = address(new PanopticPool(SFPM));
 
         // Import the Collateral Tracker reference (for cloning)
-        address collateralReference = address(new CollateralTracker());
+        address collateralReference = address(new CollateralTracker(10 ** 6));
 
         PanopticFactory factory = new PanopticFactory(
             WETH9,

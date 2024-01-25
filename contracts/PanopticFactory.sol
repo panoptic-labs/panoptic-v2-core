@@ -121,7 +121,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
     /// @param _SFPM The semi fungible position manager keeping track of all options positions of users.
     /// @param _univ3Factory The uniswap v3 factory used to get and confirm existing uniswap v3 pool details.
     /// @param _poolReference The reference implementation of the Panoptic Pool to clone.
-    /// @param _collateralReference The reference implementation of the Collateral Token to clone.
+    /// @param _collateralReference The reference implementation of the Collateral Token to clone (with 10**6 virtual shares).
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
