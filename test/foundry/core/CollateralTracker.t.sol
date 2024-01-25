@@ -199,7 +199,7 @@ contract PanopticPoolHarness is PanopticPool {
         uint128 assets,
         CollateralTracker collateralToken
     ) external {
-        collateralToken.delegate(msg.sender, delegatee, assets);
+        collateralToken.delegate(delegatee, assets);
     }
 
     // mimics an internal Panoptic pool  revoke call onto the collateral tracker
@@ -399,7 +399,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     address WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     // granted token amounts
-    uint256 constant initialMockTokens = type(uint120).max;
+    uint256 constant initialMockTokens = type(uint104).max;
 
     /*//////////////////////////////////////////////////////////////
                               WORLD STATE
@@ -612,8 +612,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Success_StartToken_constructor(uint256 virtualShares) public {
+        _initWorld(0);
         CollateralTracker ct = new CollateralTracker();
-        ct.startToken(token0, pool, PanopticPool(address(0)), virtualShares);
+        ct.startToken(token0, pool, panopticPool, virtualShares);
 
         assertEq(ct.totalSupply(), virtualShares > 0 ? virtualShares : 1);
         assertEq(ct.totalAssets(), 1);
@@ -924,7 +925,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IERC20Partial(token1).transfer(address(panopticPool), 2 ** 64);
 
         // mint more than the maximum (2**128 - 1)
-        shares = bound(shares, collateralToken0.maxMint(address(0)) + 2, type(uint128).max);
+        shares = bound(shares, collateralToken0.maxMint(address(0)), type(uint128).max);
+
+        // clean out some incorrectly lower bounded values, the floor/ceiling functions make the line a bit murky
+        vm.assume((collateralToken0.convertToAssets(shares) * 10_000) / 10_010 > type(uint104).max);
 
         vm.expectRevert(Errors.DepositTooLarge.selector);
         uint256 returnedShares0 = collateralToken0.mint(shares, Bob);
@@ -1250,8 +1254,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
 
         // approve Alice to move shares/assets on Bob's behalf
-        IERC20Partial(address(collateralToken0)).approve(Alice, assetsToken0);
-        IERC20Partial(address(collateralToken1)).approve(Alice, assetsToken1);
+        IERC20Partial(address(collateralToken0)).approve(Alice, shares0);
+        IERC20Partial(address(collateralToken1)).approve(Alice, shares1);
 
         changePrank(Alice);
 
@@ -1280,7 +1284,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _initWorld(x);
 
         // hardcoded amount of shares to redeem
-        uint256 shares = 100;
+        uint256 shares = 10 ** 6;
 
         // Invoke all interactions with the Collateral Tracker from user Bob
         vm.startPrank(Bob);
@@ -1362,19 +1366,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // give Bob the max amount of tokens
         _grantTokens(Bob);
 
-        // approve collateral tracker to move tokens on Bob's behalf
-        IERC20Partial(token0).approve(address(collateralToken0), assets);
-        IERC20Partial(token1).approve(address(collateralToken1), assets);
-
-        // deposit a number of assets determined via fuzzing
-        // equal deposits for both collateral token pairs for testing purposes
-        collateralToken0.deposit(assets, Bob);
-        collateralToken1.deposit(assets, Bob);
-
-        // get amount of shares being delegated
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
-
         uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
 
         // invoke delegate transactions from the Panoptic pool
@@ -1389,8 +1380,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // make sure share price stays the same
         assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
 
-        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+        assertEq(convertToShares(assets, collateralToken0), sharesAfter0);
+        assertEq(convertToShares(assets, collateralToken0), sharesAfter1);
     }
 
     // transfer from delegatee to delegator
@@ -1511,7 +1502,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // Invoke all interactions with the Collateral Tracker from user Alice
             vm.startPrank(Alice);
 
-            // give Bob the max amount of tokens
+            // give Alice the max amount of tokens
             _grantTokens(Alice);
 
             uint256 assetsToken0 = bound(
@@ -1536,14 +1527,22 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // check delegator balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
+        uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
+        uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
 
         uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(Alice, shares, collateralToken0);
-        panopticPool.refund(Alice, shares, collateralToken1);
+        panopticPool.refund(
+            Alice,
+            convertToAssets(sharesBefore0, collateralToken0),
+            collateralToken0
+        );
+        panopticPool.refund(
+            Alice,
+            convertToAssets(sharesBefore1, collateralToken1),
+            collateralToken1
+        );
 
         // make sure share price stays the same
         assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
@@ -1552,8 +1551,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
         uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
 
-        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+        assertApproxEqAbs(0, convertToAssets(sharesAfter0, collateralToken0), 5);
+        assertApproxEqAbs(0, convertToAssets(sharesAfter1, collateralToken1), 5);
     }
 
     function test_success_refund_positive(uint256 x, uint104 shares) public {

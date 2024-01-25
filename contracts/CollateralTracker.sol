@@ -21,6 +21,7 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -494,7 +495,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
         // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
         unchecked {
-            shares = convertToShares(assets - (assets * (uint128(s_commissionFee))) / DECIMALS);
+            shares = convertToShares((assets * (DECIMALS - uint128(s_commissionFee))) / DECIMALS);
         }
     }
 
@@ -555,7 +556,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
         unchecked {
-            assets += (assets * uint128(s_commissionFee)) / DECIMALS;
+            // round up in favor of the protocol
+            uint256 numerator = assets * (DECIMALS + uint128(s_commissionFee));
+            assets = numerator % DECIMALS == 0 ? numerator / DECIMALS : numerator / DECIMALS + 1;
         }
     }
 
@@ -1149,6 +1152,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
             int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
+            console2.log("tokenToPay", tokenToPay);
+            console2.log(
+                "convertToAssets(Bal)",
+                convertToAssets(balanceOf[tickStateCallContext.caller()])
+            );
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
             if (tokenToPay > 0) {
@@ -1206,11 +1214,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
+            // note: the +1 is for virtual assets that aren't included in the balance - this logic will all be removed soon anyway
             realizedPremium = int128(
                 Math.min(
                     currentPositionPremium,
                     int256(IERC20Partial(s_underlyingToken).balanceOf(address(s_panopticPool))) -
-                        updatedAssets
+                        updatedAssets +
+                        1
                 )
             );
 
