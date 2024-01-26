@@ -556,9 +556,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Amount deposited = assets * (1 + commissionFee/(1-commissionFee) = assets / (1-commissionFee)
         unchecked {
             assets = Math.mulDivRoundingUp(
-                shares * (DECIMALS - uint128(s_commissionFee)),
+                shares * DECIMALS,
                 totalAssets(),
-                totalSupply
+                totalSupply * (DECIMALS - uint128(s_commissionFee))
             );
         }
     }
