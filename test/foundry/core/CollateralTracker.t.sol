@@ -1587,20 +1587,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken1.deposit(uint128(assetsToken1), Alice);
         }
 
-        // check delegator balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
-
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken0);
-        panopticPool.refund(Alice, Bob, int256(uint256(shares)), collateralToken1);
+        panopticPool.refund(
+            Alice,
+            Bob,
+            int256(convertToAssets(collateralToken0.balanceOf(Alice), collateralToken0)),
+            collateralToken0
+        );
+        panopticPool.refund(
+            Alice,
+            Bob,
+            int256(convertToAssets(collateralToken1.balanceOf(Alice), collateralToken1)),
+            collateralToken1
+        );
 
         // check delegatee balance after
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
         uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
 
-        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+        assertApproxEqAbs(0, convertToAssets(sharesAfter0, collateralToken0), 5);
+        assertApproxEqAbs(0, convertToAssets(sharesAfter1, collateralToken1), 5);
     }
 
     function test_success_refund_negative(uint256 x, uint104 assets) public {
@@ -1627,16 +1633,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(Alice, Bob, -int256(uint256(assets)), collateralToken0);
+        panopticPool.refund(
+            Alice,
+            Bob,
+            -int256(convertToAssets(sharesBefore0, collateralToken0)),
+            collateralToken0
+        );
 
-        panopticPool.refund(Alice, Bob, -int256(uint256(assets)), collateralToken1);
+        panopticPool.refund(
+            Alice,
+            Bob,
+            -int256(convertToAssets(sharesBefore0, collateralToken1)),
+            collateralToken1
+        );
 
         // check delegatee balance after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
+        uint256 sharesAfter0 = collateralToken0.balanceOf(Bob);
+        uint256 sharesAfter1 = collateralToken1.balanceOf(Bob);
 
-        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
+        assertApproxEqAbs(0, convertToAssets(sharesAfter0, collateralToken0), 5);
+        assertApproxEqAbs(0, convertToAssets(sharesAfter1, collateralToken1), 5);
     }
 
     // access control on delegate/revoke/settlement functions
