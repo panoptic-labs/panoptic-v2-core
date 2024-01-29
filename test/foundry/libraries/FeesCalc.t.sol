@@ -307,7 +307,7 @@ contract FeesCalcTest is Test, PositionUtils {
                 width = int24(bound(widthSeed, 1, 4094));
                 int24 oneSidedRange = (width * tickSpacing) / 2;
 
-                (int24 strikeOffset, int24 minTick, int24 maxTick) = PositionUtils.getContext(
+                (int24 strikeOffset, int24 minTick, int24 maxTick) = PositionUtils.getContextFull(
                     uint256(uint24(tickSpacing)),
                     currentTick,
                     width
