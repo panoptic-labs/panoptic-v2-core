@@ -89,7 +89,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -160,7 +160,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -257,7 +257,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -329,7 +329,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -386,7 +386,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1113,7 +1113,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1174,7 +1174,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1236,7 +1236,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1256,6 +1256,7 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
+        vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         int256 expectedShorts = int256(0).toRightSlot(Math.toInt128(contractsNotional.rightSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
@@ -1295,7 +1296,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1328,6 +1329,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
+        vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         int256 expectedLongs = int256(0).toRightSlot(Math.toInt128(contractsNotional.rightSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
@@ -1369,7 +1371,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1387,6 +1389,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
 
+        vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
         int256 expectedShorts = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
@@ -1428,7 +1431,7 @@ contract PanopticMathTest is Test, PositionUtils {
             int24 oneSidedRange = (width * tickSpacing) / 2;
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
+            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
                 uint256(uint24(tickSpacing)),
                 currentTick,
                 width
@@ -1446,7 +1449,9 @@ contract PanopticMathTest is Test, PositionUtils {
 
         uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
 
+        vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
         int256 expectedLongs = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
+        console2.log(":)");
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,

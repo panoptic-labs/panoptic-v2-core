@@ -6,10 +6,6 @@ pragma solidity ^0.8.0;
 library Errors {
     /// Errors are alphabetically ordered
 
-    /// @notice `assets` of CollateralTracker account are outside the asserted range
-    /// @dev emitted when the `assertAccountValue` optional slippage check fails
-    error AccountValueOutOfRange();
-
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();

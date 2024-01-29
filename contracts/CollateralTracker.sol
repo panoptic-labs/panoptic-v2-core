@@ -21,7 +21,6 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -431,20 +430,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         if (s_panopticPool.numberOfPositions(from) != 0) revert Errors.PositionCountNotZero();
 
         return ERC20Minimal.transferFrom(from, to, amount);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          SLIPPAGE PROTECTION
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Asserts that the asset value of msg.sender is between `minAssets` and `maxAssets`.
-    /// @dev This function is used to protect against unexpected slippage from precision loss/rounding (e.g inflation attacks).
-    /// @dev The intended pattern is to call this function after a series of deposit/mint/withdraw/redeem with `multicall`
-    /// @param minAssets The minimum amount of assets that the account must have.
-    /// @param maxAssets The maximum amount of assets that the account must have.
-    function assertAccountValue(uint256 minAssets, uint256 maxAssets) public {
-        uint256 assets = convertToAssets(balanceOf[msg.sender]);
-        if (assets < minAssets || assets > maxAssets) revert Errors.AccountValueOutOfRange();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1104,8 +1089,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // subtract delegatee balance from N since it was already transferred to the delegator
             _mint(
                 delegator,
-                Math.mulDiv(assets, totalSupply - delegateeBalance, totalAssets() - assets) -
-                    delegateeBalance
+                Math.mulDiv(
+                    assets,
+                    totalSupply - delegateeBalance,
+                    uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
+                ) - delegateeBalance
             );
         }
         // if requested amount < delegatee balance, then just transfer shares back
@@ -1153,11 +1141,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
             int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
-            console2.log("tokenToPay", tokenToPay);
-            console2.log(
-                "convertToAssets(Bal)",
-                convertToAssets(balanceOf[tickStateCallContext.caller()])
-            );
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
             if (tokenToPay > 0) {
