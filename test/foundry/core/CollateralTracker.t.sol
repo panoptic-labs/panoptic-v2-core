@@ -2617,11 +2617,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             vm.assume(width != width1 || strike != strike1);
-
-            positionIdList.push(tokenId);
-            vm.assume(width != width1 || strike != strike1);
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
+            positionIdList.push(tokenId);
 
             positionSizeSeed = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             positionSize0 = uint128(
