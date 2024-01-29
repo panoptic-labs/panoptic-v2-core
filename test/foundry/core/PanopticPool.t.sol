@@ -3073,7 +3073,10 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Charlie);
 
-        ct0.mint(uint128((shortAmounts.rightSlot() * 10) / 10000 + 1), Charlie);
+        ct0.deposit(
+            (uint128((shortAmounts.rightSlot() * 10) / 10000) * 10015) / 10000 + 3,
+            Charlie
+        );
 
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
         pp.mintOptions(posIdList, uint128(positionSize), 0, 0, 0);

@@ -234,6 +234,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
         s_initialized = true;
 
+        // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
+        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
+        totalSupply = 10 ** 6;
+
+        // set total assets to 1
+        // the initial share price is defined by 1/virtualShares
+        s_poolAssets = 1;
+
         // cache the token0 and token1 addresses from the uniswap pool
         address token0 = uniswapPool.token0();
         address token1 = uniswapPool.token1();
@@ -449,16 +457,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited.
     /// @return shares The amount of shares that can be minted.
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
-        uint256 supply = totalSupply;
-        return supply == 0 ? assets : Math.mulDiv(assets, supply, totalAssets());
+        return Math.mulDiv(assets, totalSupply, totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
     /// @param shares The amount of shares to be redeemed.
     /// @return assets The amount of assets that can be redeemed.
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
-        uint256 supply = totalSupply;
-        return supply == 0 ? shares : Math.mulDiv(shares, totalAssets(), supply);
+        return Math.mulDiv(shares, totalAssets(), totalSupply);
     }
 
     /// @notice returns The maximum deposit amount.
@@ -471,9 +477,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited.
     /// @return shares The amount of shares that can be minted.
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
-        // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
+        // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
         unchecked {
-            shares = convertToShares(assets - (assets * (uint128(s_commissionFee))) / DECIMALS);
+            shares = Math.mulDiv(
+                assets * (DECIMALS - uint128(s_commissionFee)),
+                totalSupply,
+                totalAssets() * DECIMALS
+            );
         }
     }
 
@@ -526,15 +536,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shares The amount of shares to be minted.
     /// @return assets The amount of assets that would be deposited.
     function previewMint(uint256 shares) public view returns (uint256 assets) {
-        uint256 supply = totalSupply;
-
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        assets = supply == 0 ? shares : Math.mulDivRoundingUp(shares, totalAssets(), supply);
-
-        // compute the MEV tax, which is equal to a single payment of the commissionRate BEFORE adding the funds
+        // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
+        // finalAssets - convertedAssets = commissionRate * finalAssets
+        // finalAssets - commissionRate * finalAssets = convertedAssets
+        // finalAssets * (1 - commissionRate) = convertedAssets
+        // finalAssets = convertedAssets / (1 - commissionRate)
         unchecked {
-            assets += (assets * uint128(s_commissionFee)) / DECIMALS;
+            assets = Math.mulDivRoundingUp(
+                shares * DECIMALS,
+                totalAssets(),
+                totalSupply * (DECIMALS - uint128(s_commissionFee))
+            );
         }
     }
 
@@ -592,7 +606,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewWithdraw(uint256 assets) public view returns (uint256 shares) {
         uint256 supply = totalSupply; // Saves an extra SLOAD if totalSupply is non-zero.
 
-        return supply == 0 ? assets : Math.mulDivRoundingUp(assets, supply, totalAssets());
+        return Math.mulDivRoundingUp(assets, supply, totalAssets());
     }
 
     /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
@@ -836,10 +850,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _poolUtilization() internal view returns (int128 poolUtilization) {
         uint256 _totalAssets = totalAssets();
 
-        if (_totalAssets == 0) {
-            return 0;
-        }
-
         unchecked {
             return int128(int256((s_inAMM * DECIMALS) / _totalAssets));
         }
@@ -1018,7 +1028,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev mints virtual/temporary shares so a position can be settled - the total supply is not affected.
+    /// @dev mints ghost shares so a position can be settled - the total supply is not affected.
     /// @param delegatee The delegatee to send shares to - the recipient of the shares.
     /// @param assets The assets to which the shares delegated correspond.
     function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
@@ -1027,7 +1037,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Refunds delegated tokens back to the protocol
     /// @dev Assumes that `delegatee` has enough money to pay for the refund
-    /// @dev burns virtual/temporary shares after a position has been settled - the total supply is not affected.
+    /// @dev burns ghost shares after a position has been settled - the total supply is not affected.
     /// @param delegatee The account refunding tokens to 'delegatee'.
     /// @param assets The amount of assets to which the shares to refund to the protocol correspond.
     function refund(address delegatee, uint256 assets) external onlyPanopticPool {
@@ -1083,8 +1093,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // subtract delegatee balance from N since it was already transferred to the delegator
             _mint(
                 delegator,
-                Math.mulDiv(assets, totalSupply - delegateeBalance, totalAssets() - assets) -
-                    delegateeBalance
+                Math.mulDiv(
+                    assets,
+                    totalSupply - delegateeBalance,
+                    uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
+                ) - delegateeBalance
             );
         }
         // if requested amount < delegatee balance, then just transfer shares back
