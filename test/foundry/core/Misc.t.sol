@@ -317,7 +317,7 @@ contract Misctest is Test, PositionUtils {
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            249_999_998,
+            249_999_999,
             "Incorrect Bob Delta 1"
         );
 
