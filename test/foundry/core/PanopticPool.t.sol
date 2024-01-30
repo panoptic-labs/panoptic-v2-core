@@ -4511,7 +4511,14 @@ contract PanopticPoolTest is PositionUtils {
             tickSpacing
         );
 
-        pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0);
+        try pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0) {} catch (
+            bytes memory reason
+        ) {
+            if (bytes4(reason) == Errors.TransferFailed.selector) {
+                vm.assume(false);
+            }
+            revert();
+        }
 
         lastCollateralBalance0[Alice] = ct0.convertToAssets(ct0.balanceOf(Alice));
         lastCollateralBalance1[Alice] = ct1.convertToAssets(ct1.balanceOf(Alice));
@@ -4527,6 +4534,12 @@ contract PanopticPoolTest is PositionUtils {
         updateITMAmountsBurn(numLegs, tokenTypes);
 
         updateSwappedAmountsBurn(numLegs, isLongs);
+
+        // make sure pool has enough tokens to perform the swap (if there is tons of slippage it may not)
+        vm.assume(
+            2 * $swap0 <= int256(IERC20Partial(token0).balanceOf(address(pp))) &&
+                2 * $swap1 <= int256(IERC20Partial(token1).balanceOf(address(pp)))
+        );
 
         updateIntrinsicValueBurn(longAmounts, shortAmounts);
 
