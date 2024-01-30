@@ -487,32 +487,33 @@ library PanopticMath {
     /// @param tokenId the option position identifier
     /// @param positionSize the number of option contracts held in this position (each contract can control multiple tokens)
     /// @param legIndex the leg index of the option contract, can be {0,1,2,3}
+    /// @param tickSpacing the tick spacing of the underlying UniV3 pool
     /// @return amountsMoved a LeftRight encoded variable containing the amount0 and the amount1 value controlled by this option position's leg
     function getAmountsMovedPrecise(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex
-    ) returns (uint256 amountsMoved) {
+        uint256 legIndex,
+        int24 tickSpacing
+    ) internal pure returns (uint256 amountsMoved) {
+        uint128 amount0;
+        uint128 amount1;
+
+        // construct the liquidity amounts to pass into getAmountForLiquidity
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, positionSize);
+        
         if (tokenId.asset(legIndex) == 0) {
             // amount of tokens moved in token1
             amount0 = positionSize; 
             
-            // get liquidity for amount 1 
-            uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
-            uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, liq0);
-            
             // amount of tokens moved for token1
-            amount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
+            amount1 = Math.getAmount1ForLiquidity(liquidityAmounts).toUint128();
         } else {
             // amount of tokens moved in token1
             amount1 = positionSize; 
-            
-            // get liquidity for amount 1 
-            uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1); 
-            uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, liq1);
-            
+                        
             // amount of tokens moved for token1
-            amount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
+            amount0 = Math.getAmount0ForLiquidity(liquidityAmounts).toUint128();
         }  
         amountsMoved = amountsMoved.toRightSlot(amount0).toLeftSlot(amount1);
     } 
