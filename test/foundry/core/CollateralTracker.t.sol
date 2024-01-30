@@ -391,8 +391,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     IUniswapV3Pool constant DAI_USDC_1 = 
         IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
 
-    //IUniswapV3Pool[4] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30, DAI_USDC_1];
-    IUniswapV3Pool[1] public pools = [DAI_USDC_1];
+    IUniswapV3Pool[3] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30/*, DAI_USDC_1*/];
+    // IUniswapV3Pool[1] public pools = [DAI_USDC_1];
 
     // Mainnet factory address
     IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);

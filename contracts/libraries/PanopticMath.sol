@@ -314,15 +314,9 @@ library PanopticMath {
         uint256 asset
     ) internal pure returns (uint128) {
         unchecked {
-            // @note (sqrt upper + sqrt lower) / 2 instead of Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2)
-            // to retain percision 
-            uint160 sqrtUpper =  Math.getSqrtRatioAtTick(tickUpper);
-            uint160 sqrtLower = Math.getSqrtRatioAtTick(tickLower);
-            uint160 strikePrice = (sqrtUpper + sqrtLower) / 2;
-
             uint256 notional = asset == 0
-                ? convert0to1(contractSize, strikePrice)
-                : convert1to0(contractSize, strikePrice);
+                ? convert0to1(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2))
+                : convert1to0(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2));
 
             if (notional == 0 || notional > type(uint128).max) revert Errors.InvalidNotionalValue();
 
@@ -466,7 +460,7 @@ library PanopticMath {
         uint256 legIndex,
         int24 tickSpacing
     ) internal pure returns (uint256 amountsMoved) {
-        // get the tick range for this leg in order to get the strike price (the underlying price)
+        // get the tick range for this leg in order to get the strike price (the underlying price)      
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
 
         // positionSize: how many option contracts we have.
@@ -479,6 +473,7 @@ library PanopticMath {
                 amount0 = positionSize * uint128(tokenId.optionRatio(legIndex)); // in terms of the underlying tokens/shares
                 // notional is then "how many underlying tokens are controlled (contractSize) * (the price for each token -- strike price):
                 amount1 = convertNotional(amount0, tickLower, tickUpper, tokenId.asset(legIndex)); // how many tokens are controlled by this option position
+                // get liquidity for amount 1 -> 
             } else {
                 amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
                 amount0 = convertNotional(amount1, tickLower, tickUpper, tokenId.asset(legIndex));
@@ -486,6 +481,41 @@ library PanopticMath {
         }
         amountsMoved = amountsMoved.toRightSlot(amount0).toLeftSlot(amount1);
     }
+
+    /// @notice Compute the amount of token0 and token1 moved. Given an option position `tokenId`, leg index `legIndex`, and how many contracts are in the leg `positionSize`.
+    /// Has increased precision when computing the amount moved in the opposite of the numeraire, as we use Uniswap comparitive calculations.
+    /// @param tokenId the option position identifier
+    /// @param positionSize the number of option contracts held in this position (each contract can control multiple tokens)
+    /// @param legIndex the leg index of the option contract, can be {0,1,2,3}
+    /// @return amountsMoved a LeftRight encoded variable containing the amount0 and the amount1 value controlled by this option position's leg
+    function getAmountsMovedPrecise(
+        uint256 tokenId,
+        uint128 positionSize,
+        uint256 legIndex
+    ) returns (uint256 amountsMoved) {
+        if (tokenId.asset(legIndex) == 0) {
+            // amount of tokens moved in token1
+            amount0 = positionSize; 
+            
+            // get liquidity for amount 1 
+            uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
+            uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, liq0);
+            
+            // amount of tokens moved for token1
+            amount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
+        } else {
+            // amount of tokens moved in token1
+            amount1 = positionSize; 
+            
+            // get liquidity for amount 1 
+            uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1); 
+            uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, liq1);
+            
+            // amount of tokens moved for token1
+            amount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
+        }  
+        amountsMoved = amountsMoved.toRightSlot(amount0).toLeftSlot(amount1);
+    } 
 
     /// @notice Compute the amount of funds that are moved to and removed from the Panoptic Pool.
     /// @param tokenId the option position identifier

@@ -543,7 +543,7 @@ library TokenId {
                 ///     even: tick range -> (strike - range, strike + range)
                 ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
                 (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
-                    selfWidth,
+                    self.width(i),
                     tickSpacing
                 );
 
@@ -580,7 +580,7 @@ library TokenId {
                 ///     even: tick range -> (strike - range, strike + range)
                 ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
                 (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
-                    selfWidth,
+                    self.width(i),
                     tickSpacing
                 );
 

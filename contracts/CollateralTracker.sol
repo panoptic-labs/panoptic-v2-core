@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
 
+// Foundry
+import "forge-std/Test.sol";
 // Interfaces
 import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
@@ -1468,16 +1470,24 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int24 atTick,
         uint128 poolUtilization
     ) internal view returns (uint256 required) {
-        // compute the total amount of funds moved for that position
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            index,
-            s_tickSpacing
-        );
 
-        // extract the tokenType (token0 or token1)
         uint256 tokenType = tokenId.tokenType(index);
+        uint128 amountMoved; // underlying tokens moved to and from the AMM
+        {
+            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index, s_tickSpacing);
+            
+            uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, positionSize);
+
+            // Get the liquidity amount for this position size in the tokenType
+            uint256 amountForLiq = tokenType == 0  ? 
+                Math.getAmount0ForLiquidity(liquidityAmounts) : 
+                Math.getAmount1ForLiquidity(liquidityAmounts);
+            
+            // specify amount of tokens in the asset
+            amountMoved = tokenId.asset(index) == 0 ? 
+                Math.getLiquidityForAmount0(liquidityAmounts, amountForLiq) : 
+                Math.getLiquidityForAmount1(liquidityAmounts, amountForLiq);
+        }
 
         // match tokenType with the correct pool utilization
         int64 utilization = tokenType == 0
@@ -1487,10 +1497,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // extract the strike of the leg
         int24 strike = tokenId.strike(index);
 
-        // amount moved is right slot if tokenType=0, left slot otherwise
-        uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
-
         uint256 isLong = tokenId.isLong(index);
+
         // start with base requirement, which is based on isLong value
         required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
 
@@ -1730,21 +1738,86 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint256 partnerIndex
     ) internal view returns (uint256 spreadRequirement) {
+
+        uint256 _tokenId = tokenId;
+
         // compute the total amount of funds moved for the position's current leg
         uint256 amountsMoved = PanopticMath.getAmountsMoved(
-            tokenId,
+            _tokenId,
             positionSize,
             index,
             s_tickSpacing
         );
 
+        uint256 amountMovedAlt; // underlying tokens moved to and from the AMM
+        {
+
+            (int24 tickLower, int24 tickUpper) = _tokenId.asTicks(index, s_tickSpacing);
+            
+            uint256 tokenType = _tokenId.tokenType(index);
+
+            uint256 amount0;
+            uint256 amount1;
+            unchecked {
+                if (tokenId.asset(index) == 0) {
+                    // amount of tokens moved in token1
+                    amount0 = positionSize; 
+                    
+                    // get liquidity for amount 1 
+                    uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
+                    uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, liq0);
+                    
+                    // amount of tokens moved for token1
+                    amount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
+                } else {
+                    // amount of tokens moved in token1
+                    amount1 = positionSize; 
+                    
+                    // get liquidity for amount 1 
+                    uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1); 
+                    uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, liq1);
+                    
+                    // amount of tokens moved for token1
+                    amount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
+                }
+            }
+
+            console2.log("amount0", amount0);
+            console2.log("amount1", amount1);
+
+        }
+
         // compute the total amount of funds moved for the position's partner leg
         uint256 amountsMovedPartner = PanopticMath.getAmountsMoved(
-            tokenId,
+            _tokenId,
             positionSize,
             partnerIndex,
             s_tickSpacing
         );
+
+        uint256 amountsMovedPartnerAlt; // underlying tokens moved to and from the AMM
+        {
+            console2.log("token type", _tokenId.tokenType(partnerIndex));
+            console2.log("asset", _tokenId.asset(partnerIndex));
+
+            (int24 tickLower, int24 tickUpper) = _tokenId.asTicks(partnerIndex, s_tickSpacing);
+            
+            uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, positionSize);
+
+            // Get the liquidity amount for this position size in the tokenType
+            // uint256 amountForLiq = _tokenId.tokenType(partnerIndex) == 0  ? 
+            //     Math.getAmount0ForLiquidity(liquidityAmounts) : 
+            //     Math.getAmount1ForLiquidity(liquidityAmounts);
+            
+            // specify amount of tokens in the asset
+            // amountMoved = tokenId.asset(index) == 0 ? 
+            //     Math.getLiquidityForAmount0(liquidityAmounts, amountForLiq) : 
+            //     Math.getLiquidityForAmount1(liquidityAmounts, amountForLiq);
+
+            // 
+            // uint256 amountsMovedPartnerAlt0 = Math.getLiquidityForAmount0(liquidityAmounts, amountForLiq);
+            // uint256 amountsMovedPartnerAlt1 = Math.getLiquidityForAmount1(liquidityAmounts, amountForLiq);          
+        }
 
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 movedRight = amountsMoved.rightSlot();
@@ -1754,10 +1827,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 movedPartnerRight = amountsMovedPartner.rightSlot();
         uint128 movedPartnerLeft = amountsMovedPartner.leftSlot();
 
+        console2.log("amountMoved 0", movedRight);
+        console2.log("amountMoved 1", movedLeft);  
+
         // extract the tokenType
-        uint256 tokenType = tokenId.tokenType(index);
+        uint256 tokenType = _tokenId.tokenType(index);
         // extract the asset
-        uint256 asset = tokenId.asset(index);
+        uint256 asset = _tokenId.asset(index);
 
         // if asset is NOT the same as the tokenType, the required amount is simply the difference in notional values
         // ie. asset = 1, tokenType = 0:
@@ -1793,7 +1869,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
                 spreadRequirement = (notional < notionalP)
                     ? ((notionalP - notional) * contracts) / notional
-                    : ((notional - notionalP) * contracts) / notionalP;
+                    : ((notional - notionalP) * contracts) / notionalP; 
             }
         }
     }
