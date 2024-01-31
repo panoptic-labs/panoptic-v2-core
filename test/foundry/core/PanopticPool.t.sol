@@ -112,7 +112,11 @@ contract PanopticPoolTest is PositionUtils {
         IUniswapV3Pool(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD);
     IUniswapV3Pool constant USDC_WETH_30 =
         IUniswapV3Pool(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
-    IUniswapV3Pool[3] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5];
+    IUniswapV3Pool constant WSTETH_ETH_1 = 
+        IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
+    //IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WHITE_ETH_1];
+
+    IUniswapV3Pool[1] public pools = [WSTETH_ETH_1];
 
     /*//////////////////////////////////////////////////////////////
                               WORLD STATE
@@ -418,10 +422,13 @@ contract PanopticPoolTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function populatePositionData(int24 width, int24 strike, uint256 positionSizeSeed) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        
+        tickLower = int24(strike - rangeDown);
         tickLowers.push(tickLower);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        tickUpper = int24(strike + rangeUp);
         tickUppers.push(tickUpper);
+       
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtLowers.push(sqrtLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
@@ -437,7 +444,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
-        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, positionSize);
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
         expectedLiq = isWETH == 0
             ? Math.getLiquidityForAmount0(liquidityAmounts, positionSize)
             : Math.getLiquidityForAmount1(liquidityAmounts, positionSize);
@@ -470,8 +477,10 @@ contract PanopticPoolTest is PositionUtils {
         int24 strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        
+        tickLower = int24(strike - rangeDown);
+        tickUpper = int24(strike + rangeUp);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
 
@@ -485,9 +494,10 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
         expectedLiq = isWETH == 0
-            ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSize)
-            : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSize);
+            ? Math.getLiquidityForAmount0(liquidityAmounts, positionSize)
+            : Math.getLiquidityForAmount1(liquidityAmounts, positionSize);
     }
 
     function populatePositionData(
@@ -495,8 +505,10 @@ contract PanopticPoolTest is PositionUtils {
         int24 strike,
         uint256[2] memory positionSizeSeeds
     ) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        tickLower = int24(strike - rangeDown);
+        tickUpper = int24(strike + rangeUp);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
 
@@ -530,16 +542,17 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSizes[0])
-                : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSizes[0])
+                ? Math.getLiquidityForAmount0(liquidityAmounts, positionSizes[0])
+                : Math.getLiquidityForAmount1(liquidityAmounts, positionSizes[0])
         );
 
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSizes[1])
-                : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSizes[1])
+                ? Math.getLiquidityForAmount0(liquidityAmounts, positionSizes[1])
+                : Math.getLiquidityForAmount1(liquidityAmounts, positionSizes[1])
         );
     }
 
@@ -548,13 +561,15 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
@@ -574,30 +589,29 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLowers[0], tickUppers[0], 0);
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[0],
-                    sqrtUppers[0],
+                ? Math.getLiquidityForAmount0(
+                liquidityAmounts,
                     positionSize
                 )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[0],
-                    sqrtUppers[0],
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts,
                     positionSize
                 )
         );
 
+
+        liquidityAmounts = uint256(0).createChunk(tickLowers[1], tickUppers[1], 0);
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                ? Math.getLiquidityForAmount0(
+                    liquidityAmounts,
                     positionSize
                 )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts,
                     positionSize
                 )
         );
@@ -664,13 +678,15 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256[2] memory positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
@@ -706,44 +722,41 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256 liquidityAmounts1 = uint256(0).createChunk(tickLowers[1], tickUppers[1], 0);
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                ? Math.getLiquidityForAmount0(
+                    liquidityAmounts1,
                     positionSizes[0]
                 )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts1,
                     positionSizes[0]
+                )
+        );
+
+
+        uint256 liquidityAmounts0 = uint256(0).createChunk(tickLowers[0], tickUppers[0], 0);
+        expectedLiqs.push(
+            isWETH == 0
+                ? Math.getLiquidityForAmount0(
+                    liquidityAmounts0,
+                    positionSizes[1]
+                )
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts0,
+                    positionSizes[1]
                 )
         );
 
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[0],
-                    sqrtUppers[0],
+                ? Math.getLiquidityForAmount0(
+                    liquidityAmounts1,
                     positionSizes[1]
                 )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[0],
-                    sqrtUppers[0],
-                    positionSizes[1]
-                )
-        );
-
-        expectedLiqs.push(
-            isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
-                    positionSizes[1]
-                )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts1,
                     positionSizes[1]
                 )
         );
@@ -940,18 +953,21 @@ contract PanopticPoolTest is PositionUtils {
         int24[3] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
-        tickLowers.push(int24(strike[2] - (width[2] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[2] + (width[2] * tickSpacing) / 2));
+        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+        tickLowers.push(int24(strike[2] - rangeDown2));
+        tickUppers.push(int24(strike[2] + rangeUp2));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[2]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[2]));
 
@@ -972,16 +988,15 @@ contract PanopticPoolTest is PositionUtils {
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
         for (uint256 i = 0; i < 3; i++) {
+            uint256 liquidityAmounts = uint256(0).createChunk(tickLowers[i], tickUppers[i], 0);
             expectedLiqs.push(
                 isWETH == 0
-                    ? LiquidityAmounts.getLiquidityForAmount0(
-                        sqrtLowers[i],
-                        sqrtUppers[i],
+                    ? Math.getLiquidityForAmount0(
+                        liquidityAmounts,
                         positionSize
                     )
-                    : LiquidityAmounts.getLiquidityForAmount1(
-                        sqrtLowers[i],
-                        sqrtUppers[i],
+                    : Math.getLiquidityForAmount1(
+                        liquidityAmounts,
                         positionSize
                     )
             );
@@ -1044,23 +1059,27 @@ contract PanopticPoolTest is PositionUtils {
         int24[4] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
-        tickLowers.push(int24(strike[2] - (width[2] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[2] + (width[2] * tickSpacing) / 2));
+        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+        tickLowers.push(int24(strike[2] - rangeDown2));
+        tickUppers.push(int24(strike[2] + rangeUp2));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[2]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[2]));
 
-        tickLowers.push(int24(strike[3] - (width[3] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[3] + (width[3] * tickSpacing) / 2));
+        (int24 rangeDown3, int24 rangeUp3) = PanopticMath.mulDivAsTicks(width[3], tickSpacing);
+        tickLowers.push(int24(strike[3] - rangeDown3));
+        tickUppers.push(int24(strike[3] + rangeUp3));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[3]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[3]));
 
@@ -1080,16 +1099,15 @@ contract PanopticPoolTest is PositionUtils {
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
         for (uint256 i = 0; i < 4; i++) {
+            uint256 liquidityAmounts = uint256(0).createChunk(tickLowers[i], tickUppers[i], 0);
             expectedLiqs.push(
                 isWETH == 0
-                    ? LiquidityAmounts.getLiquidityForAmount0(
-                        sqrtLowers[i],
-                        sqrtUppers[i],
+                    ? Math.getLiquidityForAmount0(
+                        liquidityAmounts,
                         positionSize
                     )
-                    : LiquidityAmounts.getLiquidityForAmount1(
-                        sqrtLowers[i],
-                        sqrtUppers[i],
+                    : Math.getLiquidityForAmount1(
+                        liquidityAmounts,
                         positionSize
                     )
             );
@@ -1165,13 +1183,15 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256[2] memory positionSizeSeeds
     ) internal {
-        tickLowers.push(int24(strike[0] - (width[0] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[0] + (width[0] * tickSpacing) / 2));
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        tickLowers.push(int24(strike[0] - rangeDown0));
+        tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        tickLowers.push(int24(strike[1] - (width[1] * tickSpacing) / 2));
-        tickUppers.push(int24(strike[1] + (width[1] * tickSpacing) / 2));
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        tickLowers.push(int24(strike[1] - rangeDown1));
+        tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
@@ -1206,30 +1226,28 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256  liquidityAmounts = uint256(0).createChunk(tickLowers[0], tickUppers[0], 0);
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[0],
-                    sqrtUppers[0],
+                ? Math.getLiquidityForAmount0(
+                    liquidityAmounts,
                     positionSizes[0]
                 )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[0],
-                    sqrtUppers[0],
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts,
                     positionSizes[0]
                 )
         );
 
+        liquidityAmounts = uint256(0).createChunk(tickLowers[1], tickUppers[1], 0);
         expectedLiqs.push(
             isWETH == 0
-                ? LiquidityAmounts.getLiquidityForAmount0(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                ? Math.getLiquidityForAmount0(
+                    liquidityAmounts,
                     positionSizes[1]
                 )
-                : LiquidityAmounts.getLiquidityForAmount1(
-                    sqrtLowers[1],
-                    sqrtUppers[1],
+                : Math.getLiquidityForAmount1(
+                    liquidityAmounts,
                     positionSizes[1]
                 )
         );
@@ -1241,8 +1259,9 @@ contract PanopticPoolTest is PositionUtils {
         uint256 positionSizeSeed,
         uint256 positionSizeBurnSeed
     ) internal {
-        tickLower = int24(strike - (width * tickSpacing) / 2);
-        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        tickLower = int24(strike - rangeDown0);
+        tickUpper = int24(strike + rangeUp0);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
         sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
 
@@ -1267,25 +1286,24 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256  liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
         expectedLiq = isWETH == 0
-            ? LiquidityAmounts.getLiquidityForAmount0(
-                sqrtLower,
-                sqrtUpper,
+            ? Math.getLiquidityForAmount0(
+                liquidityAmounts,
                 positionSize - positionSizeBurn
             )
-            : LiquidityAmounts.getLiquidityForAmount1(
-                sqrtLower,
-                sqrtUpper,
+            : Math.getLiquidityForAmount1(
+                liquidityAmounts,
                 positionSize - positionSizeBurn
             );
 
         expectedLiqMint = isWETH == 0
-            ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSize)
-            : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSize);
+            ? Math.getLiquidityForAmount0(liquidityAmounts, positionSize)
+            : Math.getLiquidityForAmount1(liquidityAmounts, positionSize);
 
         expectedLiqBurn = isWETH == 0
-            ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSizeBurn)
-            : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSizeBurn);
+            ? Math.getLiquidityForAmount0(liquidityAmounts, positionSizeBurn)
+            : Math.getLiquidityForAmount1(liquidityAmounts, positionSizeBurn);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2216,8 +2234,8 @@ contract PanopticPoolTest is PositionUtils {
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
 
         uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
-            TickMath.getSqrtRatioAtTick(tickLower),
-            TickMath.getSqrtRatioAtTick(tickUpper),
+            sqrtLower,
+            sqrtUpper,
             expectedLiq
         );
 
@@ -2264,7 +2282,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_mintOptions_OTMShortPut(
+    function test_Success_mintOptions_OTMShortPut_X(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -2424,12 +2442,12 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(inAMM, amount0, 10);
+            assertApproxEqAbs(inAMM, amount0, 10, "inAMM0");
         }
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertEq(inAMM, 0);
+            assertEq(inAMM, 0, "inAMM1");
         }
         {
             assertEq(
@@ -2442,9 +2460,9 @@ contract PanopticPoolTest is PositionUtils {
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
                 .optionPositionBalance(Alice, tokenId);
 
-            assertEq(balance, positionSize);
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply());
-            assertEq(poolUtilization1, 0);
+            assertEq(balance, positionSize, "balance");
+            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
+            assertEq(poolUtilization1, 0, "utilization 0");
         }
 
         {
@@ -2476,10 +2494,11 @@ contract PanopticPoolTest is PositionUtils {
                         (shortAmounts.rightSlot() * 10) /
                         10_000
                 ),
-                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
+                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
+                "alice balance 0"
             );
 
-            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max));
+            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance 1");
         }
     }
 
