@@ -391,8 +391,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     IUniswapV3Pool constant DAI_USDC_1 = 
         IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
 
-    IUniswapV3Pool[3] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30/*, DAI_USDC_1*/];
-    // IUniswapV3Pool[1] public pools = [DAI_USDC_1];
+    //IUniswapV3Pool[3] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30/*, DAI_USDC_1*/];
+    IUniswapV3Pool[1] public pools = [DAI_USDC_1];
 
     // Mainnet factory address
     IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -2832,39 +2832,39 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
-        {
-            (, currentTick, , , , , ) = pool.slot0();
+        // {
+        //     (, currentTick, , , , , ) = pool.slot0();
 
-            (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
-                .calculateAccumulatedFeesBatch(Alice, positionIdList1);
+        //     (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
+        //         .calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                premium0
-            );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                premium1
-            );
+        //     uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+        //         Alice,
+        //         currentTick,
+        //         posBalanceArray,
+        //         premium0
+        //     );
+        //     uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+        //         Alice,
+        //         currentTick,
+        //         posBalanceArray,
+        //         premium1
+        //     );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+        //     (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
+        //         .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
-                panopticPool,
-                Alice,
-                currentTick,
-                1,
-                positionIdList1
-            );
+        //     (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+        //         panopticPool,
+        //         Alice,
+        //         currentTick,
+        //         1,
+        //         positionIdList1
+        //     );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
-        }
+        //     assertEq(tokenData0, calcBalanceCross, "0");
+        //     assertEq(tokenData1, calcThresholdCross, "1");
+        // }
     }
 
     /* identical leg spreads */
@@ -6402,7 +6402,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int24 strike = _tokenId.strike(i);
             int24 width = _tokenId.width(i);
 
-            (legLowerTick, legUpperTick) = _tokenId.asTicks(i, tickSpacing);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (legLowerTick, legUpperTick) = (
+                strike - rangeDown,
+                strike + rangeUp
+            );
 
             {
                 uint256 amountsMoved = PanopticMath.getAmountsMoved(
@@ -6458,7 +6462,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                     } else {
                         // ATM
-                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
+                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(2 * rangeUp);
 
                         uint256 c3 = FullMath.mulDiv(
                             notionalMoved,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
 
-// Foundry
-import "forge-std/Test.sol";
 // Interfaces
 import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
@@ -1483,7 +1481,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 isLong = tokenId.isLong(index);
 
         // compute the total amount of funds moved for that position
-        uint256 amountsMoved = PanopticMath.getAmountsMovedPrecise(
+        uint256 amountsMoved = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
             index,
@@ -1735,7 +1733,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 partnerIndex
     ) internal view returns (uint256 spreadRequirement) {
         // compute the total amount of funds moved for the position's current leg
-        uint256 amountsMoved = PanopticMath.getAmountsMovedPrecise(
+        uint256 amountsMoved = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
             index,
@@ -1743,7 +1741,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
         
         // compute the total amount of funds moved for the position's partner leg
-        uint256 amountsMovedPartner = PanopticMath.getAmountsMovedPrecise(
+        uint256 amountsMovedPartner = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
             partnerIndex,

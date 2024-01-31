@@ -437,9 +437,10 @@ contract PanopticPoolTest is PositionUtils {
 
         // `getContractsForAmountAtTick` calculates liquidity under the hood, but SFPM does this conversion
         // as well and using the original value could result in discrepancies due to rounding
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, positionSize);
         expectedLiq = isWETH == 0
-            ? LiquidityAmounts.getLiquidityForAmount0(sqrtLower, sqrtUpper, positionSize)
-            : LiquidityAmounts.getLiquidityForAmount1(sqrtLower, sqrtUpper, positionSize);
+            ? Math.getLiquidityForAmount0(liquidityAmounts, positionSize)
+            : Math.getLiquidityForAmount1(liquidityAmounts, positionSize);
         expectedLiqs.push(expectedLiq);
 
         $amount0Moveds.push(
@@ -2222,12 +2223,12 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(inAMM, amount0, 10);
+            assertApproxEqAbs(inAMM, amount0, 10, "inAMM 0");
         }
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertEq(inAMM, 0);
+            assertEq(inAMM, 0, "inAMM 1");
         }
         {
             assertEq(
@@ -2240,9 +2241,9 @@ contract PanopticPoolTest is PositionUtils {
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
                 .optionPositionBalance(Alice, tokenId);
 
-            assertEq(balance, positionSize);
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply());
-            assertEq(poolUtilization1, 0);
+            assertEq(balance, positionSize, "user balance");
+            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(poolUtilization1, 0, "pu 1");
         }
 
         {
@@ -2255,10 +2256,11 @@ contract PanopticPoolTest is PositionUtils {
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint256(type(uint104).max) - uint128((shortAmounts.rightSlot() * 10) / 10000),
-                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
+                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
+                "alice balance 0"
             );
 
-            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max));
+            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance 1");
         }
     }
 
