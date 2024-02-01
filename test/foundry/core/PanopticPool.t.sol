@@ -1910,10 +1910,25 @@ contract PanopticPoolTest is PositionUtils {
         tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
         posIdList[0] = tokenId;
 
+        uint256 sharesToBurn;
+        {
+            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                uint128(positionSize),
+                tickSpacing
+            );
+
+            sharesToBurn = Math.mulDivRoundingUp(
+                uint128((longAmounts.rightSlot() * 10) / 10000),
+                ct0.totalSupply(),
+                ct0.totalAssets()
+            );
+        }
+
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
         pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0);
 
-        assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
+        assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize, "panoptic pool balance");
 
         uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
             sqrtLower,
@@ -1923,12 +1938,12 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(inAMM, amount0, 10);
+            assertApproxEqAbs(inAMM, amount0, 10, "in AMM 0");
         }
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertEq(inAMM, 0);
+            assertEq(inAMM, 0, "in AMM 1");
         }
 
         {
@@ -1941,7 +1956,7 @@ contract PanopticPoolTest is PositionUtils {
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
                 .optionPositionBalance(Alice, tokenId);
 
-            assertEq(balance, positionSize);
+            assertEq(balance, positionSize, "balance | position size");
 
             (, uint256 inAMM0, ) = ct0.getPoolData();
 
@@ -1950,19 +1965,15 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                uint128(positionSize),
-                tickSpacing
-            );
 
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
-                uint256(type(uint104).max) - uint128((longAmounts.rightSlot() * 10) / 10000),
-                10
+                uint256(type(uint104).max - sharesToBurn),
+                10,
+                "alice balance ct0"
             );
 
-            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max));
+            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance ct1");
         }
     }
 
@@ -2007,6 +2018,21 @@ contract PanopticPoolTest is PositionUtils {
         tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
         posIdList[0] = tokenId;
 
+        uint256 sharesToBurn;
+        {
+            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                uint128(positionSize),
+                tickSpacing
+            );
+
+            sharesToBurn = Math.mulDivRoundingUp(
+                uint128((longAmounts.rightSlot() * 10) / 10000),
+                ct0.totalSupply(),
+                ct0.totalAssets()
+            );
+        }
+
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
         pp.mintOptions(posIdList, positionSize, type(uint64).max - 1, 0, 0);
 
@@ -2049,15 +2075,9 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize,
-                tickSpacing
-            );
-
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
-                uint256(type(uint104).max) - uint128((longAmounts.rightSlot() * 10) / 10000),
+                uint256(type(uint104).max) - sharesToBurn,
                 10
             );
             assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max));
@@ -2480,10 +2500,16 @@ contract PanopticPoolTest is PositionUtils {
                     int128(expectedLiq)
                 );
 
+
+            // @note revisit as for 1 bps pools this doesn't hold up
             int256 notionalVal = int256(expectedSwap0) + amount0Moved - shortAmounts.rightSlot();
+            // int256 ITMSpread = notionalVal > 0
+            //     ? (notionalVal * tickSpacing) / 10_000
+            //     : -((notionalVal * tickSpacing) / 10_000);
+
             int256 ITMSpread = notionalVal > 0
-                ? (notionalVal * tickSpacing) / 10_000
-                : -((notionalVal * tickSpacing) / 10_000);
+                ? (notionalVal * int24(2 * (fee / 100))) / 10_000
+                : -(notionalVal * int24(2 * (fee / 100))) / 10_000;
 
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
@@ -2620,11 +2646,11 @@ contract PanopticPoolTest is PositionUtils {
             ];
             int256[2] memory ITMSpreads = [
                 notionalVals[0] > 0
-                    ? (notionalVals[0] * tickSpacing) / 10_000
-                    : -((notionalVals[0] * tickSpacing) / 10_000),
+                    ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+                    : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
                 notionalVals[1] > 0
-                    ? (notionalVals[1] * tickSpacing) / 10_000
-                    : -((notionalVals[1] * tickSpacing) / 10_000)
+                    ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
+                    : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
             ];
 
             assertApproxEqAbs(
@@ -2741,6 +2767,41 @@ contract PanopticPoolTest is PositionUtils {
             tickSpacing
         );
 
+        uint256 sharesToBurn;
+        int256[2] memory notionalVals;
+        int256[2] memory ITMSpreads;
+        {
+            notionalVals = [
+                amount0s +
+                    $amount0Moveds[1] +
+                    $amount0Moveds[2] -
+                    shortAmounts.rightSlot() +
+                    longAmounts.rightSlot(),
+                amount1s + $amount1Moveds[1] + $amount1Moveds[2] - shortAmounts.leftSlot()
+            ];
+
+            ITMSpreads = [
+                notionalVals[0] > 0
+                    ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+                    : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
+                notionalVals[1] > 0
+                    ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
+                    : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
+            ];
+
+            uint256 tokenToPay = 
+                uint256(notionalVals[0] +
+                ITMSpreads[0] +
+                ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) / 10_000);
+
+            sharesToBurn = Math.mulDivRoundingUp(
+                tokenToPay,
+                ct0.totalSupply(),
+                ct0.totalAssets()
+            );
+
+        }
+
         {
             uint256[] memory posIdList = new uint256[](1);
             posIdList[0] = tokenId;
@@ -2796,34 +2857,17 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            int256[2] memory notionalVals = [
-                amount0s +
-                    $amount0Moveds[1] +
-                    $amount0Moveds[2] -
-                    shortAmounts.rightSlot() +
-                    longAmounts.rightSlot(),
-                amount1s + $amount1Moveds[1] + $amount1Moveds[2] - shortAmounts.leftSlot()
-            ];
-
-            int256[2] memory ITMSpreads = [
-                notionalVals[0] > 0
-                    ? (notionalVals[0] * tickSpacing) / 10_000
-                    : -((notionalVals[0] * tickSpacing) / 10_000),
-                notionalVals[1] > 0
-                    ? (notionalVals[1] * tickSpacing) / 10_000
-                    : -((notionalVals[1] * tickSpacing) / 10_000)
-            ];
+            console2.log("comission fee total", ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) /
+                        10_000);
 
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
                 uint256(
-                    int256(uint256(type(uint104).max)) -
-                        notionalVals[0] -
-                        ITMSpreads[0] -
-                        ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) /
-                        10_000
+                    uint256(type(uint104).max) -
+                    sharesToBurn
                 ),
-                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
+                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
+                "Alice balance 0"
             );
 
             assertApproxEqAbs(
@@ -2835,7 +2879,8 @@ contract PanopticPoolTest is PositionUtils {
                         (shortAmounts.leftSlot() * 10) /
                         10_000
                 ),
-                uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10)
+                uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
+                "Alice balance 1"
             );
         }
     }
@@ -3331,8 +3376,8 @@ contract PanopticPoolTest is PositionUtils {
         ];
 
         int256 ITMSpread = notionalVals[0] > 0
-            ? (notionalVals[0] * tickSpacing) / 10_000
-            : -((notionalVals[0] * tickSpacing) / 10_000);
+            ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+            : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000);
 
         assertApproxEqAbs(
             balanceBefores[0],
@@ -3491,8 +3536,8 @@ contract PanopticPoolTest is PositionUtils {
         ];
 
         int256 ITMSpread = notionalVals[0] > 0
-            ? (notionalVals[0] * tickSpacing) / 10_000
-            : -((notionalVals[0] * tickSpacing) / 10_000);
+            ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+            : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000);
 
         assertApproxEqAbs(
             balanceBefores[0],
@@ -3686,8 +3731,8 @@ contract PanopticPoolTest is PositionUtils {
         ];
 
         int256 ITMSpread = notionalVals[0] > 0
-            ? (notionalVals[0] * tickSpacing) / 10_000
-            : -((notionalVals[0] * tickSpacing) / 10_000);
+            ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+            : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000);
 
         assertApproxEqAbs(
             balanceBefores[0],

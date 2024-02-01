@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
 
+// Foundry
+import "forge-std/Test.sol";
 // Interfaces
 import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
@@ -1147,6 +1149,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
             int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
+            console2.log("real tokenToPay", tokenToPay);
+
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
             if (tokenToPay > 0) {
@@ -1156,6 +1160,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
+                console2.log("real sharesToBurn", sharesToBurn);
                 _burn(tickStateCallContext.caller(), sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
@@ -1265,9 +1270,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // intrinsic value is the amount that need to be exchanged due to minting in-the-money
             int256 intrinsicValue = swappedAmount - (shortAmount - longAmount);
 
+            console2.log("real short amount", shortAmount);
+            console2.log("real long amount", longAmount);
+            console2.log("swappedAmount", swappedAmount);
+
+            console2.log("real intrinsic value", intrinsicValue);
+
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
                 int256 swapCommission = Math.abs((s_ITMSpreadFee * intrinsicValue) / DECIMALS_128);
+
+                console2.log("s_ITMSpreadFee", s_ITMSpreadFee);
+                console2.log("swapCommission", swapCommission);
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
                 exchangedAmount = intrinsicValue + swapCommission;
@@ -1275,6 +1289,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             //compute total commission amount = commission rate + spread fee
             exchangedAmount += ((shortAmount + longAmount) * s_commissionFee) / DECIMALS_128;
+
+            console2.log("real comission fee total", (((shortAmount + longAmount) * s_commissionFee) / DECIMALS_128));
         }
     }
 
@@ -1493,6 +1509,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 amountsMoved.rightSlot() : 
                 amountsMoved.leftSlot();
 
+        console2.log("tokenId", tokenId);
+        console2.log("positionSize", positionSize);
+        console2.log("ct amountMoved 0", amountsMoved.rightSlot());
+        console2.log("ct amountMoved 1", amountsMoved.leftSlot());
+
+        console2.log("s_underlyingIsToken0", s_underlyingIsToken0);
+
         // start with base requirement, which is based on isLong value
         required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
 
@@ -1523,6 +1546,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     // position is out-the-money, collateral requirement = SCR * amountMoved
                     required;
                 } else {
+                    console2.log("is ITM/In range");
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
                     // compute the ratio of strike to price for calls (or price to strike for puts)
