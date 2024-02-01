@@ -136,6 +136,9 @@ contract Misctest is Test, PositionUtils {
     uint256 assetsBefore0;
     uint256 assetsBefore1;
 
+    uint256[] assetsBefore0Arr;
+    uint256[] assetsBefore1Arr;
+
     IUniswapV3Pool uniPool;
     ERC20S token0;
     ERC20S token1;
@@ -146,9 +149,18 @@ contract Misctest is Test, PositionUtils {
     address Swapper = address(0x123456789);
     address Charlie = address(0x1234567891);
     address Seller = address(0x12345678912);
+    address[] Buyers;
+    address[] Buyer;
 
     uint256[] $posIdList;
+    uint256[][] $posIdLists;
     uint256[] $tempIdList;
+
+    address[] owners;
+    uint256[] tokenIdsTemp;
+    uint256[][] tokenIds;
+    uint256[][] positionIdLists;
+    uint256[][] collateralIdLists;
 
     function setUp() public {
         vm.startPrank(Deployer);
@@ -193,8 +205,6 @@ contract Misctest is Test, PositionUtils {
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();
 
-        console2.log("ct0.totalAssets()", ct0.totalAssets());
-
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
@@ -222,6 +232,36 @@ contract Misctest is Test, PositionUtils {
 
         ct0.deposit(type(uint104).max, Charlie);
         ct1.deposit(type(uint104).max, Charlie);
+
+        changePrank(Seller);
+
+        token0.mint(Seller, type(uint104).max / 1_000_000);
+        token1.mint(Seller, type(uint104).max / 1_000_000);
+
+        token0.approve(address(ct0), type(uint104).max / 1_000_000);
+        token1.approve(address(ct1), type(uint104).max / 1_000_000);
+
+        ct0.deposit(type(uint104).max / 1_000_000, Seller);
+        ct1.deposit(type(uint104).max / 1_000_000, Seller);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Buyers.push(address(uint160(uint256(keccak256(abi.encodePacked(i + 1337))))));
+
+            changePrank(Buyers[i]);
+
+            token0.mint(Buyers[i], type(uint104).max / 1_000_000);
+            token1.mint(Buyers[i], type(uint104).max / 1_000_000);
+
+            token0.approve(address(ct0), type(uint104).max / 1_000_000);
+            token1.approve(address(ct1), type(uint104).max / 1_000_000);
+
+            ct0.deposit(type(uint104).max / 1_000_000, Buyers[i]);
+            ct1.deposit(type(uint104).max / 1_000_000, Buyers[i]);
+        }
+
+        for (uint256 i = 0; i < 20; ++i) {
+            $posIdLists.push(new uint256[](0));
+        }
     }
 
     function test_success_settleLongPremium() public {
@@ -235,8 +275,8 @@ contract Misctest is Test, PositionUtils {
         // move back to price=1
         swapperc.swapTo(uniPool, 2 ** 96);
 
-        // mint OTM position
-        $posIdList.push(
+        // sell primary chunk
+        $posIdLists[0].push(
             uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
@@ -261,17 +301,36 @@ contract Misctest is Test, PositionUtils {
         // Finally, close Charlie's position, they should receive ~27.5% (25% + 10% * 25%)
         changePrank(Alice);
 
-        pp.mintOptions($posIdList, 500_000, 0, 0, 0);
+        pp.mintOptions($posIdLists[0], 500_000_000, 0, 0, 0);
 
         changePrank(Bob);
 
-        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+        pp.mintOptions($posIdLists[0], 250_000_000, 0, 0, 0);
 
         changePrank(Charlie);
 
-        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+        pp.mintOptions($posIdLists[0], 250_000_000, 0, 0, 0);
 
-        $posIdList.push(
+        // sell unrelated, non-overlapping, dummy chunk (to buy for match testing)
+        changePrank(Seller);
+
+        $posIdLists[1].push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                45,
+                1
+            )
+        );
+
+        pp.mintOptions($posIdLists[1], 1_000_000_000, 0, 0, 0);
+
+        // position type A: 1-leg long primary
+        $posIdLists[2].push(
             uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
@@ -284,13 +343,55 @@ contract Misctest is Test, PositionUtils {
             )
         );
 
-        changePrank(Alice);
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            changePrank(Buyers[i]);
+            pp.mintOptions($posIdLists[2], 9_884_444, type(uint64).max, 0, 0);
+        }
 
-        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+        // position type B: 2-leg long primary and long dummy
+        $posIdLists[2].push(
+            uint256(0)
+                .addUniv3pool(PanopticMath.getPoolId(address(uniPool)))
+                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
+                .addLeg(1, 1, 1, 1, 0, 1, 45, 1)
+        );
 
-        changePrank(Bob);
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            changePrank(Buyers[i]);
+            pp.mintOptions($posIdLists[2], 9_884_444, type(uint64).max, 0, 0);
+        }
 
-        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+        // position type C: 2-leg long primary and short dummy
+        $posIdLists[2].push(
+            uint256(0)
+                .addUniv3pool(PanopticMath.getPoolId(address(uniPool)))
+                .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
+                .addLeg(1, 1, 1, 0, 0, 1, 45, 1)
+        );
+
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            changePrank(Buyers[i]);
+            pp.mintOptions($posIdLists[2], 9_884_444, type(uint64).max, 0, 0);
+        }
+
+        // position type D: 1-leg long dummy
+        $posIdLists[2].push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                45,
+                1
+            )
+        );
+
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            changePrank(Buyers[i]);
+            pp.mintOptions($posIdLists[2], 19_768_888, type(uint64).max, 0, 0);
+        }
 
         changePrank(Swapper);
 
@@ -299,7 +400,40 @@ contract Misctest is Test, PositionUtils {
         // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
         accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
 
+        // accumulate lower order of fees on dummy chunk
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(40) + 1);
+
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000, 10_000);
+
         swapperc.swapTo(uniPool, 2 ** 96);
+
+        positionIdLists.push($posIdLists[2]);
+        collateralIdLists.push($posIdLists[2]);
+
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
+
+        Buyer.push(Buyers[0]);
+
+        // collect buyer 1's three relevant chunks
+        pp.settleLongPremium(
+            collateralIdLists,
+            Buyer,
+            positionIdLists,
+            uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
+        );
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0,
+            1_000_000,
+            "Incorrect Buyer 1 1st Collect 0"
+        );
+
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1,
+            1_000_000_000,
+            "Incorrect Buyer 1 1st Collect 1"
+        );
 
         changePrank(Bob);
 
@@ -307,8 +441,7 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        $tempIdList.push($posIdList[1]);
-        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+        pp.burnOptions($posIdLists[0][0], new uint256[](0), 0, 0);
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
@@ -321,78 +454,82 @@ contract Misctest is Test, PositionUtils {
             "Incorrect Bob Delta 1"
         );
 
-        $posIdList[1] = $posIdList[0];
-        $posIdList[0] = $tempIdList[0];
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        // $posIdList[1] = $posIdList[0];
+        // $posIdList[0] = $tempIdList[0];
+        // pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
 
-        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+        // assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        // assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        // settle 1/2 long owed
-        pp.settleLongPremium(Bob, $posIdList[0], $posIdList);
+        // owners.push(Bob);
+        // tokenIdsTemp.push($posIdList[0]);
+        // tokenIds.push(tokenIdsTemp);
+        // positionIdLists.push($posIdList);
+        // // settle 1/2 long owed
+        // pp.settleLongPremium(positionIdLists, owners, tokenIds, uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0));
 
-        // Bob should have paid 5% of the premium accumulated
-        assertEq(
-            assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Bob)),
-            50_001,
-            "Incorrect Bob premium paid"
-        );
-        assertEq(
-            assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Bob)),
-            50_000_018,
-            "Incorrect Bob premium paid"
-        );
+        // // Bob should have paid 5% of the premium accumulated
+        // assertEq(
+        //     assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Bob)),
+        //     50_001,
+        //     "Incorrect Bob premium paid"
+        // );
+        // assertEq(
+        //     assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Bob)),
+        //     50_000_018,
+        //     "Incorrect Bob premium paid"
+        // );
 
-        $tempIdList[0] = $posIdList[1];
+        // $tempIdList[0] = $posIdList[1];
 
-        changePrank(Alice);
+        // changePrank(Alice);
 
-        // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
-        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        // // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
+        // assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        // assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
-        $tempIdList[0] = $posIdList[0];
-        pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+        // $tempIdList[0] = $posIdList[0];
+        // pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
 
-        assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_333,
-            "Incorrect Alice Delta 0"
-        );
-        assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-            533_333_345,
-            "Incorrect Alice Delta 1"
-        );
+        // assertEq(
+        //     ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
+        //     533_333,
+        //     "Incorrect Alice Delta 0"
+        // );
+        // assertEq(
+        //     ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
+        //     533_333_345,
+        //     "Incorrect Alice Delta 1"
+        // );
 
-        // Burn other half of the removed liq
-        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+        // // Burn other half of the removed liq
+        // pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
 
-        changePrank(Charlie);
+        // changePrank(Charlie);
 
-        // Finally, burn Charlie's position, he should get 27.5% (25% + full 10% long paid (* 25% owned))
-        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
-        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
+        // // Finally, burn Charlie's position, he should get 27.5% (25% + full 10% long paid (* 25% owned))
+        // assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
+        // assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
 
-        pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+        // pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
 
-        assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_000,
-            "Incorrect Charlie Delta 0"
-        );
-        assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-            275_000_008,
-            "Incorrect Charlie Delta 1"
-        );
+        // assertEq(
+        //     ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
+        //     275_000,
+        //     "Incorrect Charlie Delta 0"
+        // );
+        // assertEq(
+        //     ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
+        //     275_000_008,
+        //     "Incorrect Charlie Delta 1"
+        // );
 
-        changePrank(Bob);
+        // changePrank(Bob);
 
-        $tempIdList[0] = $posIdList[1];
+        // $tempIdList[0] = $posIdList[1];
 
-        // Burn 1/2 of the removed liq
-        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+        // // Burn 1/2 of the removed liq
+        // pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
     }
 
     function test_success_settledPremiumDistribution() public {

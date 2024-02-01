@@ -20,6 +20,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1803,54 +1804,120 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Settle all unpaid premium for long legs on `tokenId` of `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
     /// @dev This feature is only available when `owner` must be solvent at the current tick
-    /// @param strike The strike price of the chunk to settle premium payments on.
-    /// @param width The width of the chunk to settle.
-    /// @param tokenType The token type of the chunk to settle.
+    /// @param chunkIdentity The strike price, width, and tokenType of the chunk to settle premium payments on encoded in a 1-leg tokenId.
     /// @param owners The owner of the option position to make premium payments on.
     /// @param tokenIds The option position to make premium payments on.
     /// @param positionIdLists Exhaustive list of open positions in the `owner` account used for solvency check.
     function settleLongPremium(
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 tokenType,
+        uint256[][] calldata positionIdLists,
         address[] calldata owners,
-        uint256[] calldata tokenIds,
-        uint256[][] calldata positionIdLists
+        uint256[][] calldata tokenIds,
+        uint256 chunkIdentity
     ) external {
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        // 0: currentTick, 1: medianTick, 2: tickSpacing
+        int24[3] memory poolContext;
+        (, poolContext[0], , , , , ) = s_univ3pool.slot0();
+        poolContext[1] = getMedian();
+        poolContext[2] = s_tickSpacing;
 
-        int256 realizedPremia;
-
-        (uint256 premiumToken0, uint256 premiumToken1) = sfpm.getAccountPremium(
-            address(s_univ3pool),
-            address(this),
-            tokenType,
-            liquidityChunk.tickLower(),
-            liquidityChunk.tickUpper(),
-            currentTick,
-            1
-        );
-
-        uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ++leg) {
-            if (premiaByLeg[leg] < 0) {
-                // update the premium accumulator for the long position to the latest value
-                // (the entire premia delta will be settled)
-                // note that the premium accumulator for each leg is guaranteed to fit in a uint128 (original type)
-                s_options[owner][tokenId][leg] = uint256(premiumAccumulatorsByLeg[leg][0])
-                    .toLeftSlot(uint128(premiumAccumulatorsByLeg[leg][1]));
-
-                // update the realized premia
-                realizedPremia += premiaByLeg[leg];
-            }
+        uint256 premiumAccumulators;
+        {
+            (int24 tickLower, int24 tickUpper) = PanopticMath.getTicks(
+                chunkIdentity.strike(0),
+                chunkIdentity.width(0),
+                poolContext[2]
+            );
+            uint256 tokenType = chunkIdentity.tokenType(0);
+            (uint128 premiumToken0, uint128 premiumToken1) = sfpm.getAccountPremium(
+                address(s_univ3pool),
+                address(this),
+                tokenType,
+                tickLower,
+                tickUpper,
+                poolContext[0],
+                1
+            );
+            premiumAccumulators = uint256(0).toRightSlot(premiumToken0).toLeftSlot(premiumToken1);
         }
 
-        s_collateralToken0.exercise(owner, 0, 0, 0, realizedPremia.rightSlot());
-        s_collateralToken1.exercise(owner, 0, 0, 0, realizedPremia.leftSlot());
+        unchecked {
+            uint256 settledTokens;
+            for (uint256 i = 0; i < owners.length; ++i) {
+                _validatePositionList(owners[i], positionIdLists[i], 0);
 
-        _validatePositionList(owner, positionIdList, 0);
-        if (!_checkSolvency(owner, positionIdList, currentTick, getMedian(), NO_BUFFER))
-            revert Errors.NotEnoughCollateral();
+                uint256 realizedPremia;
+                address owner = owners[i];
+                for (uint256 j = 0; j < tokenIds[i].length; ++j) {
+                    uint256 tokenId = tokenIds[i][j];
+                    for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                        if (tokenId.matchLongChunk(leg, chunkIdentity)) {
+                            uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
+
+                            // TODO: optimize so getTicks logic isn't repeated and re-packed for no reason
+                            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                                tokenId,
+                                leg,
+                                s_positionBalance[owner][tokenId].rightSlot(),
+                                poolContext[2]
+                            );
+
+                            uint256 _premiumAccumulators = premiumAccumulators;
+
+                            // update the realized premia
+                            realizedPremia = realizedPremia.add(
+                                uint256(0)
+                                    .toRightSlot(
+                                        uint128(
+                                            ((uint256(_premiumAccumulators.rightSlot()) -
+                                                premiumAccumulatorLast.rightSlot()) *
+                                                liquidityChunk.liquidity()) / 2 ** 64
+                                        )
+                                    )
+                                    .toLeftSlot(
+                                        uint128(
+                                            ((uint256(_premiumAccumulators.leftSlot()) -
+                                                premiumAccumulatorLast.leftSlot()) *
+                                                liquidityChunk.liquidity()) / 2 ** 64
+                                        )
+                                    )
+                            );
+
+                            // update the premium accumulator for the long position to the latest value
+                            // (the entire premia delta will be settled)
+                            // note that the premium accumulator for each leg is guaranteed to fit in a uint128 (original type)
+                            s_options[owner][tokenId][leg] = _premiumAccumulators;
+                        }
+                    }
+                }
+
+                // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
+                s_collateralToken0.exercise(owners[i], 0, 0, 0, int128(realizedPremia.rightSlot()));
+                s_collateralToken1.exercise(owners[i], 0, 0, 0, int128(realizedPremia.leftSlot()));
+                settledTokens = settledTokens.add(realizedPremia);
+
+                // ensure the owner is solvent at the median tick (insolvent accounts are not permitted to pay premium unless they are being liquidated)
+                if (
+                    !_checkSolvency(
+                        owners[i],
+                        positionIdLists[i],
+                        poolContext[0],
+                        poolContext[1],
+                        NO_BUFFER
+                    )
+                ) revert Errors.NotEnoughCollateral();
+            }
+
+            // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
+            s_settledTokens[
+                keccak256(
+                    abi.encodePacked(
+                        chunkIdentity.strike(0),
+                        chunkIdentity.width(0),
+                        chunkIdentity.tokenType(0)
+                    )
+                )
+            ] += settledTokens;
+        }
     }
 
     /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added

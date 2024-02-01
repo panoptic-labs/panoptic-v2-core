@@ -226,7 +226,7 @@ library PanopticMath {
         int24 strike,
         int24 width,
         int24 tickSpacing
-    ) internal returns (int24 tickLower, int24 tickUpper) {
+    ) internal pure returns (int24 tickLower, int24 tickUpper) {
         unchecked {
             // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
             // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
