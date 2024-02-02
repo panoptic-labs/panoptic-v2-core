@@ -58,19 +58,6 @@ contract PanopticPoolHarness is PanopticPool {
         twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
     }
 
-    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
-    /// @param refunder Address of the user the refund is coming from (the force exercisee).
-    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
-    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
-    /// @return refundAmounts The amount of tokens to refund to the user.
-    function getRefundAmounts(
-        address refunder,
-        int256 refundValues,
-        int24 atTick
-    ) public view returns (int256 refundAmounts) {
-        refundAmounts = _getRefundAmounts(refunder, refundValues, atTick);
-    }
-
     constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
 }
 
@@ -4727,10 +4714,12 @@ contract PanopticPoolTest is PositionUtils {
         int256 shortage = refund0 - int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
 
         if (shortage > 0) {
-            int256 refundAmounts = pp.getRefundAmounts(
+            int256 refundAmounts = PanopticMath.getRefundAmounts(
                 Charlie,
                 int256(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick)
+                int24(atTick),
+                ct0,
+                ct1
             );
 
             refund0 = refund0 - shortage;
@@ -4747,10 +4736,12 @@ contract PanopticPoolTest is PositionUtils {
         shortage = refund1 - int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
 
         if (shortage > 0) {
-            int256 refundAmounts = pp.getRefundAmounts(
+            int256 refundAmounts = PanopticMath.getRefundAmounts(
                 Charlie,
                 int256(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick)
+                int24(atTick),
+                ct0,
+                ct1
             );
 
             refund1 = refund1 - shortage;
