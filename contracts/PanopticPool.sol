@@ -1696,7 +1696,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         if (tokenId.matchLongChunk(leg, chunkIdentity)) {
                             uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
 
-                            // TODO: optimize so getTicks logic isn't repeated and re-packed for no reason
                             uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                                 tokenId,
                                 leg,
