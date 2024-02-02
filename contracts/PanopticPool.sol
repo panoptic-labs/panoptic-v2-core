@@ -1840,10 +1840,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // (C(T + R) - G)/(T + R) = Ln
                     // Ln = (CR + TL)/(T+R)
                     grossNew[0] =
-                        (((grossCurrent[0] * totalLiquidity) / 2 ** 64 - grossNew[0]) * 2 ** 64) /
+                        uint256(
+                            Math.max(
+                                0,
+                                int256((grossCurrent[0] * totalLiquidity) / 2 ** 64) -
+                                    int256(grossNew[0])
+                            ) * 2 ** 64
+                        ) /
                         totalLiquidity;
                     grossNew[1] =
-                        (((grossCurrent[1] * totalLiquidity) / 2 ** 64 - grossNew[1]) * 2 ** 64) /
+                        uint256(
+                            Math.max(
+                                0,
+                                int256((grossCurrent[1] * totalLiquidity) / 2 ** 64) -
+                                    int256(grossNew[1])
+                            ) * 2 ** 64
+                        ) /
                         totalLiquidity;
 
                     // update grossPremiumLast
@@ -2036,14 +2048,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                         // (C(T - R) - G)/(T - R) = Ln
                         grossNew[0] =
-                            (((premiumAccumulatorsByLeg[leg][0] * totalLiquidity) /
-                                2 ** 64 -
-                                grossNew[0]) * 2 ** 64) /
+                            uint256(
+                                Math.max(
+                                    0,
+                                    int256(
+                                        (premiumAccumulatorsByLeg[leg][0] * totalLiquidity) /
+                                            2 ** 64
+                                    ) - int256(grossNew[0])
+                                ) * 2 ** 64
+                            ) /
                             totalLiquidity;
                         grossNew[1] =
-                            (((premiumAccumulatorsByLeg[leg][1] * totalLiquidity) /
-                                2 ** 64 -
-                                grossNew[1]) * 2 ** 64) /
+                            uint256(
+                                Math.max(
+                                    0,
+                                    int256(
+                                        (premiumAccumulatorsByLeg[leg][1] * totalLiquidity) /
+                                            2 ** 64
+                                    ) - int256(grossNew[1])
+                                ) * 2 ** 64
+                            ) /
                             totalLiquidity;
                     } else {
                         grossNew[0] = premiumAccumulatorsByLeg[leg][0];
