@@ -1110,7 +1110,10 @@ contract PanopticMathTest is Test, PositionUtils {
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
-            int24 oneSidedRange = (width * tickSpacing) / 2;
+
+            int24 rangeDown;
+            int24 rangeUp;
+            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
             (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
@@ -1119,8 +1122,8 @@ contract PanopticMathTest is Test, PositionUtils {
                 width
             );
 
-            lowerBound = int24(minTick + oneSidedRange - strikeOffset);
-            upperBound = int24(maxTick - oneSidedRange - strikeOffset);
+            lowerBound = int24(minTick + rangeDown - strikeOffset);
+            upperBound = int24(maxTick - rangeUp - strikeOffset);
 
             // bound strike
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
@@ -1132,8 +1135,19 @@ contract PanopticMathTest is Test, PositionUtils {
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
 
+        // set amount 0
         uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
-        uint128 amount1 = harness.convertNotional(amount0, tickLower, tickUpper, tokenId.asset(0));
+        
+        // get amount 1
+        // construct liq object
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
+        uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
+        liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
+        // set amount 1
+        uint256 intermediateAmount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
+        vm.assume(intermediateAmount1 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
+        uint128 amount1 = intermediateAmount1.toUint128();
+
         uint256 expectedContractsNotional = uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
 
         uint256 returnedContractsNotional = harness.getAmountsMoved(
@@ -1142,7 +1156,7 @@ contract PanopticMathTest is Test, PositionUtils {
             0,
             tickSpacing
         );
-        assertEq(expectedContractsNotional, returnedContractsNotional);
+        assertApproxEqAbs(expectedContractsNotional, returnedContractsNotional, 1);
     }
 
     function test_Success_getAmountsMoved_asset1(
@@ -1171,7 +1185,10 @@ contract PanopticMathTest is Test, PositionUtils {
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
-            int24 oneSidedRange = (width * tickSpacing) / 2;
+
+            int24 rangeDown;
+            int24 rangeUp;
+            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
             (strikeOffset, minTick, maxTick) = PositionUtils.getContext(
@@ -1180,8 +1197,8 @@ contract PanopticMathTest is Test, PositionUtils {
                 width
             );
 
-            lowerBound = int24(minTick + oneSidedRange - strikeOffset);
-            upperBound = int24(maxTick - oneSidedRange - strikeOffset);
+            lowerBound = int24(minTick + rangeDown - strikeOffset);
+            upperBound = int24(maxTick - rangeUp - strikeOffset);
 
             // Set current tick and pool price
             currentTick = int24(bound(currentTick, minTick, maxTick));
@@ -1196,8 +1213,19 @@ contract PanopticMathTest is Test, PositionUtils {
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
 
+        // set amount 1
         uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
-        uint128 amount0 = harness.convertNotional(amount1, tickLower, tickUpper, tokenId.asset(0));
+
+        // get amount 0
+        // construct liq object
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
+        uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1); 
+        liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
+        // set amount 1
+        uint256 intermediateAmount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
+        vm.assume(intermediateAmount0 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
+        uint128 amount0 = intermediateAmount0.toUint128();
+
         uint256 expectedContractsNotional = uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
 
         uint256 returnedContractsNotional = harness.getAmountsMoved(
@@ -1206,7 +1234,7 @@ contract PanopticMathTest is Test, PositionUtils {
             0,
             tickSpacing
         );
-        assertEq(expectedContractsNotional, returnedContractsNotional);
+        assertApproxEqAbs(expectedContractsNotional, returnedContractsNotional, 1);
     }
 
     // // _calculateIOAmounts

@@ -5444,7 +5444,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             positionIdList1.push(tokenId1);
 
-            _assumePositionValidity(Alice, tokenId1, positionSize0);
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
             panopticPool.mintOptions(
                 positionIdList1,

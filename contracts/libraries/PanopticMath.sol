@@ -469,7 +469,7 @@ library PanopticMath {
         uint128 amount1;
         if (tokenId.asset(legIndex) == 0) {
             // amount of tokens moved in token1
-            amount0 = positionSize; 
+            amount0 = positionSize * uint128(tokenId.optionRatio(legIndex)); 
 
             // get liquidity for amount 1 
             uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
@@ -480,7 +480,7 @@ library PanopticMath {
             amount1 = Math.getAmount1ForLiquidity(liquidityAmounts).toUint128();
         } else {
             // amount of tokens moved in token1
-            amount1 = positionSize; 
+            amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
             
             // get liquidity for amount 1 
             uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);     

@@ -8,7 +8,7 @@ solc_version = '0.8.18'
 optimizer = true
 optimizer_runs = 18_000
 viaIR = false
-eth_rpc_url = "https://mainnet.infura.io/v3/d289103d051f40f1830b8a2867461e32"
+eth_rpc_url = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
 
 [profile.ci_test]
 fork_block_number = 18963715
