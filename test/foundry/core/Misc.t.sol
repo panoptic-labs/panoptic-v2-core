@@ -9,6 +9,7 @@ import {ERC20S} from "@scripts/tokens/ERC20S.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {LeftRight} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
@@ -113,6 +114,7 @@ contract SwapperC {
 // mostly just fixed one-off tests/PoC
 contract Misctest is Test, PositionUtils {
     using TokenId for uint256;
+    using LeftRight for uint256;
     // the instance of SFPM we are testing
     SemiFungiblePositionManager sfpm;
 
@@ -320,14 +322,14 @@ contract Misctest is Test, PositionUtils {
                 1,
                 1,
                 0,
+                1,
                 0,
-                0,
-                45,
+                -15,
                 1
             )
         );
 
-        pp.mintOptions($posIdLists[1], 1_000_000_000, 0, 0, 0);
+        pp.mintOptions($posIdLists[1], 1_000_000_000 - 9_884_444 * 3, 0, 0, 0);
 
         // position type A: 1-leg long primary
         $posIdLists[2].push(
@@ -353,7 +355,7 @@ contract Misctest is Test, PositionUtils {
             uint256(0)
                 .addUniv3pool(PanopticMath.getPoolId(address(uniPool)))
                 .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-                .addLeg(1, 1, 1, 1, 0, 1, 45, 1)
+                .addLeg(1, 1, 1, 1, 1, 1, -15, 1)
         );
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
@@ -366,7 +368,7 @@ contract Misctest is Test, PositionUtils {
             uint256(0)
                 .addUniv3pool(PanopticMath.getPoolId(address(uniPool)))
                 .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
-                .addLeg(1, 1, 1, 0, 0, 1, 45, 1)
+                .addLeg(1, 1, 1, 0, 1, 1, -15, 1)
         );
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
@@ -381,9 +383,9 @@ contract Misctest is Test, PositionUtils {
                 1,
                 1,
                 1,
+                1,
                 0,
-                0,
-                45,
+                -15,
                 1
             )
         );
@@ -399,13 +401,140 @@ contract Misctest is Test, PositionUtils {
 
         // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
         accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+        console2.log("liquidity", uniPool.liquidity());
 
         // accumulate lower order of fees on dummy chunk
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(40) + 1);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-10));
 
-        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000, 10_000);
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 10_000, 100_000);
+        console2.log("liquidity", uniPool.liquidity());
 
         swapperc.swapTo(uniPool, 2 ** 96);
+        {
+            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            uint256 accountLiquidityPrimary = sfpm.getAccountLiquidity(
+                address(uniPool),
+                address(pp),
+                0,
+                10,
+                20
+            );
+            console2.log(
+                "accountLiquidityPrimaryShort",
+                accountLiquidityPrimary.rightSlot() + accountLiquidityPrimary.leftSlot()
+            );
+            console2.log("accountLiquidityPrimaryRemoved", accountLiquidityPrimary.leftSlot());
+
+            (uint256 shortPremium0Primary, uint256 shortPremium1Primary) = sfpm.getAccountPremium(
+                address(uniPool),
+                address(pp),
+                0,
+                10,
+                20,
+                currentTick,
+                0
+            );
+
+            console2.log(
+                "shortPremium0Primary",
+                (shortPremium0Primary *
+                    (accountLiquidityPrimary.rightSlot() + accountLiquidityPrimary.leftSlot())) /
+                    2 ** 64
+            );
+            console2.log(
+                "shortPremium1Primary",
+                (shortPremium1Primary *
+                    (accountLiquidityPrimary.rightSlot() + accountLiquidityPrimary.leftSlot())) /
+                    2 ** 64
+            );
+
+            (uint256 longPremium0Primary, uint256 longPremium1Primary) = sfpm.getAccountPremium(
+                address(uniPool),
+                address(pp),
+                0,
+                10,
+                20,
+                currentTick,
+                1
+            );
+
+            console2.log(
+                "longPremium0Primary",
+                (longPremium0Primary * accountLiquidityPrimary.leftSlot()) / 2 ** 64
+            );
+            console2.log(
+                "longPremium1Primary",
+                (longPremium1Primary * accountLiquidityPrimary.leftSlot()) / 2 ** 64
+            );
+        }
+
+        {
+            uint256 accountLiquidityDummy = sfpm.getAccountLiquidity(
+                address(uniPool),
+                address(pp),
+                1,
+                -20,
+                -10
+            );
+
+            console2.log(
+                "accountLiquidityDummyShort",
+                accountLiquidityDummy.rightSlot() + accountLiquidityDummy.leftSlot()
+            );
+            console2.log("accountLiquidityDummyRemoved", accountLiquidityDummy.leftSlot());
+
+            (uint256 shortPremium0Dummy, uint256 shortPremium1Dummy) = sfpm.getAccountPremium(
+                address(uniPool),
+                address(pp),
+                1,
+                -20,
+                -10,
+                0,
+                0
+            );
+
+            console2.log(
+                "shortPremium0Dummy",
+                (shortPremium0Dummy *
+                    (accountLiquidityDummy.rightSlot() + accountLiquidityDummy.leftSlot())) /
+                    2 ** 64
+            );
+            console2.log(
+                "shortPremium1Dummy",
+                (shortPremium1Dummy *
+                    (accountLiquidityDummy.rightSlot() + accountLiquidityDummy.leftSlot())) /
+                    2 ** 64
+            );
+
+            (uint256 longPremium0Dummy, uint256 longPremium1Dummy) = sfpm.getAccountPremium(
+                address(uniPool),
+                address(pp),
+                1,
+                -20,
+                -10,
+                0,
+                1
+            );
+
+            console2.log(
+                "longPremium0Dummy",
+                (longPremium0Dummy * accountLiquidityDummy.leftSlot()) / 2 ** 64
+            );
+            console2.log(
+                "longPremium1Dummy",
+                (longPremium1Dummy * accountLiquidityDummy.leftSlot()) / 2 ** 64
+            );
+        }
+
+        // >>> s1p = 1100030357
+        // >>> l1p = 100030357
+        // >>> s1c = 1_000_000_000
+        // >>> l1p//3
+        // 33343452
+        // >>> (s1c+l1p/3)*(0.25*s1p)//(s1p)
+        // 258335863.0 (Bob)
+        // >>> 258335863.0*2
+        // 516671726.0 (Alice)
 
         positionIdLists.push($posIdLists[2]);
         collateralIdLists.push($posIdLists[2]);
@@ -425,13 +554,13 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0,
-            1_000_000,
+            33_342,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1,
-            1_000_000_000,
+            33_343_452,
             "Incorrect Buyer 1 1st Collect 1"
         );
 
@@ -445,62 +574,108 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            258_335,
             "Incorrect Bob Delta 0"
         );
         assertEq(
             ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            249_999_998,
+            258_335_862,
             "Incorrect Bob Delta 1"
         );
 
-        // $posIdList[1] = $posIdList[0];
-        // $posIdList[0] = $tempIdList[0];
-        // pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        // sell unrelated, non-overlapping, dummy chunk to replenish removed liquidity
+        changePrank(Seller);
 
-        // assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        // assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+        $posIdLists[1].push(
+            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
 
-        // owners.push(Bob);
-        // tokenIdsTemp.push($posIdList[0]);
-        // tokenIds.push(tokenIdsTemp);
-        // positionIdLists.push($posIdList);
-        // // settle 1/2 long owed
-        // pp.settleLongPremium(positionIdLists, owners, tokenIds, uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0));
+        pp.mintOptions($posIdLists[1], 1_000_000_000, 0, 0, 0);
 
-        // // Bob should have paid 5% of the premium accumulated
-        // assertEq(
-        //     assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Bob)),
-        //     50_001,
-        //     "Incorrect Bob premium paid"
-        // );
-        // assertEq(
-        //     assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Bob)),
-        //     50_000_018,
-        //     "Incorrect Bob premium paid"
-        // );
+        assetsBefore0Arr.push(ct0.convertToAssets(ct0.balanceOf(Buyers[0])));
+        assetsBefore1Arr.push(ct1.convertToAssets(ct1.balanceOf(Buyers[0])));
+        assetsBefore0Arr.push(ct0.convertToAssets(ct0.balanceOf(Buyers[1])));
+        assetsBefore1Arr.push(ct1.convertToAssets(ct1.balanceOf(Buyers[1])));
+        assetsBefore0Arr.push(ct0.convertToAssets(ct0.balanceOf(Buyers[2])));
+        assetsBefore1Arr.push(ct1.convertToAssets(ct1.balanceOf(Buyers[2])));
 
-        // $tempIdList[0] = $posIdList[1];
+        positionIdLists.push($posIdLists[2]);
+        collateralIdLists.push($posIdLists[2]);
 
-        // changePrank(Alice);
+        positionIdLists.push($posIdLists[2]);
+        collateralIdLists.push($posIdLists[2]);
 
-        // // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
-        // assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
-        // assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+        // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
+        pp.settleLongPremium(
+            collateralIdLists,
+            Buyers,
+            positionIdLists,
+            uint256(0).addStrike(-15, 0).addWidth(1, 0).addTokenType(1, 0).addIsLong(1, 0)
+        );
 
-        // $tempIdList[0] = $posIdList[0];
-        // pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
+            333,
+            "Incorrect Buyer 1 2nd Collect 0"
+        );
 
-        // assertEq(
-        //     ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-        //     533_333,
-        //     "Incorrect Alice Delta 0"
-        // );
-        // assertEq(
-        //     ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
-        //     533_333_345,
-        //     "Incorrect Alice Delta 1"
-        // );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1Arr[0],
+            3_333,
+            "Incorrect Buyer 1 2nd Collect 1"
+        );
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[1])) - assetsBefore0Arr[1],
+            333,
+            "Incorrect Buyer 2 2nd Collect 0"
+        );
+
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[1])) - assetsBefore1Arr[1],
+            3_333,
+            "Incorrect Buyer 2 2nd Collect 1"
+        );
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[2])) - assetsBefore0Arr[2],
+            333,
+            "Incorrect Buyer 3 2nd Collect 0"
+        );
+
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[2])) - assetsBefore1Arr[2],
+            3_333,
+            "Incorrect Buyer 3 2nd Collect 1"
+        );
+
+        changePrank(Alice);
+
+        // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        pp.burnOptions($posIdLists[0][0], new uint256[](0), 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
+            516_671,
+            "Incorrect Alice Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
+            516_671_726,
+            "Incorrect Alice Delta 1"
+        );
 
         // // Burn other half of the removed liq
         // pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
