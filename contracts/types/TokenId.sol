@@ -412,7 +412,7 @@ library TokenId {
     /// @notice Check whether the strike, width, tokenType, and isLong of a leg match the given identity.
     /// @param self the option position id.
     /// @param leg the leg index of the position (in {0,1,2,3}) to match.
-    /// @param identity the identity (with only the desired paremeters in the first leg set) to match against.
+    /// @param identity the identity (tokenId only the desired strike, width, tokenType, and isLong set in the first leg) to match against.
     /// @return true if the leg matches the identity, false otherwise.
     function matchLongChunk(
         uint256 self,

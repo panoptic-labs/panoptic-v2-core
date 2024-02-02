@@ -624,6 +624,8 @@ library PanopticMath {
     /// @param refunder Address of the user the refund is coming from (the force exercisee).
     /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
+    /// @param collateral0 CollateralTracker for token0.
+    /// @param collateral1 CollateralTracker for token1.
     /// @return refundAmounts The amount of tokens to refund to the user.
     function getRefundAmounts(
         address refunder,

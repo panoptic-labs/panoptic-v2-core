@@ -1644,13 +1644,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         AVAILABLE PREMIUM LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Settle all unpaid premium for long legs on `tokenId` of `owner`.
+    /// @notice Settle all unpaid premium for long legs of chunk `chunkIdentity` on `tokenIds` of `owners`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
-    /// @dev This feature is only available when `owner` must be solvent at the current tick
-    /// @param positionIdLists Exhaustive list of open positions in the `owner` account used for solvency check.
+    /// @dev This feature is only available when all `owners` is solvent at the current tick
+    /// @param positionIdLists Exhaustive list of open positions for the `owners` used for solvency checks.
     /// @param owners The owner of the option position to make premium payments on.
     /// @param tokenIds The option position to make premium payments on.
-    /// @param chunkIdentity The strike price, width, and tokenType of the chunk to settle premium payments on encoded in a 1-leg tokenId.
+    /// @param chunkIdentity The strike price, width, and tokenType of the chunk to settle premium payments on encoded in a 1-leg (isLong=1) tokenId.
     function settleLongPremium(
         uint256[][] calldata positionIdLists,
         address[] calldata owners,
@@ -1727,7 +1727,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                             // update the premium accumulator for the long position to the latest value
                             // (the entire premia delta will be settled)
-                            // note that the premium accumulator for each leg is guaranteed to fit in a uint128 (original type)
                             s_options[owner][tokenId][leg] = _premiumAccumulators;
                         }
                     }
