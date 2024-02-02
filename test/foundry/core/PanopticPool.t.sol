@@ -114,9 +114,7 @@ contract PanopticPoolTest is PositionUtils {
         IUniswapV3Pool(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
     IUniswapV3Pool constant WSTETH_ETH_1 = 
         IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
-    //IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WSTETH_ETH_1];
-
-    IUniswapV3Pool[1] public pools = [WSTETH_ETH_1];
+    IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WSTETH_ETH_1];
 
     /*//////////////////////////////////////////////////////////////
                               WORLD STATE
@@ -4680,12 +4678,14 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(int256(lastCollateralBalance0[Alice]) + $balanceDelta0),
                 uint256(
                     int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_000_000 + 10)
-                )
+                ),
+                "balance 0"
             );
             assertApproxEqAbs(
                 ct1.convertToAssets(ct1.balanceOf(Alice)),
                 uint256(int256(lastCollateralBalance1[Alice]) + $balanceDelta1),
-                uint256(int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10))
+                uint256(int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10)),
+                "balance 1"
             );
         }
     }

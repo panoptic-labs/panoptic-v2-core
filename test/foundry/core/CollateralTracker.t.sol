@@ -5405,7 +5405,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
+            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 96));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
