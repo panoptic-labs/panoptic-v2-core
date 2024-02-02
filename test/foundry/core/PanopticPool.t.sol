@@ -2302,7 +2302,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_mintOptions_OTMShortPut_X(
+    function test_Success_mintOptions_OTMShortPut(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,

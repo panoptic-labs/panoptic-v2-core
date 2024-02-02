@@ -8,7 +8,7 @@ solc_version = '0.8.18'
 optimizer = true
 optimizer_runs = 18_000
 viaIR = false
-eth_rpc_url = "https://mainnet.infura.io/v3/c5fc9ed5bfae494f9cac22bce8fb3b47"
+eth_rpc_url = "https://mainnet.infura.io/v3/d289103d051f40f1830b8a2867461e32"
 
 [profile.ci_test]
 fork_block_number = 18963715
@@ -24,7 +24,7 @@ viaIR = true
 
 [fuzz]
 # temporary workaround while we figure out perf issues + configure different test sets + profiles
-runs = 100
+runs = 300
 max_test_rejects = 9_999_999
 [rpc_endpoints]
 sepolia = 'https://sepolia.infura.io/v3/c5fc9ed5bfae494f9cac22bce8fb3b47'

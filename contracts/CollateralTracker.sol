@@ -1546,7 +1546,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     // position is out-the-money, collateral requirement = SCR * amountMoved
                     required;
                 } else {
+                    console2.log("atTick", atTick);
+                    console2.log("strike", strike);
                     console2.log("is ITM/In range");
+                    revert();
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
                     // compute the ratio of strike to price for calls (or price to strike for puts)

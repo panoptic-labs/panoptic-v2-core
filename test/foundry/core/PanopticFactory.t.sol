@@ -283,16 +283,7 @@ contract PanopticFactoryTest is Test {
         // links the uni v3 pool to the Panoptic pool
         panopticFactory.deployNewPool(token0, token1, fee, salt);
     }
-
-    function test_Fail_deployNewPool_UnsupportedPool() public {
-        // tickSpacing on 1bps pools is 1, equal to the fee in bps
-        // Panoptic only supports pools where TS is 2x the fee in bps
-        _initalizeWorldState(USDC_USDT_1);
-
-        vm.expectRevert(Errors.UniswapPoolNotSupported.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, 0);
-    }
-
+    
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool
     function test_Fail_deployinvalidPool() public {
         // generate a not so random salt

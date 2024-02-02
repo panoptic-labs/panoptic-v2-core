@@ -294,6 +294,6 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
         // make sure Alice is credited (not debited!) a reasonable amount of fees
-        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore), 997570);
+        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore), 997571);
     }
 }

@@ -136,17 +136,13 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         int24 width
-    ) public view returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
+    ) public pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
         strikeOffset = int24(width % 2 == 0 ? int256(0) : ts / 2);
 
-        if (ts == 1) {
-            strikeOffset = 0;
-        }
-
-        minTick = int24(((currentTick - 4096 * ts) / ts) * ts);
-        maxTick = int24(((currentTick + 4096 * ts) / ts) * ts);
+        minTick = int24(((currentTick - 4096 * 10) / ts) * ts);
+        maxTick = int24(((currentTick + 4096 * 10) / ts) * ts);
     }
 
     function getValidSW(
@@ -166,18 +162,8 @@ contract PositionUtils is Test {
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
 
-        if (ts == 1) {
-            strikeOffset = 0;
-        }
-
         int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
         int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
-
-       if (ts == 1) {
-            lowerBound = int24(minTick + oneSidedRange - strikeOffset);
-
-            upperBound = int24(maxTick - oneSidedRange - strikeOffset);
-        }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -280,12 +266,8 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 2048)));
+        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
 
@@ -296,21 +278,13 @@ contract PositionUtils is Test {
             ? int24(maxTick - oneSidedRange - strikeOffset)
             : int24(currentTick - oneSidedRange - strikeOffset);
 
-       if (ts == 1) {
-        lowerBound = tokenType == 0
-            ? int24(currentTick + ts + rangeUp - strikeOffset)
-            : int24(minTick + rangeDown - strikeOffset);
-        upperBound = tokenType == 0
-            ? int24(maxTick - rangeUp - strikeOffset)
-            : int24(currentTick - rangeDown - strikeOffset);
-        }
-
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
         strike = int24(bound(strikeSeed, lowerBound / ts, upperBound / ts));
 
         strike = int24(strike * ts + strikeOffset);
     }
+
 
     function getITMSW(
         uint256 widthSeed,
@@ -340,10 +314,10 @@ contract PositionUtils is Test {
        if (ts == 1) {
             lowerBound = tokenType == 0
                 ? int24(minTick + rangeDown - strikeOffset)
-                : int24(currentTick + rangeUp - strikeOffset);
+                : int24(currentTick + rangeDown - strikeOffset);
             upperBound = tokenType == 0
                 ? int24(currentTick + ts - rangeUp - strikeOffset)
-                : int24(maxTick - rangeDown - strikeOffset);
+                : int24(maxTick - rangeUp - strikeOffset);
         }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
