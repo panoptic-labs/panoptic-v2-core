@@ -82,7 +82,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(positionSize, 0, 2)]; // resue position size as seed
+            selectedPool = pools[bound(positionSize, 0, 2)]; // reuse position size as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -153,7 +153,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(positionSize, 0, 2)]; // resue position size as seed
+            selectedPool = pools[bound(positionSize, 0, 2)]; // reuse position size as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -203,6 +203,116 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }
 
+    function test_Success_getTicks_normalTickRange(
+        uint16 width,
+        int24 strike,
+        uint256 poolSeed
+    ) public {
+        // bound fuzzed tick
+        selectedPool = pools[bound(poolSeed, 0, 2)];
+        tickSpacing = selectedPool.tickSpacing();
+
+        // Width must be > 0 < 4096
+        int24 width = int24(uint24(bound(width, 1, 4095)));
+
+        // The position must not extend outside of the max/min tick
+        int24 strike = int24(
+            bound(
+                strike,
+                TickMath.MIN_TICK + (width * tickSpacing) / 2,
+                TickMath.MAX_TICK - (width * tickSpacing) / 2
+            )
+        );
+
+        vm.assume(strike + (((width * tickSpacing) / 2) % tickSpacing) == 0);
+        vm.assume(strike - (((width * tickSpacing) / 2) % tickSpacing) == 0);
+
+        // Test the asTicks function
+        (int24 tickLower, int24 tickUpper) = harness.getTicks(strike, width, tickSpacing);
+
+        // Ensure tick values returned are correct
+        assertEq(tickLower, strike - (width * tickSpacing) / 2);
+        assertEq(tickUpper, strike + (width * tickSpacing) / 2);
+    }
+
+    function test_Fail_getTicks_TicksNotInitializable(
+        uint16 width,
+        int24 strike,
+        uint256 poolSeed
+    ) public {
+        // bound fuzzed tick
+        selectedPool = pools[bound(poolSeed, 0, 2)];
+        tickSpacing = selectedPool.tickSpacing();
+        // Width must be > 0 < 4096
+        int24 width = int24(uint24(bound(width, 1, 4095)));
+
+        // The position must not extend outside of the max/min tick
+        int24 strike = int24(
+            bound(
+                strike,
+                TickMath.MIN_TICK + (width * tickSpacing) / 2,
+                TickMath.MAX_TICK - (width * tickSpacing) / 2
+            )
+        );
+
+        vm.assume(
+            (strike + (width * tickSpacing) / 2) % tickSpacing != 0 ||
+                (strike - (width * tickSpacing) / 2) % tickSpacing != 0
+        );
+
+        vm.expectRevert(Errors.TicksNotInitializable.selector);
+        // Test the asTicks function
+        (int24 tickLower, int24 tickUpper) = harness.getTicks(strike, width, tickSpacing);
+    }
+
+    function test_Fail_getTicks_belowMinTick(uint16 width, int24 strike, uint256 poolSeed) public {
+        // bound fuzzed tick
+        selectedPool = pools[bound(poolSeed, 0, 2)];
+        tickSpacing = selectedPool.tickSpacing();
+        // Width must be > 0 < 4096
+        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 oneSidedRange = (width * tickSpacing) / 2;
+
+        // The position must extend beyond the min tick
+        int24 strike = int24(
+            bound(strike, TickMath.MIN_TICK, TickMath.MIN_TICK + (width * tickSpacing) / 2 - 1)
+        );
+
+        // assume for now
+        vm.assume(
+            (strike - oneSidedRange) % tickSpacing == 0 ||
+                (strike + oneSidedRange) % tickSpacing == 0
+        );
+
+        // Test the asTicks function
+        vm.expectRevert(Errors.TicksNotInitializable.selector);
+        harness.getTicks(strike, width, tickSpacing);
+    }
+
+    function test_Fail_getTicks_aboveMinTick(uint16 width, int24 strike, uint256 poolSeed) public {
+        // bound fuzzed tick
+        selectedPool = pools[bound(poolSeed, 0, 2)];
+        tickSpacing = selectedPool.tickSpacing();
+        // Width must be > 0 < 4095 (4095 is full range)
+        int24 width = int24(int256(bound(width, 1, 4094)));
+        int24 oneSidedRange = (width * tickSpacing) / 2;
+
+        // The position must extend beyond the max tick
+        int24 strike = int24(
+            bound(strike, TickMath.MAX_TICK - (width * tickSpacing) / 2 + 1, TickMath.MAX_TICK)
+        );
+
+        // assume for now
+        vm.assume(
+            (strike - oneSidedRange) % tickSpacing == 0 ||
+                (strike + oneSidedRange) % tickSpacing == 0
+        );
+
+        // Test the asTicks function
+        vm.expectRevert(Errors.TicksNotInitializable.selector);
+        harness.getTicks(strike, width, tickSpacing);
+    }
+
     function test_Success_getPoolId(address univ3pool) public {
         uint64 poolId = uint64(uint160(univ3pool) >> 96);
         assertEq(poolId, harness.getPoolId(univ3pool));
@@ -250,7 +360,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(positionSize, 0, 2)]; // resue position size as seed
+            selectedPool = pools[bound(positionSize, 0, 2)]; // reuse position size as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -322,7 +432,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -379,7 +489,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -421,7 +531,7 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_twapFilter(uint32 twapWindow) public {
         twapWindow = uint32(bound(twapWindow, 100, 10000));
 
-        selectedPool = pools[bound(twapWindow, 0, 2)]; // resue twapWindow as seed
+        selectedPool = pools[bound(twapWindow, 0, 2)]; // reuse twapWindow as seed
 
         uint32[] memory secondsAgos = new uint32[](20);
         int24[] memory twapMeasurement = new int24[](19);
@@ -1106,7 +1216,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1167,7 +1277,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1229,7 +1339,7 @@ contract PanopticMathTest is Test, PositionUtils {
             asset = asset & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1289,7 +1399,7 @@ contract PanopticMathTest is Test, PositionUtils {
             asset = asset & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1364,7 +1474,7 @@ contract PanopticMathTest is Test, PositionUtils {
             asset = asset & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1424,7 +1534,7 @@ contract PanopticMathTest is Test, PositionUtils {
             asset = asset & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // resue optionRatio as seed
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1451,7 +1561,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
         int256 expectedLongs = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
-        console2.log(":)");
+
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,

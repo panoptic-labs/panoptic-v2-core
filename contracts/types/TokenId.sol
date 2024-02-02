@@ -5,7 +5,6 @@ pragma solidity ^0.8.0;
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import "forge-std/Test.sol";
 
 /// @title Panoptic's tokenId: the fundamental options position.
 /// @author Axicon Labs Limited
@@ -420,7 +419,9 @@ library TokenId {
         uint256 leg,
         uint256 identity
     ) internal pure returns (bool) {
-        return (((self & CHUNK_ISLONG_MASK) >> (64 + 48 * leg)) % 2 ** 48) == (identity >> 64);
+        unchecked {
+            return (((self & CHUNK_ISLONG_MASK) >> (64 + 48 * leg)) % 2 ** 48) == (identity >> 64);
+        }
     }
 
     /// @notice Clear a leg in an option position with index `i`.

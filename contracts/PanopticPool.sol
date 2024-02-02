@@ -20,7 +20,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1648,10 +1647,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Settle all unpaid premium for long legs on `tokenId` of `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
     /// @dev This feature is only available when `owner` must be solvent at the current tick
-    /// @param chunkIdentity The strike price, width, and tokenType of the chunk to settle premium payments on encoded in a 1-leg tokenId.
+    /// @param positionIdLists Exhaustive list of open positions in the `owner` account used for solvency check.
     /// @param owners The owner of the option position to make premium payments on.
     /// @param tokenIds The option position to make premium payments on.
-    /// @param positionIdLists Exhaustive list of open positions in the `owner` account used for solvency check.
+    /// @param chunkIdentity The strike price, width, and tokenType of the chunk to settle premium payments on encoded in a 1-leg tokenId.
     function settleLongPremium(
         uint256[][] calldata positionIdLists,
         address[] calldata owners,

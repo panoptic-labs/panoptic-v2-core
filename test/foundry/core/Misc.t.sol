@@ -15,6 +15,7 @@ import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {Math} from "@libraries/Math.sol";
+import {Errors} from "@libraries/Errors.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -296,11 +297,6 @@ contract Misctest is Test, PositionUtils {
         // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
         // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
         // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
-        // First close Bob's position; they should receive 25% of the initial amount because no fees were paid on their position
-        // Close half (4.4468%) of the removed liquidity
-        // Then close Alice's position, they should receive ~53.3% (50%+ 2/3*5%)
-        // Close the other half of the removed liquidity (4.4468%)
-        // Finally, close Charlie's position, they should receive ~27.5% (25% + 10% * 25%)
         changePrank(Alice);
 
         pp.mintOptions($posIdLists[0], 500_000_000, 0, 0, 0);
@@ -660,7 +656,7 @@ contract Misctest is Test, PositionUtils {
 
         changePrank(Alice);
 
-        // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
+        // burn Alice's position
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
@@ -677,34 +673,183 @@ contract Misctest is Test, PositionUtils {
             "Incorrect Alice Delta 1"
         );
 
-        // // Burn other half of the removed liq
-        // pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+        // try collecting all the dummy chunks again - see that no additional premium is collected
+        assetsBefore0Arr[0] = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
+        assetsBefore1Arr[0] = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
+        assetsBefore0Arr[1] = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
+        assetsBefore1Arr[1] = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
+        assetsBefore0Arr[2] = ct0.convertToAssets(ct0.balanceOf(Buyers[2]));
+        assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
-        // changePrank(Charlie);
+        pp.settleLongPremium(
+            collateralIdLists,
+            Buyers,
+            positionIdLists,
+            uint256(0).addStrike(-15, 0).addWidth(1, 0).addTokenType(1, 0).addIsLong(1, 0)
+        );
 
-        // // Finally, burn Charlie's position, he should get 27.5% (25% + full 10% long paid (* 25% owned))
-        // assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
-        // assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
+            0,
+            "Incorrect Buyer 1 3rd Collect 0"
+        );
 
-        // pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1Arr[0],
+            0,
+            "Incorrect Buyer 1 3rd Collect 1"
+        );
 
-        // assertEq(
-        //     ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-        //     275_000,
-        //     "Incorrect Charlie Delta 0"
-        // );
-        // assertEq(
-        //     ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
-        //     275_000_008,
-        //     "Incorrect Charlie Delta 1"
-        // );
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[1])) - assetsBefore0Arr[1],
+            0,
+            "Incorrect Buyer 2 3rd Collect 0"
+        );
 
-        // changePrank(Bob);
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[1])) - assetsBefore1Arr[1],
+            0,
+            "Incorrect Buyer 2 3rd Collect 1"
+        );
 
-        // $tempIdList[0] = $posIdList[1];
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[2])) - assetsBefore0Arr[2],
+            0,
+            "Incorrect Buyer 3 3rd Collect 0"
+        );
 
-        // // Burn 1/2 of the removed liq
-        // pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[2])) - assetsBefore1Arr[2],
+            0,
+            "Incorrect Buyer 3 3rd Collect 1"
+        );
+
+        // now, collect the rest of the long (primary) legs, premium should be collected from 2nd & 3rd buyers
+        assetsBefore0Arr[0] = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
+        assetsBefore1Arr[0] = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
+        assetsBefore0Arr[1] = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
+        assetsBefore1Arr[1] = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
+        assetsBefore0Arr[2] = ct0.convertToAssets(ct0.balanceOf(Buyers[2]));
+        assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
+
+        pp.settleLongPremium(
+            collateralIdLists,
+            Buyers,
+            positionIdLists,
+            uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
+        );
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
+            0,
+            "Incorrect Buyer 1 4th Collect 0"
+        );
+
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1Arr[0],
+            0,
+            "Incorrect Buyer 1 4th Collect 1"
+        );
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[1])) - assetsBefore0Arr[1],
+            33_342,
+            "Incorrect Buyer 2 4th Collect 0"
+        );
+
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[1])) - assetsBefore1Arr[1],
+            33_343_452,
+            "Incorrect Buyer 2 4th Collect 1"
+        );
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Buyers[2])) - assetsBefore0Arr[2],
+            33_342,
+            "Incorrect Buyer 3 4th Collect 0"
+        );
+
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Buyers[2])) - assetsBefore1Arr[2],
+            33_343_452,
+            "Incorrect Buyer 3 4th Collect 1"
+        );
+
+        changePrank(Charlie);
+
+        // Finally, burn Charlie's position, he should get 27.5% (25% + full 10% long paid (* 25% owned))
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
+
+        pp.burnOptions($posIdLists[0][0], new uint256[](0), 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
+            275_007,
+            "Incorrect Charlie Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
+            275_007_589,
+            "Incorrect Charlie Delta 1"
+        );
+
+        // test positionIdList validation
+        for (uint256 i = 0; i < 3; ++i) {
+            // snapshot so we don't have to reset changes to collateralIdLists array
+            uint256 snap = vm.snapshot();
+
+            for (uint256 j = 0; j < i + 1; ++j) {
+                collateralIdLists[i].pop();
+            }
+            vm.expectRevert(Errors.InputListFail.selector);
+            pp.settleLongPremium(
+                collateralIdLists,
+                Buyers,
+                positionIdLists,
+                uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
+            );
+            vm.revertTo(snap);
+        }
+
+        // test collateral checking (basic)
+        for (uint256 i = 0; i < 3; ++i) {
+            // snapshot so we don't have to reset changes to collateralIdLists array
+            uint256 snap = vm.snapshot();
+
+            deal(address(ct0), Buyers[i], i ** 15);
+            deal(address(ct1), Buyers[i], i ** 15);
+            vm.expectRevert(Errors.NotEnoughCollateral.selector);
+            pp.settleLongPremium(
+                collateralIdLists,
+                Buyers,
+                positionIdLists,
+                uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
+            );
+            vm.revertTo(snap);
+        }
+
+        // burn all buyer positions - they should pay 0 premium since it has all been settled already
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[i]));
+            assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[i]));
+            changePrank(Buyers[i]);
+            pp.burnOptions($posIdLists[2], new uint256[](0), 0, 0);
+
+            // the positive premium is from the dummy short chunk
+            // @TODO might have to tweak this if rounding is changed upstream
+            assertEq(
+                int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
+                i == 0 ? int256(104) : int256(105),
+                "Buyer paid premium twice"
+            );
+
+            assertEq(
+                ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
+                1085,
+                "Buyer paid premium twice"
+            );
+        }
     }
 
     function test_success_settledPremiumDistribution() public {
