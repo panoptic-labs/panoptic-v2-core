@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
 
+// Foundry
+import "forge-std/Test.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -481,6 +483,7 @@ library TokenId {
                 // now validate this ith leg in the position:
 
                 // The width cannot be 0; the minimum is 1
+                console2.log("real width", self.width(i));
                 if ((self.width(i) == 0)) revert Errors.InvalidTokenIdParameter(5);
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (

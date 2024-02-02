@@ -114,7 +114,7 @@ contract PanopticPoolTest is PositionUtils {
         IUniswapV3Pool(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
     IUniswapV3Pool constant WSTETH_ETH_1 = 
         IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
-    //IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WHITE_ETH_1];
+    //IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WSTETH_ETH_1];
 
     IUniswapV3Pool[1] public pools = [WSTETH_ETH_1];
 
@@ -1885,6 +1885,8 @@ contract PanopticPoolTest is PositionUtils {
             currentTick,
             0
         );
+
+        console2.log("width in test", width);
 
         populatePositionData(width, strike, positionSizeSeed);
 
