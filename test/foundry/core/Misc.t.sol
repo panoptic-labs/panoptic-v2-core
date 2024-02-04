@@ -186,6 +186,8 @@ contract Misctest is Test, PositionUtils {
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();
 
+        console2.log("ct0.totalAssets()", ct0.totalAssets());
+
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
