@@ -353,13 +353,16 @@ contract PositionUtils is Test {
         int256 ts = int256(ts_);
 
         width = int24(int256(bound(widthSeed, 1, 2048)));
-        int24 oneSidedRange = int24((width * ts) / 2);
+
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
 
         // add ts(1) because range is inclusive of lower tick in UniV3
-        int24 lowerBound = int24(currentTick + ts + oneSidedRange - strikeOffset);
-        int24 upperBound = int24(maxTick - oneSidedRange - strikeOffset);
+        int24 lowerBound = int24(currentTick + ts + rangeDown - strikeOffset);
+        int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -377,13 +380,16 @@ contract PositionUtils is Test {
         int256 ts = int256(ts_);
 
         width = int24(int256(bound(widthSeed, 1, 2048)));
-        int24 oneSidedRange = int24((width * ts) / 2);
+
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
 
         // add ts(1) because range is inclusive of lower tick in UniV3
-        int24 lowerBound = int24(minTick + oneSidedRange - strikeOffset);
-        int24 upperBound = int24(currentTick - oneSidedRange - strikeOffset);
+        int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
+        int24 upperBound = int24(currentTick - rangeUp - strikeOffset);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
