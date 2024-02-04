@@ -285,7 +285,7 @@ contract PositionUtils is Test {
             ? int24(maxTick - oneSidedRange - strikeOffset)
             : int24(currentTick - oneSidedRange - strikeOffset);
 
-       if (ts == 1) {
+        if (ts == 1) {
             lowerBound = tokenType == 0
                 ? int24(currentTick + ts + rangeDown - strikeOffset)
                 : int24(minTick + rangeDown - strikeOffset);
@@ -300,7 +300,6 @@ contract PositionUtils is Test {
 
         strike = int24(strike * ts + strikeOffset);
     }
-
 
     function getITMSW(
         uint256 widthSeed,
@@ -327,7 +326,7 @@ contract PositionUtils is Test {
             ? int24(currentTick + ts - oneSidedRange - strikeOffset)
             : int24(maxTick - oneSidedRange - strikeOffset);
 
-       if (ts == 1) {
+        if (ts == 1) {
             lowerBound = tokenType == 0
                 ? int24(minTick + rangeDown - strikeOffset)
                 : int24(currentTick + rangeDown - strikeOffset);

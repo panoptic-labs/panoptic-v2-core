@@ -388,17 +388,20 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IUniswapV3Pool(0x290A6a7460B308ee3F19023D2D00dE604bcf5B42);
 
     // 1 bps pool
-    IUniswapV3Pool constant DAI_USDC_1 = 
-        IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
+    IUniswapV3Pool constant DAI_USDC_1 = IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
 
-    IUniswapV3Pool constant WHITE_ETH_1 = 
+    IUniswapV3Pool constant WHITE_ETH_1 =
         IUniswapV3Pool(0xC5c134A1f112efA96003f8559Dba6fAC0BA77692);
 
-    IUniswapV3Pool constant WSTETH_ETH_1 = 
+    IUniswapV3Pool constant WSTETH_ETH_1 =
         IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
 
     //IUniswapV3Pool[6] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30, DAI_USDC_1, WHITE_ETH_1, WSTETH_ETH_1];
-    IUniswapV3Pool[3] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30/*, DAI_USDC_1, WHITE_ETH_1, WSTETH_ETH_1*/];
+    IUniswapV3Pool[3] public pools = [
+        USDC_WETH_5,
+        WBTC_ETH_30,
+        MATIC_ETH_30 /*, DAI_USDC_1, WHITE_ETH_1, WSTETH_ETH_1*/
+    ];
 
     // Mainnet factory address
     IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
@@ -6409,10 +6412,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int24 width = _tokenId.width(i);
 
             (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
-            (legLowerTick, legUpperTick) = (
-                strike - rangeDown,
-                strike + rangeUp
-            );
+            (legLowerTick, legUpperTick) = (strike - rangeDown, strike + rangeUp);
 
             {
                 uint256 amountsMoved = PanopticMath.getAmountsMoved(
