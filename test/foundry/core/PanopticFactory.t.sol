@@ -283,7 +283,7 @@ contract PanopticFactoryTest is Test {
         // links the uni v3 pool to the Panoptic pool
         panopticFactory.deployNewPool(token0, token1, fee, salt);
     }
-    
+
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool
     function test_Fail_deployinvalidPool() public {
         // generate a not so random salt

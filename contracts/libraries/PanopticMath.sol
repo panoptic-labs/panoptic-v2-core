@@ -396,8 +396,6 @@ library PanopticMath {
         }
     }
 
-
-
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks
     /// @param amount the amount of token0 to convert into token1
@@ -460,7 +458,6 @@ library PanopticMath {
         uint256 legIndex,
         int24 tickSpacing
     ) internal pure returns (uint256 amountsMoved) {
-
         // construct base liquidity object
         (int24 legLowerTick, int24 legUpperTick) = tokenId.asTicks(legIndex, tickSpacing);
         uint256 liquidityAmounts = uint256(0).createChunk(legLowerTick, legUpperTick, 0);
@@ -469,29 +466,29 @@ library PanopticMath {
         uint128 amount1;
         if (tokenId.asset(legIndex) == 0) {
             // amount of tokens moved in token1
-            amount0 = positionSize * uint128(tokenId.optionRatio(legIndex)); 
+            amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            // get liquidity for amount 1 
-            uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
+            // get liquidity for amount 1
+            uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0);
             liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
-            
+
             // amount of tokens moved for token1
             // safe cast to prevent overflows
             amount1 = Math.getAmount1ForLiquidity(liquidityAmounts).toUint128();
         } else {
             // amount of tokens moved in token1
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
-            
-            // get liquidity for amount 1 
-            uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);     
+
+            // get liquidity for amount 1
+            uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);
             liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
-            
+
             // amount of tokens moved for token1
             // safe cast to prevent overflows
             amount0 = Math.getAmount0ForLiquidity(liquidityAmounts).toUint128();
-        }  
+        }
         amountsMoved = amountsMoved.toRightSlot(amount0).toLeftSlot(amount1);
-    } 
+    }
 
     /// @notice Compute the amount of funds that are moved to and removed from the Panoptic Pool.
     /// @param tokenId the option position identifier

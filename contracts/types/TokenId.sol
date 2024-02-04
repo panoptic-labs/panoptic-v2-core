@@ -539,7 +539,7 @@ library TokenId {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 int24 optionStrike = self.strike(i);
-                
+
                 /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
                 /// if (width * tickSpacing) is:
                 ///     even: tick range -> (strike - range, strike + range)
@@ -576,7 +576,7 @@ library TokenId {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 // compute the range of this leg/chunk
-                
+
                 /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
                 /// if (width * tickSpacing) is:
                 ///     even: tick range -> (strike - range, strike + range)

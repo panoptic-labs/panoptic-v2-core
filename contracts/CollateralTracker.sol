@@ -1506,9 +1506,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         // amount moved is right slot if tokenType=0, left slot otherwise
-        uint128 amountMoved = tokenType == 0 ? 
-                amountsMoved.rightSlot() : 
-                amountsMoved.leftSlot();
+        uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
         // start with base requirement, which is based on isLong value
         required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
@@ -1756,7 +1754,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             index,
             s_tickSpacing
         );
-        
+
         // compute the total amount of funds moved for the position's partner leg
         uint256 amountsMovedPartner = PanopticMath.getAmountsMoved(
             tokenId,
@@ -1764,7 +1762,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             partnerIndex,
             s_tickSpacing
         );
-        
+
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 movedRight = amountsMoved.rightSlot();
         uint128 movedLeft = amountsMoved.leftSlot();
@@ -1812,7 +1810,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
                 spreadRequirement = (notional < notionalP)
                     ? ((notionalP - notional) * contracts) / notional
-                    : ((notional - notionalP) * contracts) / notionalP; 
+                    : ((notional - notionalP) * contracts) / notionalP;
             }
         }
     }

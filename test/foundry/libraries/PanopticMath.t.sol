@@ -1137,11 +1137,11 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // set amount 0
         uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
-        
+
         // get amount 1
         // construct liq object
         uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
-        uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0); 
+        uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0);
         liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
         // set amount 1
         uint256 intermediateAmount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
@@ -1219,7 +1219,7 @@ contract PanopticMathTest is Test, PositionUtils {
         // get amount 0
         // construct liq object
         uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
-        uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1); 
+        uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);
         liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
         // set amount 1
         uint256 intermediateAmount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
@@ -1490,7 +1490,6 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(0, returnedShorts);
         assertEq(expectedLongs, returnedLongs);
     }
-
 
     // mul div as ticks
     function test_Success_mulDivAsTicks_1bps_1TickWide() public {
