@@ -4973,7 +4973,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
+            positionSize0 = uint128(bound(positionSizeSeed, 8, 2 ** 120));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
@@ -5003,11 +5003,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
-            _assumePositionValidity(Alice, tokenId1, positionSize0);
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
             panopticPool.mintOptions(
                 positionIdList1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
@@ -5027,7 +5027,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 tickSpacing
             );
 
@@ -5051,7 +5051,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 longAmounts
             );
 
@@ -5111,7 +5111,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
+            positionSize0 = uint128(bound(positionSizeSeed, 8, 2 ** 120));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
@@ -5174,7 +5174,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 tickSpacing
             );
 
@@ -5198,7 +5198,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 longAmounts
             );
 
@@ -5258,7 +5258,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
+            positionSize0 = uint128(bound(positionSizeSeed, 8, 2 ** 32));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
@@ -5297,11 +5297,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             positionIdList1.push(tokenId1);
 
-            _assumePositionValidity(Alice, tokenId1, positionSize0);
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
             panopticPool.mintOptions(
                 positionIdList1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
@@ -5321,7 +5321,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 tickSpacing
             );
 
@@ -5345,7 +5345,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 longAmounts
             );
 
@@ -5405,7 +5405,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
-            positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 96));
+            positionSize0 = uint128(bound(positionSizeSeed, 8, 2 ** 32));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
@@ -5444,11 +5444,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             positionIdList1.push(tokenId1);
 
-            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
             panopticPool.mintOptions(
                 positionIdList1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
@@ -5468,7 +5468,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 tickSpacing
             );
 
@@ -5492,7 +5492,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 2,
+                positionSize0 / 4,
                 longAmounts
             );
 

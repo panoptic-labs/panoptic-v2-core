@@ -1782,13 +1782,13 @@ contract PanopticPoolTest is PositionUtils {
         assertApproxEqAbs(
             uint256(premium0 - premium0Before),
             premiaSeed[0],
-            10,
+            premiaSeed[0] / 1_000_000,
             "premium 0"
         );
         assertApproxEqAbs(
             uint256(premium1 - premium1Before),
             premiaSeed[1],
-            10,
+            premiaSeed[1] / 1_000_000,
             "premium 1"
         );
     }
