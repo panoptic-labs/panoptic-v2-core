@@ -529,39 +529,6 @@ library TokenId {
         return self.univ3pool();
     }
 
-    /// @notice Make sure that an option position `self`'s all active legs are out-of-the-money (OTM). Revert if not.
-    /// @dev OTMness depends on where the current price tick is in the AMM relative to the tick bounds of the leg.
-    /// @param self the option position Id (tokenId)
-    /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-    /// @param tickSpacing the tick spacing of the Univ3 pool.
-    function ensureIsOTM(uint256 self, int24 currentTick, int24 tickSpacing) internal pure {
-        unchecked {
-            uint256 numLegs = self.countLegs();
-            for (uint256 i = 0; i < numLegs; ++i) {
-                int24 optionStrike = self.strike(i);
-
-                /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-                /// if (width * tickSpacing) is:
-                ///     even: tick range -> (strike - range, strike + range)
-                ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
-                (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
-                    self.width(i),
-                    tickSpacing
-                );
-
-                uint256 optionTokenType = self.tokenType(i);
-
-                // @note test update
-                if (
-                    ((optionTokenType == 1) && currentTick < (optionStrike + oneSidedRangeUpper)) ||
-                    ((optionTokenType == 0) && currentTick >= (optionStrike - oneSidedRangeLower))
-                ) {
-                    revert Errors.OptionsNotOTM();
-                }
-            }
-        }
-    }
-
     /// @notice Validate that a position `self` and its legs/chunks are exercisable.
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @param self the option position Id (tokenId)
@@ -586,7 +553,6 @@ library TokenId {
                     tickSpacing
                 );
 
-                // @note test update
                 // check if the price is outside this chunk
                 if (
                     (currentTick >= (self.strike(i) + oneSidedRangeUpper)) ||

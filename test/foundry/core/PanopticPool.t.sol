@@ -2449,11 +2449,7 @@ contract PanopticPoolTest is PositionUtils {
                     int128(expectedLiq)
                 );
 
-            // @note revisit as for 1 bps pools this doesn't hold up
             int256 notionalVal = int256(expectedSwap0) + amount0Moved - shortAmounts.rightSlot();
-            // int256 ITMSpread = notionalVal > 0
-            //     ? (notionalVal * tickSpacing) / 10_000
-            //     : -((notionalVal * tickSpacing) / 10_000);
 
             int256 ITMSpread = notionalVal > 0
                 ? (notionalVal * int24(2 * (fee / 100))) / 10_000

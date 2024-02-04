@@ -650,13 +650,15 @@ contract TokenIdTest is Test, PositionUtils {
         // Width must be > 0 < 4096
         int24 width = int24(uint24(bound(width, 1, 4095)));
 
-        // The position must not extend outside of the max/min tick
-        int24 strike = int24(
-            bound(strike, minTick + (width * tickSpacing) / 2, maxTick - (width * tickSpacing) / 2)
-        );
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
 
-        vm.assume(strike + (((width * tickSpacing) / 2) % tickSpacing) == 0);
-        vm.assume(strike - (((width * tickSpacing) / 2) % tickSpacing) == 0);
+        // The position must not extend outside of the max/min tick
+        int24 strike = int24(bound(strike, minTick + rangeDown, maxTick - rangeUp));
+
+        vm.assume(strike + ((rangeUp) % tickSpacing) == 0);
+        vm.assume(strike - ((rangeDown) % tickSpacing) == 0);
 
         // We now construct the tokenId with properly bounded fuzz values
         uint256 tokenId = harness.addWidth(0, width, 0);
@@ -666,8 +668,8 @@ contract TokenIdTest is Test, PositionUtils {
         (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0, tickSpacing);
 
         // Ensure tick values returned are correct
-        assertEq(tickLower, strike - (width * tickSpacing) / 2);
-        assertEq(tickUpper, strike + (width * tickSpacing) / 2);
+        assertEq(tickLower, strike - rangeDown);
+        assertEq(tickUpper, strike + rangeUp);
     }
 
     function test_Fail_asTicks_TicksNotInitializable(
@@ -681,15 +683,14 @@ contract TokenIdTest is Test, PositionUtils {
         // Width must be > 0 < 4096
         int24 width = int24(uint24(bound(width, 1, 4095)));
 
-        // The position must not extend outside of the max/min tick
-        int24 strike = int24(
-            bound(strike, minTick + (width * tickSpacing) / 2, maxTick - (width * tickSpacing) / 2)
-        );
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
 
-        vm.assume(
-            (strike + (width * tickSpacing) / 2) % tickSpacing != 0 ||
-                (strike - (width * tickSpacing) / 2) % tickSpacing != 0
-        );
+        // The position must not extend outside of the max/min tick
+        int24 strike = int24(bound(strike, minTick + rangeDown, maxTick - rangeUp));
+
+        vm.assume((strike + rangeDown) % tickSpacing != 0 || (strike - rangeUp) % tickSpacing != 0);
 
         // We now construct the tokenId with properly bounded fuzz values
         uint256 tokenId;
@@ -711,17 +712,19 @@ contract TokenIdTest is Test, PositionUtils {
 
         // Width must be > 0 < 4096
         int24 width = int24(uint24(bound(width, 1, 4095)));
-        int24 oneSidedRange = (width * tickSpacing) / 2;
+
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        vm.assume(minTick != TickMath.MIN_TICK);
 
         // The position must extend beyond the min tick
-        int24 strike = int24(
-            bound(strike, TickMath.MIN_TICK, minTick + (width * tickSpacing) / 2 - 1)
-        );
+        int24 strike = int24(bound(strike, TickMath.MIN_TICK, minTick + rangeDown - 1));
 
         // assume for now
         vm.assume(
-            (strike - oneSidedRange) % tickSpacing == 0 ||
-                (strike + oneSidedRange) % tickSpacing == 0
+            (strike - rangeDown) % tickSpacing == 0 || (strike + rangeDown) % tickSpacing == 0
         );
 
         // We now construct the tokenId with properly bounded fuzz values
@@ -734,7 +737,7 @@ contract TokenIdTest is Test, PositionUtils {
         harness.asTicks(tokenId, 0, tickSpacing);
     }
 
-    function test_Fail_asTicks_aboveMinTick(
+    function test_Fail_asTicks_aboveMaxTick(
         uint16 width,
         int24 strike,
         int24 poolStatusSeed
@@ -744,17 +747,19 @@ contract TokenIdTest is Test, PositionUtils {
 
         // Width must be > 0 < 4095 (4095 is full range)
         int24 width = int24(int256(bound(width, 1, 4094)));
-        int24 oneSidedRange = (width * tickSpacing) / 2;
+
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+        vm.assume(maxTick != TickMath.MAX_TICK);
 
         // The position must extend beyond the max tick
-        int24 strike = int24(
-            bound(strike, maxTick - (width * tickSpacing) / 2 + 1, TickMath.MAX_TICK)
-        );
+        int24 strike = int24(bound(strike, maxTick - rangeUp + 1, TickMath.MAX_TICK));
 
         // assume for now
         vm.assume(
-            (strike - oneSidedRange) % tickSpacing == 0 ||
-                (strike + oneSidedRange) % tickSpacing == 0
+            (strike - rangeDown) % tickSpacing == 0 || (strike + rangeDown) % tickSpacing == 0
         );
 
         // We now construct the tokenId with properly bounded fuzz values
@@ -1489,116 +1494,6 @@ contract TokenIdTest is Test, PositionUtils {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          ENSURE IS OTM
-    //////////////////////////////////////////////////////////////*/
-    function test_Success_ensureIsOTM(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        uint256 tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct one leg token
-        tokenId = fuzzedPosition(
-            4, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        // clear strike
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
-
-        for (uint256 i; i < 4; i++) {
-            // get this legs width and range
-            int24 width = harness.width(tokenId, i);
-            int24 range = (width * tickSpacing) / 2;
-
-            // direction to check range in
-            uint256 optionTokenType = harness.tokenType(tokenId, i);
-
-            int24 newStrike;
-            // moneyness check
-            if (optionTokenType == 1) {
-                // set strike + range to gte current tick - range
-                newStrike = currentTick - (2 * range);
-            } else {
-                // set strike - range to lte current tick
-                newStrike = currentTick + (2 * range);
-            }
-            tokenId = harness.addStrike(tokenId, newStrike, i);
-        }
-
-        harness.ensureIsOTM(tokenId, currentTick, tickSpacing);
-    }
-
-    function test_Fail_ensureIsOTM_optionsNotOTM(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
-        uint256 tokenId;
-
-        // fuzzes a valid currentTick
-        setPoolStatus(poolStatusSeed);
-
-        //construct one leg token
-        tokenId = fuzzedPosition(
-            4, // total amount of legs
-            poolId,
-            optionRatioSeed,
-            assetSeed,
-            isLongSeed,
-            tokenTypeSeed,
-            strikeSeed,
-            widthSeed
-        );
-
-        // clear strike
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
-
-        for (uint256 i; i < 4; i++) {
-            // get this legs width and range
-            int24 width = harness.width(tokenId, i);
-            int24 range = (width * tickSpacing) / 2;
-
-            // direction to check range in
-            uint256 optionTokenType = harness.tokenType(tokenId, i);
-
-            int24 newStrike;
-            // moneyness check
-            if (optionTokenType == 1) {
-                // set strike + range to gte current tick
-                newStrike = int24(currentTick + 2 * range);
-            } else {
-                // set strike - range to lte current tick
-                newStrike = int24(currentTick - 2 * range);
-            }
-            tokenId = harness.addStrike(tokenId, newStrike, i);
-        }
-
-        vm.expectRevert(Errors.OptionsNotOTM.selector);
-        harness.ensureIsOTM(tokenId, currentTick, tickSpacing);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                         VALIDATE IS EXERCISABLE
     //////////////////////////////////////////////////////////////*/
 
@@ -1637,11 +1532,14 @@ contract TokenIdTest is Test, PositionUtils {
         for (uint256 i; i < 4; i++) {
             // get this legs width and range
             int24 width = harness.width(tokenId, i);
-            int24 range = (width * tickSpacing) / 2;
+
+            int24 rangeDown;
+            int24 rangeUp;
+            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
 
             // The position must
-            vm.assume(minTick < (currentTick - range) - 1);
-            int24 strike = int24(bound(strikeSeed, minTick, (currentTick - range) - 1));
+            vm.assume(minTick < (currentTick - rangeDown) - 1);
+            int24 strike = int24(bound(strikeSeed, minTick, (currentTick - rangeDown) - 1));
 
             tokenId = harness.addStrike(tokenId, strike, i);
             tokenId = harness.addIsLong(tokenId, 1, i);
@@ -1685,12 +1583,15 @@ contract TokenIdTest is Test, PositionUtils {
         for (uint256 i; i < 4; i++) {
             // get this legs width and range
             int24 width = harness.width(tokenId, i);
-            int24 range = (width * tickSpacing) / 2;
+
+            int24 rangeDown;
+            int24 rangeUp;
+            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
 
             // The position must
-            int24 minTick = (currentTick + range) + 1;
+            int24 minTick = (currentTick + rangeUp) + 1;
             vm.assume(minTick < maxTick);
-            int24 strike = int24(bound(strikeSeed, (currentTick + range) + 1, maxTick));
+            int24 strike = int24(bound(strikeSeed, (currentTick + rangeUp) + 1, maxTick));
 
             tokenId = harness.addStrike(tokenId, strike, i);
             tokenId = harness.addIsLong(tokenId, 1, i);
@@ -1768,12 +1669,16 @@ contract TokenIdTest is Test, PositionUtils {
         for (uint256 i; i < 4; i++) {
             // get this legs width and range
             int24 width = harness.width(tokenId, i);
-            int24 range = (width * tickSpacing) / 2;
 
-            // The position must
-            int24 strike = int24(
-                bound(strikeSeed, currentTick - range + 1, currentTick + range - 1)
-            );
+            int24 rangeDown;
+            int24 rangeUp;
+            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+            // The position must be in range
+            // 1 tick wide position (in range only when current tick = upper bound)
+            int24 strike = (tickSpacing == 1 && width == 1)
+                ? currentTick + rangeUp - 1
+                : int24(bound(strikeSeed, currentTick - rangeDown + 1, currentTick + rangeUp - 1));
 
             tokenId = harness.addStrike(tokenId, strike, i);
             tokenId = harness.addIsLong(tokenId, 1, i);
@@ -2009,13 +1914,16 @@ contract TokenIdTest is Test, PositionUtils {
                 optionRatioSeed = bound(optionRatioSeed, 1, 127);
 
                 width = int24(bound(widthSeed, 1, 4094));
-                int24 oneSidedRange = (width * tickSpacing) / 2;
+
+                int24 rangeDown;
+                int24 rangeUp;
+                (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
 
                 (int24 strikeOffset, int24 minStrikeTick, int24 maxStrikeTick) = PositionUtils
                     .getContextFull(uint256(uint24(tickSpacing)), currentTick, width);
 
-                int24 lowerBound = int24(minStrikeTick + oneSidedRange - strikeOffset);
-                int24 upperBound = int24(maxStrikeTick - oneSidedRange - strikeOffset);
+                int24 lowerBound = int24(minStrikeTick + rangeDown - strikeOffset);
+                int24 upperBound = int24(maxStrikeTick - rangeUp - strikeOffset);
 
                 // bound strike
                 strike = int24(
@@ -2050,7 +1958,7 @@ contract TokenIdTest is Test, PositionUtils {
     // Mimicks Uniswapv3 pool possible states
     function setPoolStatus(int24 seed) internal {
         // bound fuzzed tick
-        tickSpacing = int8([30, 60, 100][uint24(seed) % 3]);
+        tickSpacing = int8([1, 30, 60, 100][uint24(seed) % 4]);
         maxTick = (TickMath.MAX_TICK / tickSpacing) * tickSpacing;
         minTick = (TickMath.MIN_TICK / tickSpacing) * tickSpacing;
         currentTick = int24(bound(seed, minTick, maxTick));

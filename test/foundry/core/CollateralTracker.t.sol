@@ -390,17 +390,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // 1 bps pool
     IUniswapV3Pool constant DAI_USDC_1 = IUniswapV3Pool(0x5777d92f208679DB4b9778590Fa3CAB3aC9e2168);
 
-    IUniswapV3Pool constant WHITE_ETH_1 =
-        IUniswapV3Pool(0xC5c134A1f112efA96003f8559Dba6fAC0BA77692);
-
     IUniswapV3Pool constant WSTETH_ETH_1 =
         IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
 
-    //IUniswapV3Pool[6] public pools = [USDC_WETH_5, WBTC_ETH_30, MATIC_ETH_30, DAI_USDC_1, WHITE_ETH_1, WSTETH_ETH_1];
-    IUniswapV3Pool[3] public pools = [
+    IUniswapV3Pool[5] public pools = [
         USDC_WETH_5,
         WBTC_ETH_30,
-        MATIC_ETH_30 /*, DAI_USDC_1, WHITE_ETH_1, WSTETH_ETH_1*/
+        MATIC_ETH_30,
+        DAI_USDC_1,
+        WSTETH_ETH_1
     ];
 
     // Mainnet factory address
@@ -456,6 +454,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
     int24 strike;
     int24 width1;
     int24 strike1;
+    int24 rangeDown0;
+    int24 rangeUp0;
+    int24 rangeDown1;
+    int24 rangeUp1;
     int24 legLowerTick;
     int24 legUpperTick;
     uint160 sqrtRatioAX96;
@@ -1484,7 +1486,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // fuzz
         _initWorld(x);
 
-        changePrank(Charlie);
+        vm.startPrank(Charlie);
 
         _grantTokens(Charlie);
 
@@ -2636,6 +2638,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
+            rangeDown0;
+            rangeUp0;
+            (rangeDown0, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+            rangeDown1;
+            rangeUp1;
+            (rangeDown1, rangeUp1) = PanopticMath.mulDivAsTicks(width1, tickSpacing);
+
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
@@ -2645,15 +2655,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Math.min(
                     getContractsForAmountAtTick(
                         currentTick,
-                        strike - (width * tickSpacing) / 2,
-                        strike + (width * tickSpacing) / 2,
+                        strike - rangeDown0,
+                        strike + rangeUp0,
                         isWETH,
                         positionSizeSeed
                     ),
                     getContractsForAmountAtTick(
                         currentTick,
-                        strike1 - (width1 * tickSpacing) / 2,
-                        strike1 + (width1 * tickSpacing) / 2,
+                        strike1 - rangeDown1,
+                        strike1 + rangeUp1,
                         isWETH,
                         positionSizeSeed
                     )
@@ -2824,6 +2834,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
+            rangeDown0;
+            rangeUp0;
+            (rangeDown0, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+
+            rangeDown1;
+            rangeUp1;
+            (rangeDown1, rangeUp1) = PanopticMath.mulDivAsTicks(width1, tickSpacing);
+
             tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
@@ -2833,15 +2851,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Math.min(
                     getContractsForAmountAtTick(
                         currentTick,
-                        strike - (width * tickSpacing) / 2,
-                        strike + (width * tickSpacing) / 2,
+                        strike - rangeDown0,
+                        strike + rangeUp0,
                         isWETH,
                         positionSizeSeed
                     ),
                     getContractsForAmountAtTick(
                         currentTick,
-                        strike1 - (width1 * tickSpacing) / 2,
-                        strike1 + (width1 * tickSpacing) / 2,
+                        strike1 - rangeDown1,
+                        strike1 + rangeUp1,
                         isWETH,
                         positionSizeSeed
                     )
@@ -2926,39 +2944,39 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
-        // {
-        //     (, currentTick, , , , , ) = pool.slot0();
+        {
+            (, currentTick, , , , , ) = pool.slot0();
 
-        //     (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
-        //         .calculateAccumulatedFeesBatch(Alice, positionIdList1);
+            (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
+                .calculateAccumulatedFeesBatch(Alice, positionIdList1);
 
-        //     uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
-        //         Alice,
-        //         currentTick,
-        //         posBalanceArray,
-        //         premium0
-        //     );
-        //     uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
-        //         Alice,
-        //         currentTick,
-        //         posBalanceArray,
-        //         premium1
-        //     );
+            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+                Alice,
+                currentTick,
+                posBalanceArray,
+                premium0
+            );
+            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+                Alice,
+                currentTick,
+                posBalanceArray,
+                premium1
+            );
 
-        //     (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-        //         .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
+                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-        //     (tokenData0, tokenData1) = panopticHelper.checkCollateral(
-        //         panopticPool,
-        //         Alice,
-        //         currentTick,
-        //         1,
-        //         positionIdList1
-        //     );
+            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+                panopticPool,
+                Alice,
+                currentTick,
+                1,
+                positionIdList1
+            );
 
-        //     assertEq(tokenData0, calcBalanceCross, "0");
-        //     assertEq(tokenData1, calcThresholdCross, "1");
-        // }
+            assertEq(tokenData0, calcBalanceCross, "0");
+            assertEq(tokenData1, calcThresholdCross, "1");
+        }
     }
 
     /* identical leg spreads */
@@ -6623,6 +6641,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             strike = _tokenId.strike(i);
             width = _tokenId.width(i);
 
+            int24 rangeUp0;
+            (, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);            
+
             (legLowerTick, legUpperTick) = _tokenId.asTicks(i, tickSpacing);
             notionalMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
@@ -6729,7 +6750,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                         } else {
                             // ATM
-                            uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
+                            uint160 scaleFactor = TickMath.getSqrtRatioAtTick(2 * rangeUp0);
 
                             uint256 c3 = FullMath.mulDiv(
                                 notionalMoved,
