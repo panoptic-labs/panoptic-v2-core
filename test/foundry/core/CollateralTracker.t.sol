@@ -529,9 +529,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // initalize Panoptic Pool
         panopticPool.modifiedStartPool(token0, token1, uniswapPool);
 
-        // get the Collateral Tokens
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
-        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
+        (CollateralTracker collateralTracker0, CollateralTracker collateralTracker1) = panopticPool
+            .getCollateralTokens();
+
+        collateralToken0 = CollateralTrackerHarness(address(collateralTracker0));
+        collateralToken1 = CollateralTrackerHarness(address(collateralTracker1));
 
         // store panoptic pool address
         panopticPoolAddress = address(panopticPool);
@@ -5832,10 +5834,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Success_maxWithdraw(uint256 x, uint104 assets) public {
         _initWorld(x);
 
-        // get the Collateral Tokens
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
-        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
-
         // Invoke all interactions with the Collateral Tracker from user Bob
         vm.startPrank(Bob);
 
@@ -5943,10 +5941,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Success_availableAssets(uint256 x, uint256 balance) public {
         _initWorld(x);
 
-        // get the Collateral Tokens
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
-        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
-
         balance = bound(balance, 0, uint128(type(uint128).max));
 
         // set total balance of underlying asset in the Panoptic pool
@@ -5996,9 +5990,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Success_poolData(uint256 x) public {
         _initWorld(x);
 
-        // get the Collateral Token
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
-
         // expected values
 
         collateralToken0.setPoolAssets(10 ** 10); // give pool 10 ** 10 tokens
@@ -6023,11 +6014,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_name(uint256 x) public {
         _initWorld(x);
-
-        // get the Collateral Token
-        CollateralTrackerHarness collateralToken0 = CollateralTrackerHarness(
-            address(panopticPool.collateralToken0())
-        );
 
         // string memory expectedName =
         //     string.concat(
@@ -6061,9 +6047,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_decimals(uint256 x) public {
         _initWorld(x);
-
-        // get the Collateral Token
-        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
 
         //IERC20Metadata(s_underlyingToken).decimals()
 
@@ -6642,7 +6625,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             width = _tokenId.width(i);
 
             int24 rangeUp0;
-            (, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);            
+            (, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
 
             (legLowerTick, legUpperTick) = _tokenId.asTicks(i, tickSpacing);
             notionalMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();

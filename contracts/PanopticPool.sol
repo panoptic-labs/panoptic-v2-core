@@ -1542,16 +1542,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return s_univ3pool;
     }
 
-    /// @notice Get the collateral token corresponding to token0 of the AMM pool.
-    /// @return collateralToken Collateral token corresponding to token0 in the AMM.
-    function collateralToken0() external view returns (CollateralTracker collateralToken) {
-        return s_collateralToken0;
-    }
-
-    /// @notice Get the collateral token corresponding to token1 of the AMM pool.
-    /// @return collateralToken collateral token corresponding to token1 in the AMM.
-    function collateralToken1() external view returns (CollateralTracker) {
-        return s_collateralToken1;
+    /// @notice Get the collateral token's corresponding to the AMM pool.
+    /// @return collateralToken0 token corresponding to token0 in the AMM.
+    /// @return collateralToken1 token corresponding to token1 in the AMM.
+    function getCollateralTokens()
+        external
+        view
+        returns (CollateralTracker collateralToken0, CollateralTracker collateralToken1)
+    {
+        return (s_collateralToken0, s_collateralToken1);
     }
 
     /// @notice get the number of positions for an account

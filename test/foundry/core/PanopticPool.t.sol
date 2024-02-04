@@ -322,8 +322,7 @@ contract PanopticPoolTest is PositionUtils {
 
         pp = PanopticPoolHarness(address(factory.deployNewPool(token0, token1, fee, 1337)));
 
-        ct0 = pp.collateralToken0();
-        ct1 = pp.collateralToken1();
+        (ct0, ct1) = pp.getCollateralTokens();
     }
 
     function _initAccounts() internal {

@@ -252,8 +252,9 @@ contract PanopticFactoryTest is Test {
         // check factory receives appropriate amount of shares
         // As this is the first deposit supply will be equal to zero
         // shares = supply == 0 ? assets : mulDiv(assets, supply, totalAssets());
-        CollateralTracker collateralToken0 = PanopticPool(preComputedPool).collateralToken0();
-        CollateralTracker collateralToken1 = PanopticPool(preComputedPool).collateralToken1();
+        (CollateralTracker collateralToken0, CollateralTracker collateralToken1) = PanopticPool(
+            preComputedPool
+        ).getCollateralTokens();
     }
 
     // deploy a pool with token0 as WETH

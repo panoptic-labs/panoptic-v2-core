@@ -183,8 +183,7 @@ contract Misctest is Test, PositionUtils {
         token0.mint(Alice, type(uint104).max);
         token1.mint(Alice, type(uint104).max);
 
-        ct0 = pp.collateralToken0();
-        ct1 = pp.collateralToken1();
+        (ct0, ct1) = pp.getCollateralTokens();
 
         console2.log("ct0.totalAssets()", ct0.totalAssets());
 
