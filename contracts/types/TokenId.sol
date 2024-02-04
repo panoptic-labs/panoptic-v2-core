@@ -483,7 +483,6 @@ library TokenId {
                 // now validate this ith leg in the position:
 
                 // The width cannot be 0; the minimum is 1
-                console2.log("real width", self.width(i));
                 if ((self.width(i) == 0)) revert Errors.InvalidTokenIdParameter(5);
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (
