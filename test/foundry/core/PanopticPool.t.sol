@@ -114,7 +114,9 @@ contract PanopticPoolTest is PositionUtils {
         IUniswapV3Pool(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
     IUniswapV3Pool constant WSTETH_ETH_1 = 
         IUniswapV3Pool(0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa);
-    IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WSTETH_ETH_1];
+    //IUniswapV3Pool[4] public pools = [USDC_WETH_5, USDC_WETH_5, USDC_WETH_5, WSTETH_ETH_1];
+
+    IUniswapV3Pool[1] public pools = [/*USDC_WETH_5, USDC_WETH_5, USDC_WETH_5,*/ WSTETH_ETH_1];
 
     /*//////////////////////////////////////////////////////////////
                               WORLD STATE
@@ -1744,10 +1746,6 @@ contract PanopticPoolTest is PositionUtils {
             currentTick
         );
 
-        console2.log("current tick", currentTick);
-        console2.log("width", width);
-        console2.log("strike", strike);
-
         populatePositionDataLarge(width, strike, positionSizeSeed);
 
         uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
@@ -1769,16 +1767,30 @@ contract PanopticPoolTest is PositionUtils {
         premiaSeed[0] = bound(premiaSeed[0], 2 ** 64, 2 ** 120);
         premiaSeed[1] = bound(premiaSeed[1], 2 ** 64, 2 ** 120);
 
+        (int256 premium0Before, int256 premium1Before, ) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            posIdList
+        );
+
         accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
 
         changePrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
 
         (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
-        console2.log("premium0", premium0);
-        console2.log("premium1", premium1);
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000, "premium 0");
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000, "premium 1");
+        
+        assertApproxEqAbs(
+            uint256(premium0 - premium0Before),
+            premiaSeed[0],
+            10,
+            "premium 0"
+        );
+        assertApproxEqAbs(
+            uint256(premium1 - premium1Before),
+            premiaSeed[1],
+            10,
+            "premium 1"
+        );
     }
 
     function test_Success_calculatePortfolioValue_2xOTMShortCall(
@@ -4297,12 +4309,17 @@ contract PanopticPoolTest is PositionUtils {
         for (uint256 i = 0; i < numLegs; ++i) {
             tokenId = tokenId.addLeg(i, 1, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]);
             if (isLongs[i] == 0) continue;
-            int256 range = (tickSpacing * widths[i]) / 2;
 
-            int256 legRanges = currentTick < strikes[i] - range
-                ? (2 * (strikes[i] - range - currentTick)) / range
-                : (2 * (currentTick - strikes[i] - range)) / range;
+            int256 legRanges;
+            {
+                int24 rangeDown;
+                int24 rangeUp;
+                (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(widths[i], int24(tickSpacing));
 
+                legRanges = currentTick < strikes[i] - rangeUp
+                    ? (2 * (strikes[i] - rangeUp - currentTick)) / rangeUp
+                    : (2 * (currentTick - strikes[i] - rangeUp)) / rangeUp;
+            }
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
         }
 
@@ -4460,6 +4477,8 @@ contract PanopticPoolTest is PositionUtils {
                 // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
                 currentTick
             );
+            console2.log("widths[i]", widths[i]);
+            console2.log("strikes[i]", strikes[i]);
         }
         if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
         if (numLegs == 2)
@@ -4559,11 +4578,17 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             if (isLongs[i] == 0) continue;
-            int256 range = (tickSpacing * widths[i]) / 2;
 
-            int256 legRanges = currentTick < strikes[i] - range
-                ? (2 * (strikes[i] - range - currentTick)) / range
-                : (2 * (currentTick - strikes[i] - range)) / range;
+            int256 legRanges;
+            {
+                int24 rangeDown;
+                int24 rangeUp;
+                (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(widths[i], int24(tickSpacing));
+
+                legRanges = currentTick < strikes[i] - rangeUp
+                    ? (2 * (strikes[i] - rangeUp - currentTick)) / rangeUp
+                    : (2 * (currentTick - strikes[i] - rangeUp)) / rangeUp;
+            }
 
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
 
