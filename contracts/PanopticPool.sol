@@ -1027,9 +1027,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
     function liquidate(
         address liquidatee,
-        uint256[] calldata positionIdList,
         uint256[] calldata positionIdListLiquidator,
-        uint256 delegations
+        uint256 delegations,
+        uint256[] calldata positionIdList
     ) external {
         address _liquidatee = liquidatee;
         _validatePositionList(_liquidatee, positionIdList, 0);
@@ -1084,56 +1084,82 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.delegate(msg.sender, _liquidatee, delegations.rightSlot());
         s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
-        // burn all options from the liquidatee
-        (, int24 finalTick, int256 netExchanged, , ) = _burnAllOptionsFrom(
-            _liquidatee,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
-            positionIdList
-        );
+        int256 liquidationBonus0;
+        int256 liquidationBonus1;
+        int24 finalTick;
+        {
+            int256 netExchanged;
+            int256[4][] memory premiasByLeg;
+            // burn all options from the liquidatee
+            (, finalTick, netExchanged, , premiasByLeg) = _burnAllOptionsFrom(
+                _liquidatee,
+                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_V3POOL_TICK,
+                positionIdList
+            );
 
-        // compute bonus amounts using latest tick data
-        (int256 liquidationBonus0, int256 liquidationBonus1) = PanopticMath.getLiquidationBonus(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(twapTick),
-            Math.getSqrtRatioAtTick(finalTick),
-            netExchanged,
-            premia
-        );
+            int256 collateralRemaining;
+            // compute bonus amounts using latest tick data
+            (liquidationBonus0, liquidationBonus1, collateralRemaining) = PanopticMath
+                .getLiquidationBonus(
+                    tokenData0,
+                    tokenData1,
+                    Math.getSqrtRatioAtTick(twapTick),
+                    Math.getSqrtRatioAtTick(finalTick),
+                    netExchanged,
+                    premia
+                );
 
+            // premia cannot be paid if there is protocol loss associated with the liquidatee
+            // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
+            // manipulate the fees in a liquidity area they control past the protocol loss threshold
+            // such that the PLPs are forced to pay out premia to the liquidator
+            // thus, we haircut any premium paid by the liquidatee (converting tokens as necessary) until the protocol loss is covered or the premium is exhausted
+            if (collateralRemaining.rightSlot() < 0 || collateralRemaining.leftSlot() < 0) {
+                (netExchanged, premia) = PanopticMath.haircutPremia(
+                    _liquidatee,
+                    positionIdList,
+                    premiasByLeg,
+                    collateralRemaining,
+                    Math.getSqrtRatioAtTick(finalTick),
+                    s_collateralToken0,
+                    s_collateralToken1,
+                    s_settledTokens
+                );
+                liquidationBonus0 += netExchanged;
+                liquidationBonus1 += premia;
+            }
+        }
+
+        uint256 _delegations = delegations;
         // revoke the delegated amount plus the bonus amount.
-        {
-            s_collateralToken0.revoke(
+        s_collateralToken0.revoke(
+            msg.sender,
+            _liquidatee,
+            uint256(int256(uint256(_delegations.rightSlot())) + liquidationBonus0)
+        );
+        s_collateralToken1.revoke(
+            msg.sender,
+            _liquidatee,
+            uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
+        );
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(msg.sender, positionIdListLiquidator, 0);
+        if (
+            positionIdListLiquidator.length > 0 &&
+            !_checkSolvency(
                 msg.sender,
-                _liquidatee,
-                uint256(int256(uint256(delegations.rightSlot())) + liquidationBonus0)
-            );
-            s_collateralToken1.revoke(
-                msg.sender,
-                _liquidatee,
-                uint256(int256(uint256(delegations.leftSlot())) + liquidationBonus1)
-            );
-        }
-        {
-            // check that the provided positionIdList matches the positions in memory
-            _validatePositionList(msg.sender, positionIdListLiquidator, 0);
-            if (
-                positionIdListLiquidator.length > 0 &&
-                !_checkSolvency(
-                    msg.sender,
-                    positionIdListLiquidator,
-                    finalTick,
-                    finalTick,
-                    BP_DECREASE_BUFFER
-                )
-            ) revert Errors.NotEnoughCollateral();
+                positionIdListLiquidator,
+                finalTick,
+                finalTick,
+                BP_DECREASE_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
 
-            int256 bonusAmounts = int256(0).toRightSlot(int128(liquidationBonus0)).toLeftSlot(
-                int128(liquidationBonus1)
-            );
-            emit AccountLiquidated(msg.sender, _liquidatee, bonusAmounts, finalTick);
-        }
+        int256 bonusAmounts = int256(0).toRightSlot(int128(liquidationBonus0)).toLeftSlot(
+            int128(liquidationBonus1)
+        );
+        emit AccountLiquidated(msg.sender, _liquidatee, bonusAmounts, finalTick);
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a small fee do force exercise.

@@ -533,7 +533,7 @@ library PanopticMath {
         uint160 sqrtPriceX96Final,
         int256 netExchanged,
         int256 premia
-    ) external pure returns (int256 bonus0, int256 bonus1) {
+    ) external pure returns (int256 bonus0, int256 bonus1, int256) {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
@@ -579,45 +579,148 @@ library PanopticMath {
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
             // have to work with before cutting into the liquidator's funds
-            if (paid0 > balance0 && paid1 > balance1) {
+            if (!(paid0 > balance0 && paid1 > balance1)) {
                 // liquidatee cannot pay back the liquidator fully in either token, so no protocol loss can be avoided
-                return (bonus0, bonus1);
-            } else if ((paid0 > balance0)) {
-                // liquidatee has insufficient token0 but some token1 left over, so we use what they have left to mitigate token0 losses
-                // we do this by substituting an equivalent value of token1 in our refund to the liquidator, plus a bonus, for the token0 we convert
-                // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
-                // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token1 balance: balance1 - paid1
-                // and paid0 - balance0 is the amount of token0 that the liquidatee is missing, i.e the protocol loss
-                // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
-                // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
-                // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
-                bonus1 += Math.min(
-                    balance1 - paid1,
-                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
-                );
-                bonus0 -= Math.min(
-                    PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
-                    paid0 - balance0
-                );
-            } else if ((paid1 > balance1)) {
-                // liquidatee has insufficient token1 but some token0 left over, so we use what they have left to mitigate token1 losses
-                // we do this by substituting an equivalent value of token0 in our refund to the liquidator, plus a bonus, for the token1 we convert
-                // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
-                // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token0 balance: balance0 - paid0
-                // and paid1 - balance1 is the amount of token1 that the liquidatee is missing, i.e the protocol loss
-                // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
-                // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
-                // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
-                bonus0 += Math.min(
-                    balance0 - paid0,
-                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
-                );
-                bonus1 -= Math.min(
-                    PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
-                    paid1 - balance1
-                );
+                if ((paid0 > balance0)) {
+                    // liquidatee has insufficient token0 but some token1 left over, so we use what they have left to mitigate token0 losses
+                    // we do this by substituting an equivalent value of token1 in our refund to the liquidator, plus a bonus, for the token0 we convert
+                    // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
+                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token1 balance: balance1 - paid1
+                    // and paid0 - balance0 is the amount of token0 that the liquidatee is missing, i.e the protocol loss
+                    // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                    // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
+                    // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
+                    bonus1 += Math.min(
+                        balance1 - paid1,
+                        PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
+                    );
+                    bonus0 -= Math.min(
+                        PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
+                        paid0 - balance0
+                    );
+                }
+                if ((paid1 > balance1)) {
+                    // liquidatee has insufficient token1 but some token0 left over, so we use what they have left to mitigate token1 losses
+                    // we do this by substituting an equivalent value of token0 in our refund to the liquidator, plus a bonus, for the token1 we convert
+                    // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
+                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token0 balance: balance0 - paid0
+                    // and paid1 - balance1 is the amount of token1 that the liquidatee is missing, i.e the protocol loss
+                    // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                    // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
+                    // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
+                    bonus0 += Math.min(
+                        balance0 - paid0,
+                        PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
+                    );
+                    bonus1 -= Math.min(
+                        PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
+                        paid1 - balance1
+                    );
+                }
+            }
+            return (
+                bonus0,
+                bonus1,
+                int256(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(int128(balance1 - paid1))
+            );
+        }
+    }
+
+    /// @notice haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold
+    function haircutPremia(
+        address liquidatee,
+        uint256[] memory positionIdList,
+        int256[4][] memory premiasByLeg,
+        int256 collateralRemaining,
+        uint160 sqrtPriceX96Final,
+        CollateralTracker collateral0,
+        CollateralTracker collateral1,
+        mapping(bytes32 chunkKey => uint256 settledTokens) storage settledTokens
+    ) external returns (int256, int256) {
+        // get the amount of premium paid by the liquidatee
+        int256 haircut0;
+        int256 haircut1;
+        for (uint256 i = 0; i < positionIdList.length; i++) {
+            uint256 tokenId = positionIdList[i];
+            uint256 numLegs = tokenId.countLegs();
+            for (uint256 leg = 0; leg < numLegs; ++leg) {
+                if (tokenId.isLong(leg) == 1) {
+                    haircut0 += -premiasByLeg[i][leg].rightSlot();
+                    haircut1 += -premiasByLeg[i][leg].leftSlot();
+                }
             }
         }
+
+        // It's possible for there to be a (dust) surplus of one token if it converts to <1 unit of the other token
+        int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
+        int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
+
+        // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
+        haircut0 = Math.min(collateralRemaining.rightSlot(), haircut0);
+        haircut1 = Math.min(collateralRemaining.leftSlot(), haircut1);
+
+        // if the premium in the same token is not enough to cover the loss, the liquidator will provide the tokens
+        // (reflected in the bonus amount) & receive compensation in the other token (provided there is a surplus of premium in that token)
+        if (haircut0 < collateralDelta0 && haircut1 > collateralDelta1) {
+            (collateralDelta0, collateralDelta1) = (
+                -Math.min(
+                    collateralDelta0 - haircut0,
+                    PanopticMath.convert1to0(haircut1 - collateralDelta1, sqrtPriceX96Final)
+                ),
+                Math.min(
+                    haircut1 - collateralDelta1,
+                    PanopticMath.convert0to1(collateralDelta0 - haircut0, sqrtPriceX96Final)
+                )
+            );
+
+            haircut1 += collateralDelta1;
+        } else if (haircut1 < collateralDelta1 && haircut0 > collateralDelta0) {
+            (collateralDelta0, collateralDelta1) = (
+                -Math.min(
+                    collateralDelta0 - haircut0,
+                    PanopticMath.convert1to0(haircut1 - collateralDelta1, sqrtPriceX96Final)
+                ),
+                Math.min(
+                    haircut1 - collateralDelta1,
+                    PanopticMath.convert0to1(collateralDelta0 - haircut0, sqrtPriceX96Final)
+                )
+            );
+
+            haircut0 += collateralDelta0;
+        } else {
+            collateralDelta0 = 0;
+            collateralDelta1 = 0;
+        }
+
+        collateral0.exercise(liquidatee, 0, 0, 0, int128(-haircut0));
+        collateral1.exercise(liquidatee, 0, 0, 0, int128(-haircut1));
+
+        for (uint256 i = 0; i < positionIdList.length; i++) {
+            int256[4][] memory _premiasByLeg = premiasByLeg;
+            uint256 tokenId = positionIdList[i];
+            for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                if (tokenId.isLong(leg) == 1) {
+                    bytes32 chunkKey = keccak256(
+                        abi.encodePacked(tokenId.strike(0), tokenId.width(0), tokenId.tokenType(0))
+                    );
+                    int128 revoked0 = int128(
+                        Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0)
+                    );
+                    int128 revoked1 = int128(Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1));
+
+                    haircut0 -= revoked0;
+                    haircut1 -= revoked1;
+
+                    settledTokens[chunkKey] = uint256(
+                        int256(settledTokens[chunkKey]).sub(
+                            int256(0).toRightSlot(revoked0).toLeftSlot(revoked1)
+                        )
+                    );
+                }
+            }
+        }
+
+        return (collateralDelta0, collateralDelta0);
     }
 
     /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.

@@ -5656,9 +5656,9 @@ contract PanopticPoolTest is PositionUtils {
 
         pp.liquidate(
             Alice,
-            $posIdLists[1],
             new uint256[](0),
-            uint256(type(uint96).max).toLeftSlot(type(uint96).max)
+            uint256(type(uint96).max).toLeftSlot(type(uint96).max),
+            $posIdLists[1]
         );
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
@@ -5725,7 +5725,7 @@ contract PanopticPoolTest is PositionUtils {
                         ) -
                         $combinedBalance0
                 ),
-                "liquidatee was debited incorrecty high bonus value (no funds leftover)"
+                "liquidatee was debited incorrectly high bonus value (no funds leftover)"
             );
         }
         assertApproxEqAbs(
@@ -5817,7 +5817,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId2;
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList, new uint256[](0), 0);
+        pp.liquidate(Alice, new uint256[](0), 0, posIdList);
     }
 
     function test_Fail_liquidate_validatePositionIdListLiquidator(
@@ -5863,7 +5863,7 @@ contract PanopticPoolTest is PositionUtils {
         editCollateral(ct1, Alice, 0);
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList, new uint256[](0), 0);
+        pp.liquidate(Alice, new uint256[](0), 0, posIdList);
     }
 
     function test_Fail_liquidate_StaleTWAP(uint256 x, int256 tickDeltaSeed) public {
@@ -5887,7 +5887,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.expectRevert(Errors.StaleTWAP.selector);
-        pp.liquidate(Alice, new uint256[](0), new uint256[](0), 0);
+        pp.liquidate(Alice, new uint256[](0), 0, new uint256[](0));
     }
 
     function test_Fail_liquidate_NotMarginCalled(
@@ -6031,6 +6031,6 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Bob);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
-        pp.liquidate(Alice, $posIdLists[1], new uint256[](0), 0);
+        pp.liquidate(Alice, new uint256[](0), 0, $posIdLists[1]);
     }
 }
