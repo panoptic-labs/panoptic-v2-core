@@ -508,7 +508,8 @@ library TokenId {
 
                     // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
                     // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
-                    if ((isLong != isLongP) && (tokenType != tokenTypeP))
+                    // unlike short stranlges, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
+                    if (((isLong != isLongP) || isLong == 1) && (tokenType != tokenTypeP))
                         revert Errors.InvalidTokenIdParameter(5);
                 }
             } // end for loop over legs
