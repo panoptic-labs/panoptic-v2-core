@@ -2,6 +2,8 @@
 pragma solidity ^0.8.0;
 
 // Interfaces
+import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -11,7 +13,6 @@ import {Math} from "@libraries/Math.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -513,6 +514,85 @@ library PanopticMath {
         }
     }
 
+    /// @notice Compute the premia collected for a single option position 'tokenId'.
+    /// @param tokenId The option position.
+    /// @param positionSize The number of contracts (size) of the option position.
+    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false).
+    /// @param atTick The tick at which the premia is calculated -> use (atTick < type(int24).max) to compute it
+    /// up to current block. atTick = type(int24).max will only consider fees as of the last on-chain transaction.
+    function getPremia(
+        bool computeAllPremia,
+        SemiFungiblePositionManager sfpm,
+        address univ3pool,
+        mapping(uint256 => uint256) storage accumulatorLastByLeg,
+        int24 tickSpacing,
+        int24 atTick,
+        uint256 tokenId,
+        uint128 positionSize
+    )
+        external
+        view
+        returns (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulatorsByLeg)
+    {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ) {
+            uint256 isLong = tokenId.isLong(leg);
+            if ((isLong == 1) || computeAllPremia) {
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize,
+                    tickSpacing
+                );
+
+                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = sfpm
+                    .getAccountPremium(
+                        address(univ3pool),
+                        address(this),
+                        tokenId.tokenType(leg),
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        atTick,
+                        isLong
+                    );
+
+                unchecked {
+                    uint256 premiumAccumulatorLast = accumulatorLastByLeg[leg];
+
+                    // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
+                    // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
+                    // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
+                    premiaByLeg[leg] = int256(0)
+                        .toRightSlot(
+                            int128(
+                                int256(
+                                    ((premiumAccumulatorsByLeg[leg][0] -
+                                        premiumAccumulatorLast.rightSlot()) *
+                                        (liquidityChunk.liquidity())) / 2 ** 64
+                                )
+                            )
+                        )
+                        .toLeftSlot(
+                            int128(
+                                int256(
+                                    ((premiumAccumulatorsByLeg[leg][1] -
+                                        premiumAccumulatorLast.leftSlot()) *
+                                        (liquidityChunk.liquidity())) / 2 ** 64
+                                )
+                            )
+                        );
+
+                    if (isLong == 1) {
+                        premiaByLeg[leg] = -premiaByLeg[leg];
+                    }
+                }
+            }
+            unchecked {
+                ++leg;
+            }
+        }
+    }
+
     /*//////////////////////////////////////////////////////////////
                        REVOKE/REFUND COMPUTATIONS
     //////////////////////////////////////////////////////////////*/
@@ -618,6 +698,10 @@ library PanopticMath {
                     );
                 }
             }
+
+            paid0 = bonus0 + int256(netExchanged.rightSlot());
+            paid1 = bonus1 + int256(netExchanged.leftSlot());
+
             return (
                 bonus0,
                 bonus1,
@@ -626,7 +710,18 @@ library PanopticMath {
         }
     }
 
-    /// @notice haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold
+    /// @notice haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
+    /// @dev note that the storage mapping provided as the `settledTokens` parameter WILL be modified on the caller by this function
+    /// @param liquidatee the address of the user being liquidated
+    /// @param positionIdList the list of position ids being liquidated
+    /// @param premiasByLeg the premium paid (or received) by the liquidatee for each leg of each position
+    /// @param collateralRemaining the remaining collateral after the liquidation (negative if protocol loss)
+    /// @param sqrtPriceX96Final the sqrt price at which to convert between token0/token1 when awarding the bonus
+    /// @param collateral0 the collateral tracker for token0
+    /// @param collateral1 the collateral tracker for token1
+    /// @param settledTokens per-chunk accumulator of settled tokens from which to subtract the haircut premium
+    /// @return bonusDelta0 the change in bonus0 for the liquidator
+    /// @return bonusDelta1 the change in bonus1 for the liquidator
     function haircutPremia(
         address liquidatee,
         uint256[] memory positionIdList,
@@ -659,8 +754,8 @@ library PanopticMath {
         haircut0 = Math.min(collateralRemaining.rightSlot(), haircut0);
         haircut1 = Math.min(collateralRemaining.leftSlot(), haircut1);
 
-        // if the premium in the same token is not enough to cover the loss, the liquidator will provide the tokens
-        // (reflected in the bonus amount) & receive compensation in the other token (provided there is a surplus of premium in that token)
+        // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
+        // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
         if (haircut0 < collateralDelta0 && haircut1 > collateralDelta1) {
             (collateralDelta0, collateralDelta1) = (
                 -Math.min(

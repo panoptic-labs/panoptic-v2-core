@@ -415,6 +415,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         balances = new uint256[2][](pLength);
 
         address c_user = user;
+        int24 tickSpacing = s_tickSpacing;
         // loop through each option position/tokenId
         for (uint256 k = 0; k < pLength; ) {
             uint256 tokenId = positionIdList[k];
@@ -432,7 +433,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         balances[k][1].rightSlot(),
                         c_user,
                         computeAllPremia,
-                        atTick
+                        atTick,
+                        tickSpacing
                     );
 
                 uint256 numLegs = tokenId.countLegs();
@@ -602,7 +604,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // do duplicate checks and the checks related to minting and positions
         _validatePositionList(msg.sender, positionIdList, 1);
-        _doMintChecks(tokenId);
+
+        // make sure the tokenId is for this Panoptic pool
+        if (tokenId.univ3pool() != sfpm.getPoolId(address(s_univ3pool)))
+            revert Errors.InvalidTokenIdParameter(0);
+        // disallow user to mint exact same position
+        // in order to do it, user should burn it first and then mint
+        if (s_positionBalance[msg.sender][tokenId] != 0) revert Errors.PositionAlreadyMinted();
 
         uint256 tickStateCallContext;
         {
@@ -638,7 +646,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // update the users options balance of position 'tokenId'
         // note: user can't mint same position multiple times, so set the positionSize instead of adding
-        _setUserOptionsBalance(msg.sender, tokenId, positionSize, poolUtilizations);
+        s_positionBalance[msg.sender][tokenId] = uint256(0)
+            .toLeftSlot(poolUtilizations)
+            .toRightSlot(positionSize);
 
         if (
             !_checkSolvency(
@@ -791,34 +801,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Set a new option balance for user of option position 'tokenId'.
-    /// @param user The user/account to update the balance of.
-    /// @param tokenId The option position in question.
-    /// @param positionSize The size of the option position in 'tokenId' owned by '_user'.
-    /// @param poolUtilizationAtMint The pool utilization ratio when the original position was minted.
-    function _setUserOptionsBalance(
-        address user,
-        uint256 tokenId,
-        uint128 positionSize,
-        uint128 poolUtilizationAtMint
-    ) internal {
-        s_positionBalance[user][tokenId] = uint256(0).toLeftSlot(poolUtilizationAtMint).toRightSlot(
-            positionSize
-        );
-    }
-
-    /// @notice Validate the incoming list of positions for the user as it relates to minting.
-    /// @dev reverts If the validation fails.
-    /// @param mintTokenId The candidate option position to validate.
-    function _doMintChecks(uint256 mintTokenId) internal view {
-        // make sure the tokenId is for this Panoptic pool
-        if (mintTokenId.univ3pool() != sfpm.getPoolId(address(s_univ3pool)))
-            revert Errors.InvalidTokenIdParameter(0);
-        // disallow user to mint exact same position
-        // in order to do it, user should burn it first and then mint
-        if (s_positionBalance[msg.sender][mintTokenId] != 0) revert Errors.PositionAlreadyMinted();
-    }
-
     /*//////////////////////////////////////////////////////////////
                          POSITION BURNING LOGIC
     //////////////////////////////////////////////////////////////*/
@@ -897,11 +879,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // burn position and do exercise checks
         (premiaOwed, premiaByLeg, newTick, paidAmounts) = _burnAndHandleExercise(
+            tickLimitLow,
+            tickLimitHigh,
             tokenId,
             positionSize,
-            owner,
-            tickLimitLow,
-            tickLimitHigh
+            owner
         );
 
         // erase position data
@@ -941,11 +923,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @param owner The owner of the option position.
     function _burnAndHandleExercise(
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
         uint256 tokenId,
         uint128 positionSize,
-        address owner,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
+        address owner
     )
         internal
         returns (
@@ -971,20 +953,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 shortAmounts;
         {
             int24 tickSpacing = s_tickSpacing;
-            uint256 _tokenId = tokenId;
-            uint128 _positionSize = positionSize;
             (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
                 owner,
-                _tokenId,
+                tokenId,
                 collectedByLeg,
-                _positionSize,
+                positionSize,
                 tickSpacing
             );
 
             // compute option amounts if exercise was necessary
             (longAmounts, shortAmounts) = PanopticMath.computeExercisedAmounts(
-                _tokenId,
-                _positionSize,
+                tokenId,
+                positionSize,
                 tickSpacing
             );
         }
@@ -1126,8 +1106,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     s_collateralToken1,
                     s_settledTokens
                 );
-                liquidationBonus0 += netExchanged;
-                liquidationBonus1 += premia;
+
+                unchecked {
+                    liquidationBonus0 += netExchanged;
+                    liquidationBonus1 += premia;
+                }
             }
         }
 
@@ -1143,10 +1126,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             _liquidatee,
             uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
         );
+
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, positionIdListLiquidator, 0);
+
         if (
-            positionIdListLiquidator.length > 0 &&
             !_checkSolvency(
                 msg.sender,
                 positionIdListLiquidator,
@@ -1159,6 +1143,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 bonusAmounts = int256(0).toRightSlot(int128(liquidationBonus0)).toLeftSlot(
             int128(liquidationBonus1)
         );
+
         emit AccountLiquidated(msg.sender, _liquidatee, bonusAmounts, finalTick);
     }
 
@@ -1245,17 +1230,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_collateralToken1
         );
 
-        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-        s_collateralToken0.refund(
-            account,
-            msg.sender,
-            refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
-        );
-        s_collateralToken1.refund(
-            account,
-            msg.sender,
-            refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
-        );
+        unchecked {
+            // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
+            s_collateralToken0.refund(
+                account,
+                msg.sender,
+                refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
+            );
+            s_collateralToken1.refund(
+                account,
+                msg.sender,
+                refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
+            );
+        }
 
         // refund the protocol any virtual shares after settling the difference with the exercisor
         s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
@@ -1267,10 +1254,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisee's position list and assert their solvency
         _validatePositionList(account, positionIdListExercisee, 0);
 
-        if (
-            positionIdListExercisee.length > 0 &&
-            !_checkSolvency(account, positionIdListExercisee, currentTick, twapTick, NO_BUFFER)
-        ) revert Errors.ExerciseeNotSolvent();
+        if (!_checkSolvency(account, positionIdListExercisee, currentTick, twapTick, NO_BUFFER))
+            revert Errors.ExerciseeNotSolvent();
 
         // the exercisor's position list is validated above
         // we need to assert their solvency against their collateral requirement plus a buffer
@@ -1337,7 +1322,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             Math.getSqrtRatioAtTick(atTick)
         );
 
-        return balanceCross > (thresholdCross * buffer) / 10_000;
+        unchecked {
+            return balanceCross > (thresholdCross * buffer) / 10_000;
+        }
     }
 
     /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
@@ -1575,7 +1562,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 netLiquidity = accountLiquidities.rightSlot();
         uint128 totalLiquidity = accountLiquidities.leftSlot();
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
-        if ((totalLiquidity == 0) && (netLiquidity == 0)) return;
+        if (netLiquidity == 0) return;
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
@@ -1600,7 +1587,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize,
         address owner,
         bool computeAllPremia,
-        int24 atTick
+        int24 atTick,
+        int24 tickSpacing
     )
         internal
         view
@@ -1614,7 +1602,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenId,
                     leg,
                     positionSize,
-                    s_tickSpacing
+                    tickSpacing
                 );
                 uint256 tokenType = tokenId.tokenType(leg);
 
@@ -1991,7 +1979,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionSize,
             owner,
             COMPUTE_ALL_PREMIA,
-            type(int24).max
+            type(int24).max,
+            tickSpacing
         );
 
         uint256 numLegs = tokenId.countLegs();
