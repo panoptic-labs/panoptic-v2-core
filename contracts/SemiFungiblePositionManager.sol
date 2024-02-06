@@ -1424,6 +1424,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper)
         );
 
+        uint256 acctPremia;
+
         // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
         if (atTick < type(int24).max) {
             // unique key to identify the liquidity chunk in this uniswap pool
@@ -1465,20 +1467,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     premiumGross
                 );
 
-                return (
-                    isLong == 1
-                        ? (premiumOwed.rightSlot(), premiumOwed.leftSlot())
-                        : (premiumGross.rightSlot(), premiumGross.leftSlot())
-                );
+                acctPremia = isLong == 1 ? premiumOwed : premiumGross;
             }
         } else {
             // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
-            uint256 acctPremia = isLong == 1
+            acctPremia = isLong == 1
                 ? s_accountPremiumOwed[positionKey]
                 : s_accountPremiumGross[positionKey];
-
-            return (acctPremia.rightSlot(), acctPremia.leftSlot());
         }
+        return (acctPremia.rightSlot(), acctPremia.leftSlot());
     }
 
     /// @notice Return the feesBase associated with a given position.
