@@ -1689,11 +1689,6 @@ contract PanopticPoolTest is PositionUtils {
         premiaSeed[0] = bound(premiaSeed[0], 2 ** 64, 2 ** 120);
         premiaSeed[1] = bound(premiaSeed[1], 2 ** 64, 2 ** 120);
 
-        (int256 premium0Before, int256 premium1Before, ) = pp.calculateAccumulatedFeesBatch(
-            Alice,
-            posIdList
-        );
-
         accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
 
         changePrank(address(sfpm));
