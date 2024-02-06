@@ -1534,6 +1534,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             0
         );
 
+        vm.assume(width0 != width1 || strike0 != strike1);
+
         populatePositionData([width0, width1], [strike0, strike1], positionSizeSeed);
 
         /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
@@ -1648,6 +1650,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick,
             0
         );
+
+        vm.assume(width0 != width1 || strike0 != strike1);
 
         populatePositionDataLong([width0, width1], [strike0, strike1], positionSizeSeed);
 

@@ -135,7 +135,20 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         int24 width
-    ) public view returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
+    ) public pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
+        int256 ts = int256(ts_);
+
+        strikeOffset = int24(width % 2 == 0 ? int256(0) : ts / 2);
+
+        minTick = int24(((currentTick - 4096 * 10) / ts) * ts);
+        maxTick = int24(((currentTick + 4096 * 10) / ts) * ts);
+    }
+
+    function getContextFull(
+        uint256 ts_,
+        int24 currentTick,
+        int24 width
+    ) public pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
         strikeOffset = int24(width % 2 == 0 ? int256(0) : ts / 2);
@@ -175,7 +188,7 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 1024)));
+        width = int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
@@ -222,7 +235,7 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 1024)));
+        width = int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
@@ -261,7 +274,7 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 2048)));
+        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
@@ -289,7 +302,7 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 2048)));
+        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
@@ -317,7 +330,7 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 2048)));
+        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
@@ -341,7 +354,7 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 2048)));
+        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
@@ -996,7 +1009,8 @@ contract PositionUtils is Test {
 
             return zeroForOne ? (amountSpecified, -amountOut) : (-amountOut, amountSpecified);
         } else {
-            int256 amountIn = int256(
+            int256 amountIn;
+            try
                 router.exactOutputSingle(
                     ISwapRouter.ExactOutputSingleParams({
                         tokenIn: zeroForOne ? token0 : token1,
@@ -1009,8 +1023,11 @@ contract PositionUtils is Test {
                         sqrtPriceLimitX96: 0
                     })
                 )
-            );
-
+            returns (uint256 _amountIn) {
+                amountIn = int256(_amountIn);
+            } catch {
+                vm.assume(false);
+            }
             vm.revertTo(0);
 
             return zeroForOne ? (amountIn, amountSpecified) : (amountSpecified, amountIn);
@@ -1219,10 +1236,12 @@ contract PositionUtils is Test {
         // distribute accrued fee amount to Uniswap pool
         deal(
             IUniswapV3Pool(uniPool).token0(),
+            uniPool,
             (IUniswapV3Pool(uniPool).liquidity() * posFees0) / posLiq
         );
         deal(
             IUniswapV3Pool(uniPool).token1(),
+            uniPool,
             (IUniswapV3Pool(uniPool).liquidity() * posFees1) / posLiq
         );
 

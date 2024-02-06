@@ -2012,7 +2012,7 @@ contract TokenIdTest is Test, PositionUtils {
                 int24 oneSidedRange = (width * tickSpacing) / 2;
 
                 (int24 strikeOffset, int24 minStrikeTick, int24 maxStrikeTick) = PositionUtils
-                    .getContext(uint256(uint24(tickSpacing)), currentTick, width);
+                    .getContextFull(uint256(uint24(tickSpacing)), currentTick, width);
 
                 int24 lowerBound = int24(minStrikeTick + oneSidedRange - strikeOffset);
                 int24 upperBound = int24(maxStrikeTick - oneSidedRange - strikeOffset);
