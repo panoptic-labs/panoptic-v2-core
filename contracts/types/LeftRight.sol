@@ -13,6 +13,7 @@ import {Math} from "@libraries/Math.sol";
 /// @notice higher-order bits are cut off. For example: uint32 a = 0x12345678; uint16 b = uint16(a); // b will be 0x5678 now
 library LeftRight {
     using LeftRight for uint256;
+    using Math for uint256;
     using LeftRight for int256;
     uint256 internal constant LEFT_HALF_BIT_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
@@ -295,17 +296,35 @@ library LeftRight {
         }
     }
 
-    /// @notice Adds two leftRights, allowing overflow to occur within slots without leaking into the other slot
-    /// @param x the augend
-    /// @param y the addend
+    /// @notice Adds two sets of leftRights, freezing both right slots if either overflows, and vice versa
+    /// @dev Used for linked accumulators, so if the accumulator for one side overflows for a token, both cease to accumulate
+    /// @param x the first augend
+    /// @param dx the addend for x
+    /// @param y the second augend
+    /// @param dy the addend for y
     /// @return z the sum x + y
-    function addUnchecked(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        unchecked {
-            return
-                z.toRightSlot(x.rightSlot() + y.rightSlot()).toLeftSlot(
-                    x.leftSlot() + y.leftSlot()
-                );
-        }
+    function addCapped(
+        uint256 x,
+        uint256 dx,
+        uint256 y,
+        uint256 dy
+    ) internal pure returns (uint256, uint256) {
+        uint128 z_xR = (uint256(x.rightSlot()) + dx.rightSlot()).toUint128Capped();
+        uint128 z_xL = (uint256(x.leftSlot()) + dx.leftSlot()).toUint128Capped();
+        uint128 z_yR = (uint256(y.rightSlot()) + dy.rightSlot()).toUint128Capped();
+        uint128 z_yL = (uint256(y.leftSlot()) + dy.leftSlot()).toUint128Capped();
+
+        bool r_Enabled = !(z_xR == type(uint128).max || z_yR == type(uint128).max);
+        bool l_Enabled = !(z_xL == type(uint128).max || z_yL == type(uint128).max);
+
+        return (
+            uint256(0).toRightSlot(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
+                l_Enabled ? z_xL : x.leftSlot()
+            ),
+            uint256(0).toRightSlot(r_Enabled ? z_yR : y.rightSlot()).toLeftSlot(
+                l_Enabled ? z_yL : y.leftSlot()
+            )
+        );
     }
 
     /// @notice Multiply two int256 bit LeftRight-encoded words; revert on overflow.

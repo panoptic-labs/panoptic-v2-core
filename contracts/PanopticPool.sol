@@ -123,6 +123,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev 'COMPUTE_LONG_PREMIA' calculates premia for only the long legs of a position
     bool internal constant COMPUTE_LONG_PREMIA = false;
 
+    /// @dev Only include the share of (settled) premium that is available to collect when calling `_calculateAccumulatedPremia`
+    bool internal ONLY_AVAILABLE_PREMIUM = false;
+
     /// @dev Boolean flag to determine wether a position is added (true) or not (!ADD = false)
     bool internal constant ADD = true;
 
@@ -138,7 +141,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // The minimum amount of time, in seconds, permitted between mini/median TWAP updates.
     uint256 internal constant MEDIAN_PERIOD = 60;
 
-    /// @dev The maximum allowed ratio for a single chunk, defined as: shortLiquidity / netLiquidity
+    /// @dev The maximum allowed ratio for a single chunk, defined as: totalLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
@@ -219,6 +222,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index)
     mapping(address account => mapping(uint256 tokenId => mapping(uint256 leg => uint256 premiaGrowth)))
         internal s_options;
+
+    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`
+    /// totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
+    /// Used to compute the denominator for the fraction of premium available to sellers to collect
+    /// LeftRight - right slot is token0, left slot is token1
+    mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
+
+    /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
+    /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
+    /// It decreases when sellers close positions and collect the premium they are owed
+    /// LeftRight - right slot is token0, left slot is token1
+    mapping(bytes32 chunkKey => uint256 settledTokens) internal s_settledTokens;
 
     /// @dev Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot)
     ///    poolUtilizations when minted (left)    liquidity=ERC1155 balance (right)
@@ -336,11 +351,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Can be costly as it reads information from 2 ticks for each leg of each tokenId.
     /// @param user Address of the user that owns the positions.
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...].
+    /// @param includePendingPremium true = include premium that is owed to the user but has not yet settled, false = only include premium that is available to collect.
     /// @return premium0 Premium for token0 (negative = amount is owed).
     /// @return premium1 Premium for token1 (negative = amount is owed).
     /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...].
     function calculateAccumulatedFeesBatch(
         address user,
+        bool includePendingPremium,
         uint256[] calldata positionIdList
     ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
@@ -351,6 +368,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             user,
             positionIdList,
             COMPUTE_ALL_PREMIA,
+            includePendingPremium,
             currentTick
         );
 
@@ -383,41 +401,72 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param user The holder of options.
     /// @param positionIdList The list of all option positions held by user.
     /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false).
+    /// @param includePendingPremium true = include premium that is owed to the user but has not yet settled, false = only include premium that is available to collect.
     /// @return portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot.
     /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...].
     function _calculateAccumulatedPremia(
         address user,
         uint256[] calldata positionIdList,
         bool computeAllPremia,
+        bool includePendingPremium,
         int24 atTick
     ) internal view returns (int256 portfolioPremium, uint256[2][] memory balances) {
         uint256 pLength = positionIdList.length;
         balances = new uint256[2][](pLength);
 
         address c_user = user;
+        int24 tickSpacing = s_tickSpacing;
         // loop through each option position/tokenId
         for (uint256 k = 0; k < pLength; ) {
             uint256 tokenId = positionIdList[k];
-            // extract position size
-            uint256 utilizationAndPositionSize = s_positionBalance[c_user][tokenId];
-            balances[k][0] = tokenId;
-            balances[k][1] = utilizationAndPositionSize;
-            uint128 positionSize = utilizationAndPositionSize.rightSlot();
-            // if position exists, then compute premia for that position
-            if (positionSize != 0) {
-                // increment the allPositionsPremia accumulator
-                int256 positionPremia = _getPremia(
-                    tokenId,
-                    positionSize,
-                    c_user,
-                    computeAllPremia,
-                    atTick
-                );
-                portfolioPremium = portfolioPremium.add(positionPremia);
-            }
 
-            unchecked {
-                ++k;
+            balances[k][0] = tokenId;
+            balances[k][1] = s_positionBalance[c_user][tokenId];
+            // if position exists, then compute premia for that position
+            if (balances[k][1].rightSlot() != 0) {
+                // increment the allPositionsPremia accumulator
+                (
+                    int256[4] memory premiaByLeg,
+                    uint256[2][4] memory premiumAccumulatorsByLeg
+                ) = _getPremia(
+                        tokenId,
+                        balances[k][1].rightSlot(),
+                        c_user,
+                        computeAllPremia,
+                        atTick,
+                        tickSpacing
+                    );
+
+                uint256 numLegs = tokenId.countLegs();
+                for (uint256 leg = 0; leg < numLegs; ) {
+                    if (premiaByLeg[leg] > 0 && !includePendingPremium) {
+                        bytes32 chunkKey = keccak256(
+                            abi.encodePacked(
+                                tokenId.strike(leg),
+                                tokenId.width(leg),
+                                tokenId.tokenType(leg)
+                            )
+                        );
+
+                        uint256 availablePremium = _getAvailablePremium(
+                            _getTotalLiquidity(tokenId, leg, s_tickSpacing),
+                            s_settledTokens[chunkKey],
+                            s_grossPremiumLast[chunkKey],
+                            uint256(premiaByLeg[leg]),
+                            premiumAccumulatorsByLeg[leg]
+                        );
+                        portfolioPremium = portfolioPremium.add(int256(availablePremium));
+                    } else {
+                        portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
+                    }
+                    unchecked {
+                        ++leg;
+                    }
+                }
+
+                unchecked {
+                    ++k;
+                }
             }
         }
         return (portfolioPremium, balances);
@@ -459,7 +508,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position.
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position.
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     /// @param tickLimitLow The lower tick slippagelimit.
     /// @param tickLimitHigh The upper tick slippagelimit.
@@ -491,7 +540,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, ) = _burnOptions(
+        (int24 medianTick, int24 newTick, , , ) = _burnOptions(
             tokenId,
             msg.sender,
             tickLimitLow,
@@ -516,7 +565,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, ) = _burnAllOptionsFrom(
+        (int24 medianTick, int24 newTick, , , ) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,
@@ -536,7 +585,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position.
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position.
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     /// @param tickLimitLow The lower tick slippagelimit.
     /// @param tickLimitHigh The upper tick slippagelimit.
@@ -555,7 +604,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // do duplicate checks and the checks related to minting and positions
         _validatePositionList(msg.sender, positionIdList, 1);
-        _doMintChecks(tokenId);
+
+        // make sure the tokenId is for this Panoptic pool
+        if (tokenId.univ3pool() != sfpm.getPoolId(address(s_univ3pool)))
+            revert Errors.InvalidTokenIdParameter(0);
+        // disallow user to mint exact same position
+        // in order to do it, user should burn it first and then mint
+        if (s_positionBalance[msg.sender][tokenId] != 0) revert Errors.PositionAlreadyMinted();
 
         uint256 tickStateCallContext;
         {
@@ -580,7 +635,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenId,
             tickStateCallContext,
             positionSize,
-            positionIdList,
             tickLimitLow,
             tickLimitHigh
         );
@@ -592,7 +646,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // update the users options balance of position 'tokenId'
         // note: user can't mint same position multiple times, so set the positionSize instead of adding
-        _setUserOptionsBalance(msg.sender, tokenId, positionSize, poolUtilizations);
+        s_positionBalance[msg.sender][tokenId] = uint256(0)
+            .toLeftSlot(poolUtilizations)
+            .toRightSlot(positionSize);
 
         if (
             !_checkSolvency(
@@ -618,7 +674,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position to be minted.
     /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param positionSize The size of the position, expressed in terms of the asset.
-    /// @param positionIdList The existing positions held by the user.
     /// @param tickLimitLow The lower slippage limit on the tick.
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
@@ -627,18 +682,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tokenId,
         uint256 tickStateCallContext,
         uint128 positionSize,
-        uint256[] calldata positionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128 poolUtilizations, int24) {
         // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
         // Switch order of tickLimits to create "swapAtMint" flag
-        (, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            tickLimitHigh,
-            tickLimitLow
-        );
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm
+            .mintTokenizedPosition(tokenId, positionSize, tickLimitHigh, tickLimitLow);
+
+        // cache tickSpacing
+        int24 tickSpacing = s_tickSpacing;
+
+        // update premium settlement info
+        _updateSettlementPostMint(tokenId, collectedByLeg, positionSize, tickSpacing);
 
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
@@ -646,7 +702,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickStateCallContext.updateCurrentTick(newTick),
             tokenId,
             positionSize,
-            totalSwapped
+            totalSwapped,
+            tickSpacing
         );
 
         return (poolUtilizations, newTick);
@@ -658,6 +715,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped How much was swapped (if in-the-money position).
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
     /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
@@ -665,13 +723,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tickStateCallContext,
         uint256 tokenId,
         uint128 positionSize,
-        int256 totalSwapped
+        int256 totalSwapped,
+        int24 tickSpacing
     ) internal returns (uint128) {
         // compute how much of tokenId is long and short positions
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
             positionSize,
-            s_tickSpacing
+            tickSpacing
         );
 
         int128 utilization0 = s_collateralToken0.takeCommissionAddData(
@@ -696,7 +755,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Store user option data. Track fees collected for the options.
     /// @dev Computes and stores the option data for each leg.
     /// @param mintTokenId The id of the minted option position.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     function _addUserOption(uint256 mintTokenId, uint64 effectiveLiquidityLimitX32) internal {
         // Update the position list hash (hash = XOR of all keccak256(tokenId)). Remove hash by XOR'ing again
@@ -742,34 +801,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Set a new option balance for user of option position 'tokenId'.
-    /// @param user The user/account to update the balance of.
-    /// @param tokenId The option position in question.
-    /// @param positionSize The size of the option position in 'tokenId' owned by '_user'.
-    /// @param poolUtilizationAtMint The pool utilization ratio when the original position was minted.
-    function _setUserOptionsBalance(
-        address user,
-        uint256 tokenId,
-        uint128 positionSize,
-        uint128 poolUtilizationAtMint
-    ) internal {
-        s_positionBalance[user][tokenId] = uint256(0).toLeftSlot(poolUtilizationAtMint).toRightSlot(
-            positionSize
-        );
-    }
-
-    /// @notice Validate the incoming list of positions for the user as it relates to minting.
-    /// @dev reverts If the validation fails.
-    /// @param mintTokenId The candidate option position to validate.
-    function _doMintChecks(uint256 mintTokenId) internal view {
-        // make sure the tokenId is for this Panoptic pool
-        if (mintTokenId.univ3pool() != sfpm.getPoolId(address(s_univ3pool)))
-            revert Errors.InvalidTokenIdParameter(0);
-        // disallow user to mint exact same position
-        // in order to do it, user should burn it first and then mint
-        if (s_positionBalance[msg.sender][mintTokenId] != 0) revert Errors.PositionAlreadyMinted();
-    }
-
     /*//////////////////////////////////////////////////////////////
                          POSITION BURNING LOGIC
     //////////////////////////////////////////////////////////////*/
@@ -784,15 +815,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint256[] calldata positionIdList
-    ) internal returns (int24 medianTick, int24 newTick, int256 netPaid) {
-        int256 paidAmounts;
+    )
+        internal
+        returns (
+            int24 medianTick,
+            int24 newTick,
+            int256 netPaid,
+            int256 premiasOwed,
+            int256[4][] memory premiasByLeg
+        )
+    {
+        premiasByLeg = new int256[4][](positionIdList.length);
         for (uint256 i = 0; i < positionIdList.length; ) {
-            (medianTick, newTick, paidAmounts) = _burnOptions(
+            int256 paidAmounts;
+            int256 premiaOwed;
+            (medianTick, newTick, paidAmounts, premiaOwed, premiasByLeg[i]) = _burnOptions(
                 positionIdList[i],
                 owner,
                 tickLimitLow,
                 tickLimitHigh
             );
+            premiaOwed = premiasOwed.add(premiaOwed);
             netPaid = netPaid.add(paidAmounts);
             unchecked {
                 ++i;
@@ -808,12 +851,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return medianTick the median tick for that pool
     /// @return newTick the final tick after all positions have been closed
     /// @return paidAmounts The amount of tokens paid when closing the option
+    /// @return premiaOwed The amount of premia owed to the user
+    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _burnOptions(
         uint256 tokenId,
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (int24 medianTick, int24 newTick, int256 paidAmounts) {
+    )
+        internal
+        returns (
+            int24 medianTick,
+            int24 newTick,
+            int256 paidAmounts,
+            int256 premiaOwed,
+            int256[4] memory premiaByLeg
+        )
+    {
         // Ensure that the current price is within the tick limits
         int24 currentTick;
         (currentTick, medianTick, tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
@@ -824,13 +878,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
         // burn position and do exercise checks
-        int256 premiaOwed;
-        (premiaOwed, newTick, paidAmounts) = _burnAndHandleExercise(
+        (premiaOwed, premiaByLeg, newTick, paidAmounts) = _burnAndHandleExercise(
+            tickLimitLow,
+            tickLimitHigh,
             tokenId,
             positionSize,
-            owner,
-            tickLimitLow,
-            tickLimitHigh
+            owner
         );
 
         // erase position data
@@ -870,15 +923,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @param owner The owner of the option position.
     function _burnAndHandleExercise(
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
         uint256 tokenId,
         uint128 positionSize,
-        address owner,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) internal returns (int256 realizedPremia, int24 newTick, int256 paidAmounts) {
+        address owner
+    )
+        internal
+        returns (
+            int256 realizedPremia,
+            int256[4] memory premiaByLeg,
+            int24 newTick,
+            int256 paidAmounts
+        )
+    {
         // burn the option in sfpm, switch order of tickLimits to create "swapAtMint" flag
         int256 totalSwapped;
-        (, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
+        uint256[4] memory collectedByLeg;
+        (collectedByLeg, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             positionSize,
             tickLimitHigh,
@@ -887,47 +949,50 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         updateMedian(newTick);
 
-        // compute accumulated fees
-        int256 currentPositionPremia = _getPremia(
-            tokenId,
-            positionSize,
-            owner,
-            COMPUTE_ALL_PREMIA,
-            type(int24).max
-        );
+        int256 longAmounts;
+        int256 shortAmounts;
+        {
+            int24 tickSpacing = s_tickSpacing;
+            (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
+                owner,
+                tokenId,
+                collectedByLeg,
+                positionSize,
+                tickSpacing
+            );
 
-        // compute option amounts if exercise was necessary
-        (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize,
-            s_tickSpacing
-        );
-
+            // compute option amounts if exercise was necessary
+            (longAmounts, shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                positionSize,
+                tickSpacing
+            );
+        }
         // exercise the option and take the commission and addData
 
         {
-            (int128 paid0, int128 realized0) = s_collateralToken0.exercise(
+            int128 paid0 = s_collateralToken0.exercise(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 totalSwapped.rightSlot(),
-                currentPositionPremia.rightSlot()
+                realizedPremia.rightSlot()
             );
             paidAmounts = paidAmounts.toRightSlot(paid0);
-            realizedPremia = realizedPremia.toRightSlot(realized0);
         }
 
         {
-            (int128 paid1, int128 realized1) = s_collateralToken1.exercise(
+            int128 paid1 = s_collateralToken1.exercise(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 totalSwapped.leftSlot(),
-                currentPositionPremia.leftSlot()
+                realizedPremia.leftSlot()
             );
             paidAmounts = paidAmounts.toLeftSlot(paid1);
-            realizedPremia = realizedPremia.toLeftSlot(realized1);
         }
+
+        return (realizedPremia, premiaByLeg, newTick, paidAmounts);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -942,9 +1007,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
     function liquidate(
         address liquidatee,
-        uint256[] calldata positionIdList,
         uint256[] calldata positionIdListLiquidator,
-        uint256 delegations
+        uint256 delegations,
+        uint256[] calldata positionIdList
     ) external {
         address _liquidatee = liquidatee;
         _validatePositionList(_liquidatee, positionIdList, 0);
@@ -967,6 +1032,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 _liquidatee,
                 positionIdList,
                 COMPUTE_ALL_PREMIA,
+                ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
             tokenData0 = s_collateralToken0.getAccountMarginDetails(
@@ -998,56 +1064,87 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.delegate(msg.sender, _liquidatee, delegations.rightSlot());
         s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
-        // burn all options from the liquidatee
-        (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
-            _liquidatee,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK,
-            positionIdList
-        );
+        int256 liquidationBonus0;
+        int256 liquidationBonus1;
+        int24 finalTick;
+        {
+            int256 netExchanged;
+            int256[4][] memory premiasByLeg;
+            // burn all options from the liquidatee
+            (, finalTick, netExchanged, , premiasByLeg) = _burnAllOptionsFrom(
+                _liquidatee,
+                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_V3POOL_TICK,
+                positionIdList
+            );
 
-        // compute bonus amounts using latest tick data
-        (int256 liquidationBonus0, int256 liquidationBonus1) = getLiquidationBonus(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(twapTick),
-            Math.getSqrtRatioAtTick(finalTick),
-            netExchanged,
-            premia
-        );
+            int256 collateralRemaining;
+            // compute bonus amounts using latest tick data
+            (liquidationBonus0, liquidationBonus1, collateralRemaining) = PanopticMath
+                .getLiquidationBonus(
+                    tokenData0,
+                    tokenData1,
+                    Math.getSqrtRatioAtTick(twapTick),
+                    Math.getSqrtRatioAtTick(finalTick),
+                    netExchanged,
+                    premia
+                );
 
+            // premia cannot be paid if there is protocol loss associated with the liquidatee
+            // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
+            // manipulate the fees in a liquidity area they control past the protocol loss threshold
+            // such that the PLPs are forced to pay out premia to the liquidator
+            // thus, we haircut any premium paid by the liquidatee (converting tokens as necessary) until the protocol loss is covered or the premium is exhausted
+            if (collateralRemaining.rightSlot() < 0 || collateralRemaining.leftSlot() < 0) {
+                (netExchanged, premia) = PanopticMath.haircutPremia(
+                    _liquidatee,
+                    positionIdList,
+                    premiasByLeg,
+                    collateralRemaining,
+                    Math.getSqrtRatioAtTick(finalTick),
+                    s_collateralToken0,
+                    s_collateralToken1,
+                    s_settledTokens
+                );
+
+                unchecked {
+                    liquidationBonus0 += netExchanged;
+                    liquidationBonus1 += premia;
+                }
+            }
+        }
+
+        uint256 _delegations = delegations;
         // revoke the delegated amount plus the bonus amount.
-        {
-            s_collateralToken0.revoke(
-                msg.sender,
-                _liquidatee,
-                uint256(int256(uint256(delegations.rightSlot())) + liquidationBonus0)
-            );
-            s_collateralToken1.revoke(
-                msg.sender,
-                _liquidatee,
-                uint256(int256(uint256(delegations.leftSlot())) + liquidationBonus1)
-            );
-        }
-        {
-            // check that the provided positionIdList matches the positions in memory
-            _validatePositionList(msg.sender, positionIdListLiquidator, 0);
-            if (
-                positionIdListLiquidator.length > 0 &&
-                !_checkSolvency(
-                    msg.sender,
-                    positionIdListLiquidator,
-                    finalTick,
-                    finalTick,
-                    BP_DECREASE_BUFFER
-                )
-            ) revert Errors.NotEnoughCollateral();
+        s_collateralToken0.revoke(
+            msg.sender,
+            _liquidatee,
+            uint256(int256(uint256(_delegations.rightSlot())) + liquidationBonus0)
+        );
+        s_collateralToken1.revoke(
+            msg.sender,
+            _liquidatee,
+            uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
+        );
 
-            int256 bonusAmounts = int256(0).toRightSlot(int128(liquidationBonus0)).toLeftSlot(
-                int128(liquidationBonus1)
-            );
-            emit AccountLiquidated(msg.sender, _liquidatee, bonusAmounts, finalTick);
-        }
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(msg.sender, positionIdListLiquidator, 0);
+
+        if (
+            !_checkSolvency(
+                msg.sender,
+                positionIdListLiquidator,
+                finalTick,
+                finalTick,
+                BP_DECREASE_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
+
+        int256 bonusAmounts = int256(0).toRightSlot(int128(liquidationBonus0)).toLeftSlot(
+            int128(liquidationBonus1)
+        );
+
+        emit AccountLiquidated(msg.sender, _liquidatee, bonusAmounts, finalTick);
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a small fee do force exercise.
@@ -1092,6 +1189,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 account,
                 touchedId,
                 COMPUTE_LONG_PREMIA,
+                ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
 
@@ -1124,19 +1222,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 refundAmounts = delegatedAmounts.add(exerciseFees);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = _getRefundAmounts(account, refundAmounts, twapTick);
+        refundAmounts = PanopticMath.getRefundAmounts(
+            account,
+            refundAmounts,
+            twapTick,
+            s_collateralToken0,
+            s_collateralToken1
+        );
 
-        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-        s_collateralToken0.refund(
-            account,
-            msg.sender,
-            refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
-        );
-        s_collateralToken1.refund(
-            account,
-            msg.sender,
-            refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
-        );
+        unchecked {
+            // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
+            s_collateralToken0.refund(
+                account,
+                msg.sender,
+                refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
+            );
+            s_collateralToken1.refund(
+                account,
+                msg.sender,
+                refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
+            );
+        }
 
         // refund the protocol any virtual shares after settling the difference with the exercisor
         s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
@@ -1148,10 +1254,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisee's position list and assert their solvency
         _validatePositionList(account, positionIdListExercisee, 0);
 
-        if (
-            positionIdListExercisee.length > 0 &&
-            !_checkSolvency(account, positionIdListExercisee, currentTick, twapTick, NO_BUFFER)
-        ) revert Errors.ExerciseeNotSolvent();
+        if (!_checkSolvency(account, positionIdListExercisee, currentTick, twapTick, NO_BUFFER))
+            revert Errors.ExerciseeNotSolvent();
 
         // the exercisor's position list is validated above
         // we need to assert their solvency against their collateral requirement plus a buffer
@@ -1169,168 +1273,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         ) revert Errors.NotEnoughCollateral();
 
         emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees, currentTick);
-    }
-
-    /// @notice Check that the account is liquidatable, get the split of bonus0 and bonus1 amounts.
-    /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot.
-    /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot.
-    /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
-    /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user.
-    /// @param netExchanged The net exchanged value of the closed portfolio
-    /// @param premia premium across all positions being liquidated present in tokenData
-    /// @return bonus0 bonus amount for token0
-    /// @return bonus1 bonus amount for token1
-    function getLiquidationBonus(
-        uint256 tokenData0,
-        uint256 tokenData1,
-        uint160 sqrtPriceX96Twap,
-        uint160 sqrtPriceX96Final,
-        int256 netExchanged,
-        int256 premia
-    ) internal pure returns (int256 bonus0, int256 bonus1) {
-        unchecked {
-            // compute bonus as min(collateralBalance/2, required-collateralBalance)
-            {
-                // compute the ratio of token0 to total collateral requirements
-                // evaluate at TWAP price to keep consistentcy with solvency calculations
-                uint256 required0 = PanopticMath.convert0to1(
-                    tokenData0.leftSlot(),
-                    sqrtPriceX96Twap
-                );
-                uint256 required1 = tokenData1.leftSlot();
-                uint256 requiredRatioX128 = (required0 << 128) / (required0 + required1);
-
-                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.convertCollateralData(
-                    tokenData0,
-                    tokenData1,
-                    0,
-                    sqrtPriceX96Twap
-                );
-
-                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
-
-                // convert that bonus to tokens 0 and 1
-                bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
-
-                bonus1 = int256(
-                    PanopticMath.convert0to1(
-                        Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                        sqrtPriceX96Final
-                    )
-                );
-            }
-
-            // negative premium (owed to the liquidatee) is credited to the collateral balance
-            // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
-            int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
-                Math.max(premia.rightSlot(), 0);
-            int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
-                Math.max(premia.leftSlot(), 0);
-
-            int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
-            int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
-
-            // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
-            // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
-            // have to work with before cutting into the liquidator's funds
-            if (paid0 > balance0 && paid1 > balance1) {
-                // liquidatee cannot pay back the liquidator fully in either token, so no protocol loss can be avoided
-                return (bonus0, bonus1);
-            } else if ((paid0 > balance0)) {
-                // liquidatee has insufficient token0 but some token1 left over, so we use what they have left to mitigate token0 losses
-                // we do this by substituting an equivalent value of token1 in our refund to the liquidator, plus a bonus, for the token0 we convert
-                // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
-                // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token1 balance: balance1 - paid1
-                // and paid0 - balance0 is the amount of token0 that the liquidatee is missing, i.e the protocol loss
-                // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
-                // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
-                // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
-                bonus1 += Math.min(
-                    balance1 - paid1,
-                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
-                );
-                bonus0 -= Math.min(
-                    PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
-                    paid0 - balance0
-                );
-            } else if ((paid1 > balance1)) {
-                // liquidatee has insufficient token1 but some token0 left over, so we use what they have left to mitigate token1 losses
-                // we do this by substituting an equivalent value of token0 in our refund to the liquidator, plus a bonus, for the token1 we convert
-                // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
-                // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token0 balance: balance0 - paid0
-                // and paid1 - balance1 is the amount of token1 that the liquidatee is missing, i.e the protocol loss
-                // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
-                // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
-                // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
-                bonus0 += Math.min(
-                    balance0 - paid0,
-                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
-                );
-                bonus1 -= Math.min(
-                    PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
-                    paid1 - balance1
-                );
-            }
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                       REVOKE/REFUND COMPUTATIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
-    /// @param refunder Address of the user the refund is coming from (the force exercisee).
-    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
-    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
-    /// @return refundAmounts The amount of tokens to refund to the user.
-    function _getRefundAmounts(
-        address refunder,
-        int256 refundValues,
-        int24 atTick
-    ) public view returns (int256 refundAmounts) {
-        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
-        CollateralTracker collateral0 = s_collateralToken0;
-        CollateralTracker collateral1 = s_collateralToken1;
-
-        unchecked {
-            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
-            int256 balanceShortage = refundValues.rightSlot() -
-                int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
-
-            if (balanceShortage > 0) {
-                return
-                    int256(0)
-                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
-                        .toLeftSlot(
-                            int128(
-                                int256(
-                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.leftSlot()
-                            )
-                        );
-            }
-
-            balanceShortage =
-                refundValues.leftSlot() -
-                int256(collateral1.convertToAssets(collateral1.balanceOf(refunder)));
-
-            if (balanceShortage > 0) {
-                return
-                    int256(0)
-                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
-                        .toRightSlot(
-                            int128(
-                                int256(
-                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.rightSlot()
-                            )
-                        );
-            }
-        }
-
-        // otherwise, we can just refund the original amounts requested with no problems
-        return refundValues;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1353,7 +1295,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (
             int256 portfolioPremium,
             uint256[2][] memory positionBalanceArray
-        ) = _calculateAccumulatedPremia(account, positionIdList, COMPUTE_ALL_PREMIA, currentTick);
+        ) = _calculateAccumulatedPremia(
+                account,
+                positionIdList,
+                COMPUTE_ALL_PREMIA,
+                ONLY_AVAILABLE_PREMIUM,
+                currentTick
+            );
 
         uint256 tokenData0 = s_collateralToken0.getAccountMarginDetails(
             account,
@@ -1374,7 +1322,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             Math.getSqrtRatioAtTick(atTick)
         );
 
-        return balanceCross > (thresholdCross * buffer) / 10_000;
+        unchecked {
+            return balanceCross > (thresholdCross * buffer) / 10_000;
+        }
     }
 
     /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
@@ -1591,7 +1541,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param leg The leg of the option position (used to check if long or short).
     /// @param tickLower The lower tick of the chunk.
     /// @param tickUpper The upper tick of the chunk.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as shortLiquidity/netLiquidity for a new position
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     function _checkLiquiditySpread(
         uint256 tokenId,
@@ -1607,14 +1557,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLower,
             tickUpper
         );
+
         uint128 netLiquidity = accountLiquidities.rightSlot();
-        uint128 shortLiquidity = accountLiquidities.leftSlot();
+        uint128 totalLiquidity = accountLiquidities.leftSlot();
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
-        if ((shortLiquidity == 0) && (netLiquidity == 0)) return;
+        if (netLiquidity == 0) return;
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
-            effectiveLiquidityFactorX32 = (uint256(shortLiquidity) * 2 ** 32) / netLiquidity;
+            effectiveLiquidityFactorX32 = (uint256(totalLiquidity) * 2 ** 32) / netLiquidity;
         }
 
         // put a limit on how much new liquidity in one transaction can be deployed into this leg
@@ -1630,14 +1581,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false).
     /// @param atTick The tick at which the premia is calculated -> use (atTick < type(int24).max) to compute it
     /// up to current block. atTick = type(int24).max will only consider fees as of the last on-chain transaction.
-    /// @return premia The computed premia (LeftRight-packed) of the option position for tokens 0 (right slot) and 1 (left slot).
     function _getPremia(
         uint256 tokenId,
         uint128 positionSize,
         address owner,
         bool computeAllPremia,
-        int24 atTick
-    ) internal view returns (int256 premia) {
+        int24 atTick,
+        int24 tickSpacing
+    )
+        internal
+        view
+        returns (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulatorsByLeg)
+    {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
@@ -1646,27 +1601,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenId,
                     leg,
                     positionSize,
-                    s_tickSpacing
+                    tickSpacing
                 );
+                uint256 tokenType = tokenId.tokenType(leg);
 
-                uint256 premiumAccumulators;
-                {
-                    uint256 tokenType = TokenId.tokenType(tokenId, leg);
-                    int24 _atTick = atTick;
-                    (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm
-                        .getAccountPremium(
-                            address(s_univ3pool),
-                            address(this),
-                            tokenType,
-                            liquidityChunk.tickLower(),
-                            liquidityChunk.tickUpper(),
-                            _atTick,
-                            isLong
-                        );
-                    premiumAccumulators = uint256(0).toRightSlot(premiumAccumulator0).toLeftSlot(
-                        premiumAccumulator1
+                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = sfpm
+                    .getAccountPremium(
+                        address(s_univ3pool),
+                        address(this),
+                        tokenType,
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        atTick,
+                        isLong
                     );
-                }
 
                 unchecked {
                     uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
@@ -1674,49 +1622,479 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
                     // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
                     // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
-                    int256 legPremia = int256(0)
+                    premiaByLeg[leg] = int256(0)
                         .toRightSlot(
                             int128(
                                 int256(
-                                    (uint256(
-                                        premiumAccumulators.rightSlot() >=
-                                            premiumAccumulatorLast.rightSlot()
-                                            ? premiumAccumulators.rightSlot() -
-                                                premiumAccumulatorLast.rightSlot()
-                                            : premiumAccumulators.rightSlot() +
-                                                uint256(
-                                                    type(uint128).max -
-                                                        premiumAccumulatorLast.rightSlot()
-                                                )
-                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
+                                    ((premiumAccumulatorsByLeg[leg][0] -
+                                        premiumAccumulatorLast.rightSlot()) *
+                                        (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    (uint256(
-                                        premiumAccumulators.leftSlot() >=
-                                            premiumAccumulatorLast.leftSlot()
-                                            ? premiumAccumulators.leftSlot() -
-                                                premiumAccumulatorLast.leftSlot()
-                                            : premiumAccumulators.leftSlot() +
-                                                uint256(
-                                                    type(uint128).max -
-                                                        premiumAccumulatorLast.leftSlot()
-                                                )
-                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
+                                    ((premiumAccumulatorsByLeg[leg][1] -
+                                        premiumAccumulatorLast.leftSlot()) *
+                                        (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         );
 
-                    if (isLong == 0) {
-                        premia = premia.add(legPremia);
-                    } else {
-                        premia = premia.sub(legPremia);
+                    if (isLong == 1) {
+                        premiaByLeg[leg] = -premiaByLeg[leg];
                     }
                 }
             }
+            unchecked {
+                ++leg;
+            }
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        AVAILABLE PREMIUM LOGIC
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Settle all unpaid premium for long legs of chunk `chunkIdentity` on `tokenIds` of `owners`.
+    /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
+    /// @dev This feature is only available when all `owners` is solvent at the current tick
+    /// @param positionIdLists Exhaustive list of open positions for the `owners` used for solvency checks.
+    /// @param owners The owner of the option position to make premium payments on.
+    /// @param tokenIds The option position to make premium payments on.
+    /// @param chunkIdentity The strike price, width, and tokenType of the chunk to settle premium payments on encoded in a 1-leg (isLong=1) tokenId.
+    function settleLongPremium(
+        uint256[][] calldata positionIdLists,
+        address[] calldata owners,
+        uint256[][] calldata tokenIds,
+        uint256 chunkIdentity
+    ) external {
+        // 0: currentTick, 1: medianTick, 2: tickSpacing
+        int24[3] memory poolContext;
+        (, poolContext[0], , , , , ) = s_univ3pool.slot0();
+        poolContext[1] = getMedian();
+        poolContext[2] = s_tickSpacing;
+
+        uint256 premiumAccumulators;
+        {
+            (int24 tickLower, int24 tickUpper) = PanopticMath.getTicks(
+                chunkIdentity.strike(0),
+                chunkIdentity.width(0),
+                poolContext[2]
+            );
+            uint256 tokenType = chunkIdentity.tokenType(0);
+            (uint128 premiumToken0, uint128 premiumToken1) = sfpm.getAccountPremium(
+                address(s_univ3pool),
+                address(this),
+                tokenType,
+                tickLower,
+                tickUpper,
+                poolContext[0],
+                1
+            );
+            premiumAccumulators = uint256(0).toRightSlot(premiumToken0).toLeftSlot(premiumToken1);
+        }
+
+        unchecked {
+            uint256 settledTokens;
+            for (uint256 i = 0; i < owners.length; ++i) {
+                _validatePositionList(owners[i], positionIdLists[i], 0);
+
+                uint256 realizedPremia;
+                address owner = owners[i];
+                for (uint256 j = 0; j < tokenIds[i].length; ++j) {
+                    uint256 tokenId = tokenIds[i][j];
+                    for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                        if (tokenId.matchLongChunk(leg, chunkIdentity)) {
+                            uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
+
+                            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                                tokenId,
+                                leg,
+                                s_positionBalance[owner][tokenId].rightSlot(),
+                                poolContext[2]
+                            );
+
+                            uint256 _premiumAccumulators = premiumAccumulators;
+
+                            // update the realized premia
+                            realizedPremia = realizedPremia.add(
+                                uint256(0)
+                                    .toRightSlot(
+                                        uint128(
+                                            ((uint256(_premiumAccumulators.rightSlot()) -
+                                                premiumAccumulatorLast.rightSlot()) *
+                                                liquidityChunk.liquidity()) / 2 ** 64
+                                        )
+                                    )
+                                    .toLeftSlot(
+                                        uint128(
+                                            ((uint256(_premiumAccumulators.leftSlot()) -
+                                                premiumAccumulatorLast.leftSlot()) *
+                                                liquidityChunk.liquidity()) / 2 ** 64
+                                        )
+                                    )
+                            );
+
+                            // update the premium accumulator for the long position to the latest value
+                            // (the entire premia delta will be settled)
+                            s_options[owner][tokenId][leg] = _premiumAccumulators;
+                        }
+                    }
+                }
+
+                // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
+                s_collateralToken0.exercise(owners[i], 0, 0, 0, int128(realizedPremia.rightSlot()));
+                s_collateralToken1.exercise(owners[i], 0, 0, 0, int128(realizedPremia.leftSlot()));
+                settledTokens = settledTokens.add(realizedPremia);
+
+                // ensure the owner is solvent at the median tick (insolvent accounts are not permitted to pay premium unless they are being liquidated)
+                if (
+                    !_checkSolvency(
+                        owners[i],
+                        positionIdLists[i],
+                        poolContext[0],
+                        poolContext[1],
+                        NO_BUFFER
+                    )
+                ) revert Errors.NotEnoughCollateral();
+            }
+
+            // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
+            s_settledTokens[
+                keccak256(
+                    abi.encodePacked(
+                        chunkIdentity.strike(0),
+                        chunkIdentity.width(0),
+                        chunkIdentity.tokenType(0)
+                    )
+                )
+            ] += settledTokens;
+        }
+    }
+
+    /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added
+    /// @dev Always called after `mintTokenizedPosition`
+    /// @param tokenId The option position that was minted.
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position.
+    /// @param positionSize The size of the position, expressed in terms of the asset.
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
+    function _updateSettlementPostMint(
+        uint256 tokenId,
+        uint256[4] memory collectedByLeg,
+        uint128 positionSize,
+        int24 tickSpacing
+    ) internal {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ++leg) {
+            bytes32 chunkKey = keccak256(
+                abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+            );
+            // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
+            s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+
+            if (tokenId.isLong(leg) == 0) {
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize,
+                    tickSpacing
+                );
+
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (S + R)
+                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
+
+                // We need to adjust the grossPremiumLast value such that the result of
+                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
+                // G: total gross premium
+                // T: tLiquidityBeforeMinttotal
+                // R: positionLiquidity
+                // C: current grossPremium value
+                // L: current grossPremiumLast value
+                // Ln: updated grossPremiumLast value
+                // T * (C - L) = G
+                // (T + R) * (C - Ln) = G
+                //
+                // T * (C - L) = (T + R) * (C - Ln)
+                // (TC - TL) / (T + R) = C - Ln
+                // Ln = C - (TC - TL)/(T + R)
+                // Ln = (CT + CR - TC + TL)/(T+R)
+                // Ln = (CR + TL)/(T+R)
+                //
+                // (old)
+                // (C(T + R) - G)/(T + R) = Ln
+                uint256[2] memory grossCurrent;
+                (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
+                    address(s_univ3pool),
+                    address(this),
+                    tokenId.tokenType(leg),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper(),
+                    type(int24).max,
+                    0
+                );
+
+                uint256[2] memory grossNew;
+                unchecked {
+                    // get G
+                    grossNew[0] =
+                        ((totalLiquidity - liquidityChunk.liquidity()) *
+                            (grossCurrent[0] - s_grossPremiumLast[chunkKey].rightSlot())) /
+                        2 ** 64;
+                    grossNew[1] =
+                        ((totalLiquidity - liquidityChunk.liquidity()) *
+                            (grossCurrent[1] - s_grossPremiumLast[chunkKey].leftSlot())) /
+                        2 ** 64;
+
+                    // (C(T + R) - G)/(T + R) = Ln
+                    // Ln = (CR + TL)/(T+R)
+                    grossNew[0] =
+                        uint256(
+                            Math.max(
+                                0,
+                                int256((grossCurrent[0] * totalLiquidity) / 2 ** 64) -
+                                    int256(grossNew[0])
+                            ) * 2 ** 64
+                        ) /
+                        totalLiquidity;
+                    grossNew[1] =
+                        uint256(
+                            Math.max(
+                                0,
+                                int256((grossCurrent[1] * totalLiquidity) / 2 ** 64) -
+                                    int256(grossNew[1])
+                            ) * 2 ** 64
+                        ) /
+                        totalLiquidity;
+
+                    // update grossPremiumLast
+                    s_grossPremiumLast[chunkKey] = uint256(0)
+                        .toRightSlot(uint128(grossNew[0]))
+                        .toLeftSlot(uint128(grossNew[1]));
+                }
+            }
+        }
+    }
+
+    /// @notice Query the amount of premium available for withdrawal given a certain `premiumOwed` for a chunk
+    /// @dev Based on the ratio between `settledTokens` and the total premium owed to sellers in a chunk
+    /// @dev The ratio is capped at 1 (it can be greater than one if some seller forfeits enough premium)
+    /// @param totalLiquidity The updated total liquidity amount for the chunk
+    /// @param settledTokens LeftRight accumulator for the amount of tokens that have been settled (collected or paid)
+    /// @param grossPremiumLast The `last` values used with `premiumAccumulators` to compute the total premium owed to sellers
+    /// @param premiumOwed The amount of premium owed to sellers in the chunk
+    /// @param premiumAccumulators The current values of the premium accumulators for the chunk
+    /// @return availablePremium The amount of premium available for withdrawal
+    function _getAvailablePremium(
+        uint256 totalLiquidity,
+        uint256 settledTokens,
+        uint256 grossPremiumLast,
+        uint256 premiumOwed,
+        uint256[2] memory premiumAccumulators
+    ) internal pure returns (uint256) {
+        unchecked {
+            // long premium only accumulates as it is settled, so compute the ratio
+            // of total settled tokens in a chunk to total premium owed to sellers and multiply
+            // cap the ratio at 1 (it can be greater than one if some seller forfeits enough premium)
+            uint256 accumulated0 = ((premiumAccumulators[0] - grossPremiumLast.rightSlot()) *
+                totalLiquidity) / 2 ** 64;
+            uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
+                totalLiquidity) / 2 ** 64;
+
+            return (
+                uint256(0)
+                    .toRightSlot(
+                        uint128(
+                            Math.min(
+                                (uint256(premiumOwed.rightSlot()) * settledTokens.rightSlot()) /
+                                    (accumulated0 == 0 ? type(uint256).max : accumulated0),
+                                premiumOwed.rightSlot()
+                            )
+                        )
+                    )
+                    .toLeftSlot(
+                        uint128(
+                            Math.min(
+                                (uint256(premiumOwed.leftSlot()) * settledTokens.leftSlot()) /
+                                    (accumulated1 == 0 ? type(uint256).max : accumulated1),
+                                premiumOwed.leftSlot()
+                            )
+                        )
+                    )
+            );
+        }
+    }
+
+    /// @notice Query the total amount of liquidity sold in the corresponding chunk for a position leg
+    /// @dev totalLiquidity (total sold) = removedLiquidity + netLiquidity (in AMM)
+    /// @param tokenId The option position
+    /// @param leg The leg of the option position to get `totalLiquidity for
+    //// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
+    function _getTotalLiquidity(
+        uint256 tokenId,
+        uint256 leg,
+        int24 tickSpacing
+    ) internal view returns (uint256 totalLiquidity) {
+        unchecked {
+            // totalLiquidity (total sold) = removedLiquidity + netLiquidity
+
+            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg, tickSpacing);
+            uint256 tokenType = tokenId.tokenType(leg);
+            uint256 accountLiquidities = sfpm.getAccountLiquidity(
+                address(s_univ3pool),
+                address(this),
+                tokenType,
+                tickLower,
+                tickUpper
+            );
+
+            // removed + net
+            totalLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
+        }
+    }
+
+    /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info
+    /// @dev Always called after `burnTokenizedPosition`
+    /// @param owner The owner of the option position that was burnt
+    /// @param tokenId The option position that was burnt
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
+    /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
+    /// @return realizedPremia The amount of premia owed to the user
+    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
+    function _updateSettlementPostBurn(
+        address owner,
+        uint256 tokenId,
+        uint256[4] memory collectedByLeg,
+        uint128 positionSize,
+        int24 tickSpacing
+    ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg) {
+        uint256[2][4] memory premiumAccumulatorsByLeg;
+
+        // compute accumulated fees
+        (premiaByLeg, premiumAccumulatorsByLeg) = _getPremia(
+            tokenId,
+            positionSize,
+            owner,
+            COMPUTE_ALL_PREMIA,
+            type(int24).max,
+            tickSpacing
+        );
+
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ) {
+            bytes32 chunkKey = keccak256(
+                abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+            );
+
+            // collected from Uniswap
+            uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+
+            // (will be) paid by long legs
+            if (premiaByLeg[leg] <= 0) {
+                settledTokens = settledTokens.add(uint256(-premiaByLeg[leg]));
+                realizedPremia = realizedPremia.add(premiaByLeg[leg]);
+            } else {
+                uint256 positionLiquidity = PanopticMath
+                    .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
+                    .liquidity();
+
+                uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
+
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
+                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
+                uint256 availablePremium = _getAvailablePremium(
+                    totalLiquidity + positionLiquidity,
+                    settledTokens,
+                    grossPremiumLast,
+                    uint256(premiaByLeg[leg]),
+                    premiumAccumulatorsByLeg[leg]
+                );
+
+                // subtract settled tokens sent to seller
+                settledTokens = settledTokens.sub(availablePremium);
+
+                // add available premium to amount that should be settled
+                realizedPremia = realizedPremia.add(int256(availablePremium));
+
+                // We need to adjust the grossPremiumLast value such that the result of
+                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostBurn/2**64 is equal to
+                // (grossPremium - grossPremiumLast)*totalLiquidityBeforeBurn/2**64 - premiumOwedToPosition
+                // G: total gross premium (- premiumOwedToPosition)
+                // T: totalLiquidityBeforeMint
+                // R: positionLiquidity
+                // C: current grossPremium value
+                // L: current grossPremiumLast value
+                // Ln: updated grossPremiumLast value
+                // T * (C - L) = G
+                // (T - R) * (C - Ln) = G
+                //
+                // T * (C - L) = (T - R) * (C - Ln)
+                // (TC - TL) / (T - R) = C - Ln
+                // Ln = C - (CT - LT) / (T - R)
+                // Ln = (CT - CR - CT + LT) / (T-R)
+                // Ln = (LT - CR) / (T-R)
+                //
+                // (old)
+                // (C(T - R) - G)/(T - R) = Ln
+                uint256[2] memory grossNew;
+                unchecked {
+                    // if there's still liquidity, compute the new grossPremiumLast
+                    // otherwise, we just reset grossPremiumLast to the current grossPremium
+                    if (totalLiquidity != 0) {
+                        // get G
+                        grossNew[0] =
+                            ((totalLiquidity + positionLiquidity) *
+                                (premiumAccumulatorsByLeg[leg][0] -
+                                    s_grossPremiumLast[chunkKey].rightSlot())) /
+                            2 ** 64 -
+                            uint128(premiaByLeg[leg].rightSlot());
+                        grossNew[1] =
+                            ((totalLiquidity + positionLiquidity) *
+                                (premiumAccumulatorsByLeg[leg][1] -
+                                    s_grossPremiumLast[chunkKey].leftSlot())) /
+                            2 ** 64 -
+                            uint128(premiaByLeg[leg].leftSlot());
+
+                        // (C(T - R) - G)/(T - R) = Ln
+                        grossNew[0] =
+                            uint256(
+                                Math.max(
+                                    0,
+                                    int256(
+                                        (premiumAccumulatorsByLeg[leg][0] * totalLiquidity) /
+                                            2 ** 64
+                                    ) - int256(grossNew[0])
+                                ) * 2 ** 64
+                            ) /
+                            totalLiquidity;
+                        grossNew[1] =
+                            uint256(
+                                Math.max(
+                                    0,
+                                    int256(
+                                        (premiumAccumulatorsByLeg[leg][1] * totalLiquidity) /
+                                            2 ** 64
+                                    ) - int256(grossNew[1])
+                                ) * 2 ** 64
+                            ) /
+                            totalLiquidity;
+                    } else {
+                        grossNew[0] = premiumAccumulatorsByLeg[leg][0];
+                        grossNew[1] = premiumAccumulatorsByLeg[leg][1];
+                    }
+
+                    // update grossPremiumLast
+                    s_grossPremiumLast[chunkKey] = uint256(0)
+                        .toRightSlot(uint128(grossNew[0]))
+                        .toLeftSlot(uint128(grossNew[1]));
+                }
+            }
+
+            // update settled tokens in storage with all local deltas
+            s_settledTokens[chunkKey] = settledTokens;
+
             unchecked {
                 ++leg;
             }

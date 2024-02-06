@@ -1306,12 +1306,16 @@ contract PositionUtils is Test {
         deal(
             IUniswapV3Pool(uniPool).token0(),
             uniPool,
-            (IUniswapV3Pool(uniPool).liquidity() * posFees0) / posLiq
+            IERC20Partial(IUniswapV3Pool(uniPool).token0()).balanceOf(uniPool) +
+                (IUniswapV3Pool(uniPool).liquidity() * posFees0) /
+                posLiq
         );
         deal(
             IUniswapV3Pool(uniPool).token1(),
             uniPool,
-            (IUniswapV3Pool(uniPool).liquidity() * posFees1) / posLiq
+            IERC20Partial(IUniswapV3Pool(uniPool).token1()).balanceOf(uniPool) +
+                (IUniswapV3Pool(uniPool).liquidity() * posFees1) /
+                posLiq
         );
 
         // update global fees

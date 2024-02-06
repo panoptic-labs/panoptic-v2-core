@@ -68,6 +68,13 @@ library TokenId {
     // This mask is used to clear all bits except for the option ratios
     uint256 internal constant OPTION_RATIO_MASK =
         0x0000000000FE_0000000000FE_0000000000FE_0000000000FE_0000000000000000;
+    // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType)
+    uint256 internal constant CHUNK_MASK =
+        0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
+    // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType) and isLong
+    uint256 internal constant CHUNK_ISLONG_MASK =
+        0xFFFFFFFFF300_FFFFFFFFF300_FFFFFFFFF300_FFFFFFFFF300_0000000000000000;
+
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
     // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
@@ -373,39 +380,11 @@ library TokenId {
         uint256 legIndex,
         int24 tickSpacing
     ) internal pure returns (int24 legLowerTick, int24 legUpperTick) {
-        unchecked {
-            int24 selfWidth = self.width(legIndex);
-            int24 selfStrike = self.strike(legIndex);
-
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
-
-            /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            /// if (width * tickSpacing) is:
-            ///     even: tick range -> (strike - range, strike + range)
-            ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
-            (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
-                selfWidth,
-                tickSpacing
-            );
-
-            (legLowerTick, legUpperTick) = (
-                selfStrike - oneSidedRangeLower,
-                selfStrike + oneSidedRangeUpper
-            );
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                legLowerTick % tickSpacing != 0 ||
-                legUpperTick % tickSpacing != 0 ||
-                legLowerTick < minTick ||
-                legUpperTick > maxTick
-            ) revert Errors.TicksNotInitializable();
-        }
+        (legLowerTick, legUpperTick) = PanopticMath.getTicks(
+            self.strike(legIndex),
+            self.width(legIndex),
+            tickSpacing
+        );
     }
 
     /// @notice Return the number of active legs in the option position.
@@ -430,6 +409,21 @@ library TokenId {
             return 3;
         }
         return 4;
+    }
+
+    /// @notice Check whether the strike, width, tokenType, and isLong of a leg match the given identity.
+    /// @param self the option position id.
+    /// @param leg the leg index of the position (in {0,1,2,3}) to match.
+    /// @param identity the identity (tokenId only the desired strike, width, tokenType, and isLong set in the first leg) to match against.
+    /// @return true if the leg matches the identity, false otherwise.
+    function matchLongChunk(
+        uint256 self,
+        uint256 leg,
+        uint256 identity
+    ) internal pure returns (bool) {
+        unchecked {
+            return (((self & CHUNK_ISLONG_MASK) >> (64 + 48 * leg)) % 2 ** 48) == (identity >> 64);
+        }
     }
 
     /// @notice Clear a leg in an option position with index `i`.
@@ -471,6 +465,8 @@ library TokenId {
 
         // loop through the 4 (possible) legs in the tokenId `self`
         unchecked {
+            // extract strike, width, and tokenType
+            uint256 chunkData = (self & CHUNK_MASK) >> 64;
             for (uint256 i = 0; i < 4; ++i) {
                 if (self.optionRatio(i) == 0) {
                     // final leg in this position identified;
@@ -479,6 +475,14 @@ library TokenId {
                     if ((self >> (64 + 48 * i)) != 0) revert Errors.InvalidTokenIdParameter(1);
 
                     break; // we are done iterating over potential legs
+                }
+
+                // prevent legs touching the same chunks - all chunks in the position must be discrete
+                uint256 numLegs = self.countLegs();
+                for (uint256 j = i + 1; j < numLegs; ++j) {
+                    if (uint48(chunkData >> (48 * i)) == uint48(chunkData >> (48 * j))) {
+                        revert Errors.InvalidTokenIdParameter(6);
+                    }
                 }
                 // now validate this ith leg in the position:
 

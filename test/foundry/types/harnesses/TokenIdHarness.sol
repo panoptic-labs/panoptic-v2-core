@@ -355,6 +355,20 @@ contract TokenIdHarness {
         return r;
     }
 
+    /// @notice Check whether the strike, width, tokenType, and isLong of a leg match the given identity.
+    /// @param self the option position id.
+    /// @param leg the leg index of the position (in {0,1,2,3}) to match.
+    /// @param identity the identity (with only the desired paremeters in the first leg set) to match against.
+    /// @return true if the leg matches the identity, false otherwise.
+    function matchLongChunk(
+        uint256 self,
+        uint256 leg,
+        uint256 identity
+    ) public pure returns (bool) {
+        bool r = TokenId.matchLongChunk(self, leg, identity);
+        return r;
+    }
+
     /**
      * @notice Clear a leg in an option position with index `i`.
      * @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.

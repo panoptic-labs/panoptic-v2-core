@@ -516,6 +516,8 @@ contract PanopticHelperTest is PositionUtils {
         strike1 = (strike1 / pool.tickSpacing()) * pool.tickSpacing();
         strike2 = (strike2 / pool.tickSpacing()) * pool.tickSpacing();
 
+        vm.assume(strike1 != strike2);
+
         optionRatio = uint8(bound(optionRatio, uint8(1), uint8(2 ** 7 - 1)));
 
         uint256 long = isLong ? 1 : 0;
@@ -636,6 +638,17 @@ contract PanopticHelperTest is PositionUtils {
             });
             inputLeg[i] = _Leg;
         }
+
+        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
+            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
+                vm.assume(
+                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
+                        tokenId.width(legIndex) == tokenId.width(j) &&
+                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
+                );
+            }
+        }
+
         tokenId.validate();
 
         PanopticHelper.Leg[] memory unwrappedLeg = ph.unwrapTokenId(tokenId);
@@ -774,6 +787,17 @@ contract PanopticHelperTest is PositionUtils {
             });
             inputLeg[i] = _Leg;
         }
+
+        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
+            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
+                vm.assume(
+                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
+                        tokenId.width(legIndex) == tokenId.width(j) &&
+                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
+                );
+            }
+        }
+
         tokenId.validate();
         PanopticHelper.Leg[] memory unwrappedLeg = ph.unwrapTokenId(tokenId);
 
@@ -911,6 +935,17 @@ contract PanopticHelperTest is PositionUtils {
             });
             inputLeg[i] = _Leg;
         }
+
+        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
+            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
+                vm.assume(
+                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
+                        tokenId.width(legIndex) == tokenId.width(j) &&
+                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
+                );
+            }
+        }
+
         tokenId.validate();
         PanopticHelper.Leg[] memory unwrappedLeg = ph.unwrapTokenId(tokenId);
 
@@ -991,7 +1026,7 @@ contract PanopticHelperTest is PositionUtils {
             pp.mintOptions(posIdList, positionSizes[1], 0, 0, 0);
 
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
-                .calculateAccumulatedFeesBatch(Alice, posIdList);
+                .calculateAccumulatedFeesBatch(Alice, false, posIdList);
 
             tokenData0 = ct0.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium0);
             tokenData1 = ct1.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium1);

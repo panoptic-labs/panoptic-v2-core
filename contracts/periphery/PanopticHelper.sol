@@ -54,7 +54,7 @@ contract PanopticHelper {
     ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
         (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool
-            .calculateAccumulatedFeesBatch(account, positionIdList);
+            .calculateAccumulatedFeesBatch(account, false, positionIdList);
 
         (CollateralTracker collateralToken0, CollateralTracker collateralToken1) = pool
             .getCollateralTokens();

@@ -6,7 +6,7 @@ libs = ['lib']
 no_match_path = "contracts/*"
 solc_version = '0.8.18'
 optimizer = true
-optimizer_runs = 18_000
+optimizer_runs = 1
 viaIR = false
 eth_rpc_url = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
 
@@ -14,7 +14,7 @@ eth_rpc_url = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
 fork_block_number = 18963715
 
 [profile.ci_sizes]
-optimizer_runs = 18_000
+optimizer_runs = 1
 test = 'DO_NOT_COMPILE'
 
 [profile.ci_sizes_ir]
