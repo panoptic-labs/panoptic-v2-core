@@ -220,40 +220,6 @@ library PanopticMath {
         liquidityChunk = liquidityChunk.createChunk(tickLower, tickUpper, legLiquidity);
     }
 
-    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
-    /// @param strike the strike price of the option
-    /// @param width the width of the option
-    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
-    /// @return tickLower the lower tick of the liquidity chunk.
-    /// @return tickUpper the upper tick of the liquidity chunk.
-    function getTicks(
-        int24 strike,
-        int24 width,
-        int24 tickSpacing
-    ) internal pure returns (int24 tickLower, int24 tickUpper) {
-        unchecked {
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
-
-            // The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            int24 oneSidedRange = (width * tickSpacing) / 2;
-
-            (tickLower, tickUpper) = (strike - oneSidedRange, strike + oneSidedRange);
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                tickLower % tickSpacing != 0 ||
-                tickUpper % tickSpacing != 0 ||
-                tickLower < minTick ||
-                tickUpper > maxTick
-            ) revert Errors.TicksNotInitializable();
-        }
-    }
-
     /*//////////////////////////////////////////////////////////////
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/
@@ -407,7 +373,7 @@ library PanopticMath {
     function mulDivAsTicks(
         int24 width,
         int24 tickSpacing
-    ) external pure returns (int24 rangeDown, int24 rangeUp) {
+    ) internal pure returns (int24 rangeDown, int24 rangeUp) {
         /// @solidity memory-safe-assembly
         //cache product and denominator
         assembly {
@@ -430,6 +396,49 @@ library PanopticMath {
             // If x * y modulo the denominator is strictly greater than 0,
             // 1 is added to round up the division of x * y by the denominator.
             rangeUp := add(gt(mod(product, denominator), 0), rangeDown)
+        }
+    }
+
+    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
+    /// @param strike the strike price of the option
+    /// @param width the width of the option
+    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
+    /// @return tickLower the lower tick of the liquidity chunk.
+    /// @return tickUpper the upper tick of the liquidity chunk.
+    function getTicks(
+        int24 strike,
+        int24 width,
+        int24 tickSpacing
+    ) internal pure returns (int24 tickLower, int24 tickUpper) {
+        unchecked {
+            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
+            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
+            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
+            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
+
+            /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
+            /// if (width * tickSpacing) is:
+            ///     even: tick range -> (strike - range, strike + range)
+            ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
+            (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = mulDivAsTicks(
+                width,
+                tickSpacing
+            );
+
+            (tickLower, tickUpper) = (
+                strike - oneSidedRangeLower,
+                strike + oneSidedRangeUpper
+            );
+
+            // Revert if the upper/lower ticks are not multiples of tickSpacing
+            // Revert if the tick range extends from the strike outside of the valid tick range
+            // These are invalid states, and would revert silently later in `univ3Pool.mint`
+            if (
+                tickLower % tickSpacing != 0 ||
+                tickUpper % tickSpacing != 0 ||
+                tickLower < minTick ||
+                tickUpper > maxTick
+            ) revert Errors.TicksNotInitializable();
         }
     }
 
