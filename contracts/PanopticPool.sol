@@ -1711,7 +1711,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // T (totalLiquidity is (T + R) after minting)
                     uint256 totalLiquidityBefore = totalLiquidity - positionLiquidity;
 
-                    s_grossPremiumLast[chunkKey] = uint256(0).toRightSlot(uint128((grossCurrent[0] * positionLiquidity + grossPremiumLast.rightSlot() * totalLiquidityBefore) / totalLiquidity)).toLeftSlot(uint128((grossCurrent[1] * positionLiquidity + grossPremiumLast.leftSlot() * totalLiquidityBefore) / totalLiquidity));
+                    s_grossPremiumLast[chunkKey] = uint256(0)
+                        .toRightSlot(
+                            uint128(
+                                (grossCurrent[0] *
+                                    positionLiquidity +
+                                    grossPremiumLast.rightSlot() *
+                                    totalLiquidityBefore) / totalLiquidity
+                            )
+                        )
+                        .toLeftSlot(
+                            uint128(
+                                (grossCurrent[1] *
+                                    positionLiquidity +
+                                    grossPremiumLast.leftSlot() *
+                                    totalLiquidityBefore) / totalLiquidity
+                            )
+                        );
                 }
             }
         }
@@ -1847,7 +1863,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
                 // T (totalLiquidity is (T - R) after burning)
                 uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
-                
+
                 uint256 availablePremium = _getAvailablePremium(
                     totalLiquidity + positionLiquidity,
                     settledTokens,
@@ -1884,8 +1900,47 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     uint256 _leg = leg;
                     // if there's still liquidity, compute the new grossPremiumLast
                     // otherwise, we just reset grossPremiumLast to the current grossPremium
-                    s_grossPremiumLast[chunkKey] = totalLiquidity != 0 ? uint256(0).toRightSlot(uint128(uint256(Math.max((int256(grossPremiumLast.rightSlot() * totalLiquidityBefore) - int256(_premiumAccumulatorsByLeg[_leg][0] * positionLiquidity))/2**64 - int256(legPremia.rightSlot()), 0)) / totalLiquidity))
-                        .toLeftSlot(uint128(uint256(Math.max((int256(grossPremiumLast.leftSlot() * totalLiquidityBefore) - int256(_premiumAccumulatorsByLeg[_leg][1] * positionLiquidity))/2**64 - int256(legPremia.leftSlot()), 0)) / totalLiquidity)) : uint256(0).toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0])).toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
+                    s_grossPremiumLast[chunkKey] = totalLiquidity != 0
+                        ? uint256(0)
+                            .toRightSlot(
+                                uint128(
+                                    uint256(
+                                        Math.max(
+                                            (int256(
+                                                grossPremiumLast.rightSlot() * totalLiquidityBefore
+                                            ) -
+                                                int256(
+                                                    _premiumAccumulatorsByLeg[_leg][0] *
+                                                        positionLiquidity
+                                                )) /
+                                                2 ** 64 -
+                                                int256(legPremia.rightSlot()),
+                                            0
+                                        )
+                                    ) / totalLiquidity
+                                )
+                            )
+                            .toLeftSlot(
+                                uint128(
+                                    uint256(
+                                        Math.max(
+                                            (int256(
+                                                grossPremiumLast.leftSlot() * totalLiquidityBefore
+                                            ) -
+                                                int256(
+                                                    _premiumAccumulatorsByLeg[_leg][1] *
+                                                        positionLiquidity
+                                                )) /
+                                                2 ** 64 -
+                                                int256(legPremia.leftSlot()),
+                                            0
+                                        )
+                                    ) / totalLiquidity
+                                )
+                            )
+                        : uint256(0)
+                            .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
+                            .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                 }
             }
 
