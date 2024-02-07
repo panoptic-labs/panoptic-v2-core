@@ -1758,8 +1758,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
                 totalLiquidity) / 2 ** 64;
 
-            console2.log("accumulated0", accumulated0);
-            console2.log("accumulated1", accumulated1);
             return (
                 uint256(0)
                     .toRightSlot(
