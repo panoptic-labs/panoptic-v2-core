@@ -1630,7 +1630,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
 
                     if (isLong == 1) {
-                        premiaByLeg[leg] = premiaByLeg[leg].mul(-1);
+                        premiaByLeg[leg] = int256(0).sub(premiaByLeg[leg]);
                     }
                 }
             }
