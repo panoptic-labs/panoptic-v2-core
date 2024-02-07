@@ -21,6 +21,7 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1656,6 +1657,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Calculate the required amount of collateral for the spread portion of the spread position.
+    /// @dev long leg requirement + 100% collateralized risk
+    /// @dev may be higher than the requirement of non risk-partnered legs if the spread is very wide (risky)
     /// @param tokenId the option position.
     /// @param positionSize the size of the position.
     /// @param index the leg index of the LONG leg in the spread position.
@@ -1694,12 +1697,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         uint256 tokenType = tokenId.tokenType(index);
 
-        spreadRequirement = _getRequiredCollateralAtUtilization(
-            tokenType == 0 ? movedRight : movedLeft,
-            1,
-            tokenType == 0 ? int64(uint64(poolUtilization)) : int64(uint64(poolUtilization >> 64))
-        );
-
         // if asset is NOT the same as the tokenType, the required amount is simply the difference in notional values
         // ie. asset = 1, tokenType = 0:
         if (tokenId.asset(index) != tokenType) {
@@ -1737,6 +1734,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     : ((notional - notionalP) * contracts) / notionalP;
             }
         }
+
+        // add the collateral requirement for the long leg as a base
+        spreadRequirement += _getRequiredCollateralAtUtilization(
+            tokenType == 0 ? movedRight : movedLeft,
+            1,
+            tokenType == 0 ? int64(uint64(poolUtilization)) : int64(uint64(poolUtilization >> 64))
+        );
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.
