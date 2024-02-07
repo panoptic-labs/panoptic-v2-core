@@ -1717,7 +1717,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 (grossCurrent[0] *
                                     positionLiquidity +
                                     grossPremiumLast.rightSlot() *
-                                    totalLiquidityBefore) / totalLiquidity
+                                    totalLiquidityBefore) / (totalLiquidity)
                             )
                         )
                         .toLeftSlot(
@@ -1725,7 +1725,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 (grossCurrent[1] *
                                     positionLiquidity +
                                     grossPremiumLast.leftSlot() *
-                                    totalLiquidityBefore) / totalLiquidity
+                                    totalLiquidityBefore) / (totalLiquidity)
                             )
                         );
                 }
@@ -1758,6 +1758,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
                 totalLiquidity) / 2 ** 64;
 
+            console2.log("accumulated0", accumulated0);
+            console2.log("accumulated1", accumulated1);
             return (
                 uint256(0)
                     .toRightSlot(
@@ -1887,17 +1889,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // C: current grossPremium value
                 // L: current grossPremiumLast value
                 // Ln: updated grossPremiumLast value
-                // T * (C - L) - P = G
-                // (T - R) * (C - Ln) = G
+                // T * (C - L) = G
+                // (T - R) * (C - Ln) = G - P
                 //
-                // T * (C - L) - P = (T - R) * (C - Ln)
+                // T * (C - L) = (T - R) * (C - Ln) + P
                 // (TC - TL - P) / (T - R) = C - Ln
-                // Ln = C - (CT - LT) / (T - R)
-                // Ln = (CT - CR - CT + LT - P) / (T-R)
-                // Ln = (LT - CR - P) / (T-R)
+                // Ln = C - (TC - TL - P) / (T - R)
+                // Ln = (TC - CR - TC + LT + P) / (T-R)
+                // Ln = (LT - CR + P) / (T-R)
+
                 unchecked {
                     uint256[2][4] memory _premiumAccumulatorsByLeg = premiumAccumulatorsByLeg;
                     uint256 _leg = leg;
+
                     // if there's still liquidity, compute the new grossPremiumLast
                     // otherwise, we just reset grossPremiumLast to the current grossPremium
                     s_grossPremiumLast[chunkKey] = totalLiquidity != 0
@@ -1912,9 +1916,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                 int256(
                                                     _premiumAccumulatorsByLeg[_leg][0] *
                                                         positionLiquidity
-                                                )) /
-                                                2 ** 64 -
-                                                int256(legPremia.rightSlot()),
+                                                )) + int256(legPremia.rightSlot() * 2 ** 64),
                                             0
                                         )
                                     ) / totalLiquidity
@@ -1930,9 +1932,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                 int256(
                                                     _premiumAccumulatorsByLeg[_leg][1] *
                                                         positionLiquidity
-                                                )) /
-                                                2 ** 64 -
-                                                int256(legPremia.leftSlot()),
+                                                )) + int256(legPremia.leftSlot()) * 2 ** 64,
                                             0
                                         )
                                     ) / totalLiquidity
