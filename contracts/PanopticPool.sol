@@ -1672,7 +1672,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tickSpacing
                 );
 
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (S + R)
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
                 uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
 
                 // We need to adjust the grossPremiumLast value such that the result of
