@@ -2035,10 +2035,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // only add premium requirement if there is net premia owed
             premium0 = premium0 < 0 ? int128(10_000 * uint128(-premium0)) / 10_000 : int128(0);
             required += premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0;
-            console2.log(
-                "1prem",
-                premium1 < 0 ? uint128((uint128(10_000) * uint128(-premium1)) / 10_000) : 0
-            );
+
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
             assertEq(required, tokenData1.leftSlot(), "required token1");
         }
@@ -5774,19 +5771,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             tokenType == 0
                                 ? int64(uint64(poolUtilizations))
                                 : int64(uint64(poolUtilizations >> 64))
-                        )
-                    );
-
-                    console2.log(
-                        "extra",
-                        uint128(
-                            collateralToken0.getRequiredCollateralAtUtilization(
-                                uint128(tokenType == 0 ? movedRight : movedLeft),
-                                1,
-                                tokenType == 0
-                                    ? int64(uint64(poolUtilizations))
-                                    : int64(uint64(poolUtilizations >> 64))
-                            )
                         )
                     );
 
