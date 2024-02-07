@@ -1663,67 +1663,133 @@ contract PanopticPoolTest is PositionUtils {
     ) public {
         _initPool(x);
 
-        (int24 width, int24 strike) = PositionUtils.getMinWidthInRangeSW(
-            uint24(tickSpacing),
-            currentTick
-        );
-
-        populatePositionDataLarge(width, strike, positionSizeSeed);
-
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
         uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenId;
+        int256 initialPremium0;
+        int256 initialPremium1;
+        {
+            (int24 width, int24 strike) = PositionUtils.getMinWidthInRangeSW(
+                uint24(tickSpacing),
+                currentTick
+            );
 
-        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+            populatePositionDataLarge(width, strike, positionSizeSeed);
 
-        premiaSeed[0] = bound(premiaSeed[0], 2 ** 64, 2 ** 120);
-        premiaSeed[1] = bound(premiaSeed[1], 2 ** 64, 2 ** 120);
+            uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+                0,
+                1,
+                isWETH,
+                0,
+                0,
+                0,
+                strike,
+                width
+            );
 
-        accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
+            posIdList[0] = tokenId;
 
-        changePrank(address(sfpm));
-        pool.burn(tickLower, tickUpper, 0);
+            pp.mintOptions(posIdList, positionSize, 0, 0, 0);
 
-        (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(
-            Alice,
-            false,
-            posIdList
-        );
+            premiaSeed[0] = bound(premiaSeed[0], 2 ** 64, 2 ** 120);
+            premiaSeed[1] = bound(premiaSeed[1], 2 ** 64, 2 ** 120);
 
-        // we have not settled any accrued premium yet, so the calculated amount (excluding pending premium) should be 0
-        assertEq(premium0, 0);
-        assertEq(premium1, 0);
+            // account for premium on initial mint
+            (initialPremium0, initialPremium1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                true,
+                posIdList
+            );
+        }
 
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
+        int256 finalPremium0;
+        int256 finalPremium1;
+        {
+            accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
 
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
+            changePrank(address(sfpm));
+            pool.burn(tickLower, tickUpper, 0);
+
+            (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                false,
+                posIdList
+            );
+
+            // we have not settled any accrued premium yet, so the calculated amount (excluding pending premium) should be 0
+            assertEq(premium0, 0);
+            assertEq(premium1, 0);
+
+            (finalPremium0, finalPremium1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                true,
+                posIdList
+            );
+
+            assertApproxEqAbs(
+                uint256(finalPremium0 - initialPremium0),
+                premiaSeed[0],
+                premiaSeed[0] / 1_000_000
+            );
+            assertApproxEqAbs(
+                uint256(finalPremium1 - initialPremium1),
+                premiaSeed[1],
+                premiaSeed[1] / 1_000_000
+            );
+        }
 
         changePrank(Bob);
 
-        // settle premium by minting another position touching the same chunk, triggering a collect
-        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
+        {
+            (int256 premiumBefore0, int256 premiumBefore1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                true,
+                posIdList
+            );
 
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
+            // settle premium by minting another position touching the same chunk, triggering a collect
+            pp.mintOptions(posIdList, positionSize, 0, 0, 0);
 
-        // now that we have settled, the results should be the same
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
+            (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                false,
+                posIdList
+            );
 
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
+            // now that we have settled, the results should be the same
+            assertApproxEqAbs(
+                uint256(premium0 - initialPremium0),
+                premiaSeed[0],
+                premiaSeed[0] / 1_000_000,
+                "0"
+            );
+            assertApproxEqAbs(
+                uint256(premium1 - initialPremium1),
+                premiaSeed[1],
+                premiaSeed[1] / 1_000_000,
+                "1"
+            );
 
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
+            (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                true,
+                posIdList
+            );
+
+            int256 offSet0 = premium0 - premiumBefore0;
+            int256 offSet1 = premium1 - premiumBefore1;
+
+            assertApproxEqAbs(
+                uint256(premium0 - initialPremium0 - offSet0),
+                premiaSeed[0],
+                premiaSeed[0] / 1_000_000,
+                "2"
+            );
+            assertApproxEqAbs(
+                uint256(premium1 - initialPremium1 - offSet1),
+                premiaSeed[1],
+                premiaSeed[1] / 1_000_000,
+                "3"
+            );
+        }
     }
 
     function test_Success_calculatePortfolioValue_2xOTMShortCall(

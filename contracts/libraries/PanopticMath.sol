@@ -425,10 +425,7 @@ library PanopticMath {
                 tickSpacing
             );
 
-            (tickLower, tickUpper) = (
-                strike - oneSidedRangeLower,
-                strike + oneSidedRangeUpper
-            );
+            (tickLower, tickUpper) = (strike - oneSidedRangeLower, strike + oneSidedRangeUpper);
 
             // Revert if the upper/lower ticks are not multiples of tickSpacing
             // Revert if the tick range extends from the strike outside of the valid tick range
