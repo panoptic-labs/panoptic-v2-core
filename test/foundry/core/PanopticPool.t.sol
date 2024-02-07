@@ -1768,11 +1768,7 @@ contract PanopticPoolTest is PositionUtils {
                 "1"
             );
 
-            (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(
-                Alice,
-                true,
-                posIdList
-            );
+            (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
 
             int256 offSet0 = premium0 - premiumBefore0;
             int256 offSet1 = premium1 - premiumBefore1;
