@@ -1643,7 +1643,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
 
                     if (isLong == 1) {
-                        premiaByLeg[leg] = -premiaByLeg[leg];
+                        premiaByLeg[leg] = int256(0).sub(premiaByLeg[leg]);
                     }
                 }
             }
@@ -1802,7 +1802,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tickSpacing
                 );
 
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (S + R)
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
                 uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
 
                 // We need to adjust the grossPremiumLast value such that the result of
@@ -1980,8 +1980,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int256 legPremia = premiaByLeg[leg];
 
             // (will be) paid by long legs
-            if (premiaByLeg[leg] <= 0) {
-                settledTokens = settledTokens.add(uint256(-legPremia));
+            if (tokenId.isLong(leg) == 1) {
+                settledTokens = uint256(int256(settledTokens).sub(legPremia));
                 realizedPremia = realizedPremia.add(legPremia);
             } else {
                 uint256 positionLiquidity = PanopticMath

@@ -870,7 +870,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             int256 _moved;
             int256 _itmAmounts;
-            uint256 _totalCollected;
+            uint256 _collectedSingleLeg;
 
             {
                 // cache the univ3pool, tokenId, isBurn, and _positionSize variables to get rid of stack too deep error
@@ -896,7 +896,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     _univ3pool.tickSpacing()
                 );
 
-                (_moved, _itmAmounts, _totalCollected) = _createLegInAMM(
+                (_moved, _itmAmounts, _collectedSingleLeg) = _createLegInAMM(
                     _univ3pool,
                     _tokenId,
                     _leg,
@@ -904,7 +904,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     _isBurn
                 );
 
-                collectedByLeg[_leg] = _totalCollected;
+                collectedByLeg[_leg] = _collectedSingleLeg;
 
                 unchecked {
                     // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
@@ -943,14 +943,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param _isBurn is true if the position is burnt
     /// @return _moved the total amount of liquidity moved from the msg.sender to Uniswap
     /// @return _itmAmounts the amount of tokens swapped due to legs being in-the-money
-    /// @return _totalCollected LeftRight encoded words containing the amount of token0 and token1 collected as fees
+    /// @return _collectedSingleLeg LeftRight encoded words containing the amount of token0 and token1 collected as fees
     function _createLegInAMM(
         IUniswapV3Pool _univ3pool,
         uint256 _tokenId,
         uint256 _leg,
         uint256 _liquidityChunk,
         bool _isBurn
-    ) internal returns (int256 _moved, int256 _itmAmounts, uint256 _totalCollected) {
+    ) internal returns (int256 _moved, int256 _itmAmounts, uint256 _collectedSingleLeg) {
         uint256 _tokenType = TokenId.tokenType(_tokenId, _leg);
         // unique key to identify the liquidity chunk in this uniswap pool
         bytes32 positionKey = keccak256(
@@ -1064,7 +1064,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
-            _totalCollected = _collectAndWritePositionData(
+            _collectedSingleLeg = _collectAndWritePositionData(
                 _liquidityChunk,
                 _univ3pool,
                 currentLiquidity,
@@ -1230,7 +1230,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param positionKey the unique key to identify the liquidity chunk/tokenType pairing in this uniswap pool
     /// @param movedInLeg how much liquidity has been moved between msg.sender and Uniswap before this function call
     /// @param isLong whether the leg in question is long (=1) or short (=0)
-    /// @return collectedOut the incoming totalCollected with potentially whatever is collected in this function added to it
+    /// @return collectedChunk the incoming amount collected with potentially whatever is collected in this function added to it
     function _collectAndWritePositionData(
         uint256 liquidityChunk,
         IUniswapV3Pool univ3pool,
@@ -1238,7 +1238,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         bytes32 positionKey,
         int256 movedInLeg,
         uint256 isLong
-    ) internal returns (uint256 collectedOut) {
+    ) internal returns (uint256 collectedChunk) {
         uint128 startingLiquidity = currentLiquidity.rightSlot();
         // round down current fees base to minimize Δfeesbase
         // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
@@ -1278,9 +1278,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             // CollectedOut is the amount of fees accumulated+collected (received - burnt)
             // That's because receivedAmount contains the burnt tokens and whatever amount of fees collected
-            collectedOut = uint256(0).toRightSlot(collected0).toLeftSlot(collected1);
+            collectedChunk = uint256(0).toRightSlot(collected0).toLeftSlot(collected1);
 
-            _updateStoredPremia(positionKey, currentLiquidity, collectedOut);
+            // record the collected amounts in the s_accountPremiumOwed and s_accountPremiumGross accumulators
+            _updateStoredPremia(positionKey, currentLiquidity, collectedChunk);
         }
     }
 
@@ -1425,6 +1426,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper)
         );
 
+        uint256 acctPremia;
+
         // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
         if (atTick < type(int24).max) {
             // unique key to identify the liquidity chunk in this uniswap pool
@@ -1466,20 +1469,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     premiumGross
                 );
 
-                return (
-                    isLong == 1
-                        ? (premiumOwed.rightSlot(), premiumOwed.leftSlot())
-                        : (premiumGross.rightSlot(), premiumGross.leftSlot())
-                );
+                acctPremia = isLong == 1 ? premiumOwed : premiumGross;
             }
         } else {
             // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
-            uint256 acctPremia = isLong == 1
+            acctPremia = isLong == 1
                 ? s_accountPremiumOwed[positionKey]
                 : s_accountPremiumGross[positionKey];
-
-            return (acctPremia.rightSlot(), acctPremia.leftSlot());
         }
+        return (acctPremia.rightSlot(), acctPremia.leftSlot());
     }
 
     /// @notice Return the feesBase associated with a given position.
