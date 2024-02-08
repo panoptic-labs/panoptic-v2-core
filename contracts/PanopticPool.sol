@@ -437,7 +437,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ) {
-                    if (premiaByLeg[leg] > 0 && !includePendingPremium) {
+                    if (tokenId.isLong(leg) == 0 && !includePendingPremium) {
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
                                 tokenId.strike(leg),
@@ -1839,112 +1839,119 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         for (uint256 leg = 0; leg < numLegs; ) {
-            bytes32 chunkKey = keccak256(
-                abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
-            );
-
-            // collected from Uniswap
-            uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
-
             int256 legPremia = premiaByLeg[leg];
 
-            // (will be) paid by long legs
-            if (tokenId.isLong(leg) == 1) {
-                settledTokens = uint256(int256(settledTokens).sub(legPremia));
-                realizedPremia = realizedPremia.add(legPremia);
-            } else {
-                uint256 positionLiquidity = PanopticMath
-                    .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
-                    .liquidity();
-
-                uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
-
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
-                // T (totalLiquidity is (T - R) after burning)
-                uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
-
-                uint256 availablePremium = _getAvailablePremium(
-                    totalLiquidity + positionLiquidity,
-                    settledTokens,
-                    grossPremiumLast,
-                    uint256(legPremia),
-                    premiumAccumulatorsByLeg[leg]
+            if (legPremia != 0) {
+                bytes32 chunkKey = keccak256(
+                    abi.encodePacked(
+                        tokenId.strike(leg),
+                        tokenId.width(leg),
+                        tokenId.tokenType(leg)
+                    )
                 );
 
-                // subtract settled tokens sent to seller
-                settledTokens = settledTokens.sub(availablePremium);
+                // collected from Uniswap
+                uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
 
-                // add available premium to amount that should be settled
-                realizedPremia = realizedPremia.add(int256(availablePremium));
+                // (will be) paid by long legs
+                if (tokenId.isLong(leg) == 1) {
+                    settledTokens = uint256(int256(settledTokens).sub(legPremia));
+                    realizedPremia = realizedPremia.add(legPremia);
+                } else {
+                    uint256 positionLiquidity = PanopticMath
+                        .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
+                        .liquidity();
 
-                // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostBurn/2**64 is equal to
-                // (grossPremium - grossPremiumLast)*totalLiquidityBeforeBurn/2**64 - premiumOwedToPosition
-                // G: total gross premium (- premiumOwedToPosition)
-                // T: totalLiquidityBeforeMint
-                // R: positionLiquidity
-                // C: current grossPremium value
-                // L: current grossPremiumLast value
-                // Ln: updated grossPremiumLast value
-                // T * (C - L) = G
-                // (T - R) * (C - Ln) = G - P
-                //
-                // T * (C - L) = (T - R) * (C - Ln) + P
-                // (TC - TL - P) / (T - R) = C - Ln
-                // Ln = C - (TC - TL - P) / (T - R)
-                // Ln = (TC - CR - TC + LT + P) / (T-R)
-                // Ln = (LT - CR + P) / (T-R)
+                    uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
 
-                unchecked {
-                    uint256[2][4] memory _premiumAccumulatorsByLeg = premiumAccumulatorsByLeg;
-                    uint256 _leg = leg;
+                    // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
+                    uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
+                    // T (totalLiquidity is (T - R) after burning)
+                    uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
 
-                    // if there's still liquidity, compute the new grossPremiumLast
-                    // otherwise, we just reset grossPremiumLast to the current grossPremium
-                    s_grossPremiumLast[chunkKey] = totalLiquidity != 0
-                        ? uint256(0)
-                            .toRightSlot(
-                                uint128(
-                                    uint256(
-                                        Math.max(
-                                            (int256(
-                                                grossPremiumLast.rightSlot() * totalLiquidityBefore
-                                            ) -
-                                                int256(
-                                                    _premiumAccumulatorsByLeg[_leg][0] *
-                                                        positionLiquidity
-                                                )) + int256(legPremia.rightSlot() * 2 ** 64),
-                                            0
-                                        )
-                                    ) / totalLiquidity
+                    uint256 availablePremium = _getAvailablePremium(
+                        totalLiquidity + positionLiquidity,
+                        settledTokens,
+                        grossPremiumLast,
+                        uint256(legPremia),
+                        premiumAccumulatorsByLeg[leg]
+                    );
+
+                    // subtract settled tokens sent to seller
+                    settledTokens = settledTokens.sub(availablePremium);
+
+                    // add available premium to amount that should be settled
+                    realizedPremia = realizedPremia.add(int256(availablePremium));
+
+                    // We need to adjust the grossPremiumLast value such that the result of
+                    // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostBurn/2**64 is equal to
+                    // (grossPremium - grossPremiumLast)*totalLiquidityBeforeBurn/2**64 - premiumOwedToPosition
+                    // G: total gross premium (- premiumOwedToPosition)
+                    // T: totalLiquidityBeforeMint
+                    // R: positionLiquidity
+                    // C: current grossPremium value
+                    // L: current grossPremiumLast value
+                    // Ln: updated grossPremiumLast value
+                    // T * (C - L) = G
+                    // (T - R) * (C - Ln) = G - P
+                    //
+                    // T * (C - L) = (T - R) * (C - Ln) + P
+                    // (TC - TL - P) / (T - R) = C - Ln
+                    // Ln = C - (TC - TL - P) / (T - R)
+                    // Ln = (TC - CR - TC + LT + P) / (T-R)
+                    // Ln = (LT - CR + P) / (T-R)
+
+                    unchecked {
+                        uint256[2][4] memory _premiumAccumulatorsByLeg = premiumAccumulatorsByLeg;
+                        uint256 _leg = leg;
+
+                        // if there's still liquidity, compute the new grossPremiumLast
+                        // otherwise, we just reset grossPremiumLast to the current grossPremium
+                        s_grossPremiumLast[chunkKey] = totalLiquidity != 0
+                            ? uint256(0)
+                                .toRightSlot(
+                                    uint128(
+                                        uint256(
+                                            Math.max(
+                                                (int256(
+                                                    grossPremiumLast.rightSlot() *
+                                                        totalLiquidityBefore
+                                                ) -
+                                                    int256(
+                                                        _premiumAccumulatorsByLeg[_leg][0] *
+                                                            positionLiquidity
+                                                    )) + int256(legPremia.rightSlot() * 2 ** 64),
+                                                0
+                                            )
+                                        ) / totalLiquidity
+                                    )
                                 )
-                            )
-                            .toLeftSlot(
-                                uint128(
-                                    uint256(
-                                        Math.max(
-                                            (int256(
-                                                grossPremiumLast.leftSlot() * totalLiquidityBefore
-                                            ) -
-                                                int256(
-                                                    _premiumAccumulatorsByLeg[_leg][1] *
-                                                        positionLiquidity
-                                                )) + int256(legPremia.leftSlot()) * 2 ** 64,
-                                            0
-                                        )
-                                    ) / totalLiquidity
+                                .toLeftSlot(
+                                    uint128(
+                                        uint256(
+                                            Math.max(
+                                                (int256(
+                                                    grossPremiumLast.leftSlot() *
+                                                        totalLiquidityBefore
+                                                ) -
+                                                    int256(
+                                                        _premiumAccumulatorsByLeg[_leg][1] *
+                                                            positionLiquidity
+                                                    )) + int256(legPremia.leftSlot()) * 2 ** 64,
+                                                0
+                                            )
+                                        ) / totalLiquidity
+                                    )
                                 )
-                            )
-                        : uint256(0)
-                            .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
-                            .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
+                            : uint256(0)
+                                .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
+                                .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
+                    }
                 }
+
+                // update settled tokens in storage with all local deltas
+                s_settledTokens[chunkKey] = settledTokens;
             }
-
-            // update settled tokens in storage with all local deltas
-            s_settledTokens[chunkKey] = settledTokens;
-
             unchecked {
                 ++leg;
             }
