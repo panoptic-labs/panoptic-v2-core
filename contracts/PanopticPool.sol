@@ -149,7 +149,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     uint64 internal constant MAX_POSITIONS = 32;
 
     // multiplier (x10k) for the collateral requirement in the event of a buying power decrease, such as minting or force exercising
-    uint256 internal constant BP_DECREASE_BUFFER = 13_333;
+    uint256 internal constant BP_DECREASE_BUFFER = 11_000;
 
     // multiplier (x10k) for the collateral requirement in the general case
     uint256 internal constant NO_BUFFER = 10_000;
