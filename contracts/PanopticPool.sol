@@ -1973,18 +1973,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             int256 legPremia = premiaByLeg[leg];
 
+            bytes32 chunkKey = keccak256(
+                abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+            );
+
+            // collected from Uniswap
+            uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+
             if (legPremia != 0) {
-                bytes32 chunkKey = keccak256(
-                    abi.encodePacked(
-                        tokenId.strike(leg),
-                        tokenId.width(leg),
-                        tokenId.tokenType(leg)
-                    )
-                );
-
-                // collected from Uniswap
-                uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
-
                 // (will be) paid by long legs
                 if (tokenId.isLong(leg) == 1) {
                     settledTokens = uint256(int256(settledTokens).sub(legPremia));
@@ -2080,10 +2076,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                     }
                 }
-
-                // update settled tokens in storage with all local deltas
-                s_settledTokens[chunkKey] = settledTokens;
             }
+
+            // update settled tokens in storage with all local deltas
+            s_settledTokens[chunkKey] = settledTokens;
+
             unchecked {
                 ++leg;
             }
