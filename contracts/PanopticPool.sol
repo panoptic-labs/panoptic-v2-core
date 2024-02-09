@@ -1665,8 +1665,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
             s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(c);
 
-            uint256 totalLiquidity;
             {
+                uint256 totalLiquidity;
                 // TODO: deduct current leg liquidity....
                 uint256 netLiquidity;
                 uint256 removedLiquidity;
@@ -1676,7 +1676,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     leg,
                     tickSpacing
                 );
+                {
+                    uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                        tokenId,
+                        leg,
+                        positionSize,
+                        tickSpacing
+                    );
 
+                    // restore liquidities to their pre-mint values
+                    uint128 currentLiquidity = liquidityChunk.liquidity();
+                    if (tokenId.isLong(leg) == 0) {
+                        totalLiquidity -= currentLiquidity;
+                        netLiquidity -= currentLiquidity;
+                    } else {
+                        removedLiquidity -= currentLiquidity;
+                        netLiquidity += currentLiquidity;
+                    }
+                }
                 uint256 gP = uint256(0)
                     .toRightSlot(
                         uint128(
@@ -1802,73 +1819,99 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // compute accumulated fees
         premiaByLeg = _getPremia(tokenId, positionSize, owner, COMPUTE_ALL_PREMIA, type(int24).max);
 
+        // loop through each leg to update settled and gross amounts
+
         for (uint256 leg = 0; leg < numLegs; ) {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
 
-            uint256 settledTokens;
-            uint256 grossPremium;
-            uint256 totalLiquidity;
+            uint256 grossPremium = s_grossPremiumLast[chunkKey];
+
+            uint128 currentLiquidity;
             {
-                uint256 c = collectedByLeg[leg];
-                // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
-                settledTokens = s_settledTokens[chunkKey].add(c);
-
-                grossPremium = s_grossPremiumLast[chunkKey];
-
-                uint256 netLiquidity;
-                uint256 removedLiquidity;
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-                (totalLiquidity, netLiquidity, removedLiquidity) = _getTotalLiquidity(
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
                     leg,
+                    positionSize,
                     tickSpacing
                 );
-
-                uint256 gP = uint256(0)
-                    .toRightSlot(
-                        uint128(
-                            ((c.rightSlot() *
-                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                                netLiquidity)
-                        )
-                    )
-                    .toLeftSlot(
-                        uint128(
-                            ((c.leftSlot() *
-                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                                netLiquidity)
-                        )
-                    );
-                grossPremium = grossPremium.add(gP);
+                currentLiquidity = liquidityChunk.liquidity();
             }
 
-            int256 legPremia = premiaByLeg[leg];
+            // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
+            (
+                uint256 totalLiquidity,
+                uint256 netLiquidity,
+                uint256 removedLiquidity
+            ) = _getTotalLiquidity(tokenId, leg, tickSpacing);
 
-            if (legPremia != 0) {
-                // (will be) paid by long legs
-                if (tokenId.isLong(leg) == 1) {
-                    settledTokens = uint256(int256(settledTokens).sub(legPremia));
-                    realizedPremia = realizedPremia.add(legPremia);
-                } else {
-                    uint256 ratio0X128 = settledTokens.rightSlot() < grossPremium.rightSlot()
-                        ? Math.mulDiv(settledTokens.rightSlot(), 2 ** 128, grossPremium.rightSlot())
-                        : uint256(2 ** 128);
+            // restore liquidities to their pre-mint values
 
-                    uint256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
-                        ? Math.mulDiv(settledTokens.leftSlot(), 2 ** 128, grossPremium.leftSlot())
-                        : uint256(2 ** 128);
+            uint256 isLong = TokenId.isLong(tokenId, leg);
+            if (isLong == 0) {
+                totalLiquidity += currentLiquidity;
+                netLiquidity += currentLiquidity;
+            } else {
+                removedLiquidity += currentLiquidity;
+                netLiquidity -= currentLiquidity;
+            }
+            uint256 c = collectedByLeg[leg];
+            // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
+            uint256 settledTokens = s_settledTokens[chunkKey].add(c);
 
-                    uint256 availablePremium = uint256(0)
-                        .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratio0X128) >> 128))
-                        .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratio1X128) >> 128));
+            uint256 gP = uint256(0)
+                .toRightSlot(
+                    uint128(
+                        ((c.rightSlot() *
+                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                            netLiquidity)
+                    )
+                )
+                .toLeftSlot(
+                    uint128(
+                        ((c.leftSlot() *
+                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                            netLiquidity)
+                    )
+                );
+            grossPremium = grossPremium.add(gP);
 
-                    // subtract settled tokens sent to seller
-                    settledTokens = settledTokens.sub(availablePremium);
+            {
+                int256 legPremia = premiaByLeg[leg];
 
-                    // add available premium to amount that should be settled
-                    realizedPremia = realizedPremia.add(int256(availablePremium));
+                if (legPremia != 0) {
+                    // (will be) paid by long legs
+
+                    if (isLong == 1) {
+                        settledTokens = uint256(int256(settledTokens).sub(legPremia));
+                        //realizedPremia = realizedPremia.add(legPremia);
+                    } else {
+                        uint256 availablePremium;
+
+                        {
+                            uint256 ratio0X128 = settledTokens.rightSlot() <
+                                grossPremium.rightSlot()
+                                ? (settledTokens.rightSlot() << 128) / grossPremium.rightSlot()
+                                : uint256(2 ** 128);
+
+                            uint256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
+                                ? (settledTokens.leftSlot() << 128) / grossPremium.leftSlot()
+                                : uint256(2 ** 128);
+
+                            availablePremium = uint256(0)
+                                .toRightSlot(
+                                    uint128((uint128(legPremia.rightSlot()) * ratio0X128) >> 128)
+                                )
+                                .toLeftSlot(
+                                    uint128((uint128(legPremia.leftSlot()) * ratio1X128) >> 128)
+                                );
+                        }
+                        // subtract settled tokens sent to seller
+                        settledTokens = settledTokens.sub(availablePremium);
+                        // add available premium to amount that should be settled
+                        //realizedPremia = realizedPremia.add(int256(availablePremium));
+                    }
                 }
             }
             // update settled tokens in storage with all local deltas
