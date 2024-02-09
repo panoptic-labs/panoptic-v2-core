@@ -798,17 +798,21 @@ library PanopticMath {
                     bytes32 chunkKey = keccak256(
                         abi.encodePacked(tokenId.strike(0), tokenId.width(0), tokenId.tokenType(0))
                     );
-                    int128 revoked0 = int128(
-                        Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0)
-                    );
-                    int128 revoked1 = int128(Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1));
 
-                    haircut0 -= revoked0;
-                    haircut1 -= revoked1;
+                    // The long premium is not commited to storage during the liquidation, so we add the entire adjusted
+                    // for the haircut directly to the accumulator
+                    int256 settled0 = -_premiasByLeg[i][leg].rightSlot() -
+                        Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0);
+
+                    int256 settled1 = -_premiasByLeg[i][leg].leftSlot() -
+                        Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1);
+
+                    haircut0 -= settled0;
+                    haircut1 -= settled1;
 
                     settledTokens[chunkKey] = uint256(
-                        int256(settledTokens[chunkKey]).sub(
-                            int256(0).toRightSlot(revoked0).toLeftSlot(revoked1)
+                        settledTokens[chunkKey].add(
+                            int256(0).toRightSlot(int128(settled0)).toLeftSlot(int128(settled1))
                         )
                     );
                 }
