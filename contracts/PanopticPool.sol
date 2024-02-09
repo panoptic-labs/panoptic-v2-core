@@ -1667,6 +1667,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             uint256 totalLiquidity;
             {
+                // TODO: deduct current leg liquidity....
                 uint256 netLiquidity;
                 uint256 removedLiquidity;
                 // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
