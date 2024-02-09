@@ -229,8 +229,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// LeftRight - right slot is token0, left slot is token1
     mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
 
-    mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast2;
-
     /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
     /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
     /// It decreases when sellers close positions and collect the premium they are owed
@@ -450,7 +448,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         {
                             uint256 settledTokens = s_settledTokens[chunkKey];
 
-                            uint256 grossPremium = s_grossPremiumLast2[chunkKey];
+                            uint256 grossPremium = s_grossPremiumLast[chunkKey];
 
                             int256 ratioX128 = settledTokens < grossPremium
                                 ? Math.mulDiv(settledTokens, 2 ** 128, grossPremium).toInt256()
@@ -1693,7 +1691,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 netLiquidity)
                         )
                     );
-                s_grossPremiumLast2[chunkKey] = s_grossPremiumLast2[chunkKey].add(gP);
+                s_grossPremiumLast[chunkKey] = s_grossPremiumLast[chunkKey].add(gP);
             }
         }
     }
@@ -1816,7 +1814,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
                 settledTokens = s_settledTokens[chunkKey].add(c);
 
-                grossPremium = s_grossPremiumLast2[chunkKey];
+                grossPremium = s_grossPremiumLast[chunkKey];
 
                 uint256 netLiquidity;
                 uint256 removedLiquidity;
@@ -1869,7 +1867,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // update settled tokens in storage with all local deltas
             s_settledTokens[chunkKey] = settledTokens;
-            s_grossPremiumLast2[chunkKey] = grossPremium;
+            s_grossPremiumLast[chunkKey] = grossPremium;
 
             unchecked {
                 ++leg;
