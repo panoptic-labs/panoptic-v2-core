@@ -1803,8 +1803,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         premiaByLeg = _getPremia(tokenId, positionSize, owner, COMPUTE_ALL_PREMIA, type(int24).max);
 
         for (uint256 leg = 0; leg < numLegs; ) {
-            int256 legPremia = premiaByLeg[leg];
-
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
@@ -1846,6 +1844,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 grossPremium = grossPremium.add(gP);
             }
 
+            int256 legPremia = premiaByLeg[leg];
+
             if (legPremia != 0) {
                 // (will be) paid by long legs
                 if (tokenId.isLong(leg) == 1) {
@@ -1860,11 +1860,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratioX128) >> 128))
                         .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratioX128) >> 128));
 
+                    // subtract settled tokens sent to seller
+                    settledTokens = settledTokens.sub(availablePremium);
+
                     // add available premium to amount that should be settled
                     realizedPremia = realizedPremia.add(int256(availablePremium));
                 }
             }
-
             // update settled tokens in storage with all local deltas
             s_settledTokens[chunkKey] = settledTokens;
             s_grossPremiumLast[chunkKey] = grossPremium;
