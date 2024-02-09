@@ -124,7 +124,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     bool internal constant COMPUTE_LONG_PREMIA = false;
 
     /// @dev Only include the share of (settled) premium that is available to collect when calling `_calculateAccumulatedPremia`
-    bool internal ONLY_AVAILABLE_PREMIUM = false;
+    bool internal constant ONLY_AVAILABLE_PREMIUM = false;
 
     /// @dev Boolean flag to determine wether a position is added (true) or not (!ADD = false)
     bool internal constant ADD = true;
