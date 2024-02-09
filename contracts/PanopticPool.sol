@@ -229,6 +229,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// LeftRight - right slot is token0, left slot is token1
     mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
 
+    mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast2;
+
     /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
     /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
     /// It decreases when sellers close positions and collect the premium they are owed
@@ -446,8 +448,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             )
                         );
 
+                        (uint256 totalLiquidity, , ) = _getTotalLiquidity(
+                            tokenId,
+                            leg,
+                            s_tickSpacing
+                        );
                         uint256 availablePremium = _getAvailablePremium(
-                            _getTotalLiquidity(tokenId, leg, s_tickSpacing),
+                            totalLiquidity,
                             s_settledTokens[chunkKey],
                             s_grossPremiumLast[chunkKey],
                             uint256(premiaByLeg[leg]),
@@ -1661,19 +1668,48 @@ contract PanopticPool is ERC1155Holder, Multicall {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
+            uint256 c = collectedByLeg[leg];
             // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
-            s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+            s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(c);
 
+            uint256 totalLiquidity;
+            {
+                uint256 netLiquidity;
+                uint256 removedLiquidity;
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
+                (totalLiquidity, netLiquidity, removedLiquidity) = _getTotalLiquidity(
+                    tokenId,
+                    leg,
+                    tickSpacing
+                );
+
+                uint256 gP = uint256(0)
+                    .toRightSlot(
+                        uint128(
+                            ((c.rightSlot() *
+                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                                netLiquidity)
+                        )
+                    )
+                    .toLeftSlot(
+                        uint128(
+                            ((c.leftSlot() *
+                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                                netLiquidity)
+                        )
+                    );
+                s_grossPremiumLast2[chunkKey] = s_grossPremiumLast2[chunkKey].add(gP);
+            }
+
+            /*            
             if (tokenId.isLong(leg) == 0) {
+
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
                     leg,
                     positionSize,
                     tickSpacing
                 );
-
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
 
                 // We need to adjust the grossPremiumLast value such that the result of
                 // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
@@ -1692,44 +1728,49 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // Ln = (CT + CR - TC + TL)/(T+R)
                 // Ln = (CR + TL)/(T+R)
 
-                uint256[2] memory grossCurrent;
-                (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
-                    address(s_univ3pool),
-                    address(this),
-                    tokenId.tokenType(leg),
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper(),
-                    type(int24).max,
-                    0
-                );
-
-                unchecked {
-                    // L
-                    uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
-                    // R
-                    uint256 positionLiquidity = liquidityChunk.liquidity();
-                    // T (totalLiquidity is (T + R) after minting)
-                    uint256 totalLiquidityBefore = totalLiquidity - positionLiquidity;
-
-                    s_grossPremiumLast[chunkKey] = uint256(0)
-                        .toRightSlot(
-                            uint128(
-                                (grossCurrent[0] *
-                                    positionLiquidity +
-                                    grossPremiumLast.rightSlot() *
-                                    totalLiquidityBefore) / (totalLiquidity)
-                            )
-                        )
-                        .toLeftSlot(
-                            uint128(
-                                (grossCurrent[1] *
-                                    positionLiquidity +
-                                    grossPremiumLast.leftSlot() *
-                                    totalLiquidityBefore) / (totalLiquidity)
-                            )
+                {
+                    uint256[2] memory grossCurrent;
+                    {
+                        uint256 tokenType = tokenId.tokenType(leg); 
+                        (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
+                            address(s_univ3pool),
+                            address(this),
+                            tokenType,
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            type(int24).max,
+                            0
                         );
+                    }
+                    unchecked {
+                        // L
+                        uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
+                        // R
+                        uint256 positionLiquidity = liquidityChunk.liquidity();
+                        // T (totalLiquidity is (T + R) after minting)
+                        uint256 totalLiquidityBefore = totalLiquidity - positionLiquidity;
+
+                        s_grossPremiumLast[chunkKey] = uint256(0)
+                            .toRightSlot(
+                                uint128(
+                                    (grossCurrent[0] *
+                                        positionLiquidity +
+                                        grossPremiumLast.rightSlot() *
+                                        totalLiquidityBefore) / (totalLiquidity)
+                                )
+                            )
+                            .toLeftSlot(
+                                uint128(
+                                    (grossCurrent[1] *
+                                        positionLiquidity +
+                                        grossPremiumLast.leftSlot() *
+                                        totalLiquidityBefore) / (totalLiquidity)
+                                )
+                            );
+                    }
                 }
             }
+            */
         }
     }
 
@@ -1791,7 +1832,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tokenId,
         uint256 leg,
         int24 tickSpacing
-    ) internal view returns (uint256 totalLiquidity) {
+    )
+        internal
+        view
+        returns (uint256 totalLiquidity, uint256 netLiquidity, uint256 removedLiquidity)
+    {
         unchecked {
             // totalLiquidity (total sold) = removedLiquidity + netLiquidity
 
@@ -1806,7 +1851,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
 
             // removed + net
-            totalLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
+            netLiquidity = accountLiquidities.rightSlot();
+            removedLiquidity = accountLiquidities.leftSlot();
+            totalLiquidity = netLiquidity + removedLiquidity;
         }
     }
 
@@ -1827,10 +1874,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickSpacing
     ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg) {
         uint256 numLegs = tokenId.countLegs();
-        uint256[2][4] memory premiumAccumulatorsByLeg;
+        //uint256[2][4] memory premiumAccumulatorsByLeg;
 
         // compute accumulated fees
-        (premiaByLeg, premiumAccumulatorsByLeg) = _getPremia(
+        (premiaByLeg, ) = _getPremia(
             tokenId,
             positionSize,
             owner,
@@ -1843,16 +1890,65 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
 
-            // collected from Uniswap
-            uint256 settledTokens = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
+            uint256 settledTokens;
+            uint256 grossPremium;
+            uint256 totalLiquidity;
+            {
+                uint256 c = collectedByLeg[leg];
+                // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
+                settledTokens = s_settledTokens[chunkKey].add(c);
+
+                grossPremium = s_grossPremiumLast2[chunkKey];
+
+                uint256 netLiquidity;
+                uint256 removedLiquidity;
+                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
+                (totalLiquidity, netLiquidity, removedLiquidity) = _getTotalLiquidity(
+                    tokenId,
+                    leg,
+                    tickSpacing
+                );
+
+                uint256 gP = uint256(0)
+                    .toRightSlot(
+                        uint128(
+                            ((c.rightSlot() *
+                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                                netLiquidity)
+                        )
+                    )
+                    .toLeftSlot(
+                        uint128(
+                            ((c.leftSlot() *
+                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                                netLiquidity)
+                        )
+                    );
+                grossPremium = grossPremium.add(gP);
+            }
 
             int256 legPremia = premiaByLeg[leg];
 
             // (will be) paid by long legs
-            if (premiaByLeg[leg] <= 0) {
-                settledTokens = settledTokens.add(uint256(-legPremia));
+            if (tokenId.isLong(leg) == 1) {
+                settledTokens = settledTokens.add(uint256(int256(0).sub(legPremia)));
                 realizedPremia = realizedPremia.add(legPremia);
             } else {
+                uint256 ratioX128 = settledTokens < grossPremium
+                    ? Math.mulDiv(settledTokens, 2 ** 128, grossPremium)
+                    : uint256(2 ** 128);
+
+                uint256 availablePremium = uint256(0)
+                    .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratioX128) >> 128))
+                    .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratioX128) >> 128));
+
+                // subtract settled tokens sent to seller
+                settledTokens = settledTokens.sub(availablePremium);
+
+                // add available premium to amount that should be settled
+                realizedPremia = realizedPremia.add(int256(availablePremium));
+
+                /*
                 uint256 positionLiquidity = PanopticMath
                     .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
                     .liquidity();
@@ -1860,7 +1956,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
 
                 // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
+                (uint256 totalLiquidity, , ) = _getTotalLiquidity(tokenId, leg, tickSpacing);
                 // T (totalLiquidity is (T - R) after burning)
                 uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
 
@@ -1940,10 +2036,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
                             .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                 }
+                    */
             }
 
             // update settled tokens in storage with all local deltas
             s_settledTokens[chunkKey] = settledTokens;
+            s_grossPremiumLast2[chunkKey] = grossPremium;
 
             unchecked {
                 ++leg;
