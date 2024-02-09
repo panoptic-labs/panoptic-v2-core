@@ -1852,13 +1852,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     settledTokens = uint256(int256(settledTokens).sub(legPremia));
                     realizedPremia = realizedPremia.add(legPremia);
                 } else {
-                    uint256 ratioX128 = settledTokens < grossPremium
-                        ? Math.mulDiv(settledTokens, 2 ** 128, grossPremium)
+                    uint256 ratio0X128 = settledTokens.rightSlot() < grossPremium.rightSlot()
+                        ? Math.mulDiv(settledTokens.rightSlot(), 2 ** 128, grossPremium.rightSlot())
+                        : uint256(2 ** 128);
+
+                    uint256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
+                        ? Math.mulDiv(settledTokens.leftSlot(), 2 ** 128, grossPremium.leftSlot())
                         : uint256(2 ** 128);
 
                     uint256 availablePremium = uint256(0)
-                        .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratioX128) >> 128))
-                        .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratioX128) >> 128));
+                        .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratio0X128) >> 128))
+                        .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratio1X128) >> 128));
 
                     // subtract settled tokens sent to seller
                     settledTokens = settledTokens.sub(availablePremium);
