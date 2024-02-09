@@ -426,20 +426,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // if position exists, then compute premia for that position
             if (balances[k][1].rightSlot() != 0) {
                 // increment the allPositionsPremia accumulator
-                (
-                    int256[4] memory premiaByLeg,
-                    uint256[2][4] memory premiumAccumulatorsByLeg
-                ) = _getPremia(
-                        tokenId,
-                        balances[k][1].rightSlot(),
-                        c_user,
-                        computeAllPremia,
-                        atTick
-                    );
+
+                int256[4] memory premiaByLeg = _getPremia(
+                    tokenId,
+                    balances[k][1].rightSlot(),
+                    c_user,
+                    computeAllPremia,
+                    atTick
+                );
 
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ) {
-                    if (premiaByLeg[leg] > 0 && !includePendingPremium) {
+                    if (tokenId.isLong(leg) == 0 && !includePendingPremium) {
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
                                 tokenId.strike(leg),
@@ -448,19 +446,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             )
                         );
 
-                        (uint256 totalLiquidity, , ) = _getTotalLiquidity(
-                            tokenId,
-                            leg,
-                            s_tickSpacing
-                        );
-                        uint256 availablePremium = _getAvailablePremium(
-                            totalLiquidity,
-                            s_settledTokens[chunkKey],
-                            s_grossPremiumLast[chunkKey],
-                            uint256(premiaByLeg[leg]),
-                            premiumAccumulatorsByLeg[leg]
-                        );
-                        portfolioPremium = portfolioPremium.add(int256(availablePremium));
+                        int256 availablePremium;
+                        {
+                            uint256 settledTokens = s_settledTokens[chunkKey];
+
+                            uint256 grossPremium = s_grossPremiumLast2[chunkKey];
+
+                            int256 ratioX128 = settledTokens < grossPremium
+                                ? Math.mulDiv(settledTokens, 2 ** 128, grossPremium).toInt256()
+                                : int256(2 ** 128);
+
+                            int256 legPremia = premiaByLeg[leg];
+
+                            availablePremium = int256(0)
+                                .toRightSlot(int128((legPremia.rightSlot() * ratioX128) >> 128))
+                                .toLeftSlot(int128((legPremia.leftSlot() * ratioX128) >> 128));
+                        }
+                        portfolioPremium = portfolioPremium.add(availablePremium);
                     } else {
                         portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
                     }
@@ -1582,11 +1584,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address owner,
         bool computeAllPremia,
         int24 atTick
-    )
-        internal
-        view
-        returns (int256[4] memory premiaByLeg, uint256[2][4] memory premiumAccumulatorsByLeg)
-    {
+    ) internal view returns (int256[4] memory premiaByLeg) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
@@ -1599,16 +1597,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
                 uint256 tokenType = tokenId.tokenType(leg);
 
-                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = sfpm
-                    .getAccountPremium(
-                        address(s_univ3pool),
-                        address(this),
-                        tokenType,
-                        liquidityChunk.tickLower(),
-                        liquidityChunk.tickUpper(),
-                        atTick,
-                        isLong
-                    );
+                (uint256 premiumAccumulator0, uint256 premiumAccumulator1) = sfpm.getAccountPremium(
+                    address(s_univ3pool),
+                    address(this),
+                    tokenType,
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper(),
+                    atTick,
+                    isLong
+                );
 
                 unchecked {
                     uint256 premiumAccumulatorLast = s_options[owner][tokenId][leg];
@@ -1620,8 +1617,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulatorsByLeg[leg][0] -
-                                        premiumAccumulatorLast.rightSlot()) *
+                                    ((premiumAccumulator0 - premiumAccumulatorLast.rightSlot()) *
                                         (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
@@ -1629,8 +1625,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    ((premiumAccumulatorsByLeg[leg][1] -
-                                        premiumAccumulatorLast.leftSlot()) *
+                                    ((premiumAccumulator1 - premiumAccumulatorLast.leftSlot()) *
                                         (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
@@ -1700,77 +1695,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     );
                 s_grossPremiumLast2[chunkKey] = s_grossPremiumLast2[chunkKey].add(gP);
             }
-
-            /*            
-            if (tokenId.isLong(leg) == 0) {
-
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize,
-                    tickSpacing
-                );
-
-                // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
-                // G: total gross premium
-                // T: totalLiquidityBeforeMint
-                // R: positionLiquidity
-                // C: current grossPremium value
-                // L: current grossPremiumLast value
-                // Ln: updated grossPremiumLast value
-                // T * (C - L) = G
-                // (T + R) * (C - Ln) = G
-                //
-                // T * (C - L) = (T + R) * (C - Ln)
-                // (TC - TL) / (T + R) = C - Ln
-                // Ln = C - (TC - TL)/(T + R)
-                // Ln = (CT + CR - TC + TL)/(T+R)
-                // Ln = (CR + TL)/(T+R)
-
-                {
-                    uint256[2] memory grossCurrent;
-                    {
-                        uint256 tokenType = tokenId.tokenType(leg); 
-                        (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
-                            address(s_univ3pool),
-                            address(this),
-                            tokenType,
-                            liquidityChunk.tickLower(),
-                            liquidityChunk.tickUpper(),
-                            type(int24).max,
-                            0
-                        );
-                    }
-                    unchecked {
-                        // L
-                        uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
-                        // R
-                        uint256 positionLiquidity = liquidityChunk.liquidity();
-                        // T (totalLiquidity is (T + R) after minting)
-                        uint256 totalLiquidityBefore = totalLiquidity - positionLiquidity;
-
-                        s_grossPremiumLast[chunkKey] = uint256(0)
-                            .toRightSlot(
-                                uint128(
-                                    (grossCurrent[0] *
-                                        positionLiquidity +
-                                        grossPremiumLast.rightSlot() *
-                                        totalLiquidityBefore) / (totalLiquidity)
-                                )
-                            )
-                            .toLeftSlot(
-                                uint128(
-                                    (grossCurrent[1] *
-                                        positionLiquidity +
-                                        grossPremiumLast.leftSlot() *
-                                        totalLiquidityBefore) / (totalLiquidity)
-                                )
-                            );
-                    }
-                }
-            }
-            */
         }
     }
 
@@ -1877,13 +1801,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         //uint256[2][4] memory premiumAccumulatorsByLeg;
 
         // compute accumulated fees
-        (premiaByLeg, ) = _getPremia(
-            tokenId,
-            positionSize,
-            owner,
-            COMPUTE_ALL_PREMIA,
-            type(int24).max
-        );
+        premiaByLeg = _getPremia(tokenId, positionSize, owner, COMPUTE_ALL_PREMIA, type(int24).max);
 
         for (uint256 leg = 0; leg < numLegs; ) {
             bytes32 chunkKey = keccak256(
@@ -1947,96 +1865,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                 // add available premium to amount that should be settled
                 realizedPremia = realizedPremia.add(int256(availablePremium));
-
-                /*
-                uint256 positionLiquidity = PanopticMath
-                    .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
-                    .liquidity();
-
-                uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
-
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                (uint256 totalLiquidity, , ) = _getTotalLiquidity(tokenId, leg, tickSpacing);
-                // T (totalLiquidity is (T - R) after burning)
-                uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
-
-                uint256 availablePremium = _getAvailablePremium(
-                    totalLiquidity + positionLiquidity,
-                    settledTokens,
-                    grossPremiumLast,
-                    uint256(legPremia),
-                    premiumAccumulatorsByLeg[leg]
-                );
-
-                // subtract settled tokens sent to seller
-                settledTokens = settledTokens.sub(availablePremium);
-
-                // add available premium to amount that should be settled
-                realizedPremia = realizedPremia.add(int256(availablePremium));
-
-                // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostBurn/2**64 is equal to
-                // (grossPremium - grossPremiumLast)*totalLiquidityBeforeBurn/2**64 - premiumOwedToPosition
-                // G: total gross premium (- premiumOwedToPosition)
-                // T: totalLiquidityBeforeMint
-                // R: positionLiquidity
-                // C: current grossPremium value
-                // L: current grossPremiumLast value
-                // Ln: updated grossPremiumLast value
-                // T * (C - L) = G
-                // (T - R) * (C - Ln) = G - P
-                //
-                // T * (C - L) = (T - R) * (C - Ln) + P
-                // (TC - TL - P) / (T - R) = C - Ln
-                // Ln = C - (TC - TL - P) / (T - R)
-                // Ln = (TC - CR - TC + LT + P) / (T-R)
-                // Ln = (LT - CR + P) / (T-R)
-
-                unchecked {
-                    uint256[2][4] memory _premiumAccumulatorsByLeg = premiumAccumulatorsByLeg;
-                    uint256 _leg = leg;
-
-                    // if there's still liquidity, compute the new grossPremiumLast
-                    // otherwise, we just reset grossPremiumLast to the current grossPremium
-                    s_grossPremiumLast[chunkKey] = totalLiquidity != 0
-                        ? uint256(0)
-                            .toRightSlot(
-                                uint128(
-                                    uint256(
-                                        Math.max(
-                                            (int256(
-                                                grossPremiumLast.rightSlot() * totalLiquidityBefore
-                                            ) -
-                                                int256(
-                                                    _premiumAccumulatorsByLeg[_leg][0] *
-                                                        positionLiquidity
-                                                )) + int256(legPremia.rightSlot() * 2 ** 64),
-                                            0
-                                        )
-                                    ) / totalLiquidity
-                                )
-                            )
-                            .toLeftSlot(
-                                uint128(
-                                    uint256(
-                                        Math.max(
-                                            (int256(
-                                                grossPremiumLast.leftSlot() * totalLiquidityBefore
-                                            ) -
-                                                int256(
-                                                    _premiumAccumulatorsByLeg[_leg][1] *
-                                                        positionLiquidity
-                                                )) + int256(legPremia.leftSlot()) * 2 ** 64,
-                                            0
-                                        )
-                                    ) / totalLiquidity
-                                )
-                            )
-                        : uint256(0)
-                            .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
-                            .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
-                }
-                    */
             }
 
             // update settled tokens in storage with all local deltas
