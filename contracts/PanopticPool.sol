@@ -124,7 +124,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     bool internal constant COMPUTE_LONG_PREMIA = false;
 
     /// @dev Only include the share of (settled) premium that is available to collect when calling `_calculateAccumulatedPremia`
-    bool internal ONLY_AVAILABLE_PREMIUM = false;
+    bool internal constant ONLY_AVAILABLE_PREMIUM = false;
 
     /// @dev Boolean flag to determine wether a position is added (true) or not (!ADD = false)
     bool internal constant ADD = true;
@@ -1630,7 +1630,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
 
                     if (isLong == 1) {
-                        premiaByLeg[leg] = -premiaByLeg[leg];
+                        premiaByLeg[leg] = int256(0).sub(premiaByLeg[leg]);
                     }
                 }
             }
@@ -1803,6 +1803,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         premiaByLeg = _getPremia(tokenId, positionSize, owner, COMPUTE_ALL_PREMIA, type(int24).max);
 
         for (uint256 leg = 0; leg < numLegs; ) {
+            int256 legPremia = premiaByLeg[leg];
+
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
@@ -1844,26 +1846,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 grossPremium = grossPremium.add(gP);
             }
 
-            int256 legPremia = premiaByLeg[leg];
+            if (legPremia != 0) {
+                // (will be) paid by long legs
+                if (tokenId.isLong(leg) == 1) {
+                    settledTokens = uint256(int256(settledTokens).sub(legPremia));
+                    realizedPremia = realizedPremia.add(legPremia);
+                } else {
+                    uint256 ratioX128 = settledTokens < grossPremium
+                        ? Math.mulDiv(settledTokens, 2 ** 128, grossPremium)
+                        : uint256(2 ** 128);
 
-            // (will be) paid by long legs
-            if (tokenId.isLong(leg) == 1) {
-                settledTokens = settledTokens.add(uint256(int256(0).sub(legPremia)));
-                realizedPremia = realizedPremia.add(legPremia);
-            } else {
-                uint256 ratioX128 = settledTokens < grossPremium
-                    ? Math.mulDiv(settledTokens, 2 ** 128, grossPremium)
-                    : uint256(2 ** 128);
+                    uint256 availablePremium = uint256(0)
+                        .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratioX128) >> 128))
+                        .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratioX128) >> 128));
 
-                uint256 availablePremium = uint256(0)
-                    .toRightSlot(uint128((uint128(legPremia.rightSlot()) * ratioX128) >> 128))
-                    .toLeftSlot(uint128((uint128(legPremia.leftSlot()) * ratioX128) >> 128));
-
-                // subtract settled tokens sent to seller
-                settledTokens = settledTokens.sub(availablePremium);
-
-                // add available premium to amount that should be settled
-                realizedPremia = realizedPremia.add(int256(availablePremium));
+                    // add available premium to amount that should be settled
+                    realizedPremia = realizedPremia.add(int256(availablePremium));
+                }
             }
 
             // update settled tokens in storage with all local deltas
