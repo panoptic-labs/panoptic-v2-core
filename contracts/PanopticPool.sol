@@ -1658,38 +1658,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickSpacing
     ) internal {
         uint256 numLegs = tokenId.countLegs();
+
         for (uint256 leg = 0; leg < numLegs; ++leg) {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
-            uint256 collectedThisLeg = collectedByLeg[leg];
-            // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
-            s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedThisLeg);
+            (uint256 settledTokens, uint256 grossPremium) = _updateSettledAndGross(
+                tokenId,
+                positionSize,
+                chunkKey,
+                collectedByLeg[leg],
+                leg,
+                MINT,
+                tickSpacing
+            );
 
-            {
-                // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-                (
-                    uint256 totalLiquidity,
-                    uint256 netLiquidity,
-                    uint256 removedLiquidity
-                ) = _getTotalLiquidity(tokenId, positionSize, leg, MINT, tickSpacing);
-                uint256 grossThisLeg = uint256(0)
-                    .toRightSlot(
-                        uint128(
-                            ((collectedThisLeg.rightSlot() *
-                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                                netLiquidity)
-                        )
-                    )
-                    .toLeftSlot(
-                        uint128(
-                            ((collectedThisLeg.leftSlot() *
-                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                                netLiquidity)
-                        )
-                    );
-                s_grossPremiumLast[chunkKey] = s_grossPremiumLast[chunkKey].add(grossThisLeg);
-            }
+            s_settledTokens[chunkKey] = settledTokens;
+            s_grossPremiumLast[chunkKey] = grossPremium;
         }
     }
 
@@ -1782,6 +1767,43 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    function _updateSettledAndGross(
+        uint256 tokenId,
+        uint128 positionSize,
+        bytes32 chunkKey,
+        uint256 collectedThisLeg,
+        uint256 leg,
+        bool isBurn,
+        int24 tickSpacing
+    ) internal view returns (uint256 settledTokens, uint256 grossPremium) {
+        settledTokens = s_settledTokens[chunkKey].add(collectedThisLeg);
+
+        unchecked {
+            // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
+            (
+                uint256 totalLiquidity,
+                uint256 netLiquidity,
+                uint256 removedLiquidity
+            ) = _getTotalLiquidity(tokenId, positionSize, leg, isBurn, tickSpacing);
+            uint256 grossThisLeg = uint256(0)
+                .toRightSlot(
+                    uint128(
+                        ((collectedThisLeg.rightSlot() *
+                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                            netLiquidity)
+                    )
+                )
+                .toLeftSlot(
+                    uint128(
+                        ((collectedThisLeg.leftSlot() *
+                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                            netLiquidity)
+                    )
+                );
+            grossPremium = s_grossPremiumLast[chunkKey].add(grossThisLeg);
+        }
+    }
+
     /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info
     /// @dev Always called after `burnTokenizedPosition`
     /// @param owner The owner of the option position that was burnt
@@ -1809,54 +1831,34 @@ contract PanopticPool is ERC1155Holder, Multicall {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
-            uint256 isLong = tokenId.isLong(leg);
+            (uint256 settledTokens, uint256 grossPremium) = _updateSettledAndGross(
+                tokenId,
+                positionSize,
+                chunkKey,
+                collectedByLeg[leg],
+                leg,
+                MINT,
+                tickSpacing
+            );
 
-            uint256 grossPremium = s_grossPremiumLast[chunkKey];
+            {
+                int256 legPremia = premiaByLeg[leg];
+                if (legPremia != 0) {
+                    // (will be) paid by long legs
+                    uint256 isLong = tokenId.isLong(leg);
 
-            // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-            (
-                uint256 totalLiquidity,
-                uint256 netLiquidity,
-                uint256 removedLiquidity
-            ) = _getTotalLiquidity(tokenId, positionSize, leg, BURN, tickSpacing);
-
-            uint256 collectedThisLeg = collectedByLeg[leg];
-            // add any tokens collected from Uniswap in a given chunk to the settled tokens available for withdrawal by sellers
-            uint256 settledTokens = s_settledTokens[chunkKey].add(collectedThisLeg);
-
-            uint256 grossThisLeg = uint256(0)
-                .toRightSlot(
-                    uint128(
-                        ((collectedThisLeg.rightSlot() *
-                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                            netLiquidity)
-                    )
-                )
-                .toLeftSlot(
-                    uint128(
-                        ((collectedThisLeg.leftSlot() *
-                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                            netLiquidity)
-                    )
-                );
-            grossPremium = grossPremium.add(grossThisLeg);
-
-            int256 legPremia = premiaByLeg[leg];
-
-            if (legPremia != 0) {
-                // (will be) paid by long legs
-
-                if (isLong == 0) {
-                    // check the available premia to withdraw
-                    legPremia = _getAvailablePremium(settledTokens, grossPremium, legPremia);
+                    if (isLong == 0) {
+                        // check the available premia to withdraw
+                        legPremia = _getAvailablePremium(settledTokens, grossPremium, legPremia);
+                    }
+                    settledTokens = uint256(int256(settledTokens).sub(legPremia));
                 }
-                settledTokens = uint256(int256(settledTokens).sub(legPremia));
+                realizedPremia = realizedPremia.add(legPremia);
             }
+
             // update settled tokens in storage with all local deltas
             s_settledTokens[chunkKey] = settledTokens;
             s_grossPremiumLast[chunkKey] = grossPremium;
-
-            realizedPremia = realizedPremia.add(legPremia);
 
             unchecked {
                 ++leg;
