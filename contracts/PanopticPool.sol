@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
-import "forge-std/Test.sol";
+
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -453,8 +453,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                         int256 availablePremium;
                         {
-                            console2.log("settled", s_settledTokens[chunkKey].rightSlot());
-                            console2.log("gross", s_grossPremiumLast[chunkKey].rightSlot());
                             availablePremium = _getAvailablePremium(
                                 s_settledTokens[chunkKey],
                                 s_grossPremiumLast[chunkKey],
