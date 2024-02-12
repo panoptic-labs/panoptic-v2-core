@@ -286,10 +286,12 @@ contract Misctest is Test, PositionUtils {
 
         changePrank(Alice);
 
+        // mint finely tuned amount of long options for Alice so premium paid = 1.1x
         pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
 
         changePrank(Bob);
 
+        // mint finely tuned amount of long options for Bob so premium paid = 1.1x
         pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
 
         changePrank(Swapper);
@@ -308,11 +310,13 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
         $tempIdList.push($posIdList[1]);
+
+        // burn Bob's short option
         pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_999,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -321,13 +325,15 @@ contract Misctest is Test, PositionUtils {
             "Incorrect Bob Delta 1"
         );
 
+        // re-mint the short option
         $posIdList[1] = $posIdList[0];
         $posIdList[0] = $tempIdList[0];
         pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
 
         $tempIdList[0] = $posIdList[1];
 
-        // Burn 1/2 of the removed liq
+        // Burn the long options, adds 1/2 of the removed liq
+        // amount of premia paid = 50_000
         pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
 
         changePrank(Alice);
