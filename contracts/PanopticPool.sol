@@ -227,17 +227,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
     mapping(address account => mapping(uint256 tokenId => mapping(uint256 leg => uint256 premiaGrowth)))
         internal s_options;
 
-    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`
-    /// totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
-    /// Used to compute the denominator for the fraction of premium available to sellers to collect
-    /// LeftRight - right slot is token0, left slot is token1
-    mapping(bytes32 chunkKey => int256 lastGrossPremium) internal s_grossPremiumLast;
-
     /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
     /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
     /// It decreases when sellers close positions and collect the premium they are owed
+    /// settled = \Sum (collectedAmounts + longPremiumPaid - shortPremiumRedeemed)
     /// LeftRight - right slot is token0, left slot is token1
     mapping(bytes32 chunkKey => int256 settledTokens) internal s_settledTokens;
+
+    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`
+    /// Used to compute the denominator for the fraction of premium available to sellers to collect
+    /// Must be tracked separately from settled tokens because an option seller could close their position before a buyer has paid them their owed premium.
+    /// grossPremium = \Sum ((accumulated premium + owed long premium)_fromSFPM - shortPremiumRedeemed)
+    /// LeftRight - right slot is token0, left slot is token1
+    mapping(bytes32 chunkKey => int256 lastGrossPremium) internal s_grossPremiumLast;
 
     /// @dev Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot)
     ///    poolUtilizations when minted (left)    liquidity=ERC1155 balance (right)
@@ -1659,7 +1661,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal {
         uint256 numLegs = tokenId.countLegs();
 
-        for (uint256 leg = 0; leg < numLegs; ++leg) {
+        for (uint256 leg = 0; leg < numLegs; ) {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
@@ -1673,8 +1675,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 tickSpacing
             );
 
+            // write updated values to storage variables
             s_settledTokens[chunkKey] = settledTokens;
             s_grossPremiumLast[chunkKey] = grossPremium;
+            unchecked {
+                ++leg;
+            }
         }
     }
 
@@ -1691,10 +1697,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 premiumOwed
     ) internal pure returns (int256 availablePremium) {
         unchecked {
+            // ratio of available premia for token0, defaults to 100% if more premium has been settled than what is owed
             int256 ratio0X128 = settledTokens.rightSlot() < grossPremium.rightSlot()
                 ? (int256(settledTokens.rightSlot()) << 128) / grossPremium.rightSlot()
                 : int256(2 ** 128);
 
+            // ratio of available premia for token1, defaults to 100% if more premium has been settled than what is owed
             int256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
                 ? (int256(settledTokens.leftSlot()) << 128) / grossPremium.leftSlot()
                 : int256(2 ** 128);
@@ -1851,13 +1859,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             {
                 int256 legPremia = premiaByLeg[leg];
                 if (legPremia != 0) {
-                    // (will be) paid by long legs
                     uint256 isLong = tokenId.isLong(leg);
 
+                    // (will be) paid by long legs
                     if (isLong == 0) {
                         // check the available premia to withdraw
                         legPremia = _getAvailablePremium(settledTokens, grossPremium, legPremia);
                     }
+                    // update the settled token amounts
                     settledTokens = settledTokens.subRect(legPremia);
                 }
                 realizedPremia = realizedPremia.add(legPremia);
