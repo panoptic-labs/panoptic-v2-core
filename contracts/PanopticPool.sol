@@ -453,13 +453,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                         int256 availablePremium;
                         {
-                            int256 settledTokens = s_settledTokens[chunkKey];
-
-                            int256 grossPremium = s_grossPremiumLast[chunkKey];
-
                             availablePremium = _getAvailablePremium(
-                                settledTokens,
-                                grossPremium,
+                                s_settledTokens[chunkKey],
+                                s_grossPremiumLast[chunkKey],
                                 legPremia
                             );
                         }
@@ -1774,6 +1770,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    /// @notice Extract the settled and gross amounts, update them
+    /// @dev Must consider the liquidities before the mint/burn action
+    /// @param tokenId The tokenId of the option position
+    /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param chunkKey The key for the specific chunk
+    /// @param collectedThisLeg The amount of tokens collected in the corresponding chunk
+    /// @param leg leg index of the chunk
+    /// @param isBurn bool that represents whether the current action is for a burn (true) or a mint (false)
+    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
+    /// @return settledTokens The updated settledTokens value with the new amount collected added to it
+    /// @return grossPremium The updated gross premium, with the expected tokens to be owed added to it
     function _updateSettledAndGross(
         uint256 tokenId,
         uint128 positionSize,
