@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
-
 // Interfaces
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -701,7 +700,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int256 itmAmounts;
 
         // calls a function that loops through each leg of tokenId and mints/burns liquidity in Uni v3 pool
-        (totalMoved, collectedByLeg, itmAmounts) = _createPositionInAMM(
+        (totalMoved, itmAmounts, collectedByLeg) = _createPositionInAMM(
             univ3pool,
             tokenId,
             positionSize,
@@ -851,14 +850,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param positionSize the size of the option position
     /// @param isBurn is true if the position is burnt
     /// @return totalMoved the total amount of liquidity moved from the msg.sender to Uniswap
-    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return itmAmounts the amount of tokens swapped due to legs being in-the-money
+    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     function _createPositionInAMM(
         IUniswapV3Pool univ3pool,
         uint256 tokenId,
         uint128 positionSize,
         bool isBurn
-    ) internal returns (int256 totalMoved, uint256[4] memory collectedByLeg, int256 itmAmounts) {
+    ) internal returns (int256 totalMoved, int256 itmAmounts, uint256[4] memory collectedByLeg) {
         // upper bound on amount of tokens contained across all legs of the position at any given tick
         uint256 amount0;
         uint256 amount1;
