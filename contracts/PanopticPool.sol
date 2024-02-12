@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
-
+import "forge-std/Test.sol";
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -453,6 +453,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                         int256 availablePremium;
                         {
+                            console2.log("settled", s_settledTokens[chunkKey].rightSlot());
+                            console2.log("gross", s_grossPremiumLast[chunkKey].rightSlot());
                             availablePremium = _getAvailablePremium(
                                 s_settledTokens[chunkKey],
                                 s_grossPremiumLast[chunkKey],
@@ -1694,13 +1696,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal pure returns (int256 availablePremium) {
         unchecked {
             // ratio of available premia for token0, defaults to 100% if more premium has been settled than what is owed
+
             int256 ratio0X128 = settledTokens.rightSlot() < grossPremium.rightSlot()
                 ? (int256(settledTokens.rightSlot()) << 128) / grossPremium.rightSlot()
+                : settledTokens.rightSlot() == 0
+                ? int256(0)
                 : int256(2 ** 128);
 
             // ratio of available premia for token1, defaults to 100% if more premium has been settled than what is owed
             int256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
                 ? (int256(settledTokens.leftSlot()) << 128) / grossPremium.leftSlot()
+                : settledTokens.leftSlot() == 0
+                ? int256(0)
                 : int256(2 ** 128);
 
             availablePremium = int256(0)
