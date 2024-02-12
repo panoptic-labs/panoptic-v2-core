@@ -1783,12 +1783,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         bool isBurn,
         int24 tickSpacing
     ) internal view returns (int256 settledTokens, int256 grossPremium) {
-        settledTokens = s_settledTokens[chunkKey].add(
-            int256(0).toRightSlot(int128(collectedThisLeg.rightSlot())).toLeftSlot(
-                int128(collectedThisLeg.leftSlot())
-            )
-        );
-
         unchecked {
             // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
             (
@@ -1796,26 +1790,37 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 netLiquidity,
                 uint256 removedLiquidity
             ) = _getTotalLiquidity(tokenId, positionSize, leg, isBurn, tickSpacing);
-            int256 grossThisLeg = int256(0)
-                .toRightSlot(
-                    int128(
-                        uint128(
-                            ((collectedThisLeg.rightSlot() *
-                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                                netLiquidity)
-                        )
-                    )
-                )
-                .toLeftSlot(
-                    int128(
-                        uint128(
-                            ((collectedThisLeg.leftSlot() *
-                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                                netLiquidity)
-                        )
+
+            if (totalLiquidity > 0) {
+                settledTokens = s_settledTokens[chunkKey].add(
+                    int256(0).toRightSlot(int128(collectedThisLeg.rightSlot())).toLeftSlot(
+                        int128(collectedThisLeg.leftSlot())
                     )
                 );
-            grossPremium = s_grossPremiumLast[chunkKey].add(grossThisLeg);
+
+                int256 grossThisLeg = int256(0)
+                    .toRightSlot(
+                        int128(
+                            uint128(
+                                ((collectedThisLeg.rightSlot() *
+                                    (totalLiquidity +
+                                        (removedLiquidity ** 2) /
+                                        (netLiquidity * 4))) / netLiquidity)
+                            )
+                        )
+                    )
+                    .toLeftSlot(
+                        int128(
+                            uint128(
+                                ((collectedThisLeg.leftSlot() *
+                                    (totalLiquidity +
+                                        (removedLiquidity ** 2) /
+                                        (netLiquidity * 4))) / netLiquidity)
+                            )
+                        )
+                    );
+                grossPremium = s_grossPremiumLast[chunkKey].add(grossThisLeg);
+            }
         }
     }
 
@@ -1846,13 +1851,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
+
             (int256 settledTokens, int256 grossPremium) = _updateSettledAndGross(
                 tokenId,
                 positionSize,
                 chunkKey,
                 collectedByLeg[leg],
                 leg,
-                MINT,
+                BURN,
                 tickSpacing
             );
 
@@ -1864,11 +1870,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // (will be) paid by long legs
                     if (isLong == 0) {
                         // check the available premia to withdraw
-                        legPremia = _getAvailablePremium(settledTokens, grossPremium, legPremia);
+                        int256 _legPremia = _getAvailablePremium(
+                            settledTokens,
+                            grossPremium,
+                            legPremia
+                        );
+                        // subtract the owed premium
+                        grossPremium = grossPremium.subRect(legPremia);
+                        legPremia = _legPremia;
                     }
                     // update the settled token amounts
                     settledTokens = settledTokens.subRect(legPremia);
                 }
+
                 realizedPremia = realizedPremia.add(legPremia);
             }
 
