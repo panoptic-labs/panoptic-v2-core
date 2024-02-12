@@ -13,6 +13,7 @@ import {Math} from "@libraries/Math.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -746,17 +747,21 @@ library PanopticMath {
             }
         }
 
-        // It's possible for there to be a (dust) surplus of one token if it converts to <1 unit of the other token
+        console2.log("collateralRemaining.rightSlot()", collateralRemaining.rightSlot());
+        console2.log("collateralRemaining.leftSlot()", collateralRemaining.leftSlot());
+        // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
         int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
         int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
 
-        // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
-        haircut0 = Math.min(collateralRemaining.rightSlot(), haircut0);
-        haircut1 = Math.min(collateralRemaining.leftSlot(), haircut1);
+        console2.log("haircut0F", haircut0);
+        console2.log("haircut1F", haircut1);
+        console2.log("collateralDelta0", collateralDelta0);
+        console2.log("collateralDelta1", collateralDelta1);
 
         // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
         // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
         if (haircut0 < collateralDelta0 && haircut1 > collateralDelta1) {
+            int256 protocolLoss1 = collateralDelta1;
             (collateralDelta0, collateralDelta1) = (
                 -Math.min(
                     collateralDelta0 - haircut0,
@@ -768,8 +773,9 @@ library PanopticMath {
                 )
             );
 
-            haircut1 += collateralDelta1;
+            haircut1 = protocolLoss1 + collateralDelta1;
         } else if (haircut1 < collateralDelta1 && haircut0 > collateralDelta0) {
+            int256 protocolLoss0 = collateralDelta0;
             (collateralDelta0, collateralDelta1) = (
                 -Math.min(
                     collateralDelta0 - haircut0,
@@ -781,15 +787,20 @@ library PanopticMath {
                 )
             );
 
-            haircut0 += collateralDelta0;
+            haircut0 = collateralDelta0 + protocolLoss0;
         } else {
             collateralDelta0 = 0;
             collateralDelta1 = 0;
+            // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
+            haircut0 = Math.min(collateralDelta0, haircut0);
+            haircut1 = Math.min(collateralDelta1, haircut1);
         }
 
-        collateral0.exercise(liquidatee, 0, 0, 0, int128(-haircut0));
-        collateral1.exercise(liquidatee, 0, 0, 0, int128(-haircut1));
+        if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(-haircut0));
+        if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(-haircut1));
 
+        console2.log("haircut0", haircut0);
+        console2.log("haircut1", haircut1);
         for (uint256 i = 0; i < positionIdList.length; i++) {
             int256[4][] memory _premiasByLeg = premiasByLeg;
             uint256 tokenId = positionIdList[i];
@@ -799,16 +810,19 @@ library PanopticMath {
                         abi.encodePacked(tokenId.strike(0), tokenId.width(0), tokenId.tokenType(0))
                     );
 
-                    // The long premium is not commited to storage during the liquidation, so we add the entire adjusted
-                    // for the haircut directly to the accumulator
-                    int256 settled0 = -_premiasByLeg[i][leg].rightSlot() -
-                        Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0);
-
-                    int256 settled1 = -_premiasByLeg[i][leg].leftSlot() -
-                        Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1);
-
+                    // calculate amounts to revoke from settled and subtract from haircut req
+                    int256 settled0 = Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0);
+                    int256 settled1 = Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1);
                     haircut0 -= settled0;
                     haircut1 -= settled1;
+
+                    // The long premium is not commited to storage during the liquidation, so we add the entire adjusted amount
+                    // for the haircut directly to the accumulator
+                    settled0 = -_premiasByLeg[i][leg].rightSlot() - settled0;
+
+                    settled1 = -_premiasByLeg[i][leg].leftSlot() - settled1;
+                    console2.log("settled0", settled0);
+                    console2.log("settled1", settled1);
 
                     settledTokens[chunkKey] = uint256(
                         settledTokens[chunkKey].add(

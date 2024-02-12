@@ -1079,9 +1079,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int256 netExchanged;
             int256[4][] memory premiasByLeg;
             // burn all options from the liquidatee
+
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
-
             (, finalTick, netExchanged, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
                 Constants.MIN_V3POOL_TICK,
@@ -1107,22 +1107,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // manipulate the fees in a liquidity area they control past the protocol loss threshold
             // such that the PLPs are forced to pay out premia to the liquidator
             // thus, we haircut any premium paid by the liquidatee (converting tokens as necessary) until the protocol loss is covered or the premium is exhausted
-            if (collateralRemaining.rightSlot() < 0 || collateralRemaining.leftSlot() < 0) {
-                (netExchanged, premia) = PanopticMath.haircutPremia(
-                    liquidatee,
-                    positionIdList,
-                    premiasByLeg,
-                    collateralRemaining,
-                    Math.getSqrtRatioAtTick(finalTick),
-                    s_collateralToken0,
-                    s_collateralToken1,
-                    s_settledTokens
-                );
+            // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
+            (netExchanged, premia) = PanopticMath.haircutPremia(
+                liquidatee,
+                positionIdList,
+                premiasByLeg,
+                collateralRemaining,
+                Math.getSqrtRatioAtTick(finalTick),
+                s_collateralToken0,
+                s_collateralToken1,
+                s_settledTokens
+            );
 
-                unchecked {
-                    liquidationBonus0 += netExchanged;
-                    liquidationBonus1 += premia;
-                }
+            unchecked {
+                liquidationBonus0 += netExchanged;
+                liquidationBonus1 += premia;
             }
         }
 

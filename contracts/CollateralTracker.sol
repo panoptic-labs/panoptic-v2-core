@@ -21,6 +21,7 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1071,7 +1072,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // get the delegateeBalance and compare later against requestedAmount
         uint256 delegateeBalance = balanceOf[delegatee];
-
+        console2.log("revoking...");
         // if requested amount is larger than user balance, transfer shares back,
         // then issue new shares
         if (shares > delegateeBalance) {
@@ -1093,6 +1094,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // subtract delegatee balance from N since it was already transferred to the delegator
             _mint(
                 delegator,
+                Math.mulDiv(
+                    assets,
+                    totalSupply - delegateeBalance,
+                    uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
+                ) - delegateeBalance
+            );
+            console2.log(
+                "minted",
                 Math.mulDiv(
                     assets,
                     totalSupply - delegateeBalance,
