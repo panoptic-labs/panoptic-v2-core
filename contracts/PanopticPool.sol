@@ -231,7 +231,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
     /// Used to compute the denominator for the fraction of premium available to sellers to collect
     /// LeftRight - right slot is token0, left slot is token1
-    mapping(bytes32 chunkKey => uint256 lastGrossPremium) internal s_grossPremiumLast;
+    mapping(bytes32 chunkKey => int256 lastGrossPremium) internal s_grossPremiumLast;
 
     /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
     /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
@@ -453,7 +453,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         {
                             int256 settledTokens = s_settledTokens[chunkKey];
 
-                            uint256 grossPremium = s_grossPremiumLast[chunkKey];
+                            int256 grossPremium = s_grossPremiumLast[chunkKey];
 
                             availablePremium = _getAvailablePremium(
                                 settledTokens,
@@ -1663,7 +1663,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
-            (int256 settledTokens, uint256 grossPremium) = _updateSettledAndGross(
+            (int256 settledTokens, int256 grossPremium) = _updateSettledAndGross(
                 tokenId,
                 positionSize,
                 chunkKey,
@@ -1687,16 +1687,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return availablePremium The amount of premium available for withdrawal
     function _getAvailablePremium(
         int256 settledTokens,
-        uint256 grossPremium,
+        int256 grossPremium,
         int256 premiumOwed
     ) internal pure returns (int256 availablePremium) {
         unchecked {
-            int256 ratio0X128 = settledTokens.rightSlot() < int128(grossPremium.rightSlot())
-                ? (int256(settledTokens.rightSlot()) << 128) / int128(grossPremium.rightSlot())
+            int256 ratio0X128 = settledTokens.rightSlot() < grossPremium.rightSlot()
+                ? (int256(settledTokens.rightSlot()) << 128) / grossPremium.rightSlot()
                 : int256(2 ** 128);
 
-            int256 ratio1X128 = settledTokens.leftSlot() < int128(grossPremium.leftSlot())
-                ? (int256(settledTokens.leftSlot()) << 128) / int128(grossPremium.leftSlot())
+            int256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
+                ? (int256(settledTokens.leftSlot()) << 128) / grossPremium.leftSlot()
                 : int256(2 ** 128);
 
             availablePremium = int256(0)
@@ -1774,7 +1774,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 leg,
         bool isBurn,
         int24 tickSpacing
-    ) internal view returns (int256 settledTokens, uint256 grossPremium) {
+    ) internal view returns (int256 settledTokens, int256 grossPremium) {
         settledTokens = s_settledTokens[chunkKey].add(
             int256(0).toRightSlot(int128(collectedThisLeg.rightSlot())).toLeftSlot(
                 int128(collectedThisLeg.leftSlot())
@@ -1788,19 +1788,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 netLiquidity,
                 uint256 removedLiquidity
             ) = _getTotalLiquidity(tokenId, positionSize, leg, isBurn, tickSpacing);
-            uint256 grossThisLeg = uint256(0)
+            int256 grossThisLeg = int256(0)
                 .toRightSlot(
-                    uint128(
-                        ((collectedThisLeg.rightSlot() *
-                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                            netLiquidity)
+                    int128(
+                        uint128(
+                            ((collectedThisLeg.rightSlot() *
+                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                                netLiquidity)
+                        )
                     )
                 )
                 .toLeftSlot(
-                    uint128(
-                        ((collectedThisLeg.leftSlot() *
-                            (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
-                            netLiquidity)
+                    int128(
+                        uint128(
+                            ((collectedThisLeg.leftSlot() *
+                                (totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 4))) /
+                                netLiquidity)
+                        )
                     )
                 );
             grossPremium = s_grossPremiumLast[chunkKey].add(grossThisLeg);
@@ -1834,7 +1838,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
             );
-            (int256 settledTokens, uint256 grossPremium) = _updateSettledAndGross(
+            (int256 settledTokens, int256 grossPremium) = _updateSettledAndGross(
                 tokenId,
                 positionSize,
                 chunkKey,
