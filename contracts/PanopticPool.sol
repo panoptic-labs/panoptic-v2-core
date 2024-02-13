@@ -20,6 +20,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1065,6 +1066,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             if (balanceCross >= thresholdCross) revert Errors.NotMarginCalled();
         }
+        console2.log(
+            "assets0PreDel",
+            s_collateralToken0.convertToAssets(s_collateralToken0.balanceOf(liquidatee))
+        );
+        console2.log(
+            "assets1PreDel",
+            s_collateralToken1.convertToAssets(s_collateralToken1.balanceOf(liquidatee))
+        );
 
         // Perform the specified delegation from `msg.sender` to `liquidatee`
         // Works like a transfer, so the liquidator must possess all the tokens they are delegating, resulting in no net supply change
@@ -1072,6 +1081,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.delegate(msg.sender, liquidatee, delegations.rightSlot());
         s_collateralToken1.delegate(msg.sender, liquidatee, delegations.leftSlot());
 
+        console2.log(
+            "assets0PostDel",
+            s_collateralToken0.convertToAssets(s_collateralToken0.balanceOf(liquidatee))
+        );
+        console2.log(
+            "assets1PostDel",
+            s_collateralToken1.convertToAssets(s_collateralToken1.balanceOf(liquidatee))
+        );
         int256 liquidationBonus0;
         int256 liquidationBonus1;
         int24 finalTick;
@@ -1118,6 +1135,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 s_collateralToken1,
                 s_settledTokens
             );
+            console2.log("haircut bonus d 0", netExchanged);
+            console2.log("haircut bonus d 1", premia);
 
             unchecked {
                 liquidationBonus0 += netExchanged;

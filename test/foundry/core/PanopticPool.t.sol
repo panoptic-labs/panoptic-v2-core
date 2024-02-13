@@ -5540,6 +5540,7 @@ contract PanopticPoolTest is PositionUtils {
         _initPool(x);
 
         numLegs = bound(numLegs, 1, 4);
+        console2.log("numLegs", numLegs);
 
         int24[4] memory widths;
         int24[4] memory strikes;
@@ -5600,7 +5601,7 @@ contract PanopticPoolTest is PositionUtils {
 
         twoWaySwap(swapSizeSeed);
 
-        // now we can mint the long option we are force exercising
+        // now we can mint the options being liquidated
         changePrank(Alice);
 
         for (uint256 i = 0; i < numLegs; ++i) {
@@ -5815,12 +5816,23 @@ contract PanopticPoolTest is PositionUtils {
         // some of the bonus will come from PLPs
         // in that case we just assert that the delta is less than whatever the bonus was supposed to be
         // which ensures Alice wasn't overcharged
+        console2.log("ct0.totalSupply()", ct0.totalSupply());
+        console2.log("$totalSupply0", $totalSupply0);
+        console2.log("ct1.totalSupply()", ct1.totalSupply());
+        console2.log("$totalSupply1", $totalSupply1);
+        console2.log("ct0.totalAssets()", ct0.totalAssets());
+        console2.log("$totalAssets0", $totalAssets0);
+        console2.log("ct1.totalAssets()", ct1.totalAssets());
+        console2.log("$totalAssets1", $totalAssets1);
 
+        // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
+        // (in this test n = number of options = numLegs)
+        // this happens on *both* liquidations and burns, but during liquidations 1-n shares can be clawed back from PLPs
+        // this is because the assets refunded to the liquidator are only rounded down once,
+        // so they could correspond to a higher amount of overall shares than the liquidatee had
         if (
-            ct0.totalSupply() == $totalSupply0 &&
-            ct1.totalSupply() == $totalSupply1 &&
-            ct0.totalAssets() == $totalAssets0 &&
-            ct1.totalAssets() == $totalAssets1
+            (ct0.totalSupply() - $totalSupply0 <= numLegs) &&
+            (ct1.totalSupply() - $totalSupply1 <= numLegs)
         ) {
             assertApproxEqAbs(
                 convertToAssets(ct0, $shareDelta0) +

@@ -1007,6 +1007,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address delegatee,
         uint256 assets
     ) external onlyPanopticPool {
+        console2.log("delegating...", assets);
         /*
                 ┌────────┐
                 │Panoptic│
@@ -1054,6 +1055,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address delegatee,
         uint256 assets
     ) external onlyPanopticPool {
+        console2.log("revoking...", assets);
         /**
                 ┌────────┐
                 │Panoptic│
@@ -1072,7 +1074,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // get the delegateeBalance and compare later against requestedAmount
         uint256 delegateeBalance = balanceOf[delegatee];
-        console2.log("revoking...");
         // if requested amount is larger than user balance, transfer shares back,
         // then issue new shares
         if (shares > delegateeBalance) {
@@ -1229,10 +1230,31 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
+
+                console2.log(
+                    "exercising shares... assets, shares rounded up",
+                    uint256(tokenToPay),
+                    sharesToBurn
+                );
+                console2.log(
+                    "exercising shares... assets, shares rounded down",
+                    uint256(tokenToPay),
+                    Math.mulDiv(uint256(tokenToPay), totalSupply, totalAssets())
+                );
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
+                console2.log(
+                    "exercising shares... assets, shares to mint",
+                    uint256(-tokenToPay),
+                    sharesToMint
+                );
+                console2.log(
+                    "exercising shares... assets, shares to mint",
+                    uint256(-tokenToPay),
+                    Math.mulDivRoundingUp(uint256(-tokenToPay), totalAssets(), totalSupply)
+                );
                 _mint(optionOwner, sharesToMint);
             }
 

@@ -702,7 +702,10 @@ library PanopticMath {
 
             paid0 = bonus0 + int256(netExchanged.rightSlot());
             paid1 = bonus1 + int256(netExchanged.leftSlot());
-
+            console2.log("bonus0", bonus0);
+            console2.log("bonus1", bonus1);
+            console2.log("paid0", paid0);
+            console2.log("paid1", paid1);
             return (
                 bonus0,
                 bonus1,
@@ -749,6 +752,7 @@ library PanopticMath {
 
         console2.log("collateralRemaining.rightSlot()", collateralRemaining.rightSlot());
         console2.log("collateralRemaining.leftSlot()", collateralRemaining.leftSlot());
+
         // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
         int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
         int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
@@ -789,11 +793,12 @@ library PanopticMath {
 
             haircut0 = collateralDelta0 + protocolLoss0;
         } else {
-            collateralDelta0 = 0;
-            collateralDelta1 = 0;
             // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
             haircut0 = Math.min(collateralDelta0, haircut0);
             haircut1 = Math.min(collateralDelta1, haircut1);
+
+            collateralDelta0 = 0;
+            collateralDelta1 = 0;
         }
 
         if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(-haircut0));
@@ -833,7 +838,7 @@ library PanopticMath {
             }
         }
 
-        return (collateralDelta0, collateralDelta0);
+        return (collateralDelta0, collateralDelta1);
     }
 
     /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
