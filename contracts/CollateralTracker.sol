@@ -1696,6 +1696,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         uint256 tokenType = tokenId.tokenType(index);
 
+        // compute the max loss of the spread
+
         // if asset is NOT the same as the tokenType, the required amount is simply the difference in notional values
         // ie. asset = 1, tokenType = 0:
         if (tokenId.asset(index) != tokenType) {
@@ -1734,11 +1736,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
         }
 
-        // add the collateral requirement for the long leg as a base
-        spreadRequirement += _getRequiredCollateralAtUtilization(
-            tokenType == 0 ? movedRight : movedLeft,
-            1,
-            tokenType == 0 ? int64(uint64(poolUtilization)) : int64(uint64(poolUtilization >> 64))
+        // calculate the spread requirement as max(max_loss, long_leg_col_req)
+        // narrower spreads will be very capital efficient (1/3 of non-partnered CR!), but
+        // wider spreads (an uncommon position w/ high max loss) may not benefit from risk partnering
+        spreadRequirement = Math.max(
+            spreadRequirement,
+            _getRequiredCollateralAtUtilization(
+                tokenType == 0 ? movedRight : movedLeft,
+                1,
+                tokenType == 0
+                    ? int64(uint64(poolUtilization))
+                    : int64(uint64(poolUtilization >> 64))
+            )
         );
     }
 

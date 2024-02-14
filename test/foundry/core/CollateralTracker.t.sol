@@ -5764,14 +5764,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         }
                     }
 
-                    _tempTokensRequired += uint128(
-                        collateralToken0.getRequiredCollateralAtUtilization(
-                            uint128(tokenType == 0 ? movedRight : movedLeft),
-                            1,
-                            tokenType == 0
-                                ? int64(uint64(poolUtilizations))
-                                : int64(uint64(poolUtilizations >> 64))
-                        )
+                    _tempTokensRequired = Math.max(
+                        uint128(
+                            collateralToken0.getRequiredCollateralAtUtilization(
+                                uint128(tokenType == 0 ? movedRight : movedLeft),
+                                1,
+                                tokenType == 0
+                                    ? int64(uint64(poolUtilizations))
+                                    : int64(uint64(poolUtilizations >> 64))
+                            )
+                        ),
+                        _tempTokensRequired
                     );
 
                     vm.assume(_tempTokensRequired < type(uint128).max);
