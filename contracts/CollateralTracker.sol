@@ -21,7 +21,6 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1007,7 +1006,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address delegatee,
         uint256 assets
     ) external onlyPanopticPool {
-        console2.log("delegating...", assets);
         /*
                 ┌────────┐
                 │Panoptic│
@@ -1055,7 +1053,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address delegatee,
         uint256 assets
     ) external onlyPanopticPool {
-        console2.log("revoking...", assets);
         /**
                 ┌────────┐
                 │Panoptic│
@@ -1095,14 +1092,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // subtract delegatee balance from N since it was already transferred to the delegator
             _mint(
                 delegator,
-                Math.mulDiv(
-                    assets,
-                    totalSupply - delegateeBalance,
-                    uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
-                ) - delegateeBalance
-            );
-            console2.log(
-                "minted",
                 Math.mulDiv(
                     assets,
                     totalSupply - delegateeBalance,
@@ -1231,30 +1220,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalAssets()
                 );
 
-                console2.log(
-                    "exercising shares... assets, shares rounded up",
-                    uint256(tokenToPay),
-                    sharesToBurn
-                );
-                console2.log(
-                    "exercising shares... assets, shares rounded down",
-                    uint256(tokenToPay),
-                    Math.mulDiv(uint256(tokenToPay), totalSupply, totalAssets())
-                );
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                console2.log(
-                    "exercising shares... assets, shares to mint",
-                    uint256(-tokenToPay),
-                    sharesToMint
-                );
-                console2.log(
-                    "exercising shares... assets, shares to mint",
-                    uint256(-tokenToPay),
-                    Math.mulDivRoundingUp(uint256(-tokenToPay), totalAssets(), totalSupply)
-                );
                 _mint(optionOwner, sharesToMint);
             }
 

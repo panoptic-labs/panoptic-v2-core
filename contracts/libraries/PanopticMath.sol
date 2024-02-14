@@ -702,10 +702,6 @@ library PanopticMath {
 
             paid0 = bonus0 + int256(netExchanged.rightSlot());
             paid1 = bonus1 + int256(netExchanged.leftSlot());
-            console2.log("bonus0", bonus0);
-            console2.log("bonus1", bonus1);
-            console2.log("paid0", paid0);
-            console2.log("paid1", paid1);
             return (
                 bonus0,
                 bonus1,
@@ -750,17 +746,9 @@ library PanopticMath {
             }
         }
 
-        console2.log("collateralRemaining.rightSlot()", collateralRemaining.rightSlot());
-        console2.log("collateralRemaining.leftSlot()", collateralRemaining.leftSlot());
-
         // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
         int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
         int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
-
-        console2.log("haircut0F", haircut0);
-        console2.log("haircut1F", haircut1);
-        console2.log("collateralDelta0", collateralDelta0);
-        console2.log("collateralDelta1", collateralDelta1);
 
         // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
         // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
@@ -804,8 +792,6 @@ library PanopticMath {
         if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(-haircut0));
         if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(-haircut1));
 
-        console2.log("haircut0", haircut0);
-        console2.log("haircut1", haircut1);
         for (uint256 i = 0; i < positionIdList.length; i++) {
             int256[4][] memory _premiasByLeg = premiasByLeg;
             uint256 tokenId = positionIdList[i];
@@ -826,8 +812,6 @@ library PanopticMath {
                     settled0 = -_premiasByLeg[i][leg].rightSlot() - settled0;
 
                     settled1 = -_premiasByLeg[i][leg].leftSlot() - settled1;
-                    console2.log("settled0", settled0);
-                    console2.log("settled1", settled1);
 
                     settledTokens[chunkKey] = uint256(
                         settledTokens[chunkKey].add(
