@@ -952,15 +952,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 targetPoolUtilization = s_targetPoolUtilization;
         buyCollateralRatio = s_buyCollateralRatio;
 
-        /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
-        /// at 0% utilization, strangle legs do not compound efficiency
-        if (utilization < 0) {
-            unchecked {
-                buyCollateralRatio /= 2;
-                utilization = -utilization;
-            }
-        }
-
         // return the basal buy ratio if pool utilization is lower than target
         if (utilization < targetPoolUtilization) {
             return buyCollateralRatio;
@@ -1608,30 +1599,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // extract partner index (associated with another liquidity chunk)
         uint256 partnerIndex = tokenId.riskPartner(index);
 
-        // long/short status of associated legs
         uint256 isLong = tokenId.isLong(index);
-        uint256 isLongP = tokenId.isLong(partnerIndex);
-
-        // token type status of associate legs (call/put)
-        uint256 tokenType = tokenId.tokenType(index);
-        uint256 tokenTypeP = tokenId.tokenType(partnerIndex);
-
-        if ((isLong != isLongP) && (tokenType == tokenTypeP)) {
-            if (index < partnerIndex) {
+        if (isLong != tokenId.isLong(partnerIndex)) {
+            if (isLong == 1) {
                 // compute the total amount of funds moved for that position
-                required = _computeSpread(tokenId, positionSize, index, partnerIndex);
-
-                // Add the base, which is relevant for calendar spreads
-                // The base requirement is given by the difference in collateral requirement when price = strikePartner,
-                // this calculation is done to avoid a net-zero requirement for two positions that are slightly offset from one another.
-                // Ensuring that the pool is not "diluted" by taking a narrow option's liquidity and spreading it over a very large range at no cost.
-                unchecked {
-                    required += _computeBase(tokenId, positionSize, index, partnerIndex);
-                }
+                required = _computeSpread(
+                    tokenId,
+                    positionSize,
+                    index,
+                    partnerIndex,
+                    poolUtilization
+                );
             }
-        }
-
-        if ((isLong == isLongP) && (tokenType != tokenTypeP)) {
+        } else {
             required = _computeStrangle(tokenId, index, positionSize, atTick, poolUtilization);
         }
     }
@@ -1675,53 +1655,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Calculate The base required amount of collateral for the spread position (both legs).
-    /// @param tokenId The option position.
-    /// @param positionSize The size of the position.
-    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for.
-    /// @param partnerIndex The associated spread leg that is apart of the spread position.
-    /// @return baseRequirement The required amount of collateral needed for the spread base portion.
-    function _computeBase(
-        uint256 tokenId,
-        uint128 positionSize,
-        uint256 index,
-        uint256 partnerIndex
-    ) internal view returns (uint256 baseRequirement) {
-        // spread base collateral requirement legs are always evaluated as short positions at 0% utilization
-        uint256 checkedTokenId = tokenId.flipToBurnToken();
-
-        uint256 requiredBase = _getRequiredCollateralSingleLegNoPartner(
-            tokenId.isLong(index) == 1 ? checkedTokenId : tokenId,
-            index,
-            positionSize,
-            tokenId.strike(partnerIndex), // calculate base collateral as currentTick = strike of riskPartner
-            0 // utilization 0%
-        );
-
-        uint256 requiredBaseP = _getRequiredCollateralSingleLegNoPartner(
-            tokenId.isLong(partnerIndex) == 1 ? checkedTokenId : tokenId,
-            partnerIndex,
-            positionSize,
-            tokenId.strike(index), // calculate base collateral as currentTick = strike of riskPartner
-            0 // utilization 0%
-        );
-
-        baseRequirement = requiredBase < requiredBaseP
-            ? requiredBaseP - requiredBase
-            : requiredBase - requiredBaseP;
-    }
-
     /// @notice Calculate the required amount of collateral for the spread portion of the spread position.
+    /// @dev long leg requirement + 100% collateralized risk
+    /// @dev may be higher than the requirement of non risk-partnered legs if the spread is very wide (risky)
     /// @param tokenId the option position.
     /// @param positionSize the size of the position.
-    /// @param index the leg index (associated with a liquidity chunk) to consider a partner for.
-    /// @param partnerIndex the associated spread leg that is apart of the spread position.
+    /// @param index the leg index of the LONG leg in the spread position.
+    /// @param partnerIndex the index of the partnered SHORT leg in the spread position.
     /// @return spreadRequirement the required amount of collateral needed for the spread portion.
     function _computeSpread(
         uint256 tokenId,
         uint128 positionSize,
         uint256 index,
-        uint256 partnerIndex
+        uint256 partnerIndex,
+        uint128 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         // compute the total amount of funds moved for the position's current leg
         uint256 amountsMoved = PanopticMath.getAmountsMoved(
@@ -1747,14 +1694,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 movedPartnerRight = amountsMovedPartner.rightSlot();
         uint128 movedPartnerLeft = amountsMovedPartner.leftSlot();
 
-        // extract the tokenType
         uint256 tokenType = tokenId.tokenType(index);
-        // extract the asset
-        uint256 asset = tokenId.asset(index);
+
+        // compute the max loss of the spread
 
         // if asset is NOT the same as the tokenType, the required amount is simply the difference in notional values
         // ie. asset = 1, tokenType = 0:
-        if (asset != tokenType) {
+        if (tokenId.asset(index) != tokenType) {
             unchecked {
                 // always take the absolute values of the difference of amounts moved
                 if (tokenType == 0) {
@@ -1789,6 +1735,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     : ((notional - notionalP) * contracts) / notionalP;
             }
         }
+
+        // calculate the spread requirement as max(max_loss, long_leg_col_req)
+        // narrower spreads will be very capital efficient (1/3 of non-partnered CR!), but
+        // wider spreads (an uncommon position w/ high max loss) may not benefit from risk partnering
+        spreadRequirement = Math.max(
+            spreadRequirement,
+            _getRequiredCollateralAtUtilization(
+                tokenType == 0 ? movedRight : movedLeft,
+                1,
+                tokenType == 0
+                    ? int64(uint64(poolUtilization))
+                    : int64(uint64(poolUtilization >> 64))
+            )
+        );
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.

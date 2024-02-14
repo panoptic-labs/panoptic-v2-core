@@ -912,6 +912,16 @@ contract PanopticHelperTest is PositionUtils {
             });
             inputLeg[i] = _Leg;
         }
+
+        for (uint256 i; i < numberOfLegs; ++i) {
+            // long strangles cannot be partnered; only short strangles
+            if (
+                tokenId.riskPartner(i) != i &&
+                tokenId.tokenType(i) != tokenId.tokenType(tokenId.riskPartner(i))
+            ) {
+                vm.assume(tokenId.isLong(i) != 1);
+            }
+        }
         tokenId.validate();
         PanopticHelper.Leg[] memory unwrappedLeg = ph.unwrapTokenId(tokenId);
 

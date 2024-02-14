@@ -1276,6 +1276,94 @@ contract TokenIdTest is Test, PositionUtils {
         harness.validate(tokenId);
     }
 
+    function test_Fail_validate_longStrangle(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        //construct two leg token
+        tokenId = fuzzedPosition(
+            2, // total amount of legs
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        {
+            //clear all risk partner bits
+            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+
+            // leg 1 will have risk partner as leg 2
+            tokenId = harness.addRiskPartner(tokenId, 1, 0);
+
+            // leg 2 will have risk partner as leg 1
+            tokenId = harness.addRiskPartner(tokenId, 0, 1);
+        }
+
+        {
+            // clear all asset bits
+            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+
+            // leg 1 asset 0
+            tokenId = harness.addAsset(tokenId, 0, 1);
+
+            // leg 2 asset 1
+            tokenId = harness.addAsset(tokenId, 0, 1);
+        }
+
+        /// create legs with same option ratio
+        {
+            //clear all option ratio bits
+            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+
+            // leg 1 option pseudorandom option ratio
+            tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
+
+            // leg 2 option pseudorandom option ratio
+            tokenId = harness.addOptionRatio(tokenId, 1, 1);
+        }
+
+        {
+            //clear all is long bits
+            tokenId = tokenId & CLEAR_IS_LONG_MASK;
+
+            // leg 1 will be long
+            tokenId = harness.addIsLong(tokenId, 1, 0);
+
+            // leg 2 will be long
+            tokenId = harness.addIsLong(tokenId, 1, 1);
+        }
+
+        {
+            //clear all risk partner bits
+            tokenId = tokenId & CLEAR_TOKEN_TYPE_MASK;
+
+            // leg 1 will be asset 0
+            tokenId = harness.addTokenType(tokenId, 0, 0);
+
+            // leg 2 will be asset 1
+            tokenId = harness.addTokenType(tokenId, 1, 1);
+        }
+
+        // will fail as risk partners must have the same asset
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 5));
+        harness.validate(tokenId);
+    }
+
     function test_Fail_validate_synthPos(
         uint64 poolId,
         uint256 optionRatioSeed,
