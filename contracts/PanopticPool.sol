@@ -1756,7 +1756,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         chunkIdentity.tokenType(0)
                     )
                 )
-            ] += settledTokens;
+            ] += int256(settledTokens);
         }
     }
 
