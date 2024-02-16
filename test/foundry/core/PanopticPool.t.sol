@@ -92,8 +92,8 @@ contract PanopticPoolHarness is PanopticPool {
         uint256[] calldata newPositionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) external returns (int256[4][] memory) {
-        (int24 medianTick, int24 newTick, , int256[4][] memory premiasByLeg) = _burnAllOptionsFrom(
+    ) external returns (int256[4][] memory, int256) {
+        (, , int256 netExchanged, int256[4][] memory premiasByLeg) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,
@@ -101,11 +101,7 @@ contract PanopticPoolHarness is PanopticPool {
             positionIdList
         );
 
-        // check that the provided positionIdList matches the positions in memory
-        _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
-            revert Errors.NotEnoughCollateral();
-        return premiasByLeg;
+        return (premiasByLeg, netExchanged);
     }
 
     constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
@@ -284,9 +280,19 @@ contract PanopticPoolTest is PositionUtils {
     int256 $balanceDelta0;
     int256 $balanceDelta1;
 
+    int256 $bonus0;
+    int256 $bonus1;
+
     int256 $combinedBalance0;
     int256 $bonusCombined0;
+    int256 $burnDelta0Combined;
     int256 $burnDelta0;
+    int256 $burnDelta1;
+    int256 $balance0CombinedPostBurn;
+    int256 $protocolLoss0Actual;
+    uint256 $delegated0;
+    uint256 $delegated1;
+    int256 $protocolLoss0BaseExpected;
     uint256 $totalSupply0;
     uint256 $totalSupply1;
     uint256 $totalAssets0;
@@ -302,6 +308,8 @@ contract PanopticPoolTest is PositionUtils {
     mapping(bytes32 chunk => uint256 settledTokens) $settledTokens;
     uint256[] settledTokens0;
     int256 longPremium0;
+    int256 $premia;
+    int256 $netExchanged;
 
     /*//////////////////////////////////////////////////////////////
                                ENV SETUP
@@ -5522,7 +5530,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           LIQUIDATION TESTS
+                           LIQUIDAuinTION TESTS
     //////////////////////////////////////////////////////////////*/
 
     function test_success_liquidate(
@@ -5698,7 +5706,7 @@ contract PanopticPoolTest is PositionUtils {
 
         int24 currentTickFinal;
         {
-            int256[4][] memory premiasByLeg = pp.burnAllOptionsFrom(
+            (int256[4][] memory premiasByLeg, int256 netExchanged) = pp.burnAllOptionsFrom(
                 $posIdLists[1],
                 new uint256[](0),
                 0,
@@ -5730,12 +5738,15 @@ contract PanopticPoolTest is PositionUtils {
             uint256 totalSupply1 = ct1.totalSupply();
             uint256 totalAssets0 = ct0.totalAssets();
             uint256 totalAssets1 = ct1.totalAssets();
-
-            int256 burnDelta0 = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
+            console2.log("shareDeltasLiquidatee[0]", shareDeltasLiquidatee[0]);
+            console2.log("shareDeltasLiquidatee[1]", shareDeltasLiquidatee[1]);
+            int256 burnDelta0C = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
                 PanopticMath.convert1to0(
                     convertToAssets(ct1, shareDeltasLiquidatee[1]),
                     TickMath.getSqrtRatioAtTick(currentTickFinal)
                 );
+            int256 burnDelta0 = convertToAssets(ct0, shareDeltasLiquidatee[0]);
+            int256 burnDelta1 = convertToAssets(ct1, shareDeltasLiquidatee[1]);
 
             vm.revertTo(snapshot);
 
@@ -5744,7 +5755,11 @@ contract PanopticPoolTest is PositionUtils {
             $totalAssets0 = totalAssets0;
             $totalAssets1 = totalAssets1;
 
+            $burnDelta0Combined = burnDelta0C;
             $burnDelta0 = burnDelta0;
+            $burnDelta1 = burnDelta1;
+
+            $netExchanged = netExchanged;
 
             for (uint256 i = 0; i < $posIdLists[1].length; ++i) {
                 for (uint256 j = 0; j < $posIdLists[1][i].countLegs(); ++j) {
@@ -5772,6 +5787,38 @@ contract PanopticPoolTest is PositionUtils {
                 ct1.convertToAssets(ct1.balanceOf(Bob)),
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
+
+        {
+            (int128 premium0, int128 premium1, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                false,
+                $posIdLists[1]
+            );
+            $premia = int256(0).toRightSlot(premium0).toLeftSlot(premium1);
+        }
+
+        ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
+            uint256($tokenData0),
+            uint256($tokenData1),
+            Math.getSqrtRatioAtTick(TWAPtick),
+            Math.getSqrtRatioAtTick(currentTickFinal),
+            $netExchanged,
+            $premia
+        );
+        console2.log("$netExchanged0", $netExchanged.rightSlot());
+        console2.log("$netExchanged1", $netExchanged.leftSlot());
+        console2.log("shareDelta0", $shareDelta0);
+        console2.log("shareDelta1", $shareDelta1);
+
+        $delegated0 = uint256(
+            int256(ct0.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus0)))
+        );
+        $delegated1 = uint256(
+            int256(ct1.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus1)))
+        );
+        console2.log("$delegated0", $delegated0);
+        console2.log("$delegated1", $delegated1);
+
         pp.liquidate(
             new uint256[](0),
             Alice,
@@ -5811,6 +5858,7 @@ contract PanopticPoolTest is PositionUtils {
                 ) -
                 $combinedBalance0
         );
+
         // make sure value outlay for Alice matches the bonus structure
         // if Alice is completely insolvent the deltas will be wrong because
         // some of the bonus will come from PLPs
@@ -5824,6 +5872,20 @@ contract PanopticPoolTest is PositionUtils {
         console2.log("$totalAssets0", $totalAssets0);
         console2.log("ct1.totalAssets()", ct1.totalAssets());
         console2.log("$totalAssets1", $totalAssets1);
+
+        // The protocol loss is the value of shares added to the supply multiplied by the portion of NON-DELEGATED collateral
+        // (losses in collateral that was returned to the liquidator post-delegation are compensated, so they are not included)
+        $protocolLoss0Actual = int256(
+            (ct0.convertToAssets(ct0.totalSupply() - $totalSupply0) *
+                ($totalSupply0 - $delegated0)) /
+                $totalSupply0 +
+                PanopticMath.convert1to0(
+                    (ct1.convertToAssets(ct1.totalSupply() - $totalSupply1) *
+                        ($totalSupply1 - $delegated1)) / $totalSupply1,
+                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                )
+        );
+        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
 
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
         // (in this test n = number of options = numLegs)
@@ -5889,53 +5951,106 @@ contract PanopticPoolTest is PositionUtils {
                 ),
                 "liquidatee was debited incorrectly high bonus value (no funds leftover)"
             );
-
-            settledTokens0.push(0);
-            settledTokens0.push(0);
-
-            for (uint256 i = 0; i < $posIdLists[1].length; ++i) {
-                for (uint256 j = 0; j < $posIdLists[1][i].countLegs(); ++j) {
-                    bytes32 chunk = keccak256(
-                        abi.encodePacked(
-                            $posIdLists[1][i].strike(j),
-                            $posIdLists[1][i].width(j),
-                            $posIdLists[1][i].tokenType(j)
-                        )
-                    );
-                    settledTokens0[0] += $settledTokens[chunk].rightSlot();
-                    settledTokens0[1] += pp.settledTokens(chunk).rightSlot();
-                    settledTokens0[0] += PanopticMath.convert1to0(
-                        $settledTokens[chunk].leftSlot(),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
-                    );
-                    settledTokens0[1] += PanopticMath.convert1to0(
-                        pp.settledTokens(chunk).leftSlot(),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
-                    );
-                }
-            }
-            console2.log(
-                "$shareDelta0",
-                convertToAssets(ct0, $shareDelta0) +
-                    PanopticMath.convert1to0(
-                        convertToAssets(ct1, $shareDelta1),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
-                    )
-            );
-            console2.log("longPremium0", longPremium0);
-            console2.log("combinedBalance0", $combinedBalance0);
-            console2.log("burnDelta0", $burnDelta0);
-            console2.log("bonusCombined0", $bonusCombined0);
-            console2.log("loss0", $combinedBalance0 + $burnDelta0 - $bonusCombined0);
-            console2.log("twap tick", TWAPtick);
-            console2.log("currentTickFinal", currentTickFinal);
-            assertApproxEqAbs(
-                int256(settledTokens0[0]) - int256(settledTokens0[1]),
-                Math.min(longPremium0, -($combinedBalance0 + $burnDelta0 - $bonusCombined0)),
-                10,
-                "haircut was taken incorrectly during protocol loss"
-            );
         }
+
+        settledTokens0.push(0);
+        settledTokens0.push(0);
+
+        for (uint256 i = 0; i < $posIdLists[1].length; ++i) {
+            for (uint256 j = 0; j < $posIdLists[1][i].countLegs(); ++j) {
+                bytes32 chunk = keccak256(
+                    abi.encodePacked(
+                        $posIdLists[1][i].strike(j),
+                        $posIdLists[1][i].width(j),
+                        $posIdLists[1][i].tokenType(j)
+                    )
+                );
+                settledTokens0[0] += $settledTokens[chunk].rightSlot();
+                settledTokens0[1] += pp.settledTokens(chunk).rightSlot();
+                settledTokens0[0] += PanopticMath.convert1to0(
+                    $settledTokens[chunk].leftSlot(),
+                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                );
+                settledTokens0[1] += PanopticMath.convert1to0(
+                    pp.settledTokens(chunk).leftSlot(),
+                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                );
+            }
+        }
+
+        int256 balanceCombined0CT = int256($tokenData0.rightSlot()) +
+            PanopticMath.convert1to0(
+                $tokenData1.rightSlot(),
+                TickMath.getSqrtRatioAtTick(TWAPtick)
+            );
+
+        $balance0CombinedPostBurn =
+            int256($tokenData0.rightSlot()) +
+            $burnDelta0 +
+            PanopticMath.convert1to0(
+                $tokenData1.rightSlot() + $burnDelta1,
+                TickMath.getSqrtRatioAtTick(currentTickFinal)
+            );
+
+        $protocolLoss0BaseExpected = Math.max(
+            -($balance0CombinedPostBurn -
+                Math.min(
+                    balanceCombined0CT / 2,
+                    $tokenData0.leftSlot() +
+                        PanopticMath.convert1to0(
+                            $tokenData1.leftSlot(),
+                            TickMath.getSqrtRatioAtTick(TWAPtick)
+                        ) -
+                        balanceCombined0CT
+                )),
+            0
+        );
+
+        console2.log(
+            "$shareDelta0",
+            convertToAssets(ct0, $shareDelta0) +
+                PanopticMath.convert1to0(
+                    convertToAssets(ct1, $shareDelta1),
+                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                )
+        );
+        console2.log("longPremium0", longPremium0);
+        console2.log("combinedBalance0", balanceCombined0CT);
+        console2.log("balance0CombinedPostBurn", $balance0CombinedPostBurn);
+
+        console2.log("burnDelta0", $burnDelta0);
+        console2.log("burnDelta1", $burnDelta1);
+        console2.log(
+            "bonusCombined0",
+            Math.min(
+                balanceCombined0CT / 2,
+                $tokenData0.leftSlot() +
+                    PanopticMath.convert1to0(
+                        $tokenData1.leftSlot(),
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
+                    ) -
+                    balanceCombined0CT
+            )
+        );
+        console2.log("loss0", $protocolLoss0BaseExpected);
+        console2.log("twap tick", TWAPtick);
+        console2.log("currentTickFinal", currentTickFinal);
+
+        assertApproxEqAbs(
+            int256(settledTokens0[0]) - int256(settledTokens0[1]),
+            Math.min(longPremium0, $protocolLoss0BaseExpected),
+            10,
+            "incorrect amount of premium was haircut"
+        );
+
+        assertApproxEqAbs(
+            $protocolLoss0Actual,
+            $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
+            10,
+            "not all premium was haircut during protocol loss"
+        );
+        console2.log("$protocolLoss0BaseExpected", $protocolLoss0BaseExpected);
+        console2.log("longPremium0", longPremium0);
         assertApproxEqAbs(
             int256(
                 ct0.convertToAssets(ct0.balanceOf(Bob)) +

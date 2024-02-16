@@ -20,6 +20,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -428,51 +429,49 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             balances[k][0] = tokenId;
             balances[k][1] = s_positionBalance[c_user][tokenId];
-            // if position exists, then compute premia for that position
-            if (balances[k][1].rightSlot() != 0) {
-                // increment the allPositionsPremia accumulator
-                (
-                    int256[4] memory premiaByLeg,
-                    uint256[2][4] memory premiumAccumulatorsByLeg
-                ) = _getPremia(
-                        tokenId,
-                        balances[k][1].rightSlot(),
-                        c_user,
-                        computeAllPremia,
-                        atTick,
-                        tickSpacing
+
+            // increment the allPositionsPremia accumulator
+            (
+                int256[4] memory premiaByLeg,
+                uint256[2][4] memory premiumAccumulatorsByLeg
+            ) = _getPremia(
+                    tokenId,
+                    balances[k][1].rightSlot(),
+                    c_user,
+                    computeAllPremia,
+                    atTick,
+                    tickSpacing
+                );
+
+            uint256 numLegs = tokenId.countLegs();
+            for (uint256 leg = 0; leg < numLegs; ) {
+                if (tokenId.isLong(leg) == 0 && !includePendingPremium) {
+                    bytes32 chunkKey = keccak256(
+                        abi.encodePacked(
+                            tokenId.strike(leg),
+                            tokenId.width(leg),
+                            tokenId.tokenType(leg)
+                        )
                     );
 
-                uint256 numLegs = tokenId.countLegs();
-                for (uint256 leg = 0; leg < numLegs; ) {
-                    if (tokenId.isLong(leg) == 0 && !includePendingPremium) {
-                        bytes32 chunkKey = keccak256(
-                            abi.encodePacked(
-                                tokenId.strike(leg),
-                                tokenId.width(leg),
-                                tokenId.tokenType(leg)
-                            )
-                        );
-
-                        uint256 availablePremium = _getAvailablePremium(
-                            _getTotalLiquidity(tokenId, leg, s_tickSpacing),
-                            s_settledTokens[chunkKey],
-                            s_grossPremiumLast[chunkKey],
-                            uint256(premiaByLeg[leg]),
-                            premiumAccumulatorsByLeg[leg]
-                        );
-                        portfolioPremium = portfolioPremium.add(int256(availablePremium));
-                    } else {
-                        portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
-                    }
-                    unchecked {
-                        ++leg;
-                    }
+                    uint256 availablePremium = _getAvailablePremium(
+                        _getTotalLiquidity(tokenId, leg, s_tickSpacing),
+                        s_settledTokens[chunkKey],
+                        s_grossPremiumLast[chunkKey],
+                        uint256(premiaByLeg[leg]),
+                        premiumAccumulatorsByLeg[leg]
+                    );
+                    portfolioPremium = portfolioPremium.add(int256(availablePremium));
+                } else {
+                    portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
                 }
-
                 unchecked {
-                    ++k;
+                    ++leg;
                 }
+            }
+
+            unchecked {
+                ++k;
             }
         }
         return (portfolioPremium, balances);
@@ -1089,6 +1088,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
+            console2.log("netExchanged0", netExchanged.rightSlot());
+            console2.log("netExchanged1", netExchanged.leftSlot());
 
             int256 collateralRemaining;
             // compute bonus amounts using latest tick data

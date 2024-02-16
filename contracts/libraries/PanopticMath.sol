@@ -699,7 +699,10 @@ library PanopticMath {
                     );
                 }
             }
-
+            console2.log("bonus0~", bonus0);
+            console2.log("bonus1~", bonus1);
+            console2.log("balance0", tokenData0.rightSlot());
+            console2.log("balance1", tokenData1.rightSlot());
             paid0 = bonus0 + int256(netExchanged.rightSlot());
             paid1 = bonus1 + int256(netExchanged.leftSlot());
             return (
@@ -746,6 +749,9 @@ library PanopticMath {
             }
         }
 
+        console2.log("collateralRemainingR", collateralRemaining.rightSlot());
+        console2.log("collateralRemainingL", collateralRemaining.leftSlot());
+
         // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
         int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
         int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
@@ -789,8 +795,8 @@ library PanopticMath {
             collateralDelta1 = 0;
         }
 
-        if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(-haircut0));
-        if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(-haircut1));
+        if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(haircut0));
+        if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(haircut1));
 
         for (uint256 i = 0; i < positionIdList.length; i++) {
             int256[4][] memory _premiasByLeg = premiasByLeg;
