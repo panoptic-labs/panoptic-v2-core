@@ -20,7 +20,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1088,8 +1087,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
-            console2.log("netExchanged0", netExchanged.rightSlot());
-            console2.log("netExchanged1", netExchanged.leftSlot());
 
             int256 collateralRemaining;
             // compute bonus amounts using latest tick data

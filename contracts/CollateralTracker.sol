@@ -21,7 +21,6 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1022,7 +1021,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         */
 
         uint256 shares = convertToShares(assets);
-        console2.log("delegating", assets, shares);
 
         // transfer shares from the delegator to the delegatee
         _transferFrom(delegator, delegatee, shares);
@@ -1070,7 +1068,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         */
 
         uint256 shares = convertToShares(assets);
-        console2.log("revoking,", assets, shares);
 
         // get the delegateeBalance and compare later against requestedAmount
         uint256 delegateeBalance = balanceOf[delegatee];
@@ -1080,19 +1077,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // transfer delegatee balance to delegator
             _transferFrom(delegatee, delegator, delegateeBalance);
 
-            console2.log(
-                "assets to revoke",
-                int256(assets) - int256(convertToAssets(delegateeBalance))
-            );
-            console2.log("shares", shares);
-            console2.log("totalSupply", totalSupply);
-
             uint256 pl = Math.mulDiv(
                 assets,
                 totalSupply - delegateeBalance,
                 uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
             ) - delegateeBalance;
-            console2.log("protocol loss, conv b4", convertToAssets(pl));
+
             // this is paying out protocol loss, so correct for that in the amount of shares to be minted
             // X: total assets in vault
             // Y: total supply of shares
@@ -1114,22 +1104,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
                 ) - delegateeBalance
             );
-
-            console2.log("protocol loss, conv after", convertToAssets(pl));
-            console2.log(
-                "assets to revoke... after?!",
-                int256(assets) - int256(convertToAssets(delegateeBalance))
-            );
         }
         // if requested amount < delegatee balance, then just transfer shares back
         else {
             _transferFrom(delegatee, delegator, shares);
         }
-        console2.log(
-            "final assets,shares",
-            convertToAssets(balanceOf[delegatee]),
-            balanceOf[delegatee]
-        );
     }
 
     /// @notice Refunds delegated tokens to 'refunder' from 'refundee', similar to 'revoke'
@@ -1246,13 +1225,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
-                console2.log("exercise burn", sharesToBurn, s_underlyingIsToken0);
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
                 _mint(optionOwner, sharesToMint);
-                console2.log("exercise mint", sharesToMint, s_underlyingIsToken0);
             }
 
             // update stored asset balances with net moved amounts

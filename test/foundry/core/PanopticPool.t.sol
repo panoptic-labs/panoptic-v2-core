@@ -5550,7 +5550,6 @@ contract PanopticPoolTest is PositionUtils {
         _initPool(x);
 
         numLegs = bound(numLegs, 1, 4);
-        console2.log("numLegs", numLegs);
 
         int24[4] memory widths;
         int24[4] memory strikes;
@@ -5740,8 +5739,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 totalSupply1 = ct1.totalSupply();
             uint256 totalAssets0 = ct0.totalAssets();
             uint256 totalAssets1 = ct1.totalAssets();
-            console2.log("shareDeltasLiquidatee[0]", shareDeltasLiquidatee[0]);
-            console2.log("shareDeltasLiquidatee[1]", shareDeltasLiquidatee[1]);
+
             int256 burnDelta0C = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
                 PanopticMath.convert1to0(
                     convertToAssets(ct1, shareDeltasLiquidatee[1]),
@@ -5807,10 +5805,6 @@ contract PanopticPoolTest is PositionUtils {
             $netExchanged,
             $premia
         );
-        console2.log("$netExchanged0", $netExchanged.rightSlot());
-        console2.log("$netExchanged1", $netExchanged.leftSlot());
-        console2.log("shareDelta0", $shareDelta0);
-        console2.log("shareDelta1", $shareDelta1);
 
         $delegated0 = uint256(
             int256(ct0.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus0)))
@@ -5818,8 +5812,6 @@ contract PanopticPoolTest is PositionUtils {
         $delegated1 = uint256(
             int256(ct1.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus1)))
         );
-        console2.log("$delegated0", $delegated0);
-        console2.log("$delegated1", $delegated1);
 
         pp.liquidate(
             new uint256[](0),
@@ -5872,14 +5864,6 @@ contract PanopticPoolTest is PositionUtils {
         // some of the bonus will come from PLPs
         // in that case we just assert that the delta is less than whatever the bonus was supposed to be
         // which ensures Alice wasn't overcharged
-        console2.log("ct0.totalSupply()", ct0.totalSupply());
-        console2.log("$totalSupply0", $totalSupply0);
-        console2.log("ct1.totalSupply()", ct1.totalSupply());
-        console2.log("$totalSupply1", $totalSupply1);
-        console2.log("ct0.totalAssets()", ct0.totalAssets());
-        console2.log("$totalAssets0", $totalAssets0);
-        console2.log("ct1.totalAssets()", ct1.totalAssets());
-        console2.log("$totalAssets1", $totalAssets1);
 
         // The protocol loss is the value of shares added to the supply multiplied by the portion of NON-DELEGATED collateral
         // (losses in collateral that was returned to the liquidator post-delegation are compensated, so they are not included)
@@ -5900,29 +5884,6 @@ contract PanopticPoolTest is PositionUtils {
                     TickMath.getSqrtRatioAtTick(currentTickFinal)
                 )
         );
-        console2.log("$delegated0", $delegated0);
-        console2.log("$delegated1", $delegated1);
-
-        console2.log(
-            "protocolLossToken0B4Adjust",
-            ct0.convertToAssets(ct0.totalSupply() - $totalSupply0)
-        );
-        console2.log(
-            "protocolLossToken0A4Adjust",
-            (ct0.convertToAssets(ct0.totalSupply() - $totalSupply0) *
-                ($totalSupply0 - $delegated0)) / $totalSupply0
-        );
-        console2.log(
-            "protocolLossToken1B4Adjust",
-            ct1.convertToAssets(ct1.totalSupply() - $totalSupply1)
-        );
-        console2.log(
-            "protocolLossToken1A4Adjust",
-            (ct1.convertToAssets(ct1.totalSupply() - $totalSupply1) *
-                ($totalSupply1 - $delegated1)) / $totalSupply1
-        );
-
-        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
 
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
         // (in this test n = number of options = numLegs)
@@ -5968,8 +5929,6 @@ contract PanopticPoolTest is PositionUtils {
                     );
                 }
             }
-            console2.log("ct0.balanceOf(Alice)", ct0.balanceOf(Alice));
-            console2.log("ct1.balanceOf(Alice)", ct1.balanceOf(Alice));
         } else {
             assertLe(
                 convertToAssets(ct0, $shareDelta0) +
@@ -6044,36 +6003,6 @@ contract PanopticPoolTest is PositionUtils {
             0
         );
 
-        console2.log(
-            "$shareDelta0",
-            convertToAssets(ct0, $shareDelta0) +
-                PanopticMath.convert1to0(
-                    convertToAssets(ct1, $shareDelta1),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
-                )
-        );
-        console2.log("longPremium0", longPremium0);
-        console2.log("combinedBalance0", balanceCombined0CT);
-        console2.log("balance0CombinedPostBurn", $balance0CombinedPostBurn);
-
-        console2.log("burnDelta0", $burnDelta0);
-        console2.log("burnDelta1", $burnDelta1);
-        console2.log(
-            "bonusCombined0",
-            Math.min(
-                balanceCombined0CT / 2,
-                $tokenData0.leftSlot() +
-                    PanopticMath.convert1to0(
-                        $tokenData1.leftSlot(),
-                        TickMath.getSqrtRatioAtTick(TWAPtick)
-                    ) -
-                    balanceCombined0CT
-            )
-        );
-        console2.log("loss0", $protocolLoss0BaseExpected);
-        console2.log("twap tick", TWAPtick);
-        console2.log("currentTickFinal", currentTickFinal);
-
         assertApproxEqAbs(
             int256(settledTokens0[0]) - int256(settledTokens0[1]),
             Math.min(longPremium0, $protocolLoss0BaseExpected),
@@ -6087,8 +6016,7 @@ contract PanopticPoolTest is PositionUtils {
             10,
             "not all premium was haircut during protocol loss"
         );
-        console2.log("$protocolLoss0BaseExpected", $protocolLoss0BaseExpected);
-        console2.log("longPremium0", longPremium0);
+
         assertApproxEqAbs(
             int256(
                 ct0.convertToAssets(ct0.balanceOf(Bob)) +

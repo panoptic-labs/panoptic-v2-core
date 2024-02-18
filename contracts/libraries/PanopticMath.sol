@@ -13,7 +13,6 @@ import {Math} from "@libraries/Math.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -653,10 +652,7 @@ library PanopticMath {
                 Math.max(premia.rightSlot(), 0);
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
                 Math.max(premia.leftSlot(), 0);
-            console2.log("premia.rightSlot()", premia.rightSlot());
-            console2.log("premia.leftSlot()", premia.leftSlot());
-            console2.log("balance0T", balance0);
-            console2.log("balance1T", balance1);
+
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
 
@@ -702,10 +698,7 @@ library PanopticMath {
                     );
                 }
             }
-            console2.log("bonus0~", bonus0);
-            console2.log("bonus1~", bonus1);
-            console2.log("balance0", tokenData0.rightSlot());
-            console2.log("balance1", tokenData1.rightSlot());
+
             paid0 = bonus0 + int256(netExchanged.rightSlot());
             paid1 = bonus1 + int256(netExchanged.leftSlot());
             return (
@@ -751,11 +744,6 @@ library PanopticMath {
                 }
             }
         }
-        console2.log("availP0", haircut0);
-        console2.log("availP1", haircut1);
-
-        console2.log("collateralRemainingR", collateralRemaining.rightSlot());
-        console2.log("collateralRemainingL", collateralRemaining.leftSlot());
 
         // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
         int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
