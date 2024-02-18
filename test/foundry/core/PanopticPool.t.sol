@@ -284,6 +284,8 @@ contract PanopticPoolTest is PositionUtils {
     int256 $bonus1;
 
     int256 $combinedBalance0;
+    int256 $combinedBalance0Premium;
+    int256 $combinedBalance0NoPremium;
     int256 $bonusCombined0;
     int256 $burnDelta0Combined;
     int256 $burnDelta0;
@@ -5843,20 +5845,26 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         // get total balance for Alice before liquidation
-        $combinedBalance0 =
-            $tokenData0.rightSlot() +
+        $combinedBalance0NoPremium =
+            ($tokenData0.rightSlot() - Math.max($premia.rightSlot(), 0)) +
+            PanopticMath.convert1to0(
+                $tokenData1.rightSlot() - Math.max($premia.leftSlot(), 0),
+                TickMath.getSqrtRatioAtTick(TWAPtick)
+            );
+        $combinedBalance0Premium =
+            ($tokenData0.rightSlot()) +
             PanopticMath.convert1to0(
                 $tokenData1.rightSlot(),
                 TickMath.getSqrtRatioAtTick(TWAPtick)
             );
         $bonusCombined0 = Math.min(
-            $combinedBalance0 / 2,
+            $combinedBalance0Premium / 2,
             $tokenData0.leftSlot() +
                 PanopticMath.convert1to0(
                     $tokenData1.leftSlot(),
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 ) -
-                $combinedBalance0
+                $combinedBalance0Premium
         );
 
         // make sure value outlay for Alice matches the bonus structure
@@ -5876,15 +5884,44 @@ contract PanopticPoolTest is PositionUtils {
         // The protocol loss is the value of shares added to the supply multiplied by the portion of NON-DELEGATED collateral
         // (losses in collateral that was returned to the liquidator post-delegation are compensated, so they are not included)
         $protocolLoss0Actual = int256(
-            (ct0.convertToAssets(ct0.totalSupply() - $totalSupply0) *
-                ($totalSupply0 - $delegated0)) /
-                $totalSupply0 +
+            (ct0.convertToAssets(
+                (ct0.totalSupply() - $totalSupply0) -
+                    ((ct0.totalAssets() - $totalAssets0) * $totalSupply0) /
+                    $totalAssets0
+            ) * ($totalSupply0 - $delegated0)) /
+                ($totalSupply0 - (ct0.totalSupply() - $totalSupply0)) +
                 PanopticMath.convert1to0(
-                    (ct1.convertToAssets(ct1.totalSupply() - $totalSupply1) *
-                        ($totalSupply1 - $delegated1)) / $totalSupply1,
+                    (ct1.convertToAssets(
+                        (ct1.totalSupply() - $totalSupply1) -
+                            ((ct1.totalAssets() - $totalAssets1) * $totalSupply1) /
+                            $totalAssets1
+                    ) * ($totalSupply1 - $delegated1)) /
+                        ($totalSupply1 - (ct1.totalSupply() - $totalSupply1)),
                     TickMath.getSqrtRatioAtTick(currentTickFinal)
                 )
         );
+        console2.log("$delegated0", $delegated0);
+        console2.log("$delegated1", $delegated1);
+
+        console2.log(
+            "protocolLossToken0B4Adjust",
+            ct0.convertToAssets(ct0.totalSupply() - $totalSupply0)
+        );
+        console2.log(
+            "protocolLossToken0A4Adjust",
+            (ct0.convertToAssets(ct0.totalSupply() - $totalSupply0) *
+                ($totalSupply0 - $delegated0)) / $totalSupply0
+        );
+        console2.log(
+            "protocolLossToken1B4Adjust",
+            ct1.convertToAssets(ct1.totalSupply() - $totalSupply1)
+        );
+        console2.log(
+            "protocolLossToken1A4Adjust",
+            (ct1.convertToAssets(ct1.totalSupply() - $totalSupply1) *
+                ($totalSupply1 - $delegated1)) / $totalSupply1
+        );
+
         console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
 
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
@@ -5903,13 +5940,13 @@ contract PanopticPoolTest is PositionUtils {
                         TickMath.getSqrtRatioAtTick(currentTickFinal)
                     ),
                 Math.min(
-                    $combinedBalance0 / 2,
+                    $combinedBalance0Premium / 2,
                     $tokenData0.leftSlot() +
                         PanopticMath.convert1to0(
                             $tokenData1.leftSlot(),
                             TickMath.getSqrtRatioAtTick(TWAPtick)
                         ) -
-                        $combinedBalance0
+                        $combinedBalance0Premium
                 ),
                 10,
                 "liquidatee was debited incorrect bonus value (funds leftover)"
@@ -5941,13 +5978,13 @@ contract PanopticPoolTest is PositionUtils {
                         TickMath.getSqrtRatioAtTick(currentTickFinal)
                     ),
                 Math.min(
-                    $combinedBalance0 / 2,
+                    $combinedBalance0Premium / 2,
                     $tokenData0.leftSlot() +
                         PanopticMath.convert1to0(
                             $tokenData1.leftSlot(),
                             TickMath.getSqrtRatioAtTick(TWAPtick)
                         ) -
-                        $combinedBalance0
+                        $combinedBalance0Premium
                 ),
                 "liquidatee was debited incorrectly high bonus value (no funds leftover)"
             );
@@ -5985,10 +6022,11 @@ contract PanopticPoolTest is PositionUtils {
             );
 
         $balance0CombinedPostBurn =
-            int256($tokenData0.rightSlot()) +
+            int256($tokenData0.rightSlot()) -
+            Math.max($premia.rightSlot(), 0) +
             $burnDelta0 +
             PanopticMath.convert1to0(
-                $tokenData1.rightSlot() + $burnDelta1,
+                $tokenData1.rightSlot() - Math.max($premia.leftSlot(), 0) + $burnDelta1,
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 

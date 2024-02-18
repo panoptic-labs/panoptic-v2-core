@@ -1125,6 +1125,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         else {
             _transferFrom(delegatee, delegator, shares);
         }
+        console2.log(
+            "final assets,shares",
+            convertToAssets(balanceOf[delegatee]),
+            balanceOf[delegatee]
+        );
     }
 
     /// @notice Refunds delegated tokens to 'refunder' from 'refundee', similar to 'revoke'

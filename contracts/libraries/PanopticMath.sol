@@ -653,7 +653,10 @@ library PanopticMath {
                 Math.max(premia.rightSlot(), 0);
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
                 Math.max(premia.leftSlot(), 0);
-
+            console2.log("premia.rightSlot()", premia.rightSlot());
+            console2.log("premia.leftSlot()", premia.leftSlot());
+            console2.log("balance0T", balance0);
+            console2.log("balance1T", balance1);
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
 
@@ -748,6 +751,8 @@ library PanopticMath {
                 }
             }
         }
+        console2.log("availP0", haircut0);
+        console2.log("availP1", haircut1);
 
         console2.log("collateralRemainingR", collateralRemaining.rightSlot());
         console2.log("collateralRemainingL", collateralRemaining.leftSlot());
@@ -775,13 +780,13 @@ library PanopticMath {
         } else if (haircut1 < collateralDelta1 && haircut0 > collateralDelta0) {
             int256 protocolLoss0 = collateralDelta0;
             (collateralDelta0, collateralDelta1) = (
-                -Math.min(
-                    collateralDelta0 - haircut0,
-                    PanopticMath.convert1to0(haircut1 - collateralDelta1, sqrtPriceX96Final)
-                ),
                 Math.min(
-                    haircut1 - collateralDelta1,
-                    PanopticMath.convert0to1(collateralDelta0 - haircut0, sqrtPriceX96Final)
+                    haircut0 - collateralDelta0,
+                    PanopticMath.convert1to0(collateralDelta1 - haircut1, sqrtPriceX96Final)
+                ),
+                -Math.min(
+                    collateralDelta1 - haircut1,
+                    PanopticMath.convert0to1(haircut0 - collateralDelta0, sqrtPriceX96Final)
                 )
             );
 
