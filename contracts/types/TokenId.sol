@@ -69,9 +69,6 @@ library TokenId {
     // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType)
     uint256 internal constant CHUNK_MASK =
         0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
-    // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType) and isLong
-    uint256 internal constant CHUNK_ISLONG_MASK =
-        0xFFFFFFFFF300_FFFFFFFFF300_FFFFFFFFF300_FFFFFFFFF300_0000000000000000;
 
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
@@ -407,21 +404,6 @@ library TokenId {
             return 3;
         }
         return 4;
-    }
-
-    /// @notice Check whether the strike, width, tokenType, and isLong of a leg match the given identity.
-    /// @param self the option position id.
-    /// @param leg the leg index of the position (in {0,1,2,3}) to match.
-    /// @param identity the identity (tokenId only the desired strike, width, tokenType, and isLong set in the first leg) to match against.
-    /// @return true if the leg matches the identity, false otherwise.
-    function matchLongChunk(
-        uint256 self,
-        uint256 leg,
-        uint256 identity
-    ) internal pure returns (bool) {
-        unchecked {
-            return (((self & CHUNK_ISLONG_MASK) >> (64 + 48 * leg)) % 2 ** 48) == (identity >> 64);
-        }
     }
 
     /// @notice Clear a leg in an option position with index `i`.
