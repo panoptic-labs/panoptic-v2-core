@@ -1071,17 +1071,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // get the delegateeBalance and compare later against requestedAmount
         uint256 delegateeBalance = balanceOf[delegatee];
+
         // if requested amount is larger than user balance, transfer shares back,
         // then issue new shares
         if (shares > delegateeBalance) {
             // transfer delegatee balance to delegator
             _transferFrom(delegatee, delegator, delegateeBalance);
-
-            uint256 pl = Math.mulDiv(
-                assets,
-                totalSupply - delegateeBalance,
-                uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
-            ) - delegateeBalance;
 
             // this is paying out protocol loss, so correct for that in the amount of shares to be minted
             // X: total assets in vault
