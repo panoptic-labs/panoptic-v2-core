@@ -1391,7 +1391,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, tickSpacing, currentTick, token0, token1, ct0, ct1);
+        pp.startPool(pool, currentTick, token0, token1, ct0, ct1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1897,8 +1897,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize),
-                tickSpacing
+                uint128(positionSize)
             );
 
             assertApproxEqAbs(
@@ -1985,11 +1984,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize,
-                tickSpacing
-            );
+            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
@@ -2097,8 +2092,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize),
-                tickSpacing
+                uint128(positionSize)
             );
 
             assertApproxEqAbs(
@@ -2176,8 +2170,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize),
-                tickSpacing
+                uint128(positionSize)
             );
 
             assertApproxEqAbs(
@@ -2253,11 +2246,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize,
-                tickSpacing
-            );
+            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
             assertApproxEqAbs(
                 ct1.balanceOf(Alice),
@@ -2356,11 +2345,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize,
-                tickSpacing
-            );
+            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
             int256 amount0Moved = currentSqrtPriceX96 > sqrtUpper
                 ? int256(0)
@@ -2449,11 +2434,7 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Alice);
 
-        (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize,
-            tickSpacing
-        );
+        (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
         {
             uint256[] memory posIdList = new uint256[](1);
@@ -2582,8 +2563,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmountsSold) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSizes[0],
-            tickSpacing
+            positionSizes[0]
         );
 
         changePrank(Seller);
@@ -2626,8 +2606,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSizes[1],
-            tickSpacing
+            positionSizes[1]
         );
 
         {
@@ -2903,11 +2882,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
 
         // deposit commission so we can reach collateral check
-        (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize,
-            tickSpacing
-        );
+        (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
         changePrank(Charlie);
 
@@ -3016,11 +2991,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-                tokenId,
-                positionSize,
-                tickSpacing
-            );
+            (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
@@ -3150,8 +3121,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            uint128(positionSize),
-            tickSpacing
+            uint128(positionSize)
         );
 
         int256[2] memory notionalVals = [
@@ -3301,8 +3271,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            uint128(positionSize),
-            tickSpacing
+            uint128(positionSize)
         );
 
         int256[2] memory notionalVals = [
@@ -3496,8 +3465,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenIds[0],
-            uint128(positionSize),
-            tickSpacing
+            uint128(positionSize)
         );
 
         int256[2] memory notionalVals = [
@@ -4076,8 +4044,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize,
-            tickSpacing
+            positionSize
         );
 
         uint256[2] memory commissionFeeAmounts = [
@@ -4268,8 +4235,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize,
-            tickSpacing
+            positionSize
         );
 
         pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0);

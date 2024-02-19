@@ -663,7 +663,7 @@ contract TokenIdTest is Test, PositionUtils {
         tokenId = harness.addStrike(tokenId, strike, 0);
 
         // Test the asTicks function
-        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0);
 
         // Ensure tick values returned are correct
         assertEq(tickLower, strike - (width * tickSpacing) / 2);
@@ -698,7 +698,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         vm.expectRevert(Errors.TicksNotInitializable.selector);
         // Test the asTicks function
-        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0);
     }
 
     function test_Fail_asTicks_belowMinTick(
@@ -731,7 +731,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         // Test the asTicks function
         vm.expectRevert(Errors.TicksNotInitializable.selector);
-        harness.asTicks(tokenId, 0, tickSpacing);
+        harness.asTicks(tokenId, 0);
     }
 
     function test_Fail_asTicks_aboveMinTick(
@@ -764,7 +764,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         // Test the asTicks function
         vm.expectRevert(Errors.TicksNotInitializable.selector);
-        harness.asTicks(tokenId, 0, tickSpacing);
+        harness.asTicks(tokenId, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1735,7 +1735,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     function test_Success_validateIsExercisable_aboveTick(
@@ -1784,7 +1784,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     function test_Fail_validateIsExercisable_shortPos(
@@ -1818,7 +1818,7 @@ contract TokenIdTest is Test, PositionUtils {
         tokenId = tokenId & CLEAR_IS_LONG_MASK;
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     function test_Fail_validateIsExercisable_inRange(
@@ -1868,7 +1868,7 @@ contract TokenIdTest is Test, PositionUtils {
         }
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -108,7 +108,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
         }
 
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint160 sqrtPriceBottom = (tokenId.width(0) == 4095)
             ? TickMath.getSqrtRatioAtTick(tokenId.strike(0))
@@ -174,7 +174,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
         }
 
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint160 sqrtPriceTop = (tokenId.width(0) == 4095)
             ? TickMath.getSqrtRatioAtTick(tokenId.strike(0))
@@ -1120,7 +1120,7 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
         uint128 amount1 = harness.convertNotional(amount0, tickLower, tickUpper, tokenId.asset(0));
@@ -1184,7 +1184,7 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
         uint128 amount0 = harness.convertNotional(amount1, tickLower, tickUpper, tokenId.asset(0));
@@ -1306,7 +1306,7 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         // contractSize = positionSize * uint128(tokenId.optionRatio(legIndex));
-        (int24 legLowerTick, int24 legUpperTick) = tokenId.asTicks(0, tickSpacing);
+        (int24 legLowerTick, int24 legUpperTick) = tokenId.asTicks(0);
 
         positionSize = uint64(
             PositionUtils.getContractsForAmountAtTick(
