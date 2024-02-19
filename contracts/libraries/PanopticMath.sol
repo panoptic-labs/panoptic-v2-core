@@ -22,6 +22,9 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
+    uint64 internal constant POOLID_MASK = 0xFFFF00000000FFFF;
+    uint64 internal constant ANTI_POOLID_MASK = 0xFFFFFFFF0000;
+
     /*//////////////////////////////////////////////////////////////
                               MATH HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -63,12 +66,12 @@ library PanopticMath {
         uint24 fee
     ) internal pure returns (uint64) {
         unchecked {
-            // add extra entropy to bits between (12, 32) of the poolId.
-            /// @dev this protects the tickSpacing and adds 20bits of entropy (1,048,576) when there's a poolId collision.
-            uint64 extraEntropy = (uint64(
-                uint256(keccak256(abi.encodePacked(token0, token1, fee)))
-            ) >> 48) << 16;
-            return basePoolId + extraEntropy;
+            // add extra entropy to bits between (16, 48) of the poolId.
+            /// @dev this protects the tickSpacing and adds 32bits of entropy (1,294,967,296) when there's a poolId collision.
+            uint64 extraEntropy = uint64(
+                uint256(keccak256(abi.encodePacked(basePoolId, token0, token1, fee)))
+            ) & ANTI_POOLID_MASK;
+            return basePoolId & (POOLID_MASK + extraEntropy);
         }
     }
 
