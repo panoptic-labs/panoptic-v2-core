@@ -88,7 +88,7 @@ library TokenId {
     /// @return the tickSpacing of the Uniswap v3 pool
     function tickSpacing(uint256 self) internal pure returns (int24) {
         unchecked {
-            return int24(uint24(self % 2 ** 12));
+            return int24(uint24(self % 2 ** 16));
         }
     }
 

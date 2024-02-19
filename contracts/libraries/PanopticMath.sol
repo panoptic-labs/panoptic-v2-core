@@ -29,7 +29,7 @@ library PanopticMath {
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     /// @dev Example:
     ///      the 64 bits are the 64 *last* (most significant) bits - and thus corresponds to the *first* 16 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, with the tickSpacing written in the lowest 12 bits (ie. max tickSpacing is 4096)
+    ///      of the Uniswap v3 pool address, with the tickSpacing written in the lowest 16 bits (ie. max tickSpacing is 32768)
     ///      e.g.:
     ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
     ///        tickSpacing = 60
@@ -44,7 +44,7 @@ library PanopticMath {
     function getPoolId(address univ3pool) internal view returns (uint64) {
         unchecked {
             int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
-            uint64 poolId = uint64(uint160(univ3pool) >> (96 + 12)) << 12;
+            uint64 poolId = uint64(uint160(univ3pool) >> (96 + 16)) << 16;
             poolId += uint24(tickSpacing);
             return poolId;
         }
@@ -67,7 +67,7 @@ library PanopticMath {
             /// @dev this protects the tickSpacing and adds 20bits of entropy (1,048,576) when there's a poolId collision.
             uint64 extraEntropy = (uint64(
                 uint256(keccak256(abi.encodePacked(token0, token1, fee)))
-            ) >> 44) << 12;
+            ) >> 48) << 16;
             return basePoolId + extraEntropy;
         }
     }
