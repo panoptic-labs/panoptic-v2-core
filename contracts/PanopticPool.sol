@@ -814,8 +814,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param owner the owner of the option position to be liquidated.
     /// @param tickLimitLow Price slippage limit when burning an ITM option
     /// @param tickLimitHigh Price slippage limit when burning an ITM option
-    /// @param positionIdList the option position to liquidate.
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
+    /// @param positionIdList the option position to liquidate.
     function _burnAllOptionsFrom(
         address owner,
         int24 tickLimitLow,
@@ -1107,6 +1107,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // such that the PLPs are forced to pay out premia to the liquidator
             // thus, we haircut any premium paid by the liquidatee (converting tokens as necessary) until the protocol loss is covered or the premium is exhausted
             // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
+
+            // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
+            // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
             (netExchanged, premia) = PanopticMath.haircutPremia(
                 liquidatee,
                 positionIdList,

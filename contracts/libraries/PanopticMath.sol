@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -652,97 +651,103 @@ library PanopticMath {
         CollateralTracker collateral1,
         mapping(bytes32 chunkKey => uint256 settledTokens) storage settledTokens
     ) external returns (int256, int256) {
-        // get the amount of premium paid by the liquidatee
-        int256 haircut0;
-        int256 haircut1;
-        for (uint256 i = 0; i < positionIdList.length; i++) {
-            uint256 tokenId = positionIdList[i];
-            uint256 numLegs = tokenId.countLegs();
-            for (uint256 leg = 0; leg < numLegs; ++leg) {
-                if (tokenId.isLong(leg) == 1) {
-                    haircut0 += -premiasByLeg[i][leg].rightSlot();
-                    haircut1 += -premiasByLeg[i][leg].leftSlot();
+        unchecked {
+            // get the amount of premium paid by the liquidatee
+            int256 haircut0;
+            int256 haircut1;
+            for (uint256 i = 0; i < positionIdList.length; ++i) {
+                uint256 tokenId = positionIdList[i];
+                uint256 numLegs = tokenId.countLegs();
+                for (uint256 leg = 0; leg < numLegs; ++leg) {
+                    if (tokenId.isLong(leg) == 1) {
+                        haircut0 += -premiasByLeg[i][leg].rightSlot();
+                        haircut1 += -premiasByLeg[i][leg].leftSlot();
+                    }
                 }
             }
-        }
 
-        // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
-        int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
-        int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
+            // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
+            int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
+            int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
 
-        // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
-        // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
-        if (haircut0 < collateralDelta0 && haircut1 > collateralDelta1) {
-            int256 protocolLoss1 = collateralDelta1;
-            (collateralDelta0, collateralDelta1) = (
-                -Math.min(
-                    collateralDelta0 - haircut0,
-                    PanopticMath.convert1to0(haircut1 - collateralDelta1, sqrtPriceX96Final)
-                ),
-                Math.min(
-                    haircut1 - collateralDelta1,
-                    PanopticMath.convert0to1(collateralDelta0 - haircut0, sqrtPriceX96Final)
-                )
-            );
+            // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
+            // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
+            if (haircut0 < collateralDelta0 && haircut1 > collateralDelta1) {
+                int256 protocolLoss1 = collateralDelta1;
+                (collateralDelta0, collateralDelta1) = (
+                    -Math.min(
+                        collateralDelta0 - haircut0,
+                        PanopticMath.convert1to0(haircut1 - collateralDelta1, sqrtPriceX96Final)
+                    ),
+                    Math.min(
+                        haircut1 - collateralDelta1,
+                        PanopticMath.convert0to1(collateralDelta0 - haircut0, sqrtPriceX96Final)
+                    )
+                );
 
-            haircut1 = protocolLoss1 + collateralDelta1;
-        } else if (haircut1 < collateralDelta1 && haircut0 > collateralDelta0) {
-            int256 protocolLoss0 = collateralDelta0;
-            (collateralDelta0, collateralDelta1) = (
-                Math.min(
-                    haircut0 - collateralDelta0,
-                    PanopticMath.convert1to0(collateralDelta1 - haircut1, sqrtPriceX96Final)
-                ),
-                -Math.min(
-                    collateralDelta1 - haircut1,
-                    PanopticMath.convert0to1(haircut0 - collateralDelta0, sqrtPriceX96Final)
-                )
-            );
+                haircut1 = protocolLoss1 + collateralDelta1;
+            } else if (haircut1 < collateralDelta1 && haircut0 > collateralDelta0) {
+                int256 protocolLoss0 = collateralDelta0;
+                (collateralDelta0, collateralDelta1) = (
+                    Math.min(
+                        haircut0 - collateralDelta0,
+                        PanopticMath.convert1to0(collateralDelta1 - haircut1, sqrtPriceX96Final)
+                    ),
+                    -Math.min(
+                        collateralDelta1 - haircut1,
+                        PanopticMath.convert0to1(haircut0 - collateralDelta0, sqrtPriceX96Final)
+                    )
+                );
 
-            haircut0 = collateralDelta0 + protocolLoss0;
-        } else {
-            // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
-            haircut0 = Math.min(collateralDelta0, haircut0);
-            haircut1 = Math.min(collateralDelta1, haircut1);
+                haircut0 = collateralDelta0 + protocolLoss0;
+            } else {
+                // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
+                haircut0 = Math.min(collateralDelta0, haircut0);
+                haircut1 = Math.min(collateralDelta1, haircut1);
 
-            collateralDelta0 = 0;
-            collateralDelta1 = 0;
-        }
+                collateralDelta0 = 0;
+                collateralDelta1 = 0;
+            }
 
-        if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(haircut0));
-        if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(haircut1));
+            if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(haircut0));
+            if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(haircut1));
 
-        for (uint256 i = 0; i < positionIdList.length; i++) {
-            int256[4][] memory _premiasByLeg = premiasByLeg;
-            uint256 tokenId = positionIdList[i];
-            for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-                if (tokenId.isLong(leg) == 1) {
-                    bytes32 chunkKey = keccak256(
-                        abi.encodePacked(tokenId.strike(0), tokenId.width(0), tokenId.tokenType(0))
-                    );
+            for (uint256 i = 0; i < positionIdList.length; i++) {
+                int256[4][] memory _premiasByLeg = premiasByLeg;
+                uint256 tokenId = positionIdList[i];
+                for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
+                    if (tokenId.isLong(leg) == 1) {
+                        bytes32 chunkKey = keccak256(
+                            abi.encodePacked(
+                                tokenId.strike(0),
+                                tokenId.width(0),
+                                tokenId.tokenType(0)
+                            )
+                        );
 
-                    // calculate amounts to revoke from settled and subtract from haircut req
-                    int256 settled0 = Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0);
-                    int256 settled1 = Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1);
-                    haircut0 -= settled0;
-                    haircut1 -= settled1;
+                        // calculate amounts to revoke from settled and subtract from haircut req
+                        int256 settled0 = Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0);
+                        int256 settled1 = Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1);
+                        haircut0 -= settled0;
+                        haircut1 -= settled1;
 
-                    // The long premium is not commited to storage during the liquidation, so we add the entire adjusted amount
-                    // for the haircut directly to the accumulator
-                    settled0 = -_premiasByLeg[i][leg].rightSlot() - settled0;
+                        // The long premium is not commited to storage during the liquidation, so we add the entire adjusted amount
+                        // for the haircut directly to the accumulator
+                        settled0 = -_premiasByLeg[i][leg].rightSlot() - settled0;
 
-                    settled1 = -_premiasByLeg[i][leg].leftSlot() - settled1;
+                        settled1 = -_premiasByLeg[i][leg].leftSlot() - settled1;
 
-                    settledTokens[chunkKey] = uint256(
-                        settledTokens[chunkKey].add(
-                            int256(0).toRightSlot(int128(settled0)).toLeftSlot(int128(settled1))
-                        )
-                    );
+                        settledTokens[chunkKey] = uint256(
+                            settledTokens[chunkKey].add(
+                                int256(0).toRightSlot(int128(settled0)).toLeftSlot(int128(settled1))
+                            )
+                        );
+                    }
                 }
             }
-        }
 
-        return (collateralDelta0, collateralDelta1);
+            return (collateralDelta0, collateralDelta1);
+        }
     }
 
     /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
