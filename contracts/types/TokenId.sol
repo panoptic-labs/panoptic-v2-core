@@ -74,10 +74,10 @@ library TokenId {
                                 DECODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The Uniswap v3 Pool pointed to by this option position.
+    /// @notice The poolId of this option position.
     /// @param self the option position Id
-    /// @return the poolId (Panoptic's uni v3 pool fingerprint) of the Uniswap v3 pool
-    function univ3pool(uint256 self) internal pure returns (uint64) {
+    /// @return the poolId (Panoptic's uni v3 pool fingerprint, contains the whole 64 bit sequence) of the Uniswap v3 pool
+    function poolId(uint256 self) internal pure returns (uint64) {
         unchecked {
             return uint64(self);
         }
@@ -164,7 +164,7 @@ library TokenId {
     /// @notice Add the Uniswap v3 Pool pointed to by this option position.
     /// @param self the option position Id.
     /// @return the tokenId with the Uniswap V3 pool added to it.
-    function addUniv3pool(uint256 self, uint64 _poolId) internal pure returns (uint256) {
+    function addPoolId(uint256 self, uint64 _poolId) internal pure returns (uint256) {
         unchecked {
             return self + uint256(_poolId);
         }
@@ -515,7 +515,7 @@ library TokenId {
             } // end for loop over legs
         }
 
-        return self.univ3pool();
+        return self.poolId();
     }
 
     /// @notice Make sure that an option position `self`'s all active legs are out-of-the-money (OTM). Revert if not.

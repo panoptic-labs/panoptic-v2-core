@@ -763,7 +763,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param mintTokenId The candidate option position to validate.
     function _doMintChecks(uint256 mintTokenId) internal view {
         // make sure the tokenId is for this Panoptic pool
-        if (mintTokenId.univ3pool() != sfpm.getPoolId(address(s_univ3pool)))
+        if (mintTokenId.poolId() != sfpm.getPoolId(address(s_univ3pool)))
             revert Errors.InvalidTokenIdParameter(0);
         // disallow user to mint exact same position
         // in order to do it, user should burn it first and then mint

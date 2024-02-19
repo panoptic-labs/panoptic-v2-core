@@ -34,8 +34,8 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the poolId (Panoptic's uni v3 pool fingerprint) of the Uniswap v3 pool
      */
-    function univ3pool(uint256 self) public view returns (uint64) {
-        uint64 r = TokenId.univ3pool(self);
+    function poolId(uint256 self) public view returns (uint64) {
+        uint64 r = TokenId.poolId(self);
         return r;
     }
 
@@ -142,8 +142,8 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the tokenId with the Uniswap V3 pool added to it.
      */
-    function addUniv3pool(uint256 self, uint64 _poolId) public view returns (uint256) {
-        uint256 r = TokenId.addUniv3pool(self, _poolId);
+    function addPoolId(uint256 self, uint64 _poolId) public view returns (uint256) {
+        uint256 r = TokenId.addPoolId(self, _poolId);
         return r;
     }
 

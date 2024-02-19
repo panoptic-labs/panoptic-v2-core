@@ -223,7 +223,7 @@ contract Misctest is Test, PositionUtils {
         // L = 1
         uniPool.liquidity();
 
-        uint256 tokenId = uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
             0,
             1,
             1,

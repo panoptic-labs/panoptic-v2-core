@@ -329,7 +329,7 @@ contract FeesCalcTest is Test, PositionUtils {
 
             {
                 // add univ3pool to token
-                tokenId = tokenId.addUniv3pool(poolId);
+                tokenId = tokenId.addPoolId(poolId);
 
                 // add a leg
                 // no risk partner by default (will reference its own leg index)

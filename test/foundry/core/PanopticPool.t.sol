@@ -1607,19 +1607,10 @@ contract PanopticPoolTest is PositionUtils {
         populatePositionData([width, width2], [strike, strike2], positionSizeSeeds);
 
         // leg 1
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         // leg 2
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -1729,16 +1720,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionDataLarge(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -1787,19 +1769,10 @@ contract PanopticPoolTest is PositionUtils {
         populatePositionData([width, width2], [strike, strike2], positionSizeSeeds);
 
         // leg 1
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         // leg 2
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -1869,16 +1842,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -1888,7 +1852,7 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Alice);
 
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
         posIdList[0] = tokenId;
 
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
@@ -1967,16 +1931,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -1985,7 +1940,7 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Alice);
 
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
         posIdList[0] = tokenId;
 
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
@@ -2065,16 +2020,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2083,7 +2029,7 @@ contract PanopticPoolTest is PositionUtils {
 
         changePrank(Alice);
 
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width);
         posIdList[0] = tokenId;
 
         vm.expectRevert(Errors.EffectiveLiquidityAboveThreshold.selector);
@@ -2108,16 +2054,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2196,16 +2133,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2280,16 +2208,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            1,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 1, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2368,16 +2287,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256 expectedSwap0;
         {
@@ -2508,7 +2418,7 @@ contract PanopticPoolTest is PositionUtils {
         populatePositionData([width0, width1], [strike0, strike1], positionSizeSeed);
 
         // put leg
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -2659,7 +2569,7 @@ contract PanopticPoolTest is PositionUtils {
         populatePositionDataLong([width0, width1], [strike0, strike1], positionSizeSeeds);
 
         // sell short companion to long option
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -2686,7 +2596,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         // put leg
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 1, 0, strike0, width0);
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 1, 0, strike0, width0);
         // call leg (long)
         tokenId = tokenId.addLeg(1, 1, isWETH, 1, 0, 1, strike1, width1);
 
@@ -2837,16 +2747,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2873,16 +2774,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2909,7 +2801,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId + 1).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(poolId + 1).addLeg(
             0,
             1,
             isWETH,
@@ -2945,16 +2837,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            1,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 1, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -2987,16 +2870,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            1,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 1, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -3023,16 +2897,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -3072,7 +2937,7 @@ contract PanopticPoolTest is PositionUtils {
         uint248 positionsHash;
         for (uint256 i = 0; i < 33; i++) {
             tokenIds.push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     i + 1, // increment the options ratio as an easy way to get unique tokenIds
                     isWETH,
@@ -3118,16 +2983,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -3196,16 +3052,7 @@ contract PanopticPoolTest is PositionUtils {
         // take snapshot for swap simulation
         vm.snapshot();
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         int256[2] memory amount0Moveds;
         int256[2] memory amount1Moveds;
@@ -3355,16 +3202,7 @@ contract PanopticPoolTest is PositionUtils {
         // take snapshot for swap simulation
         vm.snapshot();
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         int256[2] memory amount0Moveds;
         int256[2] memory amount1Moveds;
@@ -3518,9 +3356,9 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        tokenIds.push(uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width));
+        tokenIds.push(uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width));
 
-        tokenIds.push(uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width));
+        tokenIds.push(uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 0, strike, width));
 
         // take snapshot for swap simulation
         vm.snapshot();
@@ -3731,19 +3569,10 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         // leg 1
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         // leg 2
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -3837,7 +3666,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[0].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -3856,7 +3685,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[1].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -4008,16 +3837,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -4064,19 +3884,10 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         // leg 1
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         // leg 2
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -4087,7 +3898,7 @@ contract PanopticPoolTest is PositionUtils {
             width2
         );
         // leg 3
-        uint256 tokenId3 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId3 = uint256(0).addPoolId(poolId).addLeg(
             0,
             2,
             isWETH,
@@ -4098,7 +3909,7 @@ contract PanopticPoolTest is PositionUtils {
             width
         );
         // leg 4
-        uint256 tokenId4 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId4 = uint256(0).addPoolId(poolId).addLeg(
             0,
             3,
             isWETH,
@@ -4223,7 +4034,7 @@ contract PanopticPoolTest is PositionUtils {
         // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
         changePrank(Seller);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId);
+        uint256 tokenId = uint256(0).addPoolId(poolId);
 
         for (uint256 i = 0; i < numLegs; ++i) {
             tokenId = tokenId.addLeg(i, 1, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]);
@@ -4246,7 +4057,7 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Alice);
 
         // reset tokenId so we can fill for what we're actually testing (the bought option)
-        tokenId = uint256(0).addUniv3pool(poolId);
+        tokenId = uint256(0).addPoolId(poolId);
 
         for (uint256 i = 0; i < numLegs; ++i) {
             tokenId = tokenId.addLeg(
@@ -4423,7 +4234,7 @@ contract PanopticPoolTest is PositionUtils {
         // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
         changePrank(Seller);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId);
+        uint256 tokenId = uint256(0).addPoolId(poolId);
 
         for (uint256 i = 0; i < numLegs; ++i) {
             tokenId = tokenId.addLeg(i, 1, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]);
@@ -4438,7 +4249,7 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Alice);
 
         // reset tokenId so we can fill for what we're actually testing (the bought option)
-        tokenId = uint256(0).addUniv3pool(poolId);
+        tokenId = uint256(0).addPoolId(poolId);
 
         for (uint256 i = 0; i < numLegs; ++i) {
             tokenId = tokenId.addLeg(
@@ -4761,7 +4572,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[0].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -4782,7 +4593,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[1].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -4955,7 +4766,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[0].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -4976,7 +4787,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[1].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -5146,7 +4957,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[0].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -5167,7 +4978,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[1].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -5229,16 +5040,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -5248,7 +5050,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList = new uint256[](2);
         posIdList[0] = tokenId;
 
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -5290,7 +5092,7 @@ contract PanopticPoolTest is PositionUtils {
 
         uint256 tokenId;
 
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        tokenId = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -5460,7 +5262,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[0].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -5481,7 +5283,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[1].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -5713,16 +5515,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
         posIdList[0] = tokenId;
@@ -5732,7 +5525,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList = new uint256[](2);
         posIdList[0] = tokenId;
 
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -5774,16 +5567,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, positionSizeSeed);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
 
         uint256[] memory posIdList = new uint256[](1);
 
@@ -5885,7 +5669,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[0].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,
@@ -5906,7 +5690,7 @@ contract PanopticPoolTest is PositionUtils {
 
         for (uint256 i = 0; i < numLegs; ++i) {
             $posIdLists[1].push(
-                uint256(0).addUniv3pool(poolId).addLeg(
+                uint256(0).addPoolId(poolId).addLeg(
                     0,
                     1,
                     isWETH,

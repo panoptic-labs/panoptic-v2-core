@@ -60,9 +60,9 @@ contract TokenIdTest is Test, PositionUtils {
     function test_Success_AddUniv3Pool(address y) public {
         uint256 tokenId;
 
-        tokenId = harness.addUniv3pool(tokenId, uint64(uint160(y)));
+        tokenId = harness.addPoolId(tokenId, uint64(uint160(y)));
 
-        assertEq(harness.univ3pool(tokenId), uint64(uint160(y)));
+        assertEq(harness.poolId(tokenId), uint64(uint160(y)));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -956,7 +956,7 @@ contract TokenIdTest is Test, PositionUtils {
             widthSeed
         );
 
-        uint64 expectedData = harness.univ3pool(tokenId);
+        uint64 expectedData = harness.poolId(tokenId);
         uint64 returnedData = harness.validate(tokenId);
 
         assertEq(expectedData, returnedData);
@@ -977,7 +977,7 @@ contract TokenIdTest is Test, PositionUtils {
         setPoolStatus(strikeSeed);
 
         // add uni pool to tokenId
-        tokenId = harness.addUniv3pool(tokenId, uint64(poolId));
+        tokenId = harness.addPoolId(tokenId, uint64(poolId));
 
         // will fail as there are no valid legs
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 1));
@@ -2113,8 +2113,8 @@ contract TokenIdTest is Test, PositionUtils {
             }
 
             {
-                // add univ3pool to token
-                tokenId = harness.addUniv3pool(tokenId, poolId);
+                // add poolId to token
+                tokenId = harness.addPoolId(tokenId, poolId);
 
                 // add a leg
                 // no risk partner by default (will reference its own leg index)

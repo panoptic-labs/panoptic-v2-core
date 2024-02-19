@@ -482,7 +482,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 slippageTickLimitHigh
     )
         external
-        ReentrancyLock(tokenId.univ3pool())
+        ReentrancyLock(tokenId.poolId())
         returns (int256 totalCollected, int256 totalSwapped, int24 newTick)
     {
         // burn this ERC1155 token id
@@ -516,7 +516,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 slippageTickLimitHigh
     )
         external
-        ReentrancyLock(tokenId.univ3pool())
+        ReentrancyLock(tokenId.poolId())
         returns (int256 totalCollected, int256 totalSwapped, int24 newTick)
     {
         // create the option position via its ID in this erc1155
@@ -554,7 +554,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ) public override {
         // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
         // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
-        if (s_poolContext[id.univ3pool()].locked) revert Errors.ReentrantCall();
+        if (s_poolContext[id.poolId()].locked) revert Errors.ReentrantCall();
 
         // update the position data
         registerTokenTransfer(from, to, id, amount);
@@ -581,7 +581,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
         // so just check if there is an active reentrancy lock for the relevant pool on each token
         for (uint256 i = 0; i < ids.length; ) {
-            if (s_poolContext[ids[i].univ3pool()].locked) revert Errors.ReentrantCall();
+            if (s_poolContext[ids[i].poolId()].locked) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, ids[i], amounts[i]);
             unchecked {
                 ++i;
