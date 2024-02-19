@@ -1804,33 +1804,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
             ) = _getTotalLiquidity(tokenId, positionSize, leg, isBurn, tickSpacing);
 
             if (totalLiquidity > 0) {
-                settledTokens = s_settledTokens[chunkKey].add(
-                    int256(0).toRightSlot(int128(collectedThisLeg.rightSlot())).toLeftSlot(
-                        int128(collectedThisLeg.leftSlot())
-                    )
-                );
+                int256 grossThisLeg;
+                {
+                    int128 collected0 = int128(collectedThisLeg.rightSlot());
+                    int128 collected1 = int128(collectedThisLeg.leftSlot());
+                    {
+                        settledTokens = s_settledTokens[chunkKey];
+                        settledTokens = settledTokens.toRightSlot(collected0).toLeftSlot(
+                            collected1
+                        );
+                    }
+                    {
+                        uint128 VEGOID = sfpm.VEGOID();
 
-                int256 grossThisLeg = int256(0)
-                    .toRightSlot(
-                        int128(
-                            uint128(
-                                ((collectedThisLeg.rightSlot() *
-                                    (totalLiquidity +
-                                        (removedLiquidity ** 2) /
-                                        (netLiquidity * 4))) / netLiquidity)
-                            )
-                        )
-                    )
-                    .toLeftSlot(
-                        int128(
-                            uint128(
-                                ((collectedThisLeg.leftSlot() *
-                                    (totalLiquidity +
-                                        (removedLiquidity ** 2) /
-                                        (netLiquidity * 4))) / netLiquidity)
-                            )
-                        )
-                    );
+                        int256 numerator = int256(
+                            totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 2 ** VEGOID)
+                        );
+                        int128 gross0 = int128((collected0 * numerator) / int256(netLiquidity));
+                        int128 gross1 = int128((collected1 * numerator) / int256(netLiquidity));
+                        grossThisLeg = grossThisLeg.toRightSlot(gross0).toLeftSlot(gross1);
+                    }
+                }
                 grossPremium = s_grossPremiumLast[chunkKey].add(grossThisLeg);
             }
         }

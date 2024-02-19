@@ -132,7 +132,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     // and vegoid modifies the sensitivity of the stremia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
     // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
-    uint128 private constant VEGOID = 2;
+    uint128 public constant VEGOID = 2;
 
     /// @dev Uniswap V3 Factory address. Initialized in the constructor.
     /// @dev used to verify callbacks and to query for the pool address
