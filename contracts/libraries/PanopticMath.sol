@@ -71,7 +71,7 @@ library PanopticMath {
             uint64 extraEntropy = uint64(
                 uint256(keccak256(abi.encodePacked(basePoolId, token0, token1, fee)))
             ) & ANTI_POOLID_MASK;
-            return basePoolId & (POOLID_MASK + extraEntropy);
+            return (basePoolId & POOLID_MASK) + extraEntropy;
         }
     }
 
