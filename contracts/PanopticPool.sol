@@ -1818,7 +1818,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         uint128 VEGOID = sfpm.VEGOID();
 
                         int256 numerator = int256(
-                            totalLiquidity + (removedLiquidity ** 2) / (netLiquidity * 2 ** VEGOID)
+                            totalLiquidity + (removedLiquidity ** 2) / netLiquidity / 2 ** VEGOID
                         );
                         int128 gross0 = int128((collected0 * numerator) / int256(netLiquidity));
                         int128 gross1 = int128((collected1 * numerator) / int256(netLiquidity));
@@ -1868,31 +1868,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 tickSpacing
             );
 
-            {
-                int256 legPremia = premiaByLeg[leg];
-                if (legPremia != 0) {
-                    uint256 isLong = tokenId.isLong(leg);
+            int256 legPremia = premiaByLeg[leg];
+            if (legPremia != 0) {
+                uint256 isLong = tokenId.isLong(leg);
 
-                    // (will be) paid by long legs
-                    if (isLong == 0) {
-                        // check the available premia to withdraw
-                        int256 _legPremia = _getAvailablePremium(
-                            settledTokens,
-                            grossPremium,
-                            legPremia
-                        );
-                        // subtract the owed premium
-                        grossPremium = grossPremium.subRect(legPremia);
-                        legPremia = _legPremia;
-                    }
-                    // update the settled token amounts
-                    settledTokens = settledTokens.subRect(legPremia);
+                // (will be) paid by long legs
+                if (isLong == 0) {
+                    // check the available premia to withdraw
+                    int256 _legPremia = _getAvailablePremium(
+                        settledTokens,
+                        grossPremium,
+                        legPremia
+                    );
+                    // subtract the owed premium
+                    grossPremium = grossPremium.subRect(legPremia);
+                    legPremia = _legPremia;
                 }
+                // update the settled token amounts
+                settledTokens = settledTokens.subRect(legPremia);
 
                 realizedPremia = realizedPremia.add(legPremia);
             }
-
-            // update settled tokens in storage with all local deltas
+            // update settled/gross tokens in storage with all local deltas
             s_settledTokens[chunkKey] = settledTokens;
             s_grossPremiumLast[chunkKey] = grossPremium;
 
