@@ -1863,16 +1863,11 @@ contract TokenIdTest is Test, PositionUtils {
                 bound(strikeSeed, currentTick - range + 1, currentTick + range - 1)
             );
 
-            console2.log("strike", strike);
-            console2.log("width", width);
-            console2.log("strikeSee", strikeSeed);
             tokenId = harness.addStrike(tokenId, strike, i);
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
-        console2.log("tokenId", tokenId);
-        console2.log("currentTick", currentTick);
         harness.validateIsExercisable(tokenId, currentTick);
     }
 
@@ -2065,7 +2060,12 @@ contract TokenIdTest is Test, PositionUtils {
         int24 strikeSeed,
         int256 widthSeed
     ) internal returns (uint256) {
-        uint256 tokenId;
+        uint64 poolId = uint64(
+            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16) << 16) +
+                uint64(uint24(tickSpacing))
+        );
+        // add poolId to token
+        uint256 tokenId = harness.addPoolId(0, poolId);
 
         for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
             // We don't want the same data for each leg
@@ -2094,12 +2094,9 @@ contract TokenIdTest is Test, PositionUtils {
             /// bound inputs
             int24 strike;
             int24 width;
-            uint64 poolId;
 
             {
                 // the following must be at least 1
-                poolId = (uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16) << 16;
-                poolId += uint64(uint24(tickSpacing));
                 optionRatioSeed = bound(optionRatioSeed, 1, 127);
 
                 width = int24(bound(widthSeed, 1, 4094));
@@ -2119,9 +2116,6 @@ contract TokenIdTest is Test, PositionUtils {
             }
 
             {
-                // add poolId to token
-                tokenId = harness.addPoolId(tokenId, poolId);
-
                 // add a leg
                 // no risk partner by default (will reference its own leg index)
                 tokenId = harness.addLeg(
