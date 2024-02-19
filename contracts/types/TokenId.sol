@@ -83,6 +83,15 @@ library TokenId {
         }
     }
 
+    /// @notice The tickSpacing of this option position.
+    /// @param self the option position Id
+    /// @return the tickSpacing of the Uniswap v3 pool
+    function tickSpacing(uint256 self) internal pure returns (int24) {
+        unchecked {
+            return int24(uint24(self % 2 ** 12));
+        }
+    }
+
     /// @notice Get the asset basis for this position.
     /// @dev which token is the asset - can be token0 (return 0) or token1 (return 1)
     /// @param self the option position Id

@@ -26,7 +26,7 @@ contract PanopticMathHarness is Test {
         return liquidityChunk;
     }
 
-    function getPoolId(address univ3pool) public pure returns (uint64) {
+    function getPoolId(address univ3pool) public view returns (uint64) {
         uint64 poolId = PanopticMath.getPoolId(univ3pool);
         return poolId;
     }

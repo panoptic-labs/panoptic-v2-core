@@ -29,17 +29,25 @@ library PanopticMath {
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     /// @dev Example:
     ///      the 64 bits are the 64 *last* (most significant) bits - and thus corresponds to the *first* 16 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, e.g.:
-    ///        univ3pool = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    ///      of the Uniswap v3 pool address, with the tickSpacing written in the lowest 12 bits (ie. max tickSpacing is 4096)
+    ///      e.g.:
+    ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    ///        tickSpacing = 60
     ///      the returned id is then:
-    ///        0x8ad599c3A0ff1De0
-    ///      which as a uint64 is:
-    ///        10004071212772171232.
+    ///        univ3pool   = 0x8ad599c3A0ff1000
+    ///        tickSpacing = 00000000000000003c    +
+    ///        --------------------------------------------
+    ///        poolId      = 0x8ad599c3A0ff103c
     ///
-    /// @param univ3pool the Uniswap v3 pool to get the ID of
+    /// @param univ3pool the address of the Uniswap v3 pool to get the ID of
     /// @return a uint64 representing a fingerprint of the uniswap v3 pool address
-    function getPoolId(address univ3pool) internal pure returns (uint64) {
-        return uint64(uint160(univ3pool) >> 96);
+    function getPoolId(address univ3pool) internal view returns (uint64) {
+        unchecked {
+            int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
+            uint64 poolId = uint64(uint160(univ3pool) >> (96 + 12)) << 12;
+            poolId += uint24(tickSpacing);
+            return poolId;
+        }
     }
 
     /// @notice Returns the resultant pool ID for the given 64-bit base pool ID and parameters.
@@ -55,9 +63,12 @@ library PanopticMath {
         uint24 fee
     ) internal pure returns (uint64) {
         unchecked {
-            return
-                basePoolId +
-                (uint64(uint256(keccak256(abi.encodePacked(token0, token1, fee)))) >> 32);
+            // add extra entropy to bits between (12, 32) of the poolId.
+            /// @dev this protects the tickSpacing and adds 20bits of entropy (1,048,576) when there's a poolId collision.
+            uint64 extraEntropy = (uint64(
+                uint256(keccak256(abi.encodePacked(token0, token1, fee)))
+            ) >> 44) << 12;
+            return basePoolId + extraEntropy;
         }
     }
 
