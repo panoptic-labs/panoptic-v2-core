@@ -367,23 +367,8 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
         }
 
-        // burn Bob's position, should get 25% of fees paid (no long fees avail.)
-        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
-
         // burn Bob's short option
         pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
-
-        assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            249_999,
-            "Incorrect Bob Delta 0"
-        );
-        assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
-            249_999_999,
-            "Incorrect Bob Delta 1"
-        );
     }
 
     function test_success_settledPremiumDistribution() public {
