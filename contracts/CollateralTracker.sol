@@ -1313,7 +1313,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // get all collateral required for the incoming list of positions
             tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray);
 
-            // If premium is negative, increase the short premium requirement by the maintenance margin ratio
+            // If premium is negative (ie. user has to pay for their purchased options), add this long premium to the token requirement
             if (premiumAllPositions < 0) {
                 unchecked {
                     tokenRequired += uint128(-premiumAllPositions);
@@ -1321,7 +1321,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
         }
 
-        // add/subtract the accumulated premia to the collateral amount
+        // if premium is positive (ie. user will receive funds due to selling options), add this premum to the user's balance
         uint256 netBalance = convertToAssets(balanceOf[user]);
         if (premiumAllPositions > 0) {
             unchecked {
