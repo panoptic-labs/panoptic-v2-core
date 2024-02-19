@@ -606,12 +606,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             // for this leg index: extract the liquidity chunk: a 256bit word containing the liquidity amount and upper/lower tick
             // @dev see `contracts/types/LiquidityChunk.sol`
-            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                id,
-                leg,
-                uint128(amount),
-                univ3pool.tickSpacing()
-            );
+            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(id, leg, uint128(amount));
 
             //construct the positionKey for the from and to addresses
             bytes32 positionKey_from = keccak256(
@@ -905,8 +900,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     _tokenId,
                     _leg,
-                    _positionSize,
-                    _univ3pool.tickSpacing()
+                    _positionSize
                 );
 
                 (_moved, _itmAmounts, _totalCollected) = _createLegInAMM(

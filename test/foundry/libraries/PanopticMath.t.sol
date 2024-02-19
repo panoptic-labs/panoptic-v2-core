@@ -122,12 +122,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         uint256 expectedLiquidityChunk = uint256(0).createChunk(tickLower, tickUpper, legLiquidity);
-        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }
@@ -193,12 +188,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         uint256 expectedLiquidityChunk = uint256(0).createChunk(tickLower, tickUpper, legLiquidity);
-        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }

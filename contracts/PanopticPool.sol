@@ -164,9 +164,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev The Uniswap v3 pool that this instance of Panoptic is deployed on
     IUniswapV3Pool internal s_univ3pool;
 
-    /// @dev The tick spacing of the underlying Uniswap v3 pool
-    int24 internal s_tickSpacing;
-
     /// @notice Mini-median storage slot
     /// @dev The data for the last 8 interactions is stored as such:
     /// LAST UPDATED BLOCK TIMESTAMP (40 bits)
@@ -254,7 +251,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Creates a method for creating a Panoptic Pool on top of an existing Uniswap v3 pair.
     /// @dev Must be called first before any transaction can occur. Must also deploy collateralReference first.
     /// @param univ3pool Address of the target Uniswap v3 pool.
-    /// @param tickSpacing TickSpacing of the UniswapV3Pool.
     /// @param currentTick Current tick in the UniswapV3Pool.
     /// @param token0 Address of the pool's token0.
     /// @param token1 Address of the pool's token1.
@@ -262,7 +258,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param collateralTracker1 Interface for collateral token1.
     function startPool(
         IUniswapV3Pool univ3pool,
-        int24 tickSpacing,
         int24 currentTick,
         address token0,
         address token1,
@@ -274,9 +269,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(univ3pool);
-
-        // Store the tickSpacing variable
-        s_tickSpacing = tickSpacing;
 
         // Store the median data
         unchecked {
@@ -670,8 +662,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // compute how much of tokenId is long and short positions
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize,
-            s_tickSpacing
+            positionSize
         );
 
         int128 utilization0 = s_collateralToken0.takeCommissionAddData(
@@ -707,7 +698,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             // Extract base fee (AMM swap/trading fees) for the position and add it to s_options
             // (ie. the (feeGrowth * liquidity) / 2**128 for each token)
-            (int24 tickLower, int24 tickUpper) = mintTokenId.asTicks(leg, s_tickSpacing);
+            (int24 tickLower, int24 tickUpper) = mintTokenId.asTicks(leg);
             uint256 isLong = mintTokenId.isLong(leg);
             {
                 (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
@@ -850,7 +841,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             if (burnTokenId.isLong(leg) == 0) {
                 // Check the liquidity spread, make sure that closing the option does not exceed the MAX_SPREAD allowed
-                (int24 tickLower, int24 tickUpper) = burnTokenId.asTicks(leg, s_tickSpacing);
+                (int24 tickLower, int24 tickUpper) = burnTokenId.asTicks(leg);
                 _checkLiquiditySpread(burnTokenId, leg, tickLower, tickUpper, MAX_SPREAD);
             }
             delete (s_options[owner][burnTokenId][leg]);
@@ -899,8 +890,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // compute option amounts if exercise was necessary
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize,
-            s_tickSpacing
+            positionSize
         );
 
         // exercise the option and take the commission and addData
@@ -1074,14 +1064,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 twapTick = getUniV3TWAP();
 
         // on forced exercise, the price *must* be outside the position's range for at least 1 leg
-        touchedId[0].validateIsExercisable(twapTick, s_tickSpacing);
+        touchedId[0].validateIsExercisable(twapTick);
 
         // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
         // and the long legs (from which the exercise cost is computed)
         (int256 longAmounts, int256 delegatedAmounts) = PanopticMath.computeExercisedAmounts(
             touchedId[0],
-            s_positionBalance[account][touchedId[0]].rightSlot(),
-            s_tickSpacing
+            s_positionBalance[account][touchedId[0]].rightSlot()
         );
 
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
@@ -1643,12 +1632,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
             if ((isLong == 1) || computeAllPremia) {
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize,
-                    s_tickSpacing
-                );
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
 
                 uint256 premiumAccumulators;
                 {

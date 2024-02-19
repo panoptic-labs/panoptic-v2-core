@@ -274,7 +274,6 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         s_getPanopticPool[v3Pool] = newPoolContract;
         newPoolContract.startPool(
             v3Pool,
-            tickSpacing,
             currentTick,
             token0,
             token1,

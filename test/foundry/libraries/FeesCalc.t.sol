@@ -93,8 +93,7 @@ contract FeesCalcTest is Test, PositionUtils {
         uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             0,
-            uint128(harness.userBalance(tokenId)),
-            tickSpacing
+            uint128(harness.userBalance(tokenId))
         );
 
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -172,12 +171,7 @@ contract FeesCalcTest is Test, PositionUtils {
             );
         }
 
-        uint256 expectedLiquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 expectedLiquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
 
         int256 expectedFeesPerToken = harness.calculateAMMSwapFeesLiquidityChunk(
             selectedPool,
@@ -225,12 +219,7 @@ contract FeesCalcTest is Test, PositionUtils {
             );
         }
 
-        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
 
         (uint256 ammFeesPerLiqToken0X128, uint256 ammFeesPerLiqToken1X128) = harness
             .getAMMSwapFeesPerLiquidityCollected(

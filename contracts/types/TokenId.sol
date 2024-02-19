@@ -371,15 +371,14 @@ library TokenId {
     /// @dev NOTE does not extract liquidity which is the third piece of information in a LiquidityChunk.
     /// @param self the option position id.
     /// @param legIndex the leg index of the position (in {0,1,2,3}).
-    /// @param tickSpacing the tick spacing of the underlying Univ3 pool.
     /// @return legLowerTick the lower tick of the leg/liquidity chunk.
     /// @return legUpperTick the upper tick of the leg/liquidity chunk.
     function asTicks(
         uint256 self,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) internal pure returns (int24 legLowerTick, int24 legUpperTick) {
         unchecked {
+            int24 tickSpacing = self.tickSpacing();
             int24 selfWidth = self.width(legIndex);
             int24 selfStrike = self.strike(legIndex);
 
@@ -555,12 +554,8 @@ library TokenId {
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @param self the option position Id (tokenId)
     /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-    /// @param tickSpacing the tick spacing of the Univ3 pool used to compute the width of the chunks.
-    function validateIsExercisable(
-        uint256 self,
-        int24 currentTick,
-        int24 tickSpacing
-    ) internal pure {
+    function validateIsExercisable(uint256 self, int24 currentTick) internal pure {
+        int24 tickSpacing = self.tickSpacing();
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {

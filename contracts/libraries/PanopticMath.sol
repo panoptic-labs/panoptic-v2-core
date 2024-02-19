@@ -170,16 +170,14 @@ library PanopticMath {
     /// @param tokenId the option position id
     /// @param legIndex the leg index of the option position, can be {0,1,2,3}
     /// @param positionSize the number of contracts held by this leg
-    /// @param tickSpacing the tick spacing of the underlying univ3 pool
-    /// @return liquidityChunk a uint256 bit-packed (see `LiquidityChunk.sol`) with `tickLower`, `tickUpper`, and `liquidity`
+    // @return liquidityChunk a uint256 bit-packed (see `LiquidityChunk.sol`) with `tickLower`, `tickUpper`, and `liquidity`
     function getLiquidityChunk(
         uint256 tokenId,
         uint256 legIndex,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal pure returns (uint256 liquidityChunk) {
         // get the tick range for this leg
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
         // Get the amount of liquidity owned by this leg in the univ3 pool in the above tick range
         // Background:
@@ -233,23 +231,16 @@ library PanopticMath {
     /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
     /// @param tokenId the option position id
     /// @param positionSize The number of contracts of this option
-    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
     /// @return longAmounts Left-right packed word where the right conains the total contract size and the left total notional
     /// @return shortAmounts Left-right packed word where the right conains the total contract size and the left total notional
     function computeExercisedAmounts(
         uint256 tokenId,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal pure returns (int256 longAmounts, int256 shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             // Compute the amount of funds that have been removed from the Panoptic Pool
-            (int256 longs, int256 shorts) = _calculateIOAmounts(
-                tokenId,
-                positionSize,
-                leg,
-                tickSpacing
-            );
+            (int256 longs, int256 shorts) = _calculateIOAmounts(tokenId, positionSize, leg);
 
             longAmounts = longAmounts.add(longs);
             shortAmounts = shortAmounts.add(shorts);
@@ -421,16 +412,14 @@ library PanopticMath {
     /// @param tokenId the option position identifier
     /// @param positionSize the number of option contracts held in this position (each contract can control multiple tokens)
     /// @param legIndex the leg index of the option contract, can be {0,1,2,3}
-    /// @param tickSpacing the tick spacing of the underlying UniV3 pool
     /// @return amountsMoved a LeftRight encoded variable containing the amount0 and the amount1 value controlled by this option position's leg
     function getAmountsMoved(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) internal pure returns (uint256 amountsMoved) {
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
         // positionSize: how many option contracts we have.
 
@@ -454,17 +443,15 @@ library PanopticMath {
     /// @param tokenId the option position identifier
     /// @param positionSize The number of positions minted
     /// @param legIndex the leg index minted in this position, can be {0,1,2,3}
-    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
     /// @return longs A LeftRight-packed word containing the total amount of long positions
     /// @return shorts A LeftRight-packed word containing the amount of short positions
     function _calculateIOAmounts(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) internal pure returns (int256 longs, int256 shorts) {
         // compute amounts moved
-        uint256 amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex, tickSpacing);
+        uint256 amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
 
         bool isShort = tokenId.isLong(legIndex) == 0;
 

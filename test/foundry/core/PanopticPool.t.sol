@@ -4311,12 +4311,7 @@ contract PanopticPoolTest is PositionUtils {
 
             medianSqrtPriceX96 = TickMath.getSqrtRatioAtTick(medianTick);
 
-            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                tokenId,
-                i,
-                positionSize,
-                tickSpacing
-            );
+            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, i, positionSize);
 
             (currentValue0, currentValue1) = LiquidityAmounts.getAmountsForLiquidity(
                 TickMath.getSqrtRatioAtTick(currentTick),

@@ -14,15 +14,9 @@ contract PanopticMathHarness is Test {
     function getLiquidityChunk(
         uint256 tokenId,
         uint256 legIndex,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) public view returns (uint256) {
-        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            legIndex,
-            positionSize,
-            tickSpacing
-        );
+        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, legIndex, positionSize);
         return liquidityChunk;
     }
 
@@ -48,8 +42,7 @@ contract PanopticMathHarness is Test {
     ) public view returns (int256, int256) {
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
-            positionSize,
-            tickSpacing
+            positionSize
         );
         return (longAmounts, shortAmounts);
     }
@@ -129,12 +122,7 @@ contract PanopticMathHarness is Test {
         uint256 legIndex,
         int24 tickSpacing
     ) public view returns (uint256) {
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            legIndex,
-            tickSpacing
-        );
+        uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, legIndex);
         return amountsMoved;
     }
 
@@ -163,8 +151,7 @@ contract PanopticMathHarness is Test {
         (int256 longs, int256 shorts) = PanopticMath._calculateIOAmounts(
             tokenId,
             positionSize,
-            legIndex,
-            tickSpacing
+            legIndex
         );
         return (longs, shorts);
     }
