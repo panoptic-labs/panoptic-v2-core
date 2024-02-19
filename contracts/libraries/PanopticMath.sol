@@ -67,7 +67,7 @@ library PanopticMath {
     ) internal pure returns (uint64) {
         unchecked {
             // add extra entropy to bits between (16, 48) of the poolId.
-            /// @dev this protects the tickSpacing and adds 32bits of entropy (1,294,967,296) when there's a poolId collision.
+            /// @dev this protects the tickSpacing and adds 32bits of entropy (4,294,967,296) when there's a poolId collision.
             uint64 extraEntropy = uint64(
                 uint256(keccak256(abi.encodePacked(basePoolId, token0, token1, fee)))
             ) & ANTI_POOLID_MASK;
