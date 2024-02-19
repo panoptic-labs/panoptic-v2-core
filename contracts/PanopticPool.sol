@@ -429,7 +429,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             balances[k][0] = tokenId;
             balances[k][1] = s_positionBalance[c_user][tokenId];
 
-            // increment the allPositionsPremia accumulator
             (
                 int256[4] memory premiaByLeg,
                 uint256[2][4] memory premiumAccumulatorsByLeg
@@ -921,12 +920,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Burns and handles the exercise of options.
-    /// @param tokenId The option position to burn.
-    /// @param positionSize The size of the option position, expressed in terms of the asset.
+    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
     /// @param tickLimitLow The lower slippage limit on the tick.
     /// @param tickLimitHigh The upper slippage limit on the tick.
+    /// @param tokenId The option position to burn.
+    /// @param positionSize The size of the option position, expressed in terms of the asset.
     /// @param owner The owner of the option position.
-    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
     function _burnAndHandleExercise(
         bool commitLongSettled,
         int24 tickLimitLow,
@@ -1009,9 +1008,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Liquidates a distressed account. Will burn all positions and will issue a bonus to the liquidator.
     /// @dev Will revert if: account is not margin called or if the user liquidates themselves.
-    /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...].
     /// @param positionIdListLiquidator List of positions owned by the liquidator.
+    /// @param liquidatee Address of the distressed account.
     /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
+    /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...].
     function liquidate(
         uint256[] calldata positionIdListLiquidator,
         address liquidatee,
@@ -1080,6 +1080,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
+            // Note: tick limits are not applied here since it is not the liquidator's position being liquidated
             (, finalTick, netExchanged, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
                 Constants.MIN_V3POOL_TICK,
@@ -1225,7 +1226,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
 
         // Exercise the option
-        // Note: tick limits are not applied here since it is not the exercisor's position being liquidated
+        // Note: tick limits are not applied here since it is not the exercisor's position being closed
         _burnAllOptionsFrom(account, 0, 0, COMMIT_LONG_SETTLED, touchedId);
 
         int256 refundAmounts = delegatedAmounts.add(exerciseFees);
@@ -1332,7 +1333,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         unchecked {
-            return balanceCross > (thresholdCross * buffer) / 10_000;
+            return balanceCross >= (thresholdCross * buffer) / 10_000;
         }
     }
 
