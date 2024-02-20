@@ -39,6 +39,16 @@ contract TokenIdHarness {
         return r;
     }
 
+    /**
+     * @notice The tickSpacing of the Uniswap v3 Pool for this position
+     * @param self the option position Id.
+     * @return the tickSpacing of the Uniswap v3 pool
+     */
+    function tickSpacing(uint256 self) public view returns (int24) {
+        int24 r = TokenId.tickSpacing(self);
+        return r;
+    }
+
     /// NOW WE MOVE THROUGH THE BIT PATTERN BEYOND THE FIRST 96 BITS INTO EACH LEG (EACH OF SIZE 48)
     /// @notice our terminology: "leg n" or "nth leg" (in {1,2,3,4}) corresponds to "leg index n-1" or `legIndex` (in {0,1,2,3})
 
@@ -144,6 +154,16 @@ contract TokenIdHarness {
      */
     function addPoolId(uint256 self, uint64 _poolId) public view returns (uint256) {
         uint256 r = TokenId.addPoolId(self, _poolId);
+        return r;
+    }
+
+    /**
+     * @notice Add the Uniswap v3 Pool pointed to by this option position.
+     * @param self the option position Id.
+     * @return the tokenId with the Uniswap V3 pool added to it.
+     */
+    function addTickSpacing(uint256 self, int24 _tickSpacing) public view returns (uint256) {
+        uint256 r = TokenId.addTickSpacing(self, _tickSpacing);
         return r;
     }
 

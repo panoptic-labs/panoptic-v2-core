@@ -65,6 +65,15 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(harness.poolId(tokenId), uint64(uint160(y)));
     }
 
+    function test_Success_AddTickSpacing(int24 y) public {
+        uint256 tokenId;
+
+        y = int24(bound(y, int24(0), int24(2 ** 16 - 1)));
+        tokenId = harness.addTickSpacing(tokenId, y);
+
+        assertEq(harness.tickSpacing(tokenId), y);
+    }
+
     /*//////////////////////////////////////////////////////////////
                             ADD WIDTH
     //////////////////////////////////////////////////////////////*/
@@ -659,7 +668,8 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume(strike - (((width * tickSpacing) / 2) % tickSpacing) == 0);
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId = harness.addWidth(uint256(int256(tickSpacing)), width, 0);
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0);
         tokenId = harness.addStrike(tokenId, strike, 0);
 
         // Test the asTicks function
@@ -692,8 +702,8 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId;
-        tokenId = harness.addWidth(uint256(int256(tickSpacing)), width, 0); // width
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
         vm.expectRevert(Errors.TicksNotInitializable.selector);
@@ -725,8 +735,8 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId;
-        tokenId = harness.addWidth(uint256(int256(tickSpacing)), width, 0); // width
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
         // Test the asTicks function
@@ -758,8 +768,8 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId;
-        tokenId = harness.addWidth(uint256(int256(tickSpacing)), width, 0); // width
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
         // Test the asTicks function
@@ -2061,8 +2071,8 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed
     ) internal returns (uint256) {
         uint64 poolId = uint64(
-            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16) << 16) +
-                uint64(uint24(tickSpacing))
+            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
+                (uint64(uint24(tickSpacing)) << 48)
         );
         // add poolId to token
         uint256 tokenId = harness.addPoolId(0, poolId);
