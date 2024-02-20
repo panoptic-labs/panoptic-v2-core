@@ -231,8 +231,8 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
 
-        ct0.deposit(type(uint104).max, Seller);
-        ct1.deposit(type(uint104).max, Seller);
+        ct0.deposit(type(uint104).max / 1_000_000, Seller);
+        ct1.deposit(type(uint104).max / 1_000_000, Seller);
     }
 
     // these tests are PoCs for rounding issues in the premium distribution
