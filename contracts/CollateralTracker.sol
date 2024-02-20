@@ -21,7 +21,6 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1142,11 +1141,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
-                console2.log(
-                    "balanceOf, shares",
-                    balanceOf[tickStateCallContext.caller()],
-                    sharesToBurn
-                );
+
                 _burn(tickStateCallContext.caller(), sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
@@ -1264,7 +1259,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
                     DECIMALS
                 );
-                console2.log("swapCommission", swapCommission);
+
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
                 exchangedAmount = intrinsicValue + int256(swapCommission);
             }
@@ -1276,7 +1271,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     DECIMALS
                 )
             );
-            console2.log("exchangedAmount", exchangedAmount);
         }
     }
 
