@@ -22,8 +22,8 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
-    uint64 internal constant POOLID_MASK = 0xFFFF00000000FFFF;
-    uint64 internal constant ANTI_POOLID_MASK = 0xFFFFFFFF0000;
+    uint64 internal constant POOLID_MASK = 0xFFFFFFFF00000000;
+    uint64 internal constant ANTI_POOLID_MASK = 0x00000000FFFFFFFF;
 
     /*//////////////////////////////////////////////////////////////
                               MATH HELPERS
@@ -37,18 +37,18 @@ library PanopticMath {
     ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
     ///        tickSpacing = 60
     ///      the returned id is then:
-    ///        univ3pool   = 0x8ad599c3A0ff1000
-    ///        tickSpacing = 00000000000000003c    +
+    ///        univ3pool   = 0x00008ad599c3A0ff
+    ///        tickSpacing = 0x003c000000000000    +
     ///        --------------------------------------------
-    ///        poolId      = 0x8ad599c3A0ff103c
+    ///        poolId      = 0x003c8ad599c3A0ff
     ///
     /// @param univ3pool the address of the Uniswap v3 pool to get the ID of
     /// @return a uint64 representing a fingerprint of the uniswap v3 pool address
     function getPoolId(address univ3pool) internal view returns (uint64) {
         unchecked {
             int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
-            uint64 poolId = uint64(uint160(univ3pool) >> (96 + 16)) << 16;
-            poolId += uint24(tickSpacing);
+            uint64 poolId = uint64(uint160(univ3pool) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
             return poolId;
         }
     }
@@ -66,8 +66,8 @@ library PanopticMath {
         uint24 fee
     ) internal pure returns (uint64) {
         unchecked {
-            // add extra entropy to bits between (16, 48) of the poolId.
-            /// @dev this protects the tickSpacing and adds 32bits of entropy (4,294,967,296) when there's a poolId collision.
+            // add extra entropy to bits between (0, 32) of the poolId.
+            /// @dev this protects the tickSpacing in bits (48, 64) and adds 32bits of entropy (4,294,967,296) when there's a poolId collision.
             uint64 extraEntropy = uint64(
                 uint256(keccak256(abi.encodePacked(basePoolId, token0, token1, fee)))
             ) & ANTI_POOLID_MASK;

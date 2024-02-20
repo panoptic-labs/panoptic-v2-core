@@ -18,7 +18,8 @@ import {Errors} from "@libraries/Errors.sol";
 /// @dev From the LSB to the MSB:
 /// ===== 1 time (same for all legs) ==============================================================
 ///      Property         Size      Offset      Comment
-/// (1) univ3pool        64bits     0bits      : first 8 bytes of the Uniswap v3 pool address (first 64 bits; little-endian), plus a pseudorandom number in the event of a collision
+/// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap v3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
+/// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
 /// ===== 4 times (one for each leg) ==============================================================
 /// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
 /// (3) optionRatio       7bits     1bits      : number of contracts per leg
@@ -35,11 +36,11 @@ import {Errors} from "@libraries/Errors.sol";
 ///                        (strike price tick of the 3rd leg)
 ///                            |             (width of the 2nd leg)
 ///                            |                   |
-/// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)
-///  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->    <- 64 bits ->
-///         Leg 4                  Leg 3                  Leg 2                   Leg 1         Univ3 Pool Address
+/// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
+///  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
+///         Leg 4                  Leg 3                  Leg 2                   Leg 1          tickSpacing    Univ3 Pool Address
 ///
-///  <--- most significant bit                                                       least significant bit --->
+///  <--- most significant bit                                                                             least significant bit --->
 ///
 /// @notice Some rules of how legs behave (we enforce these in a `validate()` function):
 ///   - a leg is inactive if it's not part of the position. Technically it means that all bits are zero.
@@ -76,7 +77,7 @@ library TokenId {
 
     /// @notice The poolId of this option position.
     /// @param self the option position Id
-    /// @return the poolId (Panoptic's uni v3 pool fingerprint, contains the whole 64 bit sequence) of the Uniswap v3 pool
+    /// @return the poolId (Panoptic's uni v3 pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap v3 pool
     function poolId(uint256 self) internal pure returns (uint64) {
         unchecked {
             return uint64(self);
@@ -88,7 +89,7 @@ library TokenId {
     /// @return the tickSpacing of the Uniswap v3 pool
     function tickSpacing(uint256 self) internal pure returns (int24) {
         unchecked {
-            return int24(uint24(self % 2 ** 16));
+            return int24(uint24((self >> 48) % 2 ** 16));
         }
     }
 
@@ -170,12 +171,21 @@ library TokenId {
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Add the Uniswap v3 Pool pointed to by this option position.
+    /// @notice Add the Uniswap v3 Pool pointed to by this option position (contains the entropy and tickSpacing).
     /// @param self the option position Id.
     /// @return the tokenId with the Uniswap V3 pool added to it.
     function addPoolId(uint256 self, uint64 _poolId) internal pure returns (uint256) {
         unchecked {
             return self + uint256(_poolId);
+        }
+    }
+
+    /// @notice Add the Uniswap v3 Pool tickSpacing.
+    /// @param self the option position Id.
+    /// @return the tickSpacing of the Uniswap V3 pool.
+    function addTickSpacing(uint256 self, int24 _tickSpacing) internal pure returns (uint256) {
+        unchecked {
+            return self + (uint256(uint24(_tickSpacing)) << 48);
         }
     }
 
