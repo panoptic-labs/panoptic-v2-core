@@ -160,6 +160,18 @@ contract MathTest is Test {
         harness.mulDiv192(input, input);
     }
 
+    function test_Success_unsafeDivRoundingUp(uint256 a, uint256 b) public {
+        uint256 divRes;
+        uint256 modRes;
+        assembly ("memory-safe") {
+            divRes := div(a, b)
+            modRes := mod(a, b)
+        }
+        unchecked {
+            assertEq(harness.unsafeDivRoundingUp(a, b), modRes > 0 ? divRes + 1 : divRes);
+        }
+    }
+
     function test_Fail_getSqrtRatioAtTick() public {
         int24 x = int24(887273);
         vm.expectRevert();

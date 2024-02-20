@@ -21,6 +21,7 @@ import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -92,8 +93,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev saturatedPoolUtilization pool utilization at which sell collateral ratio reaches its maximum and buy collateral ratio reaches its minimum (basis points).
     /// @dev exerciseCost maximum cost of force exercising an OTM position immediately out-of-range, decreases exponentially as the tick moves more ranges away (basis points).
     struct Parameters {
-        int128 commissionFee;
-        int128 ITMSpreadFee;
+        uint128 commissionFee;
+        uint128 ITMSpreadFee;
         int128 sellCollateralRatio;
         int128 buyCollateralRatio;
         int128 targetPoolUtilization;
@@ -170,13 +171,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice when creating an option, collect a commission for the Panoptic LPs.
     /// In Panoptic, options never expire, commissions are only paid when a new position is minted.
     /// We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
-    int128 internal s_commissionFee;
+    uint128 internal s_commissionFee;
 
     /// @notice additional risk premium charged on intrinsic value of ITM positions,
     /// defined in basis points as a multiple of the pool fee / 10_000.
     /// @dev The result of the calculation is stored instead of the multiple to save gas during usage.
     /// When the fee is set, the multiple is calculated and stored
-    int128 internal s_ITMSpreadFee;
+    uint128 internal s_ITMSpreadFee;
 
     // base collateral ratios
     /// @notice Required collateral ratios for buying, represented as percentage * 10_000.
@@ -282,7 +283,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Additional risk premium charged on intrinsic value of ITM positions
         // Initial ITM spread fee is double the underlying poolFee.
         unchecked {
-            s_ITMSpreadFee = int24(2 * _poolFee);
+            s_ITMSpreadFee = 2 * _poolFee;
         }
 
         // amount of ticks that correspond to a move of -s_sellCollateralRatio/DECIMALS
@@ -312,9 +313,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_commissionFee = newParameters.commissionFee;
         // precompute the final spread fee - ITMSpreadFee is passed as a multiplier of the pool fee in basis points
         unchecked {
-            s_ITMSpreadFee = int128(
-                (int256(newParameters.ITMSpreadFee) * int24(s_poolFee)) / DECIMALS_128
-            );
+            s_ITMSpreadFee = uint128((uint256(newParameters.ITMSpreadFee) * s_poolFee) / DECIMALS);
         }
         s_sellCollateralRatio = newParameters.sellCollateralRatio;
         // calculate amount of ticks required for upwards and downwards moves, used to check if current and mini-median tick
@@ -480,7 +479,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
         unchecked {
             shares = Math.mulDiv(
-                assets * (DECIMALS - uint128(s_commissionFee)),
+                assets * (DECIMALS - s_commissionFee),
                 totalSupply,
                 totalAssets() * DECIMALS
             );
@@ -526,9 +525,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return maxShares The maximum amount of shares that can be minted.
     function maxMint(address) external view returns (uint256 maxShares) {
         unchecked {
-            return
-                (convertToShares(type(uint104).max) * DECIMALS) /
-                (DECIMALS + uint128(s_commissionFee));
+            return (convertToShares(type(uint104).max) * DECIMALS) / (DECIMALS + s_commissionFee);
         }
     }
 
@@ -547,7 +544,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             assets = Math.mulDivRoundingUp(
                 shares * DECIMALS,
                 totalAssets(),
-                totalSupply * (DECIMALS - uint128(s_commissionFee))
+                totalSupply * (DECIMALS - s_commissionFee)
             );
         }
     }
@@ -1145,6 +1142,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
+                console2.log(
+                    "balanceOf, shares",
+                    balanceOf[tickStateCallContext.caller()],
+                    sharesToBurn
+                );
                 _burn(tickStateCallContext.caller(), sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
@@ -1258,14 +1260,23 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
-                int256 swapCommission = Math.abs((s_ITMSpreadFee * intrinsicValue) / DECIMALS_128);
-
+                uint256 swapCommission = Math.unsafeDivRoundingUp(
+                    s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
+                    DECIMALS
+                );
+                console2.log("swapCommission", swapCommission);
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
-                exchangedAmount = intrinsicValue + swapCommission;
+                exchangedAmount = intrinsicValue + int256(swapCommission);
             }
 
             //compute total commission amount = commission rate + spread fee
-            exchangedAmount += ((shortAmount + longAmount) * s_commissionFee) / DECIMALS_128;
+            exchangedAmount += int256(
+                Math.unsafeDivRoundingUp(
+                    uint256(uint128(shortAmount + longAmount)) * s_commissionFee,
+                    DECIMALS
+                )
+            );
+            console2.log("exchangedAmount", exchangedAmount);
         }
     }
 

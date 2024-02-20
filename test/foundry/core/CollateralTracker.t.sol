@@ -54,20 +54,6 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_underlyingIsToken0;
     }
 
-    function getSystemParameters()
-        external
-        returns (int128, int128, int128, int128, int128, int128)
-    {
-        return (
-            s_commissionFee,
-            s_sellCollateralRatio,
-            s_buyCollateralRatio,
-            s_exerciseCost,
-            s_targetPoolUtilization,
-            s_saturatedPoolUtilization
-        );
-    }
-
     function _inAMM() external returns (uint256) {
         return s_inAMM;
     }

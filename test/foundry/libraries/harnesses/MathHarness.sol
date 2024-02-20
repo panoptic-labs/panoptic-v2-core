@@ -94,6 +94,11 @@ contract MathHarness {
         return result;
     }
 
+    function unsafeDivRoundingUp(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 result = Math.unsafeDivRoundingUp(a, b);
+        return result;
+    }
+
     function getSqrtRatioAtTick(int24 a) public pure returns (uint160) {
         uint160 result = Math.getSqrtRatioAtTick(a);
         return result;
