@@ -136,17 +136,6 @@ contract PanopticPoolHarness is PanopticPool {
         // Store the tickSpacing variable
         s_tickSpacing = uniswapPool.tickSpacing();
 
-        unchecked {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-            s_miniMedian =
-                (uint256(block.number) << 216) +
-                // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
-                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                (uint256(uint24(currentTick))); // add to slot 3
-        }
-
         // store token0 and token1
         address s_token0 = uniswapPool.token0();
         address s_token1 = uniswapPool.token1();
@@ -267,10 +256,6 @@ contract PanopticPoolHarness is PanopticPool {
             collateralCalculation,
             atTick
         );
-    }
-
-    function getMedianHook() external returns (int24 medianTick) {
-        return getMedian();
     }
 }
 

@@ -136,10 +136,11 @@ contract PanopticPoolTest is PositionUtils {
 
     uint256[] emptyList;
 
+    uint16 observationIndex;
+    uint16 observationCardinality;
     int24 medianTick;
     uint160 medianSqrtPriceX96;
     int24 TWAPtick;
-    int24[] priceArray;
 
     int256 rangesFromStrike;
     int256[2] exerciseFeeAmounts;
@@ -1391,7 +1392,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, tickSpacing, currentTick, token0, token1, ct0, ct1);
+        pp.startPool(pool, tickSpacing, token0, token1, ct0, ct1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2551,8 +2552,12 @@ contract PanopticPoolTest is PositionUtils {
 
             pp.mintOptions(posIdList, positionSize, 0, 0, 0);
         }
-        (priceArray, medianTick) = pp.getPriceArray();
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+        medianTick = PanopticMath.getLastMedianObservation(
+            pool,
+            observationIndex,
+            observationCardinality
+        );
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
 
@@ -2691,8 +2696,13 @@ contract PanopticPoolTest is PositionUtils {
         tokenId = tokenId.addLeg(1, 1, isWETH, 1, 0, 1, strike1, width1);
 
         // price changes afters swap at mint so we need to update the price
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        (priceArray, medianTick) = pp.getPriceArray();
+        (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
+            .slot0();
+        medianTick = PanopticMath.getLastMedianObservation(
+            pool,
+            observationIndex,
+            observationCardinality
+        );
         updatePositionDataLong();
 
         int256 netSurplus0 = $amount0Moveds[1] -
@@ -3785,7 +3795,6 @@ contract PanopticPoolTest is PositionUtils {
         uint256[4] memory widthSeeds,
         int256[4] memory strikeSeeds,
         uint256 positionSizeSeed,
-        uint256 swapSizeSeed,
         uint256 collateralBalanceSeed,
         uint256 collateralRatioSeed
     ) public {
@@ -3891,7 +3900,12 @@ contract PanopticPoolTest is PositionUtils {
                 int256(lastCollateralBalance0[Alice]);
             int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
                 int256(lastCollateralBalance1[Alice]);
-            (, int24 _medianTick) = pp.getPriceArray();
+            (, , observationIndex, observationCardinality, , , ) = pool.slot0();
+            int24 _medianTick = PanopticMath.getLastMedianObservation(
+                pool,
+                observationIndex,
+                observationCardinality
+            );
             vm.revertTo(snap);
 
             medianTick = _medianTick;
@@ -4483,10 +4497,14 @@ contract PanopticPoolTest is PositionUtils {
         ($expectedPremia0, $expectedPremia1, ) = pp.calculateAccumulatedFeesBatch(Alice, posIdList);
 
         changePrank(Bob);
+        (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
+            .slot0();
 
-        (priceArray, medianTick) = pp.getPriceArray();
-
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        medianTick = PanopticMath.getLastMedianObservation(
+            pool,
+            observationIndex,
+            observationCardinality
+        );
 
         for (uint256 i = 0; i < numLegs; ++i) {
             if (isLongs[i] == 0) continue;
@@ -5287,114 +5305,36 @@ contract PanopticPoolTest is PositionUtils {
 
     function test_Fail_forceExercise_PositionNotExercisable(uint256 x) public {
         _initPool(x);
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            0,
+            0,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
 
-        uint256 tokenId;
+        populatePositionData(width, strike, 0);
 
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
             0,
             1,
             isWETH,
             0,
             0,
             0,
-            PanopticMath.twapFilter(pool, 600) - tickSpacing * 2,
-            1
+            strike,
+            width
         );
-
-        vm.expectRevert(Errors.NoLegsExercisable.selector);
-
         uint256[] memory touchedIds = new uint256[](1);
         touchedIds[0] = tokenId;
-        pp.forceExercise(Alice, touchedIds, new uint256[](0), new uint256[](0));
-    }
 
-    /*//////////////////////////////////////////////////////////////
-                                  TWAP
-    //////////////////////////////////////////////////////////////*/
+        changePrank(Alice);
+        pp.mintOptions(touchedIds, positionSize, 0, 0, 0);
 
-    function test_Success_getPriceArray_Initialization(uint256 x, int256 initTick) public {
-        initTick = bound(initTick, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        _initWorldAtTick(x, int24(initTick));
+        changePrank(Bob);
 
-        (priceArray, medianTick) = pp.getPriceArray();
-
-        int24[8] memory expectedArray = [
-            // padding
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            // initial tick
-            int24(initTick),
-            int24(initTick)
-        ];
-
-        assertEq(medianTick, int24(initTick));
-
-        for (uint256 i = 0; i < 8; ++i) {
-            assertEq(priceArray[i], expectedArray[i]);
-        }
-    }
-
-    function test_Success_getPriceArray_Poking(
-        uint256 x,
-        int256[50] memory pokeTicks,
-        uint256[50] memory blockTimes
-    ) public {
-        for (uint256 i = 0; i < 50; ++i) {
-            pokeTicks[i] = bound(pokeTicks[i], TickMath.MIN_TICK, TickMath.MAX_TICK);
-            blockTimes[i] = bound(blockTimes[i], 0, 21990232555);
-        }
-
-        _initWorldAtTick(x, int24(pokeTicks[0]));
-
-        int24[9] memory expectedArray = [
-            // padding
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            // initial tick
-            int24(pokeTicks[0]),
-            int24(pokeTicks[0]),
-            0
-        ];
-
-        uint256 lastTimestamp = block.timestamp;
-
-        for (uint256 i = 1; i < 10; ++i) {
-            vm.warp(block.timestamp + blockTimes[i]);
-
-            UniPoolPriceMock(address(pool)).updatePrice(int24(pokeTicks[i]));
-
-            pp.pokeMedian();
-
-            // put new tick into array to be shifted down into main 8 slots
-            expectedArray[8] = int24(pokeTicks[i]);
-            (priceArray, medianTick) = pp.getPriceArray();
-            for (uint256 j = 0; j < 8; ++j) {
-                // only shift array if an update occured, i.e more than 60 seconds passed since the last update
-                expectedArray[j] = block.timestamp >= lastTimestamp + 60
-                    ? expectedArray[j + 1]
-                    : expectedArray[j];
-                assertEq(priceArray[j], expectedArray[j]);
-                if (priceArray[j] != expectedArray[j]) revert();
-            }
-
-            // sort the array using quicksort and verify correctness of the median
-            int24[] memory sortedPriceArray = Math.sort(priceArray);
-
-            assertEq(medianTick, (sortedPriceArray[3] + sortedPriceArray[4]) / 2);
-
-            // bump last updated block number if an update occured
-            if (block.timestamp >= lastTimestamp + 60) {
-                lastTimestamp = block.timestamp;
-            }
-        }
+        vm.expectRevert(Errors.NoLegsExercisable.selector);
+        pp.forceExercise(Alice, touchedIds, touchedIds, new uint256[](0));
     }
 
     /*//////////////////////////////////////////////////////////////

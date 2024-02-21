@@ -135,9 +135,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // Prevents manipulation of the currentTick to liquidate positions at a less favorable price
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    // The minimum amount of time, in seconds, permitted between mini/median TWAP updates.
-    uint256 internal constant MEDIAN_PERIOD = 60;
-
     /// @dev The maximum allowed ratio for a single chunk, defined as: shortLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
@@ -166,45 +163,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @dev The tick spacing of the underlying Uniswap v3 pool
     int24 internal s_tickSpacing;
-
-    /// @notice Mini-median storage slot
-    /// @dev The data for the last 8 interactions is stored as such:
-    /// LAST UPDATED BLOCK TIMESTAMP (40 bits)
-    /// [BLOCK.TIMESTAMP]
-    // (00000000000000000000000000000000) // dynamic
-    //
-    /// @dev ORDERING of tick indices least --> greatest (24 bits)
-    /// The value of the bit codon ([#]) is a pointer to a tick index in the tick array.
-    /// The position of the bit codon from most to least significant is the ordering of the
-    /// tick index it points to from least to greatest.
-    //
-    /// @dev [7] [5] [3] [1] [0] [2] [4] [6]
-    /// 111 101 011 001 000 010 100 110
-    //
-    // [Constants.MIN_V3POOL_TICK] [7]
-    // 111100100111011000010111
-    //
-    // [Constants.MAX_V3POOL_TICK] [0]
-    // 000011011000100111101001
-    //
-    // [Constants.MIN_V3POOL_TICK] [6]
-    // 111100100111011000010111
-    //
-    // [Constants.MAX_V3POOL_TICK] [1]
-    // 000011011000100111101001
-    //
-    // [Constants.MIN_V3POOL_TICK] [5]
-    // 111100100111011000010111
-    //
-    // [Constants.MAX_V3POOL_TICK] [2]
-    // 000011011000100111101001
-    //
-    ///  @dev [CURRENT TICK] [4]
-    /// (000000000000000000000000) // dynamic
-    //
-    ///  @dev [CURRENT TICK] [3]
-    /// (000000000000000000000000) // dynamic
-    uint256 internal s_miniMedian;
 
     /// @dev ERC4626 vaults that users collateralize their positions with
     /// Each token has its own vault, listed in the same order as the tokens in the pool
@@ -255,7 +213,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Must be called first before any transaction can occur. Must also deploy collateralReference first.
     /// @param univ3pool Address of the target Uniswap v3 pool.
     /// @param tickSpacing TickSpacing of the UniswapV3Pool.
-    /// @param currentTick Current tick in the UniswapV3Pool.
     /// @param token0 Address of the pool's token0.
     /// @param token1 Address of the pool's token1.
     /// @param collateralTracker0 Interface for collateral token0.
@@ -263,7 +220,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function startPool(
         IUniswapV3Pool univ3pool,
         int24 tickSpacing,
-        int24 currentTick,
         address token0,
         address token1,
         CollateralTracker collateralTracker0,
@@ -277,17 +233,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // Store the tickSpacing variable
         s_tickSpacing = tickSpacing;
-
-        // Store the median data
-        unchecked {
-            s_miniMedian =
-                (uint256(block.timestamp) << 216) +
-                // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
-                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                (uint256(uint24(currentTick))); // add to slot 3
-        }
 
         // Store the collateral token0
         s_collateralToken0 = collateralTracker0;
@@ -423,33 +368,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (portfolioPremium, balances);
     }
 
-    /// @notice Check for slippage violation given the incoming tick limits and extract current price information from the AMM.
-    /// @dev If the current price is beyond the slippage bounds a reversion is thrown.
+    /// @notice Disable slippage checks if tickLimitLow == tickLimitHigh and reverses ticks if given in correct order to enable ITM swaps
     /// @param tickLimitLow The lower slippage limit on the tick.
     /// @param tickLimitHigh The upper slippage limit on the tick.
-    /// @return currentTick The current price tick in the AMM.
-    /// @return medianTick The median price in the mini-TWAP storage.
     /// @return tickLimitLow Adjusted value for the lower tick limit.
     /// @return tickLimitHigh Adjusted value for the upper tick limit.
-    function _getPriceAndCheckSlippageViolation(
+    function _getSlippageLimits(
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal view returns (int24 currentTick, int24 medianTick, int24, int24) {
-        // Extract the current tick price
-        (, currentTick, , , , , ) = s_univ3pool.slot0();
-
-        medianTick = getMedian();
-
+    ) internal pure returns (int24, int24) {
+        // disable slippage checks if tickLimitLow == tickLimitHigh
         if (tickLimitLow == tickLimitHigh) {
-            // since the tick limits are the same, default to max range
-            return (currentTick, medianTick, MIN_SWAP_TICK, MAX_SWAP_TICK);
-        } else {
-            // ensure tick limits are ordered correctly (the SFPM uses the order as a flag for whether to do ITM swaps or not)
-            if (tickLimitLow > tickLimitHigh) {
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-            }
-            return (currentTick, medianTick, tickLimitLow, tickLimitHigh);
+            // note the reversed order of the ticks
+            return (MAX_SWAP_TICK, MIN_SWAP_TICK);
         }
+
+        // ensure tick limits are reversed (the SFPM uses low > high as a flag to do ITM swaps, which we need)
+        if (tickLimitLow < tickLimitHigh) {
+            return (tickLimitHigh, tickLimitLow);
+        }
+
+        return (tickLimitLow, tickLimitHigh);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -491,7 +430,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, ) = _burnOptions(
+        (int24 newTick, , uint16 observationIndex, uint16 observationCardinality) = _burnOptions(
             tokenId,
             msg.sender,
             tickLimitLow,
@@ -500,8 +439,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
-            revert Errors.NotEnoughCollateral();
+        if (
+            !_checkSolvency(
+                msg.sender,
+                newPositionIdList,
+                newTick,
+                PanopticMath.getLastMedianObservation(
+                    s_univ3pool,
+                    observationIndex,
+                    observationCardinality
+                ),
+                NO_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns the entire balance of all tokenIds provided in positionIdList of the caller(msg.sender).
@@ -516,17 +466,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, ) = _burnAllOptionsFrom(
-            msg.sender,
-            tickLimitLow,
-            tickLimitHigh,
-            positionIdList
-        );
+        (
+            int24 newTick,
+            ,
+            uint16 observationIndex,
+            uint16 observationCardinality
+        ) = _burnAllOptionsFrom(msg.sender, tickLimitLow, tickLimitHigh, positionIdList);
 
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
-        if (!_checkSolvency(msg.sender, newPositionIdList, newTick, medianTick, NO_BUFFER))
-            revert Errors.NotEnoughCollateral();
+        if (
+            !_checkSolvency(
+                msg.sender,
+                newPositionIdList,
+                newTick,
+                PanopticMath.getLastMedianObservation(
+                    s_univ3pool,
+                    observationIndex,
+                    observationCardinality
+                ),
+                NO_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -557,35 +518,40 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validatePositionList(msg.sender, positionIdList, 1);
         _doMintChecks(tokenId);
 
+        (tickLimitLow, tickLimitHigh) = _getSlippageLimits(tickLimitLow, tickLimitHigh);
+
         uint256 tickStateCallContext;
         {
-            // checks that the current tick is within the limits provided
-            int24 currentTick;
-            int24 medianTick;
             (
-                currentTick,
-                medianTick,
-                tickLimitLow,
-                tickLimitHigh
-            ) = _getPriceAndCheckSlippageViolation(tickLimitLow, tickLimitHigh);
+                ,
+                int24 currentTick,
+                uint16 observationIndex,
+                uint16 observationCardinality,
+                ,
+                ,
 
+            ) = s_univ3pool.slot0();
             // Pack the current tick, median tick, and caller into a single uint256
             tickStateCallContext = uint256(0)
                 .addCurrentTick(currentTick)
-                .addMedianTick(medianTick)
+                .addMedianTick(
+                    PanopticMath.getLastMedianObservation(
+                        s_univ3pool,
+                        observationIndex,
+                        observationCardinality
+                    )
+                )
                 .addCaller(msg.sender);
         }
+
         // Mint in the SFPM and update state of collateral
         (uint128 poolUtilizations, int24 newTick) = _mintInSFPMAndUpdateCollateral(
             tokenId,
             tickStateCallContext,
             positionSize,
-            positionIdList,
             tickLimitLow,
             tickLimitHigh
         );
-
-        updateMedian(newTick);
 
         // calculate and write position Data
         _addUserOption(tokenId, effectiveLiquidityLimitX32);
@@ -618,7 +584,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position to be minted.
     /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
     /// @param positionSize The size of the position, expressed in terms of the asset.
-    /// @param positionIdList The existing positions held by the user.
     /// @param tickLimitLow The lower slippage limit on the tick.
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
@@ -627,7 +592,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tokenId,
         uint256 tickStateCallContext,
         uint128 positionSize,
-        uint256[] calldata positionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128 poolUtilizations, int24) {
@@ -636,8 +600,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (, int256 totalSwapped, int24 newTick) = sfpm.mintTokenizedPosition(
             tokenId,
             positionSize,
-            tickLimitHigh,
-            tickLimitLow
+            tickLimitLow,
+            tickLimitHigh
         );
 
         // pay commission based on total moved amount (long + short)
@@ -784,15 +748,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint256[] calldata positionIdList
-    ) internal returns (int24 medianTick, int24 newTick, int256 netPaid) {
+    )
+        internal
+        returns (
+            int24 newTick,
+            int256 netPaid,
+            uint16 observationIndex,
+            uint16 observationCardinality
+        )
+    {
         int256 paidAmounts;
         for (uint256 i = 0; i < positionIdList.length; ) {
-            (medianTick, newTick, paidAmounts) = _burnOptions(
+            (newTick, paidAmounts, observationIndex, observationCardinality) = _burnOptions(
                 positionIdList[i],
                 owner,
                 tickLimitLow,
                 tickLimitHigh
             );
+
             netPaid = netPaid.add(paidAmounts);
             unchecked {
                 ++i;
@@ -805,21 +778,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param owner the owner of the option position to be burned.
     /// @param tickLimitLow Price slippage limit when burning an ITM option
     /// @param tickLimitHigh Price slippage limit when burning an ITM option
-    /// @return medianTick the median tick for that pool
     /// @return newTick the final tick after all positions have been closed
     /// @return paidAmounts The amount of tokens paid when closing the option
+    /// @return observationIndex The index of the last observation in the Uniswap pool before the option was closed
+    /// @return observationCardinality The number of observations stired in the Uniswap pool before the option was closed
     function _burnOptions(
         uint256 tokenId,
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (int24 medianTick, int24 newTick, int256 paidAmounts) {
-        // Ensure that the current price is within the tick limits
+    )
+        internal
+        returns (
+            int24 newTick,
+            int256 paidAmounts,
+            uint16 observationIndex,
+            uint16 observationCardinality
+        )
+    {
         int24 currentTick;
-        (currentTick, medianTick, tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
-            tickLimitLow,
-            tickLimitHigh
-        );
+        (, currentTick, observationIndex, observationCardinality, , , ) = s_univ3pool.slot0();
+
+        (tickLimitLow, tickLimitHigh) = _getSlippageLimits(tickLimitLow, tickLimitHigh);
 
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
@@ -881,11 +861,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
             tokenId,
             positionSize,
-            tickLimitHigh,
-            tickLimitLow
+            tickLimitLow,
+            tickLimitHigh
         );
-
-        updateMedian(newTick);
 
         // compute accumulated fees
         int256 currentPositionPremia = _getPremia(
@@ -999,7 +977,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
         // burn all options from the liquidatee
-        (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
+        (int24 finalTick, int256 netExchanged, , ) = _burnAllOptionsFrom(
             _liquidatee,
             Constants.MIN_V3POOL_TICK,
             Constants.MAX_V3POOL_TICK,
@@ -1071,11 +1049,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        int24 twapTick = getUniV3TWAP();
-
-        // on forced exercise, the price *must* be outside the position's range for at least 1 leg
-        touchedId[0].validateIsExercisable(twapTick, s_tickSpacing);
-
         // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
         // and the long legs (from which the exercise cost is computed)
         (int256 longAmounts, int256 delegatedAmounts) = PanopticMath.computeExercisedAmounts(
@@ -1084,7 +1057,30 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_tickSpacing
         );
 
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        int24 currentTick;
+        int256 exerciseFees;
+        {
+            uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
+            uint256 exercisedTokenId = touchedId[0];
+
+            uint16 observationIndex;
+            uint16 observationCardinality;
+            (, currentTick, observationIndex, observationCardinality, , , ) = s_univ3pool.slot0();
+
+            // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
+            /// @dev use the medianTick to prevent price manipulations based on swaps.
+            exerciseFees = s_collateralToken0.exerciseCost(
+                currentTick,
+                PanopticMath.getLastMedianObservation(
+                    s_univ3pool,
+                    observationIndex,
+                    observationCardinality
+                ),
+                exercisedTokenId,
+                positionBalance,
+                longAmounts
+            );
+        }
 
         {
             // add the premia to the delegated amounts to ensure the user has enough collateral to exercise
@@ -1098,20 +1094,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // long premia is represented as negative so subtract it to increase it for the delegated amounts
             delegatedAmounts = delegatedAmounts.sub(positionPremia);
         }
-        int256 exerciseFees;
-        {
-            uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
 
-            // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
-            /// @dev use the medianTick to prevent price manipulations based on swaps.
-            exerciseFees = s_collateralToken0.exerciseCost(
-                currentTick,
-                getMedian(),
-                touchedId[0],
-                positionBalance,
-                longAmounts
-            );
-        }
+        int24 twapTick = getUniV3TWAP();
+
+        // on forced exercise, the price *must* be outside the position's range for at least 1 leg
+        touchedId[0].validateIsExercisable(twapTick, s_tickSpacing);
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
         s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
@@ -1463,76 +1450,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          ONBOARD MEDIAN TWAP
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Updates the mini twap of the PanopticPool, called externally
-    function pokeMedian() external {
-        // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-        // update the miniTWAP
-        updateMedian(currentTick);
-    }
-
-    /// @notice Computes The mini twap of the PanopticPool.
-    /// @return medianTick The median value over the last 8 interactions.
-    function getMedian() internal view returns (int24 medianTick) {
-        uint256 medianData = s_miniMedian;
-        unchecked {
-            uint24 medianIndex3 = uint24(medianData >> (192 + 3 * 3)) % 8;
-            uint24 medianIndex4 = uint24(medianData >> (192 + 3 * 4)) % 8;
-
-            // return the average of the rank 3 and 4 values
-            medianTick =
-                (int24(uint24(medianData >> (medianIndex3 * 24))) +
-                    int24(uint24(medianData >> (medianIndex4 * 24)))) /
-                2;
-        }
-    }
-
-    /// @notice Updates the mini twap of the PanopticPool.
-    /// @param currentTick The currentTick.
-    function updateMedian(int24 currentTick) internal {
-        uint256 oldMedianData = s_miniMedian;
-        unchecked {
-            // only proceed if last entry is at least MEDIAN_PERIOD seconds old
-            if (block.timestamp >= uint256(uint40(oldMedianData >> 216)) + MEDIAN_PERIOD) {
-                uint24 orderMap = uint24(oldMedianData >> 192);
-
-                uint24 newOrderMap;
-                uint24 shift = 1;
-                bool below = true;
-                uint24 rank;
-                int24 entry;
-                for (uint8 i; i < 8; ++i) {
-                    // read the rank from the existing ordering
-                    rank = (orderMap >> (3 * i)) % 8;
-
-                    if (rank == 7) {
-                        shift -= 1;
-                        continue;
-                    }
-
-                    // read the corresponding entry
-                    entry = int24(uint24(oldMedianData >> (rank * 24)));
-                    if ((below) && (currentTick > entry)) {
-                        shift += 1;
-                        below = false;
-                    }
-
-                    newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
-                }
-                s_miniMedian =
-                    (block.timestamp << 216) +
-                    (uint256(newOrderMap) << 192) +
-                    uint256(uint192(oldMedianData << 24)) +
-                    uint256(uint24(currentTick));
-            }
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
@@ -1565,22 +1482,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return twapTick The TWAP price in ticks.
     function getUniV3TWAP() internal view returns (int24 twapTick) {
         twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
-    }
-
-    /// @notice return the array of the last 8 price values stored internally.
-    /// @return priceArray the series of prices used to compute the median price.
-    /// @return medianTick the median tick of the current price array.
-    function getPriceArray() external view returns (int24[] memory priceArray, int24 medianTick) {
-        uint256 medianData = s_miniMedian;
-
-        priceArray = new int24[](8);
-        unchecked {
-            for (uint256 i = 0; i < 8; ++i) {
-                priceArray[7 - i] = int24(uint24(medianData >> (24 * i)));
-            }
-        }
-        medianTick = getMedian();
-        return (priceArray, medianTick);
     }
 
     /*//////////////////////////////////////////////////////////////

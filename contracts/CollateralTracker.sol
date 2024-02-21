@@ -497,9 +497,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
 
-        // update the Panoptic pool median with the current tick
-        s_panopticPool.pokeMedian();
-
         shares = previewDeposit(assets);
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
@@ -560,9 +557,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares.
     /// @return assets The amount of assets deposited to mint the desired amount of shares.
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        // update the panoptic pool median with the current tick
-        s_panopticPool.pokeMedian();
-
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -623,9 +617,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external returns (uint256 shares) {
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
 
-        // update the panoptic pool median with the current tick
-        s_panopticPool.pokeMedian();
-
         shares = previewWithdraw(assets);
 
         // check/update allowance for approved withdraw
@@ -684,9 +675,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 assets) {
-        // update the panoptic pool median with the current tick
-        s_panopticPool.pokeMedian();
-
         if (shares > maxRedeem(owner)) revert Errors.ExceedsMaximumRedemption();
 
         // check/update allowance for approved redeem
@@ -1163,7 +1151,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // Check if current tick is too far away from median, set to utilization to 10,001 if it is
             int24 currentTick = tickStateCallContext.currentTick();
             int24 medianTick = tickStateCallContext.medianTick();
-            // if the distance between the current and mini-median tick is more than the accepted tick deviation, default to 100% collateral requirement
+            // if the distance between the current and median tick is more than the accepted tick deviation, default to 100% collateral requirement
             if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
                 utilization = DECIMALS_128 + 1;
             } else {

@@ -102,6 +102,47 @@ library PanopticMath {
         }
     }
 
+    /// @notice Get the median tick of the last 3 observations in a Uniswap V3 pool.
+    /// @dev Used when we want a manipulation-resistant, but not mission-critical, price.
+    /// @param univ3pool the Uniswap pool to get the median observation from
+    /// @param observationIndex the index of the last observation in the pool
+    /// @param observationCardinality the number of observations in the pool
+    /// @return medianObservedTick the median of the last 3 tick observations
+    function getLastMedianObservation(
+        IUniswapV3Pool univ3pool,
+        uint256 observationIndex,
+        uint256 observationCardinality
+    ) internal view returns (int24) {
+        unchecked {
+            int256[4] memory ticks;
+
+            uint256[4] memory timestamps;
+            // get the last 4 timestamps/tickCumulatives (if observationIndex < 3, the index will wrap back from observationCardinality)
+            for (uint256 i = 0; i < 4; ++i) {
+                (timestamps[i], ticks[i], , ) = univ3pool.observations(
+                    uint256(
+                        (int256(observationIndex) - int256(i)) + int256(observationCardinality)
+                    ) % observationCardinality
+                );
+            }
+
+            // use the 3 periods given by the last 4 accumulator observations to compute the last 3 observed ticks
+            for (uint256 i = 0; i < 3; ++i) {
+                ticks[i] = (ticks[i] - ticks[i + 1]) / int256(timestamps[i] - timestamps[i + 1]);
+            }
+
+            // get the median of the 3 calculated ticks
+            return
+                int24(
+                    (ticks[0] - ticks[1]) * (ticks[0] - ticks[2]) < 1
+                        ? ticks[0]
+                        : (ticks[1] - ticks[0]) * (ticks[1] - ticks[2]) < 1
+                        ? ticks[1]
+                        : ticks[2]
+                );
+        }
+    }
+
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
     /// @dev Note that our definition of TWAP differs from a typical mean of prices over a time window
     /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages

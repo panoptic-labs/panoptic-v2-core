@@ -142,6 +142,7 @@ contract Misctest is Test, PositionUtils {
     address Swapper = address(0x123456789);
     address Charlie = address(0x1234567891);
     address Seller = address(0x12345678912);
+    SwapperC swapperc;
 
     function setUp() public {
         vm.startPrank(Deployer);
@@ -178,6 +179,27 @@ contract Misctest is Test, PositionUtils {
             address(factory.deployNewPool(address(token0), address(token1), 500, 1337))
         );
 
+        swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1 while generating 4 observations (min required for pool to function)
+        vm.warp(block.number + 1);
+        vm.roll(block.timestamp + 1);
+        swapperc.swapTo(uniPool, 2 ** 99);
+        vm.warp(block.number + 1);
+        vm.roll(block.timestamp + 1);
+        swapperc.swapTo(uniPool, 2 ** 98);
+        vm.warp(block.number + 1);
+        vm.roll(block.timestamp + 1);
+        swapperc.swapTo(uniPool, 2 ** 97);
+        vm.warp(block.number + 1);
+        vm.roll(block.timestamp + 1);
+        swapperc.swapTo(uniPool, 2 ** 96);
+
         changePrank(Alice);
 
         token0.mint(Alice, type(uint104).max);
@@ -207,16 +229,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_success_PremiumRollover() public {
-        SwapperC swapperc = new SwapperC();
         changePrank(Swapper);
-        token0.mint(Swapper, type(uint128).max);
-        token1.mint(Swapper, type(uint128).max);
-        token0.approve(address(swapperc), type(uint128).max);
-        token1.approve(address(swapperc), type(uint128).max);
-
-        // move back to price=1
-        swapperc.swapTo(uniPool, 2 ** 96);
-
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 

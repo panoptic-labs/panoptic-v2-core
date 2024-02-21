@@ -21,6 +21,7 @@ import {FixedPoint128} from "v3-core/libraries/FixedPoint128.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 // Test util
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
+import {UniPoolObservationMock} from "../testUtils/PriceMocks.sol";
 
 /**
  * Test the PanopticMath functionality with Foundry and Fuzzing.
@@ -416,6 +417,66 @@ contract PanopticMathTest is Test, PositionUtils {
         }
 
         assertEq(expectedHash, returnedHash);
+    }
+
+    function test_Success_getLastMedianObservation(
+        uint256 observationIndex,
+        int256[4] memory ticks,
+        uint256[4] memory timestamps,
+        uint256 cardinality
+    ) public {
+        cardinality = bound(cardinality, 4, 65535);
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(cardinality);
+        observationIndex = bound(observationIndex, 0, cardinality - 1);
+        int56 tickCum;
+        for (uint256 i = 0; i < 4; ++i) {
+            ticks[i] = int24(bound(ticks[i], type(int24).min, type(int24).max));
+            if (i == 0) {
+                timestamps[i] = bound(timestamps[i], 0, type(uint32).max - (3 - i));
+
+                // assume tickCum will not overflow
+                vm.assume(tickCum + ticks[i] * int256(timestamps[i]) < type(int56).max);
+
+                tickCum += int56(ticks[i] * int256(timestamps[i]));
+            } else {
+                timestamps[i] = bound(
+                    timestamps[i],
+                    timestamps[i - 1] + 1,
+                    type(uint32).max - (3 - i)
+                );
+
+                // assume tickCum will not overflow
+                vm.assume(tickCum + ticks[i] * int256(timestamps[i]) < type(int56).max);
+
+                tickCum += int56(ticks[i] * int256(timestamps[i] - timestamps[i - 1]));
+            }
+
+            mockPool.setObservation(
+                uint256(
+                    (int256(uint256(observationIndex)) - (3 - int256(i))) +
+                        int256(uint256(cardinality))
+                ) % cardinality,
+                uint32(timestamps[i]),
+                tickCum
+            );
+        }
+
+        // use bubble sort to get the median tick
+        // note: the 4th tick is not actually deconstructed anywhere, but it is used as the base accumulator value.
+        int24[] memory sortedTicks = new int24[](3);
+        for (uint16 i = 0; i < 3; ++i) {
+            sortedTicks[i] = int24(ticks[i + 1]);
+        }
+        sortedTicks = Math.sort(sortedTicks);
+
+        assertEq(
+            harness.getLastMedianObservation(
+                IUniswapV3Pool(address(mockPool)),
+                observationIndex,
+                cardinality
+            ),
+            sortedTicks[1]
+        );
     }
 
     function test_Success_twapFilter(uint32 twapWindow) public {
