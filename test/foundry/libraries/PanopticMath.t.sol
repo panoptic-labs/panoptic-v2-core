@@ -1387,9 +1387,8 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 1, 0, strike, width);
         }
 
-        console2.log("tokenId", tokenId);
-
         uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
 
         int256 expectedShorts = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
