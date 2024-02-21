@@ -75,7 +75,7 @@ library TokenId {
                                 DECODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The poolId of this option position.
+    /// @notice The full poolId (Uniswap pool identifier + pool pattern) of this option position.
     /// @param self the option position Id
     /// @return the poolId (Panoptic's uni v3 pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap v3 pool
     function poolId(uint256 self) internal pure returns (uint64) {
@@ -565,12 +565,11 @@ library TokenId {
     /// @param self the option position Id (tokenId)
     /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
     function validateIsExercisable(uint256 self, int24 currentTick) internal pure {
-        int24 tickSpacing = self.tickSpacing();
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 // compute the range of this leg/chunk
-                int24 range = (self.width(i) * tickSpacing) / 2;
+                int24 range = (self.width(i) * self.tickSpacing()) / 2;
                 // check if the price is outside this chunk
                 if (
                     (currentTick >= (self.strike(i) + range)) ||

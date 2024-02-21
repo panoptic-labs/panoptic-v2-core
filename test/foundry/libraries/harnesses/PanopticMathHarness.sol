@@ -25,14 +25,9 @@ contract PanopticMathHarness is Test {
         return poolId;
     }
 
-    function getFinalPoolId(
-        uint64 basePoolId,
-        address token0,
-        address token1,
-        uint24 fee
-    ) public pure returns (uint64) {
-        uint64 finalPoolId = PanopticMath.getFinalPoolId(basePoolId, token0, token1, fee);
-        return finalPoolId;
+    function incrementPoolPattern(uint64 poolId) public pure returns (uint64) {
+        uint64 poolId = PanopticMath.incrementPoolPattern(poolId);
+        return poolId;
     }
 
     function computeExercisedAmounts(

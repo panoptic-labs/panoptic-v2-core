@@ -43,7 +43,7 @@ contract UniswapV3FactoryMock {
     uint160 nextPool;
 
     function getPool(address, address, uint24) external view returns (address) {
-        return address(nextPool);
+        return address(nextPool << 24);
     }
 
     function increment() external {
@@ -938,33 +938,44 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             IUniswapV3Factory(address(factoryMock))
         );
 
+        UniPoolPriceMock pm = new UniPoolPriceMock();
+        uint64 poolIdNew = (200 << 48);
         for (uint160 i = 0; i < 100; i++) {
-            // Increments the returned address by 1 every call
-            // Do this call first so we start with address(1) to avoid errors
             factoryMock.increment();
 
+            vm.etch(address((i + 1) << 24), address(pm).code);
+
+            pm = UniPoolPriceMock(address((i + 1) << 24));
+            pm.construct(
+                UniPoolPriceMock.Slot0({
+                    sqrtPriceX96: 0,
+                    tick: 0,
+                    observationIndex: 0,
+                    observationCardinality: 0,
+                    observationCardinalityNext: 0,
+                    feeProtocol: 0,
+                    unlocked: false
+                }),
+                address(0),
+                address(0),
+                0,
+                200
+            );
+
+            // etch tickSpacing
             // These values are zero at this point, but they are ignored by the factory mock
             sfpm_t.initializeAMMPool(token0, token1, fee);
 
+            if (i != 0) {
+                poolIdNew = PanopticMath.incrementPoolPattern(poolIdNew);
+            }
+
             // Check that the pool address is set correctly
-            // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
-            assertEq(
-                address(
-                    sfpm_t
-                        .poolContext(
-                            i == 0 ? 0 : PanopticMath.getFinalPoolId(0, token0, token1, fee)
-                        )
-                        .pool
-                ),
-                address(i + 1)
-            );
+            assertEq(address(sfpm_t.poolContext(poolIdNew).pool), address((i + 1) << 24));
 
             // Check that the pool ID is set correctly
             // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
-            assertEq(
-                sfpm_t.addrToPoolId(address(i + 1)),
-                i == 0 ? 2 ** 255 : PanopticMath.getFinalPoolId(0, token0, token1, fee) + 2 ** 255
-            );
+            assertEq(sfpm_t.addrToPoolId(address((i + 1) << 24)), 2 ** 255 + poolIdNew);
 
             token0 = address(uint160(token0) + 1);
         }

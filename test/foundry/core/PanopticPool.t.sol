@@ -1407,25 +1407,11 @@ contract PanopticPoolTest is PositionUtils {
         // and ensure that change was applied
         assertEq(
             vm.load(address(ct0), bytes32(uint256(9))),
-            bytes32(
-                uint256(
-                    uint256(uint24(tickSpacing)) +
-                        (uint256(fee / 100) << 24) +
-                        (2230 << 48) +
-                        (10 << 72)
-                )
-            )
-        ); // tickSpacing + poolFee + tickDeviation + commission fee
+            bytes32(uint256((uint256(fee / 100)) + (2230 << 24) + (10 << 48)))
+        ); // poolFee + tickDeviation + commission fee
         assertEq(
             vm.load(address(ct1), bytes32(uint256(9))),
-            bytes32(
-                uint256(
-                    uint256(uint24(tickSpacing)) +
-                        (uint256(fee / 100) << 24) +
-                        (2230 << 48) +
-                        (10 << 72)
-                )
-            )
+            bytes32(uint256((uint256(fee / 100)) + (2230 << 24) + (10 << 48)))
         );
         assertEq(
             vm.load(address(ct0), bytes32(uint256(10))),
@@ -1494,8 +1480,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.load(address(ct0), bytes32(uint256(9))),
             bytes32(
                 uint256(
-                    uint256(uint24(tickSpacing)) +
-                        (uint256(fee / 100) << 24) +
+                    (uint256(fee / 100)) +
                         (uint256(
                             uint128(
                                 int128(2230) +
@@ -1506,8 +1491,8 @@ contract PanopticPoolTest is PositionUtils {
                                     (int128(6510) * (int128(sellCollateralRatio) - 2000) ** 3) /
                                     10_000 ** 3
                             )
-                        ) << 48) +
-                        (uint256(uint128(parameters[0])) << 72)
+                        ) << 24) +
+                        (uint256(uint128(parameters[0])) << 48)
                 )
             )
         ); // tickSpacing + poolFee + tickDeviation + commission fee
@@ -1515,8 +1500,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.load(address(ct1), bytes32(uint256(9))),
             bytes32(
                 uint256(
-                    uint256(uint24(tickSpacing)) +
-                        (uint256(fee / 100) << 24) +
+                    (uint256(fee / 100)) +
                         (uint256(
                             uint128(
                                 int128(2230) +
@@ -1527,8 +1511,8 @@ contract PanopticPoolTest is PositionUtils {
                                     (int128(6510) * (int128(sellCollateralRatio) - 2000) ** 3) /
                                     10_000 ** 3
                             )
-                        ) << 48) +
-                        (uint256(uint128(parameters[0])) << 72)
+                        ) << 24) +
+                        (uint256(uint128(parameters[0])) << 48)
                 )
             )
         );

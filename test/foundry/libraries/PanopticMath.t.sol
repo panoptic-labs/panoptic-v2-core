@@ -21,6 +21,7 @@ import {FixedPoint128} from "v3-core/libraries/FixedPoint128.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 // Test util
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
+import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 
 /**
  * Test the PanopticMath functionality with Foundry and Fuzzing.
@@ -195,31 +196,41 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }
 
-    function test_Success_getPoolId(uint8 index) public {
-        // bound fuzzed tick
-        selectedPool = pools[bound(index, 0, 2)]; // resue position size as seed
-        tickSpacing = selectedPool.tickSpacing();
-        uint64 poolId = uint64(uint160(address(selectedPool)) >> 112) +
-            (uint64(uint24(tickSpacing)) << 48);
-        assertEq(poolId, harness.getPoolId(address(selectedPool)));
+    function test_Success_getPoolId(address univ3pool, uint256 _tickSpacing) public {
+        _tickSpacing = bound(_tickSpacing, 0, uint16(type(int16).max));
+
+        UniPoolPriceMock pm = new UniPoolPriceMock();
+        vm.etch(univ3pool, address(pm).code);
+        pm = UniPoolPriceMock(univ3pool);
+
+        pm.construct(
+            UniPoolPriceMock.Slot0({
+                sqrtPriceX96: 0,
+                tick: 0,
+                observationIndex: 0,
+                observationCardinality: 0,
+                observationCardinalityNext: 0,
+                feeProtocol: 0,
+                unlocked: false
+            }),
+            address(0),
+            address(0),
+            0,
+            int24(uint24(_tickSpacing))
+        );
+        uint64 poolPattern = uint64(uint160(univ3pool) >> 112);
+        _tickSpacing <<= 48;
+        assertEq(_tickSpacing + poolPattern, harness.getPoolId(univ3pool));
     }
 
-    function test_Success_getFinalPoolId(
-        uint64 basePoolId,
-        address token0,
-        address token1,
-        uint8 feeSeed
-    ) public {
-        uint64 finalPoolId;
-        uint24 fee = [30, 60, 100][bound(feeSeed, 0, 2)];
+    function test_Success_incrementPoolPattern(uint64 poolId) public {
         unchecked {
-            finalPoolId =
-                ((basePoolId >> 32) << 32) +
-                (uint64(uint256(keccak256(abi.encodePacked(basePoolId, token0, token1, fee)))) %
-                    2 ** 32);
+            uint48 pattern = uint48(poolId & 0x0000FFFFFFFFFFFF);
+            pattern += 1;
+            uint64 _tickSpacing = uint24(uint256(poolId).tickSpacing());
+            _tickSpacing <<= 48;
+            assertEq(harness.incrementPoolPattern(poolId), _tickSpacing + pattern);
         }
-
-        assertEq(finalPoolId, harness.getFinalPoolId(basePoolId, token0, token1, fee));
     }
 
     function test_Success_computeExercisedAmounts_emptyOldTokenId(

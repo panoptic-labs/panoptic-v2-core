@@ -22,8 +22,8 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
-    uint64 internal constant POOLID_MASK = 0xFFFFFFFF00000000;
-    uint64 internal constant ANTI_POOLID_MASK = 0x00000000FFFFFFFF;
+    uint64 internal constant POOLID_MASK = 0x0000FFFFFFFFFFFF;
+    uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
 
     /*//////////////////////////////////////////////////////////////
                               MATH HELPERS
@@ -32,12 +32,12 @@ library PanopticMath {
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     /// @dev Example:
     ///      the 64 bits are the 64 *last* (most significant) bits - and thus corresponds to the *first* 16 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, with the tickSpacing written in the lowest 16 bits (ie. max tickSpacing is 32768)
+    ///      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (ie. max tickSpacing is 32768)
     ///      e.g.:
     ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
     ///        tickSpacing = 60
     ///      the returned id is then:
-    ///        univ3pool   = 0x00008ad599c3A0ff
+    ///        poolPattern = 0x00008ad599c3A0ff
     ///        tickSpacing = 0x003c000000000000    +
     ///        --------------------------------------------
     ///        poolId      = 0x003c8ad599c3A0ff
@@ -53,25 +53,13 @@ library PanopticMath {
         }
     }
 
-    /// @notice Returns the resultant pool ID for the given 64-bit base pool ID and parameters.
-    /// @param basePoolId the 64-bit base pool ID
-    /// @param token0 the address of the first token in the pool
-    /// @param token1 the address of the second token in the pool
-    /// @param fee the fee of the pool in hundredths of a bi
-    /// @return finalPoolId the final 64-bit pool id as encoded in the `TokenId` type - composed of the last 64 bits of the address and a hash of the parameters
-    function getFinalPoolId(
-        uint64 basePoolId,
-        address token0,
-        address token1,
-        uint24 fee
-    ) internal pure returns (uint64) {
+    /// @notice Increments the pool pattern (first 48 bits) of a poolId by 1.
+    /// @param poolId the 64-bit pool ID
+    /// @return poolId with the pool pattern portion incremented by 1
+    function incrementPoolPattern(uint64 poolId) internal pure returns (uint64) {
         unchecked {
-            // add extra entropy to bits between (0, 32) of the poolId.
-            /// @dev this protects the tickSpacing in bits (48, 64) and adds 32bits of entropy (4,294,967,296) when there's a poolId collision.
-            uint64 extraEntropy = uint64(
-                uint256(keccak256(abi.encodePacked(basePoolId, token0, token1, fee)))
-            ) & ANTI_POOLID_MASK;
-            return (basePoolId & POOLID_MASK) + extraEntropy;
+            // increment
+            return (poolId & TICKSPACING_MASK) + (uint48(poolId) + 1);
         }
     }
 

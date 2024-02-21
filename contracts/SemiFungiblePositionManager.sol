@@ -362,14 +362,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // if poolId == 0, we have a bit on the left set if it was initialized, so this will still return properly
         if (s_AddrToPoolIdData[univ3pool] != 0) return;
 
-        // Set the base poolId as last 8 bytes of the address (the first 16 hex characters)
-        // @dev in the unlikely case that there is a collision between the first 8 bytes of two different Uni v3 pools
-        // @dev increase the poolId by a pseudo-random number
+        // The base poolId is composed as follows:
+        // [tickSpacing][pool pattern]
+        // [16 bit tickSpacing][most significant 48 bits of the pool address]
         uint64 poolId = PanopticMath.getPoolId(univ3pool);
 
+        // There are 281,474,976,710,655 possible pool patterns.
+        // A modern GPU can generate a collision such a space relatively quickly,
+        // so if a collision is detected increment the pool pattern until a unique poolId is found
         while (address(s_poolContext[poolId].pool) != address(0)) {
-            poolId = PanopticMath.getFinalPoolId(poolId, token0, token1, fee);
+            poolId = PanopticMath.incrementPoolPattern(poolId);
         }
+
         // store the poolId => UniswapV3Pool information in a mapping
         // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
         // note: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
