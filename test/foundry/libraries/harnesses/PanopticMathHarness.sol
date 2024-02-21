@@ -37,8 +37,7 @@ contract PanopticMathHarness is Test {
 
     function computeExercisedAmounts(
         uint256 tokenId,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) public view returns (int256, int256) {
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
@@ -119,8 +118,7 @@ contract PanopticMathHarness is Test {
     function _getAmountsMoved(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) public view returns (uint256) {
         uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, legIndex);
         return amountsMoved;
@@ -130,10 +128,9 @@ contract PanopticMathHarness is Test {
     function getAmountsMoved(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) public view returns (uint256) {
-        try this._getAmountsMoved(tokenId, positionSize, legIndex, tickSpacing) returns (
+        try this._getAmountsMoved(tokenId, positionSize, legIndex) returns (
             uint256 contractsNotional
         ) {
             return contractsNotional;
@@ -145,8 +142,7 @@ contract PanopticMathHarness is Test {
     function _calculateIOAmounts(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) public view returns (int256, int256) {
         (int256 longs, int256 shorts) = PanopticMath._calculateIOAmounts(
             tokenId,
@@ -159,10 +155,9 @@ contract PanopticMathHarness is Test {
     function calculateIOAmounts(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) public view returns (int256, int256) {
-        try this._calculateIOAmounts(tokenId, positionSize, legIndex, tickSpacing) returns (
+        try this._calculateIOAmounts(tokenId, positionSize, legIndex) returns (
             int256 longs,
             int256 shorts
         ) {

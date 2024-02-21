@@ -257,7 +257,13 @@ contract FeesCalcTest is Test, PositionUtils {
         int256 strikeSeed,
         int256 widthSeed
     ) internal returns (uint256) {
-        uint256 tokenId;
+        tickSpacing = selectedPool.tickSpacing();
+        // add univ3pool to token
+        uint64 poolId = uint64(
+            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
+                (uint64(uint24(tickSpacing)) << 48)
+        );
+        uint256 tokenId = uint256(poolId);
 
         for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
             // We don't want the same data for each leg
@@ -286,13 +292,10 @@ contract FeesCalcTest is Test, PositionUtils {
             /// bound inputs
             int24 strike;
             int24 width;
-            uint64 poolId;
             {
                 // the following must be at least 1
-                poolId = uint64(bound(poolIdSeed, 1, type(uint64).max));
                 optionRatioSeed = bound(optionRatioSeed, 1, 127);
 
-                tickSpacing = selectedPool.tickSpacing();
                 width = int24(bound(widthSeed, 1, 4094));
                 int24 oneSidedRange = (width * tickSpacing) / 2;
 
@@ -317,9 +320,6 @@ contract FeesCalcTest is Test, PositionUtils {
             }
 
             {
-                // add univ3pool to token
-                tokenId = tokenId.addPoolId(poolId);
-
                 // add a leg
                 // no risk partner by default (will reference its own leg index)
                 tokenId = tokenId.addLeg(
