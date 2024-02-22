@@ -133,9 +133,6 @@ contract PanopticPoolHarness is PanopticPool {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(uniswapPool);
 
-        // Store the tickSpacing variable
-        s_tickSpacing = uniswapPool.tickSpacing();
-
         // store token0 and token1
         address s_token0 = uniswapPool.token0();
         address s_token1 = uniswapPool.token1();
@@ -1004,11 +1001,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // sell as Bob
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
         /// calculate position size
-        (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+        (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
         positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
         _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -1093,7 +1090,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // sell as Bob
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
@@ -1747,12 +1744,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -1779,7 +1776,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 0, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -1940,7 +1937,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -1970,7 +1967,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2106,7 +2103,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2144,7 +2141,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2281,7 +2278,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2320,7 +2317,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2457,7 +2454,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2505,7 +2502,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, isWETH, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2645,7 +2642,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2701,7 +2698,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, isWETH, 1, 0, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, isWETH, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2838,11 +2835,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             strike1 = strike;
             width1 = width;
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             // must be minimum at least 2 so there is enough liquidity to buy
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
@@ -2872,7 +2869,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
@@ -2969,11 +2966,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             strike1 = strike;
             width1 = width;
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             // must be minimum at least 2 so there is enough liquidity to buy
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
@@ -3003,7 +3000,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike, width);
             positionIdList1.push(tokenId1);
 
@@ -3102,11 +3099,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -3134,7 +3131,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             uint256 snapshot = vm.snapshot();
@@ -3305,11 +3302,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -3337,7 +3334,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             uint256 snapshot = vm.snapshot();
@@ -3495,11 +3492,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -3527,7 +3524,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             uint256 snapshot = vm.snapshot();
@@ -3687,11 +3684,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -3853,11 +3850,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -4027,11 +4024,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -4190,11 +4187,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -4353,7 +4350,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
@@ -4511,7 +4508,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
@@ -4668,11 +4665,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
-            (legLowerTick, legUpperTick) = tokenId.asTicks(0, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
 
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
@@ -5401,7 +5398,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenType = tokenId.tokenType(i);
 
             // position bounds
-            (legLowerTick, legUpperTick) = tokenId.asTicks(i, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId.asTicks(i);
 
             // sqrt price of bounds
             sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(legLowerTick);
@@ -5457,12 +5454,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 );
             vm.assume(notional != 0 && notional < type(uint128).max);
 
-            uint256 amountsMoved = PanopticMath.getAmountsMoved(
-                tokenId,
-                positionSize,
-                i,
-                tickSpacing
-            );
+            uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, i);
             amountsMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
             /// simulate mint/burn
@@ -5589,15 +5581,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int24 strike = _tokenId.strike(i);
             int24 width = _tokenId.width(i);
 
-            (legLowerTick, legUpperTick) = _tokenId.asTicks(i, tickSpacing);
+            (legLowerTick, legUpperTick) = _tokenId.asTicks(i);
 
             {
-                uint256 amountsMoved = PanopticMath.getAmountsMoved(
-                    _tokenId,
-                    positionSize,
-                    i,
-                    tickSpacing
-                );
+                uint256 amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
 
                 notionalMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
@@ -5691,18 +5678,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 if (isLong == 1) {
                     // spread requirement
                     {
-                        amountsMoved = PanopticMath.getAmountsMoved(
-                            _tokenId,
-                            positionSize,
-                            i,
-                            tickSpacing
-                        );
+                        amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
 
                         amountsMovedPartner = PanopticMath.getAmountsMoved(
                             _tokenId,
                             positionSize,
-                            partnerIndex,
-                            tickSpacing
+                            partnerIndex
                         );
 
                         // amount moved is right slot if tokenType=0, left slot otherwise
@@ -5792,12 +5773,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             if ((isLong != isLongP) || (tokenType == tokenTypeP)) continue;
 
-            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i, tickSpacing);
+            amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
 
             strike = _tokenId.strike(i);
             width = _tokenId.width(i);
 
-            (legLowerTick, legUpperTick) = _tokenId.asTicks(i, tickSpacing);
+            (legLowerTick, legUpperTick) = _tokenId.asTicks(i);
             notionalMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
             {

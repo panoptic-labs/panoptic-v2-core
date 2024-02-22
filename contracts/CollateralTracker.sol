@@ -155,8 +155,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
 
-    /// @dev The tick spacing in the Uniswap pool.
-    int24 internal s_tickSpacing;
     /// @dev The fee of the Uniswap pool.
     uint24 internal s_poolFee;
 
@@ -256,8 +254,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_underlyingToken = underlyingToken;
         // store the Panoptic pool for this collateral token
         s_panopticPool = panopticPool;
-        // store the tickSpacing of the underlying Uniswap pool
-        s_tickSpacing = uniswapPool.tickSpacing();
 
         // cache the pool fee in basis points
         uint24 _poolFee;
@@ -750,7 +746,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
                 int24 strike = positionId.strike(leg);
 
-                int24 range = (positionId.width(leg) * s_tickSpacing) / 2;
+                int24 range = (positionId.width(leg) * positionId.tickSpacing()) / 2;
 
                 uint256 currNumRangesFromStrike;
 
@@ -787,8 +783,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     positionId,
                     leg,
-                    positionBalance,
-                    s_tickSpacing
+                    positionBalance
                 );
 
                 (uint256 currentValue0, uint256 currentValue1) = Math.getAmountsForLiquidity(
@@ -1448,12 +1443,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 poolUtilization
     ) internal view returns (uint256 required) {
         // compute the total amount of funds moved for that position
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            index,
-            s_tickSpacing
-        );
+        uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
 
         // extract the tokenType (token0 or token1)
         uint256 tokenType = tokenId.tokenType(index);
@@ -1482,7 +1472,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 {
                     uint256 c_tokenId = tokenId;
                     int24 width = c_tokenId.width(index);
-                    oneSidedRange = (width * s_tickSpacing) / 2;
+                    oneSidedRange = (width * c_tokenId.tickSpacing()) / 2;
                 }
                 // compute the collateral requirement as a fixed amount that doesn't depend on price
 
@@ -1659,19 +1649,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         // compute the total amount of funds moved for the position's current leg
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(
-            tokenId,
-            positionSize,
-            index,
-            s_tickSpacing
-        );
+        uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
 
         // compute the total amount of funds moved for the position's partner leg
         uint256 amountsMovedPartner = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
-            partnerIndex,
-            s_tickSpacing
+            partnerIndex
         );
 
         // amount moved is right slot if tokenType=0, left slot otherwise

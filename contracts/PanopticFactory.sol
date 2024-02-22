@@ -271,7 +271,6 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         s_getPanopticPool[v3Pool] = newPoolContract;
         newPoolContract.startPool(
             v3Pool,
-            tickSpacing,
             token0,
             token1,
             collateralTracker0,
@@ -535,13 +534,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         uint96 _nonce
     ) internal pure returns (bytes32) {
         return
-            bytes32(
-                abi.encodePacked(
-                    PanopticMath.getPoolId(_v3Pool),
-                    uint64(uint160(_deployer)),
-                    _nonce
-                )
-            );
+            bytes32(abi.encodePacked(uint80(uint160(_v3Pool)), uint80(uint160(_deployer)), _nonce));
     }
 
     /*//////////////////////////////////////////////////////////////

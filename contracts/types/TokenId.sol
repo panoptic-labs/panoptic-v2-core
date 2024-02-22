@@ -18,7 +18,8 @@ import {Errors} from "@libraries/Errors.sol";
 /// @dev From the LSB to the MSB:
 /// ===== 1 time (same for all legs) ==============================================================
 ///      Property         Size      Offset      Comment
-/// (1) univ3pool        64bits     0bits      : first 8 bytes of the Uniswap v3 pool address (first 64 bits; little-endian), plus a pseudorandom number in the event of a collision
+/// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap v3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
+/// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
 /// ===== 4 times (one for each leg) ==============================================================
 /// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
 /// (3) optionRatio       7bits     1bits      : number of contracts per leg
@@ -35,11 +36,11 @@ import {Errors} from "@libraries/Errors.sol";
 ///                        (strike price tick of the 3rd leg)
 ///                            |             (width of the 2nd leg)
 ///                            |                   |
-/// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)
-///  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->    <- 64 bits ->
-///         Leg 4                  Leg 3                  Leg 2                   Leg 1         Univ3 Pool Address
+/// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
+///  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
+///         Leg 4                  Leg 3                  Leg 2                   Leg 1          tickSpacing    Univ3 Pool Address
 ///
-///  <--- most significant bit                                                       least significant bit --->
+///  <--- most significant bit                                                                             least significant bit --->
 ///
 /// @notice Some rules of how legs behave (we enforce these in a `validate()` function):
 ///   - a leg is inactive if it's not part of the position. Technically it means that all bits are zero.
@@ -74,12 +75,21 @@ library TokenId {
                                 DECODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The Uniswap v3 Pool pointed to by this option position.
+    /// @notice The full poolId (Uniswap pool identifier + pool pattern) of this option position.
     /// @param self the option position Id
-    /// @return the poolId (Panoptic's uni v3 pool fingerprint) of the Uniswap v3 pool
-    function univ3pool(uint256 self) internal pure returns (uint64) {
+    /// @return the poolId (Panoptic's uni v3 pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap v3 pool
+    function poolId(uint256 self) internal pure returns (uint64) {
         unchecked {
             return uint64(self);
+        }
+    }
+
+    /// @notice The tickSpacing of this option position.
+    /// @param self the option position Id
+    /// @return the tickSpacing of the Uniswap v3 pool
+    function tickSpacing(uint256 self) internal pure returns (int24) {
+        unchecked {
+            return int24(uint24((self >> 48) % 2 ** 16));
         }
     }
 
@@ -161,12 +171,21 @@ library TokenId {
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Add the Uniswap v3 Pool pointed to by this option position.
+    /// @notice Add the Uniswap v3 Pool pointed to by this option position (contains the entropy and tickSpacing).
     /// @param self the option position Id.
     /// @return the tokenId with the Uniswap V3 pool added to it.
-    function addUniv3pool(uint256 self, uint64 _poolId) internal pure returns (uint256) {
+    function addPoolId(uint256 self, uint64 _poolId) internal pure returns (uint256) {
         unchecked {
             return self + uint256(_poolId);
+        }
+    }
+
+    /// @notice Add the Uniswap v3 Pool tickSpacing.
+    /// @param self the option position Id.
+    /// @return the tickSpacing of the Uniswap V3 pool.
+    function addTickSpacing(uint256 self, int24 _tickSpacing) internal pure returns (uint256) {
+        unchecked {
+            return self + (uint256(uint24(_tickSpacing)) << 48);
         }
     }
 
@@ -362,15 +381,14 @@ library TokenId {
     /// @dev NOTE does not extract liquidity which is the third piece of information in a LiquidityChunk.
     /// @param self the option position id.
     /// @param legIndex the leg index of the position (in {0,1,2,3}).
-    /// @param tickSpacing the tick spacing of the underlying Univ3 pool.
     /// @return legLowerTick the lower tick of the leg/liquidity chunk.
     /// @return legUpperTick the upper tick of the leg/liquidity chunk.
     function asTicks(
         uint256 self,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) internal pure returns (int24 legLowerTick, int24 legUpperTick) {
         unchecked {
+            int24 tickSpacing = self.tickSpacing();
             int24 selfWidth = self.width(legIndex);
             int24 selfStrike = self.strike(legIndex);
 
@@ -515,7 +533,7 @@ library TokenId {
             } // end for loop over legs
         }
 
-        return self.univ3pool();
+        return self.poolId();
     }
 
     /// @notice Make sure that an option position `self`'s all active legs are out-of-the-money (OTM). Revert if not.
@@ -546,17 +564,12 @@ library TokenId {
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @param self the option position Id (tokenId)
     /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-    /// @param tickSpacing the tick spacing of the Univ3 pool used to compute the width of the chunks.
-    function validateIsExercisable(
-        uint256 self,
-        int24 currentTick,
-        int24 tickSpacing
-    ) internal pure {
+    function validateIsExercisable(uint256 self, int24 currentTick) internal pure {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
                 // compute the range of this leg/chunk
-                int24 range = (self.width(i) * tickSpacing) / 2;
+                int24 range = (self.width(i) * self.tickSpacing()) / 2;
                 // check if the price is outside this chunk
                 if (
                     (currentTick >= (self.strike(i) + range)) ||

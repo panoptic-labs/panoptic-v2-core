@@ -21,6 +21,7 @@ import {FixedPoint128} from "v3-core/libraries/FixedPoint128.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 // Test util
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
+import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {UniPoolObservationMock} from "../testUtils/PriceMocks.sol";
 
 /**
@@ -106,10 +107,11 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
         }
 
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint160 sqrtPriceBottom = (tokenId.width(0) == 4095)
             ? TickMath.getSqrtRatioAtTick(tokenId.strike(0))
@@ -123,12 +125,7 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         uint256 expectedLiquidityChunk = uint256(0).createChunk(tickLower, tickUpper, legLiquidity);
-        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }
@@ -177,10 +174,11 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
         }
 
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint160 sqrtPriceTop = (tokenId.width(0) == 4095)
             ? TickMath.getSqrtRatioAtTick(tokenId.strike(0))
@@ -194,36 +192,50 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         uint256 expectedLiquidityChunk = uint256(0).createChunk(tickLower, tickUpper, legLiquidity);
-        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }
 
-    function test_Success_getPoolId(address univ3pool) public {
-        uint64 poolId = uint64(uint160(univ3pool) >> 96);
-        assertEq(poolId, harness.getPoolId(univ3pool));
+    function test_Success_getPoolId(address univ3pool, uint256 _tickSpacing) public {
+        vm.assume(
+            univ3pool > address(10) &&
+                univ3pool != address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D)
+        );
+        _tickSpacing = bound(_tickSpacing, 0, uint16(type(int16).max));
+
+        UniPoolPriceMock pm = new UniPoolPriceMock();
+        vm.etch(univ3pool, address(pm).code);
+        pm = UniPoolPriceMock(univ3pool);
+
+        pm.construct(
+            UniPoolPriceMock.Slot0({
+                sqrtPriceX96: 0,
+                tick: 0,
+                observationIndex: 0,
+                observationCardinality: 0,
+                observationCardinalityNext: 0,
+                feeProtocol: 0,
+                unlocked: false
+            }),
+            address(0),
+            address(0),
+            0,
+            int24(uint24(_tickSpacing))
+        );
+        uint64 poolPattern = uint64(uint160(univ3pool) >> 112);
+        _tickSpacing <<= 48;
+        assertEq(_tickSpacing + poolPattern, harness.getPoolId(univ3pool));
     }
 
-    function test_Success_getFinalPoolId(
-        uint64 basePoolId,
-        address token0,
-        address token1,
-        uint8 feeSeed
-    ) public {
-        uint64 finalPoolId;
-        uint24 fee = [30, 60, 100][bound(feeSeed, 0, 2)];
+    function test_Success_incrementPoolPattern(uint64 poolId) public {
         unchecked {
-            finalPoolId =
-                basePoolId +
-                (uint64(uint256(keccak256(abi.encodePacked(token0, token1, fee)))) >> 32);
+            uint48 pattern = uint48(poolId & 0x0000FFFFFFFFFFFF);
+            pattern += 1;
+            uint64 _tickSpacing = uint24(uint256(poolId).tickSpacing());
+            _tickSpacing <<= 48;
+            assertEq(harness.incrementPoolPattern(poolId), _tickSpacing + pattern);
         }
-
-        assertEq(finalPoolId, harness.getFinalPoolId(basePoolId, token0, token1, fee));
     }
 
     function test_Success_computeExercisedAmounts_emptyOldTokenId(
@@ -274,20 +286,19 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
         (int256 expectedLongs, int256 expectedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,
-            0,
-            tickSpacing
+            0
         );
 
         (int256 returnedLongs, int256 returnedShorts) = harness.computeExercisedAmounts(
             tokenId,
-            positionSize,
-            tickSpacing
+            positionSize
         );
 
         assertEq(expectedLongs, returnedLongs);
@@ -346,6 +357,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
@@ -403,6 +415,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
@@ -1187,22 +1200,18 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
         }
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
         uint128 amount1 = harness.convertNotional(amount0, tickLower, tickUpper, tokenId.asset(0));
         uint256 expectedContractsNotional = uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
 
-        uint256 returnedContractsNotional = harness.getAmountsMoved(
-            tokenId,
-            positionSize,
-            0,
-            tickSpacing
-        );
+        uint256 returnedContractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         assertEq(expectedContractsNotional, returnedContractsNotional);
     }
 
@@ -1251,22 +1260,18 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
         }
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
         uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
         uint128 amount0 = harness.convertNotional(amount1, tickLower, tickUpper, tokenId.asset(0));
         uint256 expectedContractsNotional = uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
 
-        uint256 returnedContractsNotional = harness.getAmountsMoved(
-            tokenId,
-            positionSize,
-            0,
-            tickSpacing
-        );
+        uint256 returnedContractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         assertEq(expectedContractsNotional, returnedContractsNotional);
     }
 
@@ -1313,18 +1318,18 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 0, 0, strike, width);
         }
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
+        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         int256 expectedShorts = int256(0).toRightSlot(Math.toInt128(contractsNotional.rightSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,
-            0,
-            tickSpacing
+            0
         );
 
         assertEq(expectedShorts, returnedShorts);
@@ -1373,11 +1378,12 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 0, 0, strike, width);
         }
 
         // contractSize = positionSize * uint128(tokenId.optionRatio(legIndex));
-        (int24 legLowerTick, int24 legUpperTick) = tokenId.asTicks(0, tickSpacing);
+        (int24 legLowerTick, int24 legUpperTick) = tokenId.asTicks(0);
 
         positionSize = uint64(
             PositionUtils.getContractsForAmountAtTick(
@@ -1389,15 +1395,14 @@ contract PanopticMathTest is Test, PositionUtils {
             )
         );
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
+        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
         int256 expectedLongs = int256(0).toRightSlot(Math.toInt128(contractsNotional.rightSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,
-            0,
-            tickSpacing
+            0
         );
 
         assertEq(0, returnedShorts);
@@ -1411,14 +1416,12 @@ contract PanopticMathTest is Test, PositionUtils {
         int24 width,
         uint64 positionSize
     ) public {
-        vm.assume(positionSize != 0);
+        positionSize = uint64(bound(positionSize, 1, type(uint64).max));
         uint256 tokenId;
 
         // contruct a tokenId
         {
             uint256 optionRatio = bound(optionRatio, 1, 127);
-
-            vm.assume(positionSize * uint128(optionRatio) < type(uint56).max);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1445,18 +1448,18 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 1, 0, strike, width);
         }
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
-
+        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
+
         int256 expectedShorts = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,
-            0,
-            tickSpacing
+            0
         );
 
         assertEq(expectedShorts, returnedShorts);
@@ -1505,10 +1508,11 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
+            tokenId = uint256(uint24(tickSpacing)) << 48;
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 1, 0, strike, width);
         }
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0, tickSpacing);
+        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
         int256 expectedLongs = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
@@ -1516,8 +1520,7 @@ contract PanopticMathTest is Test, PositionUtils {
         (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
             tokenId,
             positionSize,
-            0,
-            tickSpacing
+            0
         );
 
         assertEq(0, returnedShorts);
