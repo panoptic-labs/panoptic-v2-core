@@ -3,7 +3,9 @@ pragma solidity =0.8.18;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {IBlast} from "@blast/IBlast.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -266,6 +268,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external {
         // reverts if the Uniswap pool has already been initialized
         if (address(s_univ3pool) != address(0)) revert Errors.PoolAlreadyInitialized();
+
+        // set gas mode to claimable and transfer governor permissions to the factory owner on BLAST L2
+        IBlast BLAST = IBlast(0x4300000000000000000000000000000000000002);
+        BLAST.configureClaimableGas();
+        BLAST.configureGovernor(PanopticFactory(msg.sender).factoryOwner());
 
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(univ3pool);

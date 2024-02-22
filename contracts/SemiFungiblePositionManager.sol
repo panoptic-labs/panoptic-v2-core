@@ -2,6 +2,7 @@
 pragma solidity =0.8.18;
 
 // Interfaces
+import {IBlast} from "@blast/IBlast.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
@@ -340,6 +341,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @notice Construct the Semi-Fungible Position Manager (SFPM)
     /// @param _factory the Uniswap v3 Factory used to retrieve registered Uniswap pools
     constructor(IUniswapV3Factory _factory) {
+        // set gas mode to claimable and transfer governor permissions to the deployer on BLAST L2
+        IBlast BLAST = IBlast(0x4300000000000000000000000000000000000002);
+        BLAST.configureClaimableGas();
+        BLAST.configureGovernor(msg.sender);
+
         FACTORY = _factory;
     }
 

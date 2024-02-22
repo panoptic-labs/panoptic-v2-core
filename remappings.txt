@@ -11,3 +11,4 @@ univ3-periphery/=lib/v3-periphery/contracts
 @types/=contracts/types
 @scripts/=scripts
 @uniswap/=lib
+@blast/=lib/blast

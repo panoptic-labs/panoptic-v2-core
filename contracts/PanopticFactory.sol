@@ -5,6 +5,7 @@ pragma solidity =0.8.18;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {IBlast} from "@blast/IBlast.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
@@ -129,6 +130,11 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         address _poolReference,
         address _collateralReference
     ) ERC1155("") {
+        // set gas mode to claimable and transfer governor permissions to the deployer on BLAST L2
+        IBlast BLAST = IBlast(0x4300000000000000000000000000000000000002);
+        BLAST.configureClaimableGas();
+        BLAST.configureGovernor(msg.sender);
+
         // Set the WETH contract address
         WETH = _WETH9;
 

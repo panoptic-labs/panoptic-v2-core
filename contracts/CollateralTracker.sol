@@ -4,6 +4,7 @@ pragma solidity =0.8.18;
 // Interfaces
 import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
+import {IBlast} from "@blast/IBlast.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
@@ -249,6 +250,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Ensuring that the deployer/owner sets the correct parameters on genesis
         // Calling 'startToken' on the reference itself is not a concern, as it's storage is never accessed
         factory = PanopticFactory(msg.sender);
+
+        // set gas mode to claimable and transfer governor permissions to the factory owner on BLAST L2
+        IBlast BLAST = IBlast(0x4300000000000000000000000000000000000002);
+        BLAST.configureClaimableGas();
+        BLAST.configureGovernor(factory.factoryOwner());
 
         // store the address of the underlying ERC20 token
         s_underlyingToken = underlyingToken;
