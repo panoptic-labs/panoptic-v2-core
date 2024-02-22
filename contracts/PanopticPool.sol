@@ -1638,13 +1638,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
-        // 0: currentTick, 1: medianTick, 2: tickSpacing
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-        int24 tickSpacing = s_tickSpacing;
 
         uint256 accumulatedPremium;
         {
-            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
             uint256 tokenType = tokenId.tokenType(legIndex);
             (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
@@ -1669,12 +1667,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         uint256 liquidity = PanopticMath
-            .getLiquidityChunk(
-                tokenId,
-                legIndex,
-                s_positionBalance[owner][tokenId].rightSlot(),
-                tickSpacing
-            )
+            .getLiquidityChunk(tokenId, legIndex, s_positionBalance[owner][tokenId].rightSlot())
             .liquidity();
 
         unchecked {
@@ -1687,16 +1680,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_collateralToken0.exercise(owner, 0, 0, 0, realizedPremia.rightSlot());
             s_collateralToken1.exercise(owner, 0, 0, 0, realizedPremia.leftSlot());
 
-            // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
-            s_settledTokens[
-                keccak256(
-                    abi.encodePacked(
-                        tokenId.strike(legIndex),
-                        tokenId.width(legIndex),
-                        tokenId.tokenType(legIndex)
-                    )
+            bytes32 chunkKey = keccak256(
+                abi.encodePacked(
+                    tokenId.strike(legIndex),
+                    tokenId.width(legIndex),
+                    tokenId.tokenType(legIndex)
                 )
-            ] += realizedPremia;
+            );
+            // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
+            s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(uint256(realizedPremia));
         }
 
         // ensure the owner is solvent at the median tick (insolvent accounts are not permitted to pay premium unless they are being liquidated)

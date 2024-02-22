@@ -395,7 +395,7 @@ library TokenId {
         (legLowerTick, legUpperTick) = PanopticMath.getTicks(
             self.strike(legIndex),
             self.width(legIndex),
-            tickSpacing
+            self.tickSpacing()
         );
     }
 
