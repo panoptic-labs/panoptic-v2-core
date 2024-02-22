@@ -397,10 +397,7 @@ contract PanopticFactoryTest is Test {
         address deployer,
         uint96 nonce
     ) internal pure returns (bytes32) {
-        return
-            bytes32(
-                abi.encodePacked(PanopticMath.getPoolId(v3Pool), uint64(uint160(deployer)), nonce)
-            );
+        return bytes32(abi.encodePacked(uint80(uint160(v3Pool)), uint80(uint160(deployer)), nonce));
     }
 
     /*//////////////////////////////////////////////////////////////
