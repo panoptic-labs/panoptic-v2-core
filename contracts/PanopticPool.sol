@@ -413,7 +413,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         balances = new uint256[2][](pLength);
 
         address c_user = user;
-        int24 tickSpacing = s_tickSpacing;
         // loop through each option position/tokenId
         for (uint256 k = 0; k < pLength; ) {
             uint256 tokenId = positionIdList[k];
@@ -424,14 +423,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             (
                 int256[4] memory premiaByLeg,
                 uint256[2][4] memory premiumAccumulatorsByLeg
-            ) = _getPremia(
-                    tokenId,
-                    balances[k][1].rightSlot(),
-                    c_user,
-                    computeAllPremia,
-                    atTick,
-                    tickSpacing
-                );
+            ) = _getPremia(tokenId, balances[k][1].rightSlot(), c_user, computeAllPremia, atTick);
 
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
@@ -445,7 +437,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     );
 
                     uint256 availablePremium = _getAvailablePremium(
-                        _getTotalLiquidity(tokenId, leg, s_tickSpacing),
+                        _getTotalLiquidity(tokenId, leg),
                         s_settledTokens[chunkKey],
                         s_grossPremiumLast[chunkKey],
                         uint256(premiaByLeg[leg]),
@@ -603,7 +595,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validatePositionList(msg.sender, positionIdList, 1);
 
         // make sure the tokenId is for this Panoptic pool
-        if (tokenId.univ3pool() != sfpm.getPoolId(address(s_univ3pool)))
+        if (tokenId.poolId() != sfpm.getPoolId(address(s_univ3pool)))
             revert Errors.InvalidTokenIdParameter(0);
         // disallow user to mint exact same position
         // in order to do it, user should burn it first and then mint
@@ -947,13 +939,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 owner,
                 tokenId,
                 collectedByLeg,
-                _positionSize
+                positionSize,
+                _commitLongSettled
             );
 
             // compute option amounts if exercise was necessary
             (longAmounts, shortAmounts) = PanopticMath.computeExercisedAmounts(
-                _tokenId,
-                _positionSize
+                tokenId,
+                positionSize
             );
         }
         // exercise the option and take the commission and addData
@@ -1580,8 +1573,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize,
         address owner,
         bool computeAllPremia,
-        int24 atTick,
-        int24 tickSpacing
+        int24 atTick
     )
         internal
         view
@@ -1903,8 +1895,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionSize,
             owner,
             COMPUTE_ALL_PREMIA,
-            type(int24).max,
-            tickSpacing
+            type(int24).max
         );
 
         for (uint256 leg = 0; leg < numLegs; ) {
