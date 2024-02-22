@@ -678,11 +678,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm
             .mintTokenizedPosition(tokenId, positionSize, tickLimitHigh, tickLimitLow);
 
-        // cache tickSpacing
-        int24 tickSpacing = s_tickSpacing;
-
         // update premium settlement info
-        _updateSettlementPostMint(tokenId, collectedByLeg, positionSize, tickSpacing);
+        _updateSettlementPostMint(tokenId, collectedByLeg, positionSize);
 
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
@@ -690,8 +687,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickStateCallContext.updateCurrentTick(newTick),
             tokenId,
             positionSize,
-            totalSwapped,
-            tickSpacing
+            totalSwapped
         );
 
         return (poolUtilizations, newTick);
@@ -703,7 +699,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped How much was swapped (if in-the-money position).
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
     /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
@@ -711,8 +706,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tickStateCallContext,
         uint256 tokenId,
         uint128 positionSize,
-        int256 totalSwapped,
-        int24 tickSpacing
+        int256 totalSwapped
     ) internal returns (uint128) {
         // compute how much of tokenId is long and short positions
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
@@ -967,15 +961,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 longAmounts;
         int256 shortAmounts;
         {
-            int24 tickSpacing = s_tickSpacing;
             uint256 _tokenId = tokenId;
             uint128 _positionSize = positionSize;
             (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
                 owner,
                 _tokenId,
                 collectedByLeg,
-                _positionSize,
-                tickSpacing
+                _positionSize
             );
 
             // compute option amounts if exercise was necessary
@@ -1575,11 +1567,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
             if ((isLong == 1) || computeAllPremia) {
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize,
-                );
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
                 uint256 tokenType = tokenId.tokenType(leg);
 
                 (uint256 premiumAccumulator0, uint256 premiumAccumulator1) = sfpm.getAccountPremium(
@@ -1636,12 +1624,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position that was minted.
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position.
     /// @param positionSize The size of the position, expressed in terms of the asset.
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     function _updateSettlementPostMint(
         uint256 tokenId,
         uint256[4] memory collectedByLeg,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal {
         uint256 numLegs = tokenId.countLegs();
 
@@ -1655,8 +1641,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 chunkKey,
                 collectedByLeg[leg],
                 leg,
-                MINT,
-                tickSpacing
+                MINT
             );
 
             // write updated values to storage variables
@@ -1706,13 +1691,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev totalLiquidity (total sold) = removedLiquidity + netLiquidity (in AMM)
     /// @param tokenId The option position
     /// @param leg The leg of the option position to get `totalLiquidity for
-    //// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
     function _getTotalLiquidity(
         uint256 tokenId,
         uint128 positionSize,
         uint256 leg,
-        bool isBurn,
-        int24 tickSpacing
+        bool isBurn
     )
         internal
         view
@@ -1720,12 +1703,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     {
         unchecked {
             // totalLiquidity (total sold) = removedLiquidity + netLiquidity
-            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                tokenId,
-                leg,
-                positionSize,
-                tickSpacing
-            );
+            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
 
             // restore liquidities to their pre-mint values
             uint128 currentLiquidity = liquidityChunk.liquidity();
@@ -1771,7 +1749,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param collectedThisLeg The amount of tokens collected in the corresponding chunk
     /// @param leg leg index of the chunk
     /// @param isBurn bool that represents whether the current action is for a burn (true) or a mint (false)
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
     /// @return settledTokens The updated settledTokens value with the new amount collected added to it
     /// @return grossPremium The updated gross premium, with the expected tokens to be owed added to it
     function _updateSettledAndGross(
@@ -1780,8 +1757,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         bytes32 chunkKey,
         uint256 collectedThisLeg,
         uint256 leg,
-        bool isBurn,
-        int24 tickSpacing
+        bool isBurn
     ) internal view returns (int256 settledTokens, int256 grossPremium) {
         unchecked {
             // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
@@ -1789,7 +1765,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 totalLiquidity,
                 uint256 netLiquidity,
                 uint256 removedLiquidity
-            ) = _getTotalLiquidity(tokenId, positionSize, leg, isBurn, tickSpacing);
+            ) = _getTotalLiquidity(tokenId, positionSize, leg, isBurn);
 
             if (totalLiquidity > 0) {
                 int256 grossThisLeg;
@@ -1824,15 +1800,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position that was burnt
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
     /// @return realizedPremia The amount of premia owed to the user
     /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _updateSettlementPostBurn(
         address owner,
         uint256 tokenId,
         uint256[4] memory collectedByLeg,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg) {
         uint256 numLegs = tokenId.countLegs();
 
@@ -1852,8 +1826,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 chunkKey,
                 collectedByLeg[leg],
                 leg,
-                BURN,
-                tickSpacing
+                BURN
             );
 
             int256 legPremia = premiaByLeg[leg];

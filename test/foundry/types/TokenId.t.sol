@@ -59,7 +59,7 @@ contract TokenIdTest is Test, PositionUtils {
         harness = new TokenIdHarness();
     }
 
-    function test_Success_AddUniv3Pool(address y) public {
+    function test_Success_addPoolId(address y) public {
         uint256 tokenId;
 
         tokenId = harness.addPoolId(tokenId, uint64(uint160(y)));

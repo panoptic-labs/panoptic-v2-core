@@ -1151,7 +1151,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // long leg
-        uint256 longTokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 longTokenId = uint256(0).addPoolId(poolId).addLeg(
             0,
             longRatio,
             isWETH,
@@ -2033,16 +2033,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         vm.expectRevert(Errors.NotEnoughLiquidity.selector);
 
         // long leg
-        tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-            0,
-            longRatio,
-            isWETH,
-            1,
-            0,
-            0,
-            strike,
-            width
-        );
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, longRatio, isWETH, 1, 0, 0, strike, width);
         sfpm.mintTokenizedPosition(
             tokenId,
             uint128(positionSize),
@@ -2383,7 +2374,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // long leg
-        uint256 tokenIdLong = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenIdLong = uint256(0).addPoolId(poolId).addLeg(
             0,
             longRatio,
             isWETH,

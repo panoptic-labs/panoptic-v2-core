@@ -250,7 +250,7 @@ contract Misctest is Test, PositionUtils {
 
         // mint OTM position
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -269,7 +269,7 @@ contract Misctest is Test, PositionUtils {
         pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
 
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -323,7 +323,7 @@ contract Misctest is Test, PositionUtils {
 
         // mint OTM position
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -342,7 +342,7 @@ contract Misctest is Test, PositionUtils {
         pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
 
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -384,7 +384,7 @@ contract Misctest is Test, PositionUtils {
 
         // mint OTM position
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -419,7 +419,7 @@ contract Misctest is Test, PositionUtils {
         pp.mintOptions($posIdList, 250_000, 0, 0, 0);
 
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
