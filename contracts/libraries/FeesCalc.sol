@@ -58,18 +58,12 @@ library FeesCalc {
         mapping(uint256 tokenId => uint256 balance) storage userBalance,
         uint256[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
-        int24 ts = univ3pool.tickSpacing();
         for (uint256 k = 0; k < positionIdList.length; ) {
             uint256 tokenId = positionIdList[k];
             uint128 positionSize = userBalance[tokenId].rightSlot();
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize,
-                    ts
-                );
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
 
                 (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
                     atTick,
@@ -116,12 +110,7 @@ library FeesCalc {
         uint128 positionSize
     ) public view returns (uint256 liquidityChunk, int256 feesPerToken) {
         // extract the liquidity chunk representing the leg `index` of the option position `tokenId`
-        liquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            index,
-            positionSize,
-            univ3pool.tickSpacing()
-        );
+        liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, index, positionSize);
 
         // Extract the AMM swap/trading fees collected by this option leg (liquidity chunk)
         // packed as LeftRight with token0 fees in the right slot and token1 fees in the left slot

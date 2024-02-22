@@ -93,8 +93,7 @@ contract FeesCalcTest is Test, PositionUtils {
         uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             0,
-            uint128(harness.userBalance(tokenId)),
-            tickSpacing
+            uint128(harness.userBalance(tokenId))
         );
 
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -172,12 +171,7 @@ contract FeesCalcTest is Test, PositionUtils {
             );
         }
 
-        uint256 expectedLiquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 expectedLiquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
 
         int256 expectedFeesPerToken = harness.calculateAMMSwapFeesLiquidityChunk(
             selectedPool,
@@ -225,12 +219,7 @@ contract FeesCalcTest is Test, PositionUtils {
             );
         }
 
-        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            0,
-            positionSize,
-            tickSpacing
-        );
+        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
 
         (uint256 ammFeesPerLiqToken0X128, uint256 ammFeesPerLiqToken1X128) = harness
             .getAMMSwapFeesPerLiquidityCollected(
@@ -268,7 +257,13 @@ contract FeesCalcTest is Test, PositionUtils {
         int256 strikeSeed,
         int256 widthSeed
     ) internal returns (uint256) {
-        uint256 tokenId;
+        tickSpacing = selectedPool.tickSpacing();
+        // add univ3pool to token
+        uint64 poolId = uint64(
+            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
+                (uint64(uint24(tickSpacing)) << 48)
+        );
+        uint256 tokenId = uint256(poolId);
 
         for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
             // We don't want the same data for each leg
@@ -297,13 +292,10 @@ contract FeesCalcTest is Test, PositionUtils {
             /// bound inputs
             int24 strike;
             int24 width;
-            uint64 poolId;
             {
                 // the following must be at least 1
-                poolId = uint64(bound(poolIdSeed, 1, type(uint64).max));
                 optionRatioSeed = bound(optionRatioSeed, 1, 127);
 
-                tickSpacing = selectedPool.tickSpacing();
                 width = int24(bound(widthSeed, 1, 4094));
                 int24 oneSidedRange = (width * tickSpacing) / 2;
 
@@ -328,9 +320,6 @@ contract FeesCalcTest is Test, PositionUtils {
             }
 
             {
-                // add univ3pool to token
-                tokenId = tokenId.addUniv3pool(poolId);
-
                 // add a leg
                 // no risk partner by default (will reference its own leg index)
                 tokenId = tokenId.addLeg(
