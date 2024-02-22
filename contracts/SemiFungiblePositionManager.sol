@@ -362,14 +362,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // if poolId == 0, we have a bit on the left set if it was initialized, so this will still return properly
         if (s_AddrToPoolIdData[univ3pool] != 0) return;
 
-        // Set the base poolId as last 8 bytes of the address (the first 16 hex characters)
-        // @dev in the unlikely case that there is a collision between the first 8 bytes of two different Uni v3 pools
-        // @dev increase the poolId by a pseudo-random number
+        // The base poolId is composed as follows:
+        // [tickSpacing][pool pattern]
+        // [16 bit tickSpacing][most significant 48 bits of the pool address]
         uint64 poolId = PanopticMath.getPoolId(univ3pool);
 
+        // There are 281,474,976,710,655 possible pool patterns.
+        // A modern GPU can generate a collision such a space relatively quickly,
+        // so if a collision is detected increment the pool pattern until a unique poolId is found
         while (address(s_poolContext[poolId].pool) != address(0)) {
-            poolId = PanopticMath.getFinalPoolId(poolId, token0, token1, fee);
+            poolId = PanopticMath.incrementPoolPattern(poolId);
         }
+
         // store the poolId => UniswapV3Pool information in a mapping
         // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
         // note: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
@@ -482,7 +486,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 slippageTickLimitHigh
     )
         external
-        ReentrancyLock(tokenId.univ3pool())
+        ReentrancyLock(tokenId.poolId())
         returns (int256 totalCollected, int256 totalSwapped, int24 newTick)
     {
         // burn this ERC1155 token id
@@ -516,7 +520,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 slippageTickLimitHigh
     )
         external
-        ReentrancyLock(tokenId.univ3pool())
+        ReentrancyLock(tokenId.poolId())
         returns (int256 totalCollected, int256 totalSwapped, int24 newTick)
     {
         // create the option position via its ID in this erc1155
@@ -554,7 +558,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ) public override {
         // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
         // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
-        if (s_poolContext[id.univ3pool()].locked) revert Errors.ReentrantCall();
+        if (s_poolContext[id.poolId()].locked) revert Errors.ReentrantCall();
 
         // update the position data
         registerTokenTransfer(from, to, id, amount);
@@ -581,7 +585,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
         // so just check if there is an active reentrancy lock for the relevant pool on each token
         for (uint256 i = 0; i < ids.length; ) {
-            if (s_poolContext[ids[i].univ3pool()].locked) revert Errors.ReentrantCall();
+            if (s_poolContext[ids[i].poolId()].locked) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, ids[i], amounts[i]);
             unchecked {
                 ++i;
@@ -606,12 +610,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         for (uint256 leg = 0; leg < numLegs; ) {
             // for this leg index: extract the liquidity chunk: a 256bit word containing the liquidity amount and upper/lower tick
             // @dev see `contracts/types/LiquidityChunk.sol`
-            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                id,
-                leg,
-                uint128(amount),
-                univ3pool.tickSpacing()
-            );
+            uint256 liquidityChunk = PanopticMath.getLiquidityChunk(id, leg, uint128(amount));
 
             //construct the positionKey for the from and to addresses
             bytes32 positionKey_from = keccak256(
@@ -905,8 +904,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
                     _tokenId,
                     _leg,
-                    _positionSize,
-                    _univ3pool.tickSpacing()
+                    _positionSize
                 );
 
                 (_moved, _itmAmounts, _totalCollected) = _createLegInAMM(
