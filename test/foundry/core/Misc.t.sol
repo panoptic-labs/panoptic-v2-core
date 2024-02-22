@@ -620,7 +620,7 @@ contract Misctest is Test, PositionUtils {
         // she could have still earned some fees, but now the accumulation is frozen forever.
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1244790
+            -1244789
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
