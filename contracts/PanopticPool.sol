@@ -20,7 +20,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1728,10 +1727,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
                 totalLiquidity) / 2 ** 64;
 
-            console2.log("computing available premium...");
-            console2.log("owed0", premiumOwed.rightSlot());
-            console2.log("accumulated0", accumulated0);
-            console2.log("settled0", settledTokens.rightSlot());
             return (
                 uint256(0)
                     .toRightSlot(
