@@ -20,6 +20,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -439,7 +440,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
 
                         uint256 availablePremium = _getAvailablePremium(
-                            _getTotalLiquidity(tokenId, leg, s_tickSpacing),
+                            _getTotalLiquidity(tokenId, leg),
                             s_settledTokens[chunkKey],
                             s_grossPremiumLast[chunkKey],
                             uint256(premiaByLeg[leg]),
@@ -672,11 +673,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm
             .mintTokenizedPosition(tokenId, positionSize, tickLimitHigh, tickLimitLow);
 
-        // cache tickSpacing
-        int24 tickSpacing = s_tickSpacing;
-
         // update premium settlement info
-        _updateSettlementPostMint(tokenId, collectedByLeg, positionSize, tickSpacing);
+        _updateSettlementPostMint(tokenId, collectedByLeg, positionSize);
 
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
@@ -684,8 +682,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickStateCallContext.updateCurrentTick(newTick),
             tokenId,
             positionSize,
-            totalSwapped,
-            tickSpacing
+            totalSwapped
         );
 
         return (poolUtilizations, newTick);
@@ -697,7 +694,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped How much was swapped (if in-the-money position).
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
     /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
@@ -705,8 +701,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 tickStateCallContext,
         uint256 tokenId,
         uint128 positionSize,
-        int256 totalSwapped,
-        int24 tickSpacing
+        int256 totalSwapped
     ) internal returns (uint128) {
         // compute how much of tokenId is long and short positions
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
@@ -961,15 +956,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 longAmounts;
         int256 shortAmounts;
         {
-            int24 tickSpacing = s_tickSpacing;
             uint256 _tokenId = tokenId;
             uint128 _positionSize = positionSize;
             (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
                 owner,
                 _tokenId,
                 collectedByLeg,
-                _positionSize,
-                tickSpacing
+                _positionSize
             );
 
             // compute option amounts if exercise was necessary
@@ -1716,12 +1709,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position that was minted.
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position.
     /// @param positionSize The size of the position, expressed in terms of the asset.
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool.
     function _updateSettlementPostMint(
         uint256 tokenId,
         uint256[4] memory collectedByLeg,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ++leg) {
@@ -1732,15 +1723,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(collectedByLeg[leg]);
 
             if (tokenId.isLong(leg) == 0) {
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize,
-                    tickSpacing
-                );
+                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
 
                 // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
+                uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg);
 
                 // We need to adjust the grossPremiumLast value such that the result of
                 // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostMint/2**64 is equal to (grossPremium - grossPremiumLast)*totalLiquidityBeforeMint/2**64
@@ -1825,6 +1811,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 accumulated1 = ((premiumAccumulators[1] - grossPremiumLast.leftSlot()) *
                 totalLiquidity) / 2 ** 64;
 
+            console2.log("computing available premium...");
+            console2.log("owed0", premiumOwed.rightSlot());
+            console2.log("accumulated0", accumulated0);
+            console2.log("settled0", settledTokens.rightSlot());
             return (
                 uint256(0)
                     .toRightSlot(
@@ -1853,16 +1843,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev totalLiquidity (total sold) = removedLiquidity + netLiquidity (in AMM)
     /// @param tokenId The option position
     /// @param leg The leg of the option position to get `totalLiquidity for
-    //// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
     function _getTotalLiquidity(
         uint256 tokenId,
-        uint256 leg,
-        int24 tickSpacing
+        uint256 leg
     ) internal view returns (uint256 totalLiquidity) {
         unchecked {
             // totalLiquidity (total sold) = removedLiquidity + netLiquidity
 
-            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg, tickSpacing);
+            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
             uint256 tokenType = tokenId.tokenType(leg);
             uint256 accountLiquidities = sfpm.getAccountLiquidity(
                 address(s_univ3pool),
@@ -1883,15 +1871,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position that was burnt
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
     /// @return realizedPremia The amount of premia owed to the user
     /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _updateSettlementPostBurn(
         address owner,
         uint256 tokenId,
         uint256[4] memory collectedByLeg,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg) {
         uint256 numLegs = tokenId.countLegs();
         uint256[2][4] memory premiumAccumulatorsByLeg;
@@ -1922,13 +1908,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     realizedPremia = realizedPremia.add(legPremia);
                 } else {
                     uint256 positionLiquidity = PanopticMath
-                        .getLiquidityChunk(tokenId, leg, positionSize, tickSpacing)
+                        .getLiquidityChunk(tokenId, leg, positionSize)
                         .liquidity();
 
                     uint256 grossPremiumLast = s_grossPremiumLast[chunkKey];
 
                     // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                    uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg, tickSpacing);
+                    uint256 totalLiquidity = _getTotalLiquidity(tokenId, leg);
                     // T (totalLiquidity is (T - R) after burning)
                     uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
 
