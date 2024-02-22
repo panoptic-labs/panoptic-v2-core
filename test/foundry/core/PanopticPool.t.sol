@@ -5062,16 +5062,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, 0);
 
-        tokenId = uint256(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
+        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
         uint256[] memory touchedIds = new uint256[](1);
         touchedIds[0] = tokenId;
 

@@ -269,13 +269,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
 
         // connect the panoptic pool with the underlying univ3 pool
         s_getPanopticPool[v3Pool] = newPoolContract;
-        newPoolContract.startPool(
-            v3Pool,
-            token0,
-            token1,
-            collateralTracker0,
-            collateralTracker1
-        );
+        newPoolContract.startPool(v3Pool, token0, token1, collateralTracker0, collateralTracker1);
 
         /*//////////////////////////////////////////////////////////////
          FULL-RANGE LIQUIDITY DEPLOYMENT, INITIAL COLLATERAL DEPOSITS, AND NFT LOGIC
