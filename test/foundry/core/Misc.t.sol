@@ -527,6 +527,23 @@ contract Misctest is Test, PositionUtils {
             pp.mintOptions($posIdLists[2], 19_768_888, type(uint64).max, 0, 0);
         }
 
+        // populate collateralIdLists with each ending at a different token
+        {
+            $posIdLists[3] = $posIdLists[2];
+            $posIdLists[3][0] = $posIdLists[2][3];
+            $posIdLists[3][3] = $posIdLists[2][0];
+            collateralIdLists.push($posIdLists[3]);
+            $posIdLists[3] = $posIdLists[2];
+            $posIdLists[3][1] = $posIdLists[2][3];
+            $posIdLists[3][3] = $posIdLists[2][1];
+            collateralIdLists.push($posIdLists[3]);
+            $posIdLists[3] = $posIdLists[2];
+            $posIdLists[3][2] = $posIdLists[2][3];
+            $posIdLists[3][3] = $posIdLists[2][2];
+            collateralIdLists.push($posIdLists[3]);
+            collateralIdLists.push($posIdLists[2]);
+        }
+
         changePrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
@@ -668,21 +685,13 @@ contract Misctest is Test, PositionUtils {
         // >>> 258335863.0*2
         // 516671726.0 (Alice)
 
-        positionIdLists.push($posIdLists[2]);
-        collateralIdLists.push($posIdLists[2]);
-
         assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        Buyer.push(Buyers[0]);
-
         // collect buyer 1's three relevant chunks
-        pp.settleLongPremium(
-            collateralIdLists,
-            Buyer,
-            positionIdLists,
-            uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
-        );
+        for (uint256 i = 0; i < 3; ++i) {
+            pp.settleLongPremium(collateralIdLists[i], Buyers[0], 0);
+        }
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0,
@@ -740,19 +749,13 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0Arr.push(ct0.convertToAssets(ct0.balanceOf(Buyers[2])));
         assetsBefore1Arr.push(ct1.convertToAssets(ct1.balanceOf(Buyers[2])));
 
-        positionIdLists.push($posIdLists[2]);
-        collateralIdLists.push($posIdLists[2]);
-
-        positionIdLists.push($posIdLists[2]);
-        collateralIdLists.push($posIdLists[2]);
-
         // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
-        pp.settleLongPremium(
-            collateralIdLists,
-            Buyers,
-            positionIdLists,
-            uint256(0).addStrike(-15, 0).addWidth(1, 0).addTokenType(1, 0).addIsLong(1, 0)
-        );
+
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 1);
+
+            pp.settleLongPremium(collateralIdLists[3], Buyers[i], 0);
+        }
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
@@ -817,12 +820,11 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0Arr[2] = ct0.convertToAssets(ct0.balanceOf(Buyers[2]));
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
-        pp.settleLongPremium(
-            collateralIdLists,
-            Buyers,
-            positionIdLists,
-            uint256(0).addStrike(-15, 0).addWidth(1, 0).addTokenType(1, 0).addIsLong(1, 0)
-        );
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 1);
+
+            pp.settleLongPremium(collateralIdLists[3], Buyers[i], 0);
+        }
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
@@ -868,12 +870,13 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0Arr[2] = ct0.convertToAssets(ct0.balanceOf(Buyers[2]));
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
-        pp.settleLongPremium(
-            collateralIdLists,
-            Buyers,
-            positionIdLists,
-            uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
-        );
+        for (uint256 i = 0; i < Buyers.length; ++i) {
+            pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
+
+            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 0);
+
+            pp.settleLongPremium(collateralIdLists[2], Buyers[i], 0);
+        }
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
@@ -930,38 +933,28 @@ contract Misctest is Test, PositionUtils {
             "Incorrect Charlie Delta 1"
         );
 
-        // test positionIdList validation
-        for (uint256 i = 0; i < 3; ++i) {
-            // snapshot so we don't have to reset changes to collateralIdLists array
-            uint256 snap = vm.snapshot();
+        // test long leg validation
+        vm.expectRevert(Errors.NotALongLeg.selector);
+        pp.settleLongPremium(collateralIdLists[2], Buyers[0], 1);
 
-            for (uint256 j = 0; j < i + 1; ++j) {
-                collateralIdLists[i].pop();
-            }
-            vm.expectRevert(Errors.InputListFail.selector);
-            pp.settleLongPremium(
-                collateralIdLists,
-                Buyers,
-                positionIdLists,
-                uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
-            );
-            vm.revertTo(snap);
-        }
+        // test positionIdList validation
+        // snapshot so we don't have to reset changes to collateralIdLists array
+        uint256 snap = vm.snapshot();
+
+        collateralIdLists[0].pop();
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.settleLongPremium(collateralIdLists[0], Buyers[0], 0);
+        vm.revertTo(snap);
 
         // test collateral checking (basic)
         for (uint256 i = 0; i < 3; ++i) {
             // snapshot so we don't have to reset changes to collateralIdLists array
-            uint256 snap = vm.snapshot();
+            snap = vm.snapshot();
 
             deal(address(ct0), Buyers[i], i ** 15);
             deal(address(ct1), Buyers[i], i ** 15);
             vm.expectRevert(Errors.NotEnoughCollateral.selector);
-            pp.settleLongPremium(
-                collateralIdLists,
-                Buyers,
-                positionIdLists,
-                uint256(0).addStrike(15, 0).addWidth(1, 0).addTokenType(0, 0).addIsLong(1, 0)
-            );
+            pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
             vm.revertTo(snap);
         }
 
