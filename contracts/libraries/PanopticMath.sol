@@ -22,7 +22,7 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
-    uint64 internal constant POOLID_MASK = 0x0000FFFFFFFFFFFF;
+    // masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
     uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
 
     /*//////////////////////////////////////////////////////////////
