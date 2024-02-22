@@ -1392,7 +1392,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, currentTick, token0, token1, ct0, ct1);
+        pp.startPool(pool, token0, token1, ct0, ct1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -5062,7 +5062,7 @@ contract PanopticPoolTest is PositionUtils {
 
         populatePositionData(width, strike, 0);
 
-        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
         uint256[] memory touchedIds = new uint256[](1);
         touchedIds[0] = tokenId;
 

@@ -1087,7 +1087,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 twapTick = getUniV3TWAP();
 
         // on forced exercise, the price *must* be outside the position's range for at least 1 leg
-        touchedId[0].validateIsExercisable(twapTick, s_tickSpacing);
+        touchedId[0].validateIsExercisable(twapTick);
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
         s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
