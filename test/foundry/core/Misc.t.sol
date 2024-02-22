@@ -222,6 +222,153 @@ contract Misctest is Test, PositionUtils {
 
         ct0.deposit(type(uint104).max, Charlie);
         ct1.deposit(type(uint104).max, Charlie);
+
+        changePrank(Seller);
+
+        token0.mint(Seller, type(uint104).max);
+        token1.mint(Seller, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max / 1_000_000, Seller);
+        ct1.deposit(type(uint104).max / 1_000_000, Seller);
+    }
+
+    // these tests are PoCs for rounding issues in the premium distribution
+    // to demonstrate the issue log the settled, gross, and owed premia at burn
+    function test_settledPremiumDistribution_demoInflatedGross() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList = $posIdList;
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // the collectedAmount will always be a round number, so it's actually not possible to get a greater grossPremium than sum(collected, owed)
+        // (owed and gross are both calculated from collectedAmount)
+        for (uint256 i = 0; i < 1000; i++) {
+            changePrank(Alice);
+            $tempIdList[0] = $posIdList[1];
+            pp.mintOptions($tempIdList, 250_000, type(uint64).max, 0, 0);
+
+            changePrank(Bob);
+            pp.mintOptions($posIdList, 250_000, type(uint64).max, 0, 0);
+
+            changePrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+            // 1998600539
+            accruePoolFeesInRange(address(uniPool), (uniPool.liquidity() * 2) / 3, 1, 1);
+            swapperc.swapTo(uniPool, 2 ** 96);
+
+            changePrank(Bob);
+            $tempIdList[0] = $posIdList[0];
+            pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+
+            changePrank(Alice);
+            pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+        }
+
+        changePrank(Bob);
+        // burn Bob's short option
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+    }
+
+    function test_settledPremiumDistribution_demoInflatedOwed() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList = $posIdList;
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // only 20 tokens actually settled, but 22 owed... 2 tokens taken from PLPs
+        // we may need to redefine availablePremium as max(availablePremium, settledTokens)
+        for (uint256 i = 0; i < 10; i++) {
+            pp.mintOptions($posIdList, 499_999, type(uint64).max, 0, 0);
+            changePrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+            // 1998600539
+            accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1, 1);
+            swapperc.swapTo(uniPool, 2 ** 96);
+            changePrank(Bob);
+            pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+        }
+
+        // burn Bob's short option
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
     }
 
     function test_success_settledPremiumDistribution() public {
@@ -237,7 +384,7 @@ contract Misctest is Test, PositionUtils {
 
         // mint OTM position
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -272,7 +419,7 @@ contract Misctest is Test, PositionUtils {
         pp.mintOptions($posIdList, 250_000, 0, 0, 0);
 
         $posIdList.push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -286,10 +433,12 @@ contract Misctest is Test, PositionUtils {
 
         changePrank(Alice);
 
+        // mint finely tuned amount of long options for Alice so premium paid = 1.1x
         pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
 
         changePrank(Bob);
 
+        // mint finely tuned amount of long options for Bob so premium paid = 1.1x
         pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
 
         changePrank(Swapper);
@@ -308,11 +457,13 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
         $tempIdList.push($posIdList[1]);
+
+        // burn Bob's short option
         pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_999,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -321,13 +472,15 @@ contract Misctest is Test, PositionUtils {
             "Incorrect Bob Delta 1"
         );
 
+        // re-mint the short option
         $posIdList[1] = $posIdList[0];
         $posIdList[0] = $tempIdList[0];
         pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
 
         $tempIdList[0] = $posIdList[1];
 
-        // Burn 1/2 of the removed liq
+        // Burn the long options, adds 1/2 of the removed liq
+        // amount of premia paid = 50_000
         pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
 
         changePrank(Alice);
@@ -390,7 +543,7 @@ contract Misctest is Test, PositionUtils {
         // L = 1
         uniPool.liquidity();
 
-        uint256 tokenId = uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
             0,
             1,
             1,
@@ -467,7 +620,7 @@ contract Misctest is Test, PositionUtils {
         // she could have still earned some fees, but now the accumulation is frozen forever.
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1244790
+            -1244789
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
