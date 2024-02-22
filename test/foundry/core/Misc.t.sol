@@ -416,7 +416,7 @@ contract Misctest is Test, PositionUtils {
 
         // sell primary chunk
         $posIdLists[0].push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -449,7 +449,7 @@ contract Misctest is Test, PositionUtils {
         changePrank(Seller);
 
         $posIdLists[1].push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -465,7 +465,7 @@ contract Misctest is Test, PositionUtils {
 
         // position type A: 1-leg long primary
         $posIdLists[2].push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -485,7 +485,7 @@ contract Misctest is Test, PositionUtils {
         // position type B: 2-leg long primary and long dummy
         $posIdLists[2].push(
             uint256(0)
-                .addUniv3pool(PanopticMath.getPoolId(address(uniPool)))
+                .addPoolId(PanopticMath.getPoolId(address(uniPool)))
                 .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
                 .addLeg(1, 1, 1, 1, 1, 1, -15, 1)
         );
@@ -498,7 +498,7 @@ contract Misctest is Test, PositionUtils {
         // position type C: 2-leg long primary and short dummy
         $posIdLists[2].push(
             uint256(0)
-                .addUniv3pool(PanopticMath.getPoolId(address(uniPool)))
+                .addPoolId(PanopticMath.getPoolId(address(uniPool)))
                 .addLeg(0, 1, 1, 1, 0, 0, 15, 1)
                 .addLeg(1, 1, 1, 0, 1, 1, -15, 1)
         );
@@ -510,7 +510,7 @@ contract Misctest is Test, PositionUtils {
 
         // position type D: 1-leg long dummy
         $posIdLists[2].push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -728,7 +728,7 @@ contract Misctest is Test, PositionUtils {
         changePrank(Seller);
 
         $posIdLists[1].push(
-            uint256(0).addUniv3pool(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
                 0,
                 1,
                 1,
@@ -1073,7 +1073,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            249_999,
+            250_000,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1230,7 +1230,7 @@ contract Misctest is Test, PositionUtils {
         // she could have still earned some fees, but now the accumulation is frozen forever.
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1244789
+            -1244790
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
