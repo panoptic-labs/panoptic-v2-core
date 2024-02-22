@@ -114,7 +114,7 @@ contract PanopticHelper {
         Leg[] memory legs = new Leg[](numLegs);
 
         uint64 poolId = tokenId.validate();
-        address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.univ3pool()));
+        address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.poolId()));
         for (uint256 i = 0; i < numLegs; ++i) {
             legs[i].poolId = poolId;
             legs[i].UniswapV3Pool = UniswapV3Pool;
@@ -315,7 +315,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // A strangle is composed of
         // 1. a call with a higher strike price
@@ -366,7 +366,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // A straddle is composed of
         // 1. a call with an identical strike price
@@ -399,7 +399,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // A call spread is composed of
         // 1. a long call with a lower strike price
@@ -432,7 +432,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // A put spread is composed of
         // 1. a long put with a higher strike price
@@ -467,7 +467,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // A call diagonal spread is composed of
         // 1. a long call with a (lower/higher) strike price and (lower/higher) width(expiry)
@@ -520,7 +520,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // A bearish diagonal spread is composed of
         // 1. a long put with a (higher/lower) strike price and (lower/higher) width(expiry)
@@ -819,7 +819,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // a call ratio spread is composed of
         // 1. a long call
@@ -852,7 +852,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // a put ratio spread is composed of
         // 1. a long put
@@ -885,7 +885,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // a call ZEBRA(zero extrinsic value back ratio spread) spread is composed of
         // 1. a short call
@@ -918,7 +918,7 @@ contract PanopticHelper {
         uint256 start
     ) public view returns (uint256 tokenId) {
         // Pool
-        tokenId = tokenId.addUniv3pool(SFPM.getPoolId(univ3pool));
+        tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
         // a put ZEBRA(zero extrinsic value back ratio spread) spread is composed of
         // 1. a short put

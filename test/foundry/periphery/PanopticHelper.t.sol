@@ -468,7 +468,7 @@ contract PanopticHelperTest is PositionUtils {
 
         optionRatio = uint8(bound(optionRatio, uint8(1), uint8(2 ** 7 - 1)));
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(
             0,
             optionRatio,
             asset ? 1 : 0,
@@ -522,7 +522,7 @@ contract PanopticHelperTest is PositionUtils {
 
         uint256 long = isLong ? 1 : 0;
         uint256 tt = tokenType ? 1 : 0;
-        uint256 tokenId = uint256(0).addUniv3pool(poolId);
+        uint256 tokenId = uint256(0).addPoolId(poolId);
 
         {
             tokenId = tokenId.addOptionRatio(optionRatio, 0);
@@ -582,7 +582,7 @@ contract PanopticHelperTest is PositionUtils {
         uint256 numberOfLegs = uint256((seed % 4) + 1);
         PanopticHelper.Leg[] memory inputLeg = new PanopticHelper.Leg[](numberOfLegs);
 
-        uint256 tokenId = uint256(0).addUniv3pool(poolId);
+        uint256 tokenId = uint256(0).addPoolId(poolId);
 
         for (uint256 i; i < numberOfLegs; ++i) {
             // update seed
@@ -736,7 +736,7 @@ contract PanopticHelperTest is PositionUtils {
         isLongArray[9] = uint256(0).addIsLong(1, 0).addIsLong(1, 1);
 
         uint256 riskPreset = uint256(keccak256(abi.encode(seed))) % 10;
-        uint256 tokenId = riskArray[riskPreset].addUniv3pool(poolId) + isLongArray[riskPreset];
+        uint256 tokenId = riskArray[riskPreset].addPoolId(poolId) + isLongArray[riskPreset];
 
         uint256 optionRatio = uint256(seed % 2 ** 7);
         optionRatio = optionRatio == 0 ? 1 : optionRatio;
@@ -884,7 +884,7 @@ contract PanopticHelperTest is PositionUtils {
         tokenTypeArray[9] = uint256(0).addTokenType(1, 0).addTokenType(1, 1);
 
         uint256 riskPreset = uint256(keccak256(abi.encode(seed))) % 10;
-        uint256 tokenId = riskArray[riskPreset].addUniv3pool(poolId) + tokenTypeArray[riskPreset];
+        uint256 tokenId = riskArray[riskPreset].addPoolId(poolId) + tokenTypeArray[riskPreset];
 
         uint256 optionRatio = uint256(seed % 2 ** 7);
         optionRatio = optionRatio == 0 ? 1 : optionRatio;
@@ -934,6 +934,16 @@ contract PanopticHelperTest is PositionUtils {
                 width: width
             });
             inputLeg[i] = _Leg;
+        }
+
+        for (uint256 i; i < numberOfLegs; ++i) {
+            // long strangles cannot be partnered; only short strangles
+            if (
+                tokenId.riskPartner(i) != i &&
+                tokenId.tokenType(i) != tokenId.tokenType(tokenId.riskPartner(i))
+            ) {
+                vm.assume(tokenId.isLong(i) != 1);
+            }
         }
 
         for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
@@ -990,7 +1000,7 @@ contract PanopticHelperTest is PositionUtils {
 
         /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
         // leg 1
-        uint256 tokenId = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -1001,7 +1011,7 @@ contract PanopticHelperTest is PositionUtils {
             $width
         );
         // leg 2
-        uint256 tokenId2 = uint256(0).addUniv3pool(poolId).addLeg(
+        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,

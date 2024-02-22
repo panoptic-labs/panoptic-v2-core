@@ -59,12 +59,21 @@ contract TokenIdTest is Test, PositionUtils {
         harness = new TokenIdHarness();
     }
 
-    function test_Success_AddUniv3Pool(address y) public {
+    function test_Success_AddPoolId(address y) public {
         uint256 tokenId;
 
-        tokenId = harness.addUniv3pool(tokenId, uint64(uint160(y)));
+        tokenId = harness.addPoolId(tokenId, uint64(uint160(y)));
 
-        assertEq(harness.univ3pool(tokenId), uint64(uint160(y)));
+        assertEq(harness.poolId(tokenId), uint64(uint160(y)));
+    }
+
+    function test_Success_AddTickSpacing(int24 y) public {
+        uint256 tokenId;
+
+        y = int24(bound(y, int24(0), int24(2 ** 16 - 1)));
+        tokenId = harness.addTickSpacing(tokenId, y);
+
+        assertEq(harness.tickSpacing(tokenId), y);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -663,11 +672,12 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume(strike - ((rangeDown) % tickSpacing) == 0);
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId = harness.addWidth(0, width, 0);
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0);
         tokenId = harness.addStrike(tokenId, strike, 0);
 
         // Test the asTicks function
-        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0);
 
         // Ensure tick values returned are correct
         assertEq(tickLower, strike - rangeDown);
@@ -695,13 +705,13 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume((strike + rangeDown) % tickSpacing != 0 || (strike - rangeUp) % tickSpacing != 0);
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId;
-        tokenId = harness.addWidth(0, width, 0); // width
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
         vm.expectRevert(Errors.TicksNotInitializable.selector);
         // Test the asTicks function
-        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0);
     }
 
     function test_Fail_asTicks_belowMinTick(
@@ -730,13 +740,13 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId;
-        tokenId = harness.addWidth(0, width, 0); // width
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
         // Test the asTicks function
         vm.expectRevert(Errors.TicksNotInitializable.selector);
-        harness.asTicks(tokenId, 0, tickSpacing);
+        harness.asTicks(tokenId, 0);
     }
 
     function test_Fail_asTicks_aboveMaxTick(
@@ -765,13 +775,13 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId;
-        tokenId = harness.addWidth(0, width, 0); // width
+        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
         // Test the asTicks function
         vm.expectRevert(Errors.TicksNotInitializable.selector);
-        harness.asTicks(tokenId, 0, tickSpacing);
+        harness.asTicks(tokenId, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -963,7 +973,7 @@ contract TokenIdTest is Test, PositionUtils {
             widthSeed
         );
 
-        uint64 expectedData = harness.univ3pool(tokenId);
+        uint64 expectedData = harness.poolId(tokenId);
         uint64 returnedData = harness.validate(tokenId);
 
         assertEq(expectedData, returnedData);
@@ -984,7 +994,7 @@ contract TokenIdTest is Test, PositionUtils {
         setPoolStatus(strikeSeed);
 
         // add uni pool to tokenId
-        tokenId = harness.addUniv3pool(tokenId, uint64(poolId));
+        tokenId = harness.addPoolId(tokenId, uint64(poolId));
 
         // will fail as there are no valid legs
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 1));
@@ -1293,6 +1303,94 @@ contract TokenIdTest is Test, PositionUtils {
         harness.validate(tokenId);
     }
 
+    function test_Fail_validate_longStrangle(
+        uint64 poolId,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int24 strikeSeed,
+        int256 widthSeed,
+        int24 poolStatusSeed
+    ) public {
+        uint256 tokenId;
+
+        // fuzzes a valid currentTick
+        setPoolStatus(poolStatusSeed);
+
+        //construct two leg token
+        tokenId = fuzzedPosition(
+            2, // total amount of legs
+            poolId,
+            optionRatioSeed,
+            assetSeed,
+            isLongSeed,
+            tokenTypeSeed,
+            strikeSeed,
+            widthSeed
+        );
+
+        {
+            //clear all risk partner bits
+            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+
+            // leg 1 will have risk partner as leg 2
+            tokenId = harness.addRiskPartner(tokenId, 1, 0);
+
+            // leg 2 will have risk partner as leg 1
+            tokenId = harness.addRiskPartner(tokenId, 0, 1);
+        }
+
+        {
+            // clear all asset bits
+            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+
+            // leg 1 asset 0
+            tokenId = harness.addAsset(tokenId, 0, 1);
+
+            // leg 2 asset 1
+            tokenId = harness.addAsset(tokenId, 0, 1);
+        }
+
+        /// create legs with same option ratio
+        {
+            //clear all option ratio bits
+            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+
+            // leg 1 option pseudorandom option ratio
+            tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
+
+            // leg 2 option pseudorandom option ratio
+            tokenId = harness.addOptionRatio(tokenId, 1, 1);
+        }
+
+        {
+            //clear all is long bits
+            tokenId = tokenId & CLEAR_IS_LONG_MASK;
+
+            // leg 1 will be long
+            tokenId = harness.addIsLong(tokenId, 1, 0);
+
+            // leg 2 will be long
+            tokenId = harness.addIsLong(tokenId, 1, 1);
+        }
+
+        {
+            //clear all risk partner bits
+            tokenId = tokenId & CLEAR_TOKEN_TYPE_MASK;
+
+            // leg 1 will be asset 0
+            tokenId = harness.addTokenType(tokenId, 0, 0);
+
+            // leg 2 will be asset 1
+            tokenId = harness.addTokenType(tokenId, 1, 1);
+        }
+
+        // will fail as risk partners must have the same asset
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 5));
+        harness.validate(tokenId);
+    }
+
     function test_Fail_validate_synthPos(
         uint64 poolId,
         uint256 optionRatioSeed,
@@ -1557,7 +1655,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     function test_Success_validateIsExercisable_aboveTick(
@@ -1609,7 +1707,7 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addIsLong(tokenId, 1, i);
         }
 
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     function test_Fail_validateIsExercisable_shortPos(
@@ -1643,7 +1741,7 @@ contract TokenIdTest is Test, PositionUtils {
         tokenId = tokenId & CLEAR_IS_LONG_MASK;
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     function test_Fail_validateIsExercisable_inRange(
@@ -1697,7 +1795,7 @@ contract TokenIdTest is Test, PositionUtils {
         }
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
-        harness.validateIsExercisable(tokenId, currentTick, tickSpacing);
+        harness.validateIsExercisable(tokenId, currentTick);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1872,76 +1970,6 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(tokenId, returnedToken);
     }
 
-    function test_Success_MatchLongChunk_Positive(
-        int256 strike,
-        int256 width,
-        uint256 tokenType,
-        uint256 isLong,
-        uint256 tokenId,
-        uint256 leg
-    ) public {
-        leg = bound(leg, 0, 3);
-        {
-            // clear relevant chunk info out so it can be refilled with new data
-            uint256[4] memory clearMasks = [
-                0xFFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_000000000CFF_FFFFFFFFFFFFFFFF,
-                0xFFFFFFFFFFFF_FFFFFFFFFFFF_000000000CFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF,
-                0xFFFFFFFFFFFF_000000000CFF_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF,
-                0x000000000CFF_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF
-            ];
-            tokenId = tokenId & clearMasks[leg];
-        }
-        strike = bound(strike, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        width = bound(width, 1, 4094);
-        tokenType = bound(tokenType, 0, 1);
-        isLong = bound(isLong, 0, 1);
-
-        tokenId = tokenId
-            .addStrike(int24(strike), leg)
-            .addWidth(int24(width), leg)
-            .addTokenType(tokenType, leg)
-            .addIsLong(isLong, leg);
-
-        int24 _strike = int24(strike);
-        uint256 identity = uint256(0)
-            .addStrike(int24(_strike), 0)
-            .addWidth(int24(width), 0)
-            .addTokenType(tokenType, 0)
-            .addIsLong(isLong, 0);
-
-        assertTrue(harness.matchLongChunk(tokenId, leg, identity));
-    }
-
-    function test_Success_MatchLongChunk_Negative(
-        uint256 tokenId,
-        uint256 leg,
-        int256 strike,
-        int256 width,
-        uint256 tokenType,
-        uint256 isLong
-    ) public {
-        leg = bound(leg, 0, 3);
-        strike = bound(strike, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        width = bound(width, 1, 4094);
-        tokenType = bound(tokenType, 0, 1);
-        isLong = bound(isLong, 0, 1);
-
-        vm.assume(
-            (tokenId.strike(leg) != strike) ||
-                (tokenId.width(leg) != width) ||
-                (tokenId.tokenType(leg) != tokenType) ||
-                (tokenId.isLong(leg) != isLong)
-        );
-
-        uint256 identity = uint256(0)
-            .addStrike(int24(strike), 0)
-            .addWidth(int24(width), 0)
-            .addTokenType(tokenType, 0)
-            .addIsLong(isLong, 0);
-
-        assertFalse(harness.matchLongChunk(tokenId, leg, identity));
-    }
-
     /*//////////////////////////////////////////////////////////////
                          DYNAMIC TOKEN GENERATION
     //////////////////////////////////////////////////////////////*/
@@ -1951,7 +1979,7 @@ contract TokenIdTest is Test, PositionUtils {
     // uses a seed to fuzz data so that there is different data for each leg
     function fuzzedPosition(
         uint256 totalLegs,
-        uint64 poolId,
+        uint64 poolIdSeed,
         uint256 optionRatioSeed,
         uint256 assetSeed,
         uint256 isLongSeed,
@@ -1959,7 +1987,12 @@ contract TokenIdTest is Test, PositionUtils {
         int24 strikeSeed,
         int256 widthSeed
     ) internal returns (uint256) {
-        uint256 tokenId;
+        uint64 poolId = uint64(
+            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
+                (uint64(uint24(tickSpacing)) << 48)
+        );
+        // add poolId to token
+        uint256 tokenId = harness.addPoolId(0, poolId);
 
         for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
             // We don't want the same data for each leg
@@ -1988,11 +2021,9 @@ contract TokenIdTest is Test, PositionUtils {
             /// bound inputs
             int24 strike;
             int24 width;
-            uint64 poolId;
 
             {
                 // the following must be at least 1
-                poolId = uint64(bound(poolId, 1, type(uint64).max));
                 optionRatioSeed = bound(optionRatioSeed, 1, 127);
 
                 width = int24(bound(widthSeed, 1, 4094));
@@ -2015,9 +2046,6 @@ contract TokenIdTest is Test, PositionUtils {
             }
 
             {
-                // add univ3pool to token
-                tokenId = harness.addUniv3pool(tokenId, poolId);
-
                 // add a leg
                 // no risk partner by default (will reference its own leg index)
                 tokenId = harness.addLeg(
