@@ -34,8 +34,18 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the poolId (Panoptic's uni v3 pool fingerprint) of the Uniswap v3 pool
      */
-    function univ3pool(uint256 self) public view returns (uint64) {
-        uint64 r = TokenId.univ3pool(self);
+    function poolId(uint256 self) public view returns (uint64) {
+        uint64 r = TokenId.poolId(self);
+        return r;
+    }
+
+    /**
+     * @notice The tickSpacing of the Uniswap v3 Pool for this position
+     * @param self the option position Id.
+     * @return the tickSpacing of the Uniswap v3 pool
+     */
+    function tickSpacing(uint256 self) public view returns (int24) {
+        int24 r = TokenId.tickSpacing(self);
         return r;
     }
 
@@ -142,8 +152,18 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the tokenId with the Uniswap V3 pool added to it.
      */
-    function addUniv3pool(uint256 self, uint64 _poolId) public view returns (uint256) {
-        uint256 r = TokenId.addUniv3pool(self, _poolId);
+    function addPoolId(uint256 self, uint64 _poolId) public view returns (uint256) {
+        uint256 r = TokenId.addPoolId(self, _poolId);
+        return r;
+    }
+
+    /**
+     * @notice Add the Uniswap v3 Pool pointed to by this option position.
+     * @param self the option position Id.
+     * @return the tokenId with the Uniswap V3 pool added to it.
+     */
+    function addTickSpacing(uint256 self, int24 _tickSpacing) public view returns (uint256) {
+        uint256 r = TokenId.addTickSpacing(self, _tickSpacing);
         return r;
     }
 
@@ -331,16 +351,14 @@ contract TokenIdHarness {
      * @dev NOTE does not extract liquidity which is the third piece of information in a LiquidityChunk.
      * @param self the option position id.
      * @param legIndex the leg index of the position (in {0,1,2,3}).
-     * @param tickSpacing the tick spacing of the underlying Univ3 pool.
      * @return legLowerTick the lower tick of the leg/liquidity chunk.
      * @return legUpperTick the upper tick of the leg/liquidity chunk.
      */
     function asTicks(
         uint256 self,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) public view returns (int24 legLowerTick, int24 legUpperTick) {
-        (legLowerTick, legUpperTick) = TokenId.asTicks(self, legIndex, tickSpacing);
+        (legLowerTick, legUpperTick) = TokenId.asTicks(self, legIndex);
     }
 
     /**
@@ -416,9 +434,8 @@ contract TokenIdHarness {
      * @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
      * @param self the option position Id (tokenId)
      * @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-     * @param tickSpacing the tick spacing of the Univ3 pool used to compute the width of the chunks.
      */
-    function validateIsExercisable(uint256 self, int24 currentTick, int24 tickSpacing) public view {
-        TokenId.validateIsExercisable(self, currentTick, tickSpacing);
+    function validateIsExercisable(uint256 self, int24 currentTick) public view {
+        TokenId.validateIsExercisable(self, currentTick);
     }
 }

@@ -24,6 +24,9 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
+    // masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
+    uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
+
     /*//////////////////////////////////////////////////////////////
                               MATH HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -31,35 +34,34 @@ library PanopticMath {
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     /// @dev Example:
     ///      the 64 bits are the 64 *last* (most significant) bits - and thus corresponds to the *first* 16 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, e.g.:
-    ///        univ3pool = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    ///      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (ie. max tickSpacing is 32768)
+    ///      e.g.:
+    ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    ///        tickSpacing = 60
     ///      the returned id is then:
-    ///        0x8ad599c3A0ff1De0
-    ///      which as a uint64 is:
-    ///        10004071212772171232.
+    ///        poolPattern = 0x00008ad599c3A0ff
+    ///        tickSpacing = 0x003c000000000000    +
+    ///        --------------------------------------------
+    ///        poolId      = 0x003c8ad599c3A0ff
     ///
-    /// @param univ3pool the Uniswap v3 pool to get the ID of
+    /// @param univ3pool the address of the Uniswap v3 pool to get the ID of
     /// @return a uint64 representing a fingerprint of the uniswap v3 pool address
-    function getPoolId(address univ3pool) internal pure returns (uint64) {
-        return uint64(uint160(univ3pool) >> 96);
+    function getPoolId(address univ3pool) internal view returns (uint64) {
+        unchecked {
+            int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
+            uint64 poolId = uint64(uint160(univ3pool) >> 112);
+            poolId += uint64(uint24(tickSpacing)) << 48;
+            return poolId;
+        }
     }
 
-    /// @notice Returns the resultant pool ID for the given 64-bit base pool ID and parameters.
-    /// @param basePoolId the 64-bit base pool ID
-    /// @param token0 the address of the first token in the pool
-    /// @param token1 the address of the second token in the pool
-    /// @param fee the fee of the pool in hundredths of a bi
-    /// @return finalPoolId the final 64-bit pool id as encoded in the `TokenId` type - composed of the last 64 bits of the address and a hash of the parameters
-    function getFinalPoolId(
-        uint64 basePoolId,
-        address token0,
-        address token1,
-        uint24 fee
-    ) internal pure returns (uint64) {
+    /// @notice Increments the pool pattern (first 48 bits) of a poolId by 1.
+    /// @param poolId the 64-bit pool ID
+    /// @return poolId with the pool pattern portion incremented by 1
+    function incrementPoolPattern(uint64 poolId) internal pure returns (uint64) {
         unchecked {
-            return
-                basePoolId +
-                (uint64(uint256(keccak256(abi.encodePacked(token0, token1, fee)))) >> 32);
+            // increment
+            return (poolId & TICKSPACING_MASK) + (uint48(poolId) + 1);
         }
     }
 
@@ -161,16 +163,14 @@ library PanopticMath {
     /// @param tokenId the option position id
     /// @param legIndex the leg index of the option position, can be {0,1,2,3}
     /// @param positionSize the number of contracts held by this leg
-    /// @param tickSpacing the tick spacing of the underlying univ3 pool
-    /// @return liquidityChunk a uint256 bit-packed (see `LiquidityChunk.sol`) with `tickLower`, `tickUpper`, and `liquidity`
+    // @return liquidityChunk a uint256 bit-packed (see `LiquidityChunk.sol`) with `tickLower`, `tickUpper`, and `liquidity`
     function getLiquidityChunk(
         uint256 tokenId,
         uint256 legIndex,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal pure returns (uint256 liquidityChunk) {
         // get the tick range for this leg
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
         // Get the amount of liquidity owned by this leg in the univ3 pool in the above tick range
         // Background:
@@ -258,23 +258,16 @@ library PanopticMath {
     /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
     /// @param tokenId the option position id
     /// @param positionSize The number of contracts of this option
-    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
     /// @return longAmounts Left-right packed word where the right conains the total contract size and the left total notional
     /// @return shortAmounts Left-right packed word where the right conains the total contract size and the left total notional
     function computeExercisedAmounts(
         uint256 tokenId,
-        uint128 positionSize,
-        int24 tickSpacing
+        uint128 positionSize
     ) internal pure returns (int256 longAmounts, int256 shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             // Compute the amount of funds that have been removed from the Panoptic Pool
-            (int256 longs, int256 shorts) = _calculateIOAmounts(
-                tokenId,
-                positionSize,
-                leg,
-                tickSpacing
-            );
+            (int256 longs, int256 shorts) = _calculateIOAmounts(tokenId, positionSize, leg);
 
             longAmounts = longAmounts.add(longs);
             shortAmounts = shortAmounts.add(shorts);
@@ -446,16 +439,14 @@ library PanopticMath {
     /// @param tokenId the option position identifier
     /// @param positionSize the number of option contracts held in this position (each contract can control multiple tokens)
     /// @param legIndex the leg index of the option contract, can be {0,1,2,3}
-    /// @param tickSpacing the tick spacing of the underlying UniV3 pool
     /// @return amountsMoved a LeftRight encoded variable containing the amount0 and the amount1 value controlled by this option position's leg
     function getAmountsMoved(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) internal pure returns (uint256 amountsMoved) {
         // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex, tickSpacing);
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
         // positionSize: how many option contracts we have.
 
@@ -479,17 +470,15 @@ library PanopticMath {
     /// @param tokenId the option position identifier
     /// @param positionSize The number of positions minted
     /// @param legIndex the leg index minted in this position, can be {0,1,2,3}
-    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
     /// @return longs A LeftRight-packed word containing the total amount of long positions
     /// @return shorts A LeftRight-packed word containing the amount of short positions
     function _calculateIOAmounts(
         uint256 tokenId,
         uint128 positionSize,
-        uint256 legIndex,
-        int24 tickSpacing
+        uint256 legIndex
     ) internal pure returns (int256 longs, int256 shorts) {
         // compute amounts moved
-        uint256 amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex, tickSpacing);
+        uint256 amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
 
         bool isShort = tokenId.isLong(legIndex) == 0;
 
