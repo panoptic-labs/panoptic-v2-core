@@ -512,11 +512,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // initalize Panoptic Pool
         panopticPool.modifiedStartPool(token0, token1, uniswapPool);
 
-        (CollateralTracker collateralTracker0, CollateralTracker collateralTracker1) = panopticPool
-            .getCollateralTokens();
-
-        collateralToken0 = CollateralTrackerHarness(address(collateralTracker0));
-        collateralToken1 = CollateralTrackerHarness(address(collateralTracker1));
+        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
+        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
 
         // store panoptic pool address
         panopticPoolAddress = address(panopticPool);

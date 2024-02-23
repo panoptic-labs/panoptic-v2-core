@@ -541,10 +541,14 @@ library TokenId {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
-                (int24 tickLower, int24 tickUpper) = self.asTicks(i);
+                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                    self.width(i),
+                    self.tickSpacing()
+                );
 
+                int24 strike = self.strike(i);
                 // check if the price is outside this chunk
-                if ((currentTick >= tickUpper) || (currentTick < tickLower)) {
+                if ((currentTick >= strike + rangeUp) || (currentTick < strike - rangeDown)) {
                     // if this leg is long and the price beyond the leg's range:
                     // this exercised ID, `self`, appears valid
                     if (self.isLong(i) == 1) return; // validated

@@ -247,14 +247,6 @@ contract PanopticFactoryTest is Test {
         uint128 liquidityAfter = pool.liquidity();
         // ensure liquidity in pool now is sum of liquidity before and user deployed amount
         assertEq(liquidityAfter - liquidityBefore, fullRangeLiquidity);
-
-        /* Shares checks */
-        // check factory receives appropriate amount of shares
-        // As this is the first deposit supply will be equal to zero
-        // shares = supply == 0 ? assets : mulDiv(assets, supply, totalAssets());
-        (CollateralTracker collateralToken0, CollateralTracker collateralToken1) = PanopticPool(
-            preComputedPool
-        ).getCollateralTokens();
     }
 
     // deploy a pool with token0 as WETH

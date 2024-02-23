@@ -56,30 +56,22 @@ contract PanopticHelper {
         (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool
             .calculateAccumulatedFeesBatch(account, false, positionIdList);
 
-        (CollateralTracker collateralToken0, CollateralTracker collateralToken1) = pool
-            .getCollateralTokens();
-
-        // stack rolling
-        int24 _atTick = atTick;
-        uint256 _tokenType = tokenType;
-        address _account = account;
-
         // Query the current and required collateral amounts for the two tokens
-        uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
-            _account,
-            _atTick,
+        uint256 tokenData0 = pool.collateralToken0().getAccountMarginDetails(
+            account,
+            atTick,
             positionBalanceArray,
             premium0
         );
-        uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
-            _account,
-            _atTick,
+        uint256 tokenData1 = pool.collateralToken1().getAccountMarginDetails(
+            account,
+            atTick,
             positionBalanceArray,
             premium1
         );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
-        return PanopticMath.convertCollateralData(tokenData0, tokenData1, _tokenType, _atTick);
+        return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
     }
 
     /// @notice Returns the net assets (balance - maintenance margin) of a given account on a given pool.

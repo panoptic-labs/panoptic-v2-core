@@ -205,7 +205,8 @@ contract Misctest is Test, PositionUtils {
         token0.mint(Alice, type(uint104).max);
         token1.mint(Alice, type(uint104).max);
 
-        (ct0, ct1) = pp.getCollateralTokens();
+        ct0 = pp.collateralToken0();
+        ct1 = pp.collateralToken1();
 
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);

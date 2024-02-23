@@ -12,6 +12,7 @@ import {Math} from "@libraries/Math.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -240,6 +241,11 @@ library PanopticMath {
 
             (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
 
+            console2.log("strike", strike);
+            console2.log("width", width);
+            console2.log("tickLower", tickLower);
+            console2.log("tickUpper", tickUpper);
+            console2.log("tickSpacing", tickSpacing);
             // Revert if the upper/lower ticks are not multiples of tickSpacing
             // Revert if the tick range extends from the strike outside of the valid tick range
             // These are invalid states, and would revert silently later in `univ3Pool.mint`
