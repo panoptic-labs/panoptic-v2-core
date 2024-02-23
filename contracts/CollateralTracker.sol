@@ -748,7 +748,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external view returns (int256 exerciseFees) {
         // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
         // we don't need the leg information itself, really just "the number of half ranges" from the strike price:
-        uint256 maxNumRangesFromStrike; // technically "maxNum(Half)RangesFromStrike" but the name is long
+        uint256 maxNumRangesFromStrike = 1; // technically "maxNum(Half)RangesFromStrike" but the name is long
 
         unchecked {
             for (uint256 leg = 0; leg < TokenId.countLegs(positionId); ++leg) {
@@ -764,7 +764,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             )
                         )
                     );
-
+                    console2.log(
+                        "legRangesC",
+                        uint256(Math.abs(int256(positionId.strike(leg) - currentTick) / range - 1))
+                    );
+                    console2.log("rangeC", range);
+                    console2.log("strikeC", positionId.strike(leg));
+                    console2.log("currentTickC", currentTick);
                     maxNumRangesFromStrike = Math.max(
                         uint256(Math.abs(int256(positionId.strike(leg)) - currentTick) / range),
                         maxNumRangesFromStrike
@@ -815,8 +821,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-            int256 fee = (s_exerciseCost >> maxNumRangesFromStrike); // exponential decay of fee based on number of half ranges away from the price
-
+            // subtract 1 from max half ranges from strike so fee starts at s_exerciseCost when moving OTM
+            int256 fee = (s_exerciseCost >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
+            console2.log("feeC", fee);
+            console2.log("longAmountsC.right", longAmounts.rightSlot());
+            console2.log("longAmountsC.left", longAmounts.leftSlot());
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
                 .toRightSlot(int128((int256(longAmounts.rightSlot()) * int256(fee)) / DECIMALS_128))

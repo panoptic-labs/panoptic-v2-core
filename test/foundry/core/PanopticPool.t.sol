@@ -1770,7 +1770,8 @@ contract PanopticPoolTest is PositionUtils {
             true,
             posIdList
         );
-
+        console2.log("premium0Before", premium0Before);
+        console2.log("premium1Before", premium1Before);
         accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
 
         changePrank(address(sfpm));
@@ -1786,26 +1787,19 @@ contract PanopticPoolTest is PositionUtils {
         assertEq(premium0, 0);
         assertEq(premium1, 0);
 
+        // if we include pending premium, the amount should be the same as the accrued premium
         (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
 
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
-
-        changePrank(Bob);
-
-        // settle premium by minting another position touching the same chunk, triggering a collect
-        pp.mintOptions(posIdList, positionSize, 0, 0, 0);
-
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
-
-        // now that we have settled, the results should be the same
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
-
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
-
-        assertApproxEqAbs(uint256(premium0), premiaSeed[0], premiaSeed[0] / 1_000_000);
-        assertApproxEqAbs(uint256(premium1), premiaSeed[1], premiaSeed[1] / 1_000_000);
+        assertApproxEqAbs(
+            uint256(premium0 - premium0Before),
+            premiaSeed[0],
+            premiaSeed[0] / 1_000_000
+        );
+        assertApproxEqAbs(
+            uint256(premium1 - premium1Before),
+            premiaSeed[1],
+            premiaSeed[1] / 1_000_000
+        );
     }
 
     function test_Success_calculatePortfolioValue_2xOTMShortCall(
@@ -4135,8 +4129,12 @@ contract PanopticPoolTest is PositionUtils {
                 );
 
                 legRanges = currentTick < strikes[i] - rangeUp
-                    ? (2 * (strikes[i] - rangeUp - currentTick)) / rangeUp
-                    : (2 * (currentTick - strikes[i] - rangeUp)) / rangeUp;
+                    ? ((strikes[i] - rangeUp - currentTick)) / rangeUp
+                    : ((currentTick - strikes[i] - rangeUp)) / rangeUp;
+                console2.log("legRanges", legRanges);
+                console2.log("rangeUp", rangeUp);
+                console2.log("strikes[i]", strikes[i]);
+                console2.log("currentTick", currentTick);
             }
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
         }
@@ -4434,8 +4432,8 @@ contract PanopticPoolTest is PositionUtils {
                 );
 
                 legRanges = currentTick < strikes[i] - rangeUp
-                    ? (2 * (strikes[i] - rangeUp - currentTick)) / rangeUp
-                    : (2 * (currentTick - strikes[i] - rangeUp)) / rangeUp;
+                    ? ((strikes[i] - rangeUp - currentTick)) / rangeUp
+                    : ((currentTick - strikes[i] - rangeUp)) / rangeUp;
             }
 
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;

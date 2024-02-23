@@ -241,11 +241,6 @@ library PanopticMath {
 
             (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
 
-            console2.log("strike", strike);
-            console2.log("width", width);
-            console2.log("tickLower", tickLower);
-            console2.log("tickUpper", tickUpper);
-            console2.log("tickSpacing", tickSpacing);
             // Revert if the upper/lower ticks are not multiples of tickSpacing
             // Revert if the tick range extends from the strike outside of the valid tick range
             // These are invalid states, and would revert silently later in `univ3Pool.mint`
