@@ -1518,7 +1518,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
                         //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
-                        uint160 scaleFactor = Math.getSqrtRatioAtTick(strike - tickLower);
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(
+                            (tickUpper - strike) + (strike - tickLower)
+                        );
                         uint256 c3 = Math.mulDiv(
                             amountMoved,
                             scaleFactor - ratio,
