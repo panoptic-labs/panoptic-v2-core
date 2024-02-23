@@ -236,10 +236,9 @@ library PanopticMath {
             int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
             int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
 
-            // The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            int24 oneSidedRange = (width * tickSpacing) / 2;
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
-            (tickLower, tickUpper) = (strike - oneSidedRange, strike + oneSidedRange);
+            (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
 
             // Revert if the upper/lower ticks are not multiples of tickSpacing
             // Revert if the tick range extends from the strike outside of the valid tick range
@@ -387,42 +386,20 @@ library PanopticMath {
         }
     }
 
-    /// @notice tick one-sided range is calculated as (width * tickSpacing) / 2
-    /// the logic is abstracted from the Solmate/FixedPointMathLib.sol library
-    /// if (width * tickSpacing) is:
-    ///     even: tick range -> (strike - range, strike + range)
-    ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
-    /// Additionally, the rangeUp is always used for calculations where the one-sided range is explicitly needed
-    /// when (width * tickSpacing) is even the range will be the same, whilst when it is odd we use the rounded up value.
+    /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.
+    /// @dev given r = (width * tickSpacing) / 2, tickLower = strike - floor(r), tickUpper = strike + ceil(r)
     /// @param width the width of the leg.
-    /// @param tickSpacing the tick spacing of the underlying Univ3 pool.
-    function mulDivAsTicks(
+    /// @param tickSpacing the tick spacing of the underlying pool.
+    /// @return rangeDown the lower tick of the range
+    /// @return rangeUp the upper tick of the range
+    function getRangesFromStrike(
         int24 width,
         int24 tickSpacing
-    ) external pure returns (int24 rangeDown, int24 rangeUp) {
-        /// @solidity memory-safe-assembly
-        //cache product and denominator
-        assembly {
-            // cache denominator
-            let denominator := 2
-
-            // Equivalent to require(denominator != 0 && (y == 0 || x <= type(uint256).max / y))
-            if iszero(
-                mul(denominator, iszero(mul(denominator, gt(width, div(MAX_UINT256, tickSpacing)))))
-            ) {
-                revert(0, 0)
-            }
-
-            //cache product
-            let product := mul(width, tickSpacing)
-
-            // int division result
-            rangeDown := div(product, denominator)
-
-            // If x * y modulo the denominator is strictly greater than 0,
-            // 1 is added to round up the division of x * y by the denominator.
-            rangeUp := add(gt(mod(product, denominator), 0), rangeDown)
-        }
+    ) internal pure returns (int24, int24) {
+        return (
+            (width * tickSpacing) / 2,
+            int24(int256(Math.unsafeDivRoundingUp(uint24(width) * uint24(tickSpacing), 2)))
+        );
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
@@ -487,7 +464,7 @@ library PanopticMath {
     ) internal pure returns (uint256 amountsMoved) {
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-        uint256 liquidityAmounts = uint256(0).createChunk(legLowerTick, legUpperTick, 0);
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
 
         uint128 amount0;
         uint128 amount1;

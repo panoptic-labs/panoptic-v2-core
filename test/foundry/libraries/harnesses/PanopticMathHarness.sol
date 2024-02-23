@@ -197,11 +197,11 @@ contract PanopticMathHarness is Test {
         return result;
     }
 
-    function mulDivAsTicks(
+    function getRangesFromStrike(
         int24 width,
         int24 tickSpacing
     ) public pure returns (int24 rangeDown, int24 rangeUp) {
-        (int24 result0, int24 result1) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         return (result0, result1);
     }
 }

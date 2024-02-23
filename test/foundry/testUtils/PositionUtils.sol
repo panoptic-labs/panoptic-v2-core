@@ -173,7 +173,7 @@ contract PositionUtils is Test {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)
@@ -204,7 +204,7 @@ contract PositionUtils is Test {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)
@@ -302,7 +302,7 @@ contract PositionUtils is Test {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)
@@ -347,7 +347,7 @@ contract PositionUtils is Test {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)
@@ -391,7 +391,7 @@ contract PositionUtils is Test {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)
@@ -422,7 +422,7 @@ contract PositionUtils is Test {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(ts));
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)

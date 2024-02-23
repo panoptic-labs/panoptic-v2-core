@@ -1236,7 +1236,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             int24 rangeDown;
             int24 rangeUp;
-            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(tickSpacing));
+            (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
             (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
@@ -1307,7 +1307,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             int24 rangeDown;
             int24 rangeUp;
-            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, int24(tickSpacing));
+            (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
             (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
@@ -1605,17 +1605,17 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     // mul div as ticks
-    function test_Success_mulDivAsTicks_1bps_1TickWide() public {
+    function test_Success_getRangesFromStrike_1bps_1TickWide() public {
         int24 width = 1;
         int24 tickSpacing = 1;
 
-        (int24 rangeDown, int24 rangeUp) = harness.mulDivAsTicks(width, tickSpacing);
+        (int24 rangeDown, int24 rangeUp) = harness.getRangesFromStrike(width, tickSpacing);
 
         assertEq(rangeDown, 0, "rangeDown");
         assertEq(rangeUp, 1, "rangeUp");
     }
 
-    function test_Success_mulDivAsTicks_allCombos(
+    function test_Success_getRangesFromStrike_allCombos(
         uint16 widthSeed,
         uint16 tickSpacing,
         int24 strike
@@ -1633,7 +1633,7 @@ contract PanopticMathTest is Test, PositionUtils {
         vm.assume(strike > TickMath.MIN_TICK && strike < TickMath.MAX_TICK);
 
         // invoke
-        (int24 rangeDown, int24 rangeUp) = harness.mulDivAsTicks(
+        (int24 rangeDown, int24 rangeUp) = harness.getRangesFromStrike(
             int24(widthBounded),
             int24(tickSpacingBounded)
         );

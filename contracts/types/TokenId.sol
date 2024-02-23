@@ -541,22 +541,10 @@ library TokenId {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
-                // compute the range of this leg/chunk
-
-                /// The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-                /// if (width * tickSpacing) is:
-                ///     even: tick range -> (strike - range, strike + range)
-                ///     odd: tick range ->  (strike - range rounded down, strike + range rounded up)
-                (int24 oneSidedRangeLower, int24 oneSidedRangeUpper) = PanopticMath.mulDivAsTicks(
-                    self.width(i),
-                    tickSpacing
-                );
+                (int24 tickLower, int24 tickUpper) = self.asTicks(i);
 
                 // check if the price is outside this chunk
-                if (
-                    (currentTick >= (self.strike(i) + oneSidedRangeUpper)) ||
-                    (currentTick < (self.strike(i) - oneSidedRangeLower))
-                ) {
+                if ((currentTick >= tickUpper) || (currentTick < tickLower)) {
                     // if this leg is long and the price beyond the leg's range:
                     // this exercised ID, `self`, appears valid
                     if (self.isLong(i) == 1) return; // validated

@@ -476,7 +476,7 @@ contract PanopticPoolTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function populatePositionData(int24 width, int24 strike, uint256 positionSizeSeed) internal {
-        (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         tickLower = int24(strike - rangeDown);
         tickLowers.push(tickLower);
@@ -531,7 +531,7 @@ contract PanopticPoolTest is PositionUtils {
         int24 strike,
         uint256 positionSizeSeed
     ) internal {
-        (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         tickLower = int24(strike - rangeDown);
         tickUpper = int24(strike + rangeUp);
@@ -559,7 +559,7 @@ contract PanopticPoolTest is PositionUtils {
         int24 strike,
         uint256[2] memory positionSizeSeeds
     ) internal {
-        (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         tickLower = int24(strike - rangeDown);
         tickUpper = int24(strike + rangeUp);
@@ -615,13 +615,19 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.getRangesFromStrike(
+            width[0],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[0] - rangeDown0));
         tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.getRangesFromStrike(
+            width[1],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[1] - rangeDown1));
         tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
@@ -719,13 +725,19 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256[2] memory positionSizeSeed
     ) internal {
-        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.getRangesFromStrike(
+            width[0],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[0] - rangeDown0));
         tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.getRangesFromStrike(
+            width[1],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[1] - rangeDown1));
         tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
@@ -975,19 +987,28 @@ contract PanopticPoolTest is PositionUtils {
         int24[3] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.getRangesFromStrike(
+            width[0],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[0] - rangeDown0));
         tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.getRangesFromStrike(
+            width[1],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[1] - rangeDown1));
         tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
-        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.getRangesFromStrike(
+            width[2],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[2] - rangeDown2));
         tickUppers.push(int24(strike[2] + rangeUp2));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[2]));
@@ -1075,25 +1096,37 @@ contract PanopticPoolTest is PositionUtils {
         int24[4] memory strike,
         uint256 positionSizeSeed
     ) internal {
-        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.getRangesFromStrike(
+            width[0],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[0] - rangeDown0));
         tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.getRangesFromStrike(
+            width[1],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[1] - rangeDown1));
         tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[1]));
 
-        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.mulDivAsTicks(width[2], tickSpacing);
+        (int24 rangeDown2, int24 rangeUp2) = PanopticMath.getRangesFromStrike(
+            width[2],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[2] - rangeDown2));
         tickUppers.push(int24(strike[2] + rangeUp2));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[2]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[2]));
 
-        (int24 rangeDown3, int24 rangeUp3) = PanopticMath.mulDivAsTicks(width[3], tickSpacing);
+        (int24 rangeDown3, int24 rangeUp3) = PanopticMath.getRangesFromStrike(
+            width[3],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[3] - rangeDown3));
         tickUppers.push(int24(strike[3] + rangeUp3));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[3]));
@@ -1193,13 +1226,19 @@ contract PanopticPoolTest is PositionUtils {
         int24[2] memory strike,
         uint256[2] memory positionSizeSeeds
     ) internal {
-        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width[0], tickSpacing);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.getRangesFromStrike(
+            width[0],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[0] - rangeDown0));
         tickUppers.push(int24(strike[0] + rangeUp0));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[0]));
         sqrtUppers.push(TickMath.getSqrtRatioAtTick(tickUppers[0]));
 
-        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.mulDivAsTicks(width[1], tickSpacing);
+        (int24 rangeDown1, int24 rangeUp1) = PanopticMath.getRangesFromStrike(
+            width[1],
+            tickSpacing
+        );
         tickLowers.push(int24(strike[1] - rangeDown1));
         tickUppers.push(int24(strike[1] + rangeUp1));
         sqrtLowers.push(TickMath.getSqrtRatioAtTick(tickLowers[1]));
@@ -1257,7 +1296,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 positionSizeSeed,
         uint256 positionSizeBurnSeed
     ) internal {
-        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (int24 rangeDown0, int24 rangeUp0) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         tickLower = int24(strike - rangeDown0);
         tickUpper = int24(strike + rangeUp0);
         sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
@@ -1727,6 +1766,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (int256 premium0Before, int256 premium1Before, ) = pp.calculateAccumulatedFeesBatch(
             Alice,
+            true,
             posIdList
         );
 
@@ -1888,8 +1928,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize),
-                tickSpacing
+                uint128(positionSize)
             );
 
             sharesToBurn = Math.mulDivRoundingUp(
@@ -1986,8 +2025,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
-                uint128(positionSize),
-                tickSpacing
+                uint128(positionSize)
             );
 
             sharesToBurn = Math.mulDivRoundingUp(
@@ -4090,7 +4128,10 @@ contract PanopticPoolTest is PositionUtils {
             {
                 int24 rangeDown;
                 int24 rangeUp;
-                (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(widths[i], int24(tickSpacing));
+                (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(
+                    widths[i],
+                    int24(tickSpacing)
+                );
 
                 legRanges = currentTick < strikes[i] - rangeUp
                     ? (2 * (strikes[i] - rangeUp - currentTick)) / rangeUp
@@ -4386,7 +4427,10 @@ contract PanopticPoolTest is PositionUtils {
             {
                 int24 rangeDown;
                 int24 rangeUp;
-                (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(widths[i], int24(tickSpacing));
+                (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(
+                    widths[i],
+                    int24(tickSpacing)
+                );
 
                 legRanges = currentTick < strikes[i] - rangeUp
                     ? (2 * (strikes[i] - rangeUp - currentTick)) / rangeUp

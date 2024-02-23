@@ -663,7 +663,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         // The position must not extend outside of the max/min tick
         int24 strike = int24(bound(strike, minTick + rangeDown, maxTick - rangeUp));
@@ -697,7 +697,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         // The position must not extend outside of the max/min tick
         int24 strike = int24(bound(strike, minTick + rangeDown, maxTick - rangeUp));
@@ -727,7 +727,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         vm.assume(minTick != TickMath.MIN_TICK);
 
@@ -762,7 +762,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         int24 rangeDown;
         int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         vm.assume(maxTick != TickMath.MAX_TICK);
 
@@ -1645,7 +1645,7 @@ contract TokenIdTest is Test, PositionUtils {
 
             int24 rangeDown;
             int24 rangeUp;
-            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // The position must
             vm.assume(minTick < (currentTick - rangeDown) - 1);
@@ -1696,7 +1696,7 @@ contract TokenIdTest is Test, PositionUtils {
 
             int24 rangeDown;
             int24 rangeUp;
-            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // The position must
             int24 minTick = (currentTick + rangeUp) + 1;
@@ -1782,7 +1782,7 @@ contract TokenIdTest is Test, PositionUtils {
 
             int24 rangeDown;
             int24 rangeUp;
-            (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // The position must be in range
             // 1 tick wide position (in range only when current tick = upper bound)
@@ -2030,7 +2030,7 @@ contract TokenIdTest is Test, PositionUtils {
 
                 int24 rangeDown;
                 int24 rangeUp;
-                (rangeDown, rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+                (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
                 (int24 strikeOffset, int24 minStrikeTick, int24 maxStrikeTick) = PositionUtils
                     .getContextFull(uint256(uint24(tickSpacing)), currentTick, width);

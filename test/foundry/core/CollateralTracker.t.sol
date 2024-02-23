@@ -2477,9 +2477,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            (rangeDown0, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (rangeDown0, rangeUp0) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
-            (rangeDown1, rangeUp1) = PanopticMath.mulDivAsTicks(width1, tickSpacing);
+            (rangeDown1, rangeUp1) = PanopticMath.getRangesFromStrike(width1, tickSpacing);
 
             vm.assume(width != width1 || strike != strike1);
             tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
@@ -2670,8 +2670,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            (rangeDown0, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
-            (rangeDown1, rangeUp1) = PanopticMath.mulDivAsTicks(width1, tickSpacing);
+            (rangeDown0, rangeUp0) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (rangeDown1, rangeUp1) = PanopticMath.getRangesFromStrike(width1, tickSpacing);
             vm.assume(width != width1 || strike != strike1);
             tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
@@ -4587,7 +4587,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4618,7 +4618,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4637,16 +4637,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
             atTick = (atTick / tickSpacing) * tickSpacing;
 
-            (legLowerTick, legUpperTick) = tokenId1.asTicks(0, tickSpacing);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick < legLowerTick);
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4,
-                tickSpacing
+                positionSize0 / 4
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -4716,16 +4715,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                1,
-                asset % 1,
-                0,
-                1,
-                0,
-                strike,
-                width
-            );
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4756,16 +4746,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                1,
-                asset % 1,
-                1,
-                1,
-                0,
-                strike,
-                width
-            );
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 1, 1, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4784,16 +4765,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
             atTick = (atTick / tickSpacing) * tickSpacing;
 
-            (legLowerTick, legUpperTick) = tokenId1.asTicks(0, tickSpacing);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick < legLowerTick);
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4,
-                tickSpacing
+                positionSize0 / 4
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -4863,16 +4843,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                1,
-                asset % 1,
-                0,
-                0,
-                0,
-                strike,
-                width
-            );
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4903,16 +4874,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                1,
-                asset % 1,
-                1,
-                0,
-                0,
-                strike,
-                width
-            );
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4931,16 +4893,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
             atTick = (atTick / tickSpacing) * tickSpacing;
 
-            (legLowerTick, legUpperTick) = tokenId1.asTicks(0, tickSpacing);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick > legUpperTick);
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4,
-                tickSpacing
+                positionSize0 / 4
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -5010,16 +4971,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                1,
-                asset % 1,
-                0,
-                1,
-                0,
-                strike,
-                width
-            );
+            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -5050,16 +5002,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addUniv3pool(poolId).addLeg(
-                0,
-                1,
-                asset % 1,
-                1,
-                1,
-                0,
-                strike,
-                width
-            );
+            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 1, 1, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -5078,16 +5021,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
             atTick = (atTick / tickSpacing) * tickSpacing;
 
-            (legLowerTick, legUpperTick) = tokenId1.asTicks(0, tickSpacing);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick > legUpperTick);
 
             (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
-                positionSize0 / 4,
-                tickSpacing
+                positionSize0 / 4
             );
 
             uint256 currNumRangesFromStrikeDown = uint256(
@@ -5910,7 +5852,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int24 strike = _tokenId.strike(i);
             int24 width = _tokenId.width(i);
 
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
             (legLowerTick, legUpperTick) = (strike - rangeDown, strike + rangeUp);
 
             {
@@ -6109,9 +6051,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             width = _tokenId.width(i);
 
             int24 rangeUp0;
-            (, rangeUp0) = PanopticMath.mulDivAsTicks(width, tickSpacing);
+            (, rangeUp0) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
-            (legLowerTick, legUpperTick) = _tokenId.asTicks(i, tickSpacing);
+            (legLowerTick, legUpperTick) = _tokenId.asTicks(i);
             notionalMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
             {
