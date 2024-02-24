@@ -60,6 +60,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickAt
     );
 
+    /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`)
+    /// @param user Address of the owner of the settled position.
+    /// @param tokenId TokenId of the settled position.
+    /// @param settledAmounts LeftRight encoding for the amount of premium settled for token0 (right slot) and token1 (left slot).
+    event PremiumSettled(address indexed user, uint256 indexed tokenId, int256 settledAmounts);
+
     /// @notice Emitted when an option is burned.
     /// @dev Is not emitted when a position is liquidated or force exercised.
     /// @param recipient User that burnt the option.
@@ -1688,6 +1694,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
             // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
             s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(uint256(realizedPremia));
+
+            emit PremiumSettled(owner, tokenId, realizedPremia);
         }
 
         // ensure the owner is solvent at the median tick (insolvent accounts are not permitted to pay premium unless they are being liquidated)
