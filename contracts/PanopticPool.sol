@@ -1669,24 +1669,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 premiumOwed
     ) internal pure returns (int256 availablePremium) {
         unchecked {
-            // ratio of available premia for token0, defaults to 100% if more premium has been settled than what is owed
+            uint256 settled0 = uint256(int256(settledTokens.rightSlot()));
+            uint256 settled1 = uint256(int256(settledTokens.leftSlot()));
 
-            int256 ratio0X128 = settledTokens.rightSlot() < grossPremium.rightSlot()
-                ? (int256(settledTokens.rightSlot()) << 128) / grossPremium.rightSlot()
-                : settledTokens.rightSlot() == 0
-                ? int256(0)
-                : int256(2 ** 128);
+            uint256 gross0 = uint256(int256(grossPremium.rightSlot()));
+            uint256 gross1 = uint256(int256(grossPremium.leftSlot()));
 
-            // ratio of available premia for token1, defaults to 100% if more premium has been settled than what is owed
-            int256 ratio1X128 = settledTokens.leftSlot() < grossPremium.leftSlot()
-                ? (int256(settledTokens.leftSlot()) << 128) / grossPremium.leftSlot()
-                : settledTokens.leftSlot() == 0
-                ? int256(0)
-                : int256(2 ** 128);
+            uint256 requested0 = uint256(int256(premiumOwed.rightSlot()));
+            uint256 requested1 = uint256(int256(premiumOwed.leftSlot()));
 
-            availablePremium = int256(0)
-                .toRightSlot(int128((premiumOwed.rightSlot() * ratio0X128) >> 128))
-                .toLeftSlot(int128((premiumOwed.leftSlot() * ratio1X128) >> 128));
+            uint256 available0 = Math.mulDiv(requested0, settled0, gross0);
+            uint256 available1 = Math.mulDiv(requested1, settled1, gross1);
+
+            available0 = requested0 < available0 ? requested0 : available0;
+            available1 = requested1 < available1 ? requested1 : available1;
+
+            availablePremium = int256(0).toRightSlot(available0.toInt256().toInt128()).toLeftSlot(
+                available1.toInt256().toInt128()
+            );
         }
     }
 
