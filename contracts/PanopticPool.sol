@@ -437,7 +437,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ) {
                     int256 legPremia = premiaByLeg[leg];
-                    console2.log("legPremia", legPremia);
                     if (tokenId.isLong(leg) == 0 && !includePendingPremium && legPremia > 0) {
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
@@ -540,7 +539,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, , , ) = _burnOptions(
+        (int24 medianTick, int24 newTick, , ) = _burnOptions(
             tokenId,
             msg.sender,
             tickLimitLow,
@@ -565,7 +564,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (int24 medianTick, int24 newTick, , , ) = _burnAllOptionsFrom(
+        (int24 medianTick, int24 newTick, ) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,
@@ -828,27 +827,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh,
         uint256[] calldata positionIdList
-    )
-        internal
-        returns (
-            int24 medianTick,
-            int24 newTick,
-            int256 netPaid,
-            int256 premiasOwed,
-            int256[4][] memory premiasByLeg
-        )
-    {
-        premiasByLeg = new int256[4][](positionIdList.length);
+    ) internal returns (int24 medianTick, int24 newTick, int256 netPaid) {
         for (uint256 i = 0; i < positionIdList.length; ) {
             int256 paidAmounts;
-            int256 premiaOwed;
-            (medianTick, newTick, paidAmounts, premiaOwed, premiasByLeg[i]) = _burnOptions(
+            (medianTick, newTick, paidAmounts, ) = _burnOptions(
                 positionIdList[i],
                 owner,
                 tickLimitLow,
                 tickLimitHigh
             );
-            premiaOwed = premiasOwed.add(premiaOwed);
             netPaid = netPaid.add(paidAmounts);
             unchecked {
                 ++i;
@@ -865,22 +852,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return newTick the final tick after all positions have been closed
     /// @return paidAmounts The amount of tokens paid when closing the option
     /// @return premiaOwed The amount of premia owed to the user
-    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _burnOptions(
         uint256 tokenId,
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    )
-        internal
-        returns (
-            int24 medianTick,
-            int24 newTick,
-            int256 paidAmounts,
-            int256 premiaOwed,
-            int256[4] memory premiaByLeg
-        )
-    {
+    ) internal returns (int24 medianTick, int24 newTick, int256 paidAmounts, int256 premiaOwed) {
         // Ensure that the current price is within the tick limits
         int24 currentTick;
         (currentTick, medianTick, tickLimitLow, tickLimitHigh) = _getPriceAndCheckSlippageViolation(
@@ -891,7 +868,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
         // burn position and do exercise checks
-        (premiaOwed, premiaByLeg, newTick, paidAmounts) = _burnAndHandleExercise(
+        (premiaOwed, newTick, paidAmounts) = _burnAndHandleExercise(
             tokenId,
             positionSize,
             owner,
@@ -941,15 +918,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    )
-        internal
-        returns (
-            int256 realizedPremia,
-            int256[4] memory premiaByLeg,
-            int24 newTick,
-            int256 paidAmounts
-        )
-    {
+    ) internal returns (int256 realizedPremia, int24 newTick, int256 paidAmounts) {
         // burn the option in sfpm, switch order of tickLimits to create "swapAtMint" flag
         int256 totalSwapped;
         uint256[4] memory collectedByLeg;
@@ -967,7 +936,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         {
             uint256 _tokenId = tokenId;
             uint128 _positionSize = positionSize;
-            (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
+            realizedPremia = _updateSettlementPostBurn(
                 owner,
                 _tokenId,
                 collectedByLeg,
@@ -1004,7 +973,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 
-        return (realizedPremia, premiaByLeg, newTick, paidAmounts);
+        return (realizedPremia, newTick, paidAmounts);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1077,7 +1046,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(msg.sender, _liquidatee, delegations.leftSlot());
 
         // burn all options from the liquidatee
-        (, int24 finalTick, int256 netExchanged, , ) = _burnAllOptionsFrom(
+        (, int24 finalTick, int256 netExchanged) = _burnAllOptionsFrom(
             _liquidatee,
             Constants.MIN_V3POOL_TICK,
             Constants.MAX_V3POOL_TICK,
@@ -1809,17 +1778,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @return realizedPremia The amount of premia owed to the user
-    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _updateSettlementPostBurn(
         address owner,
         uint256 tokenId,
         uint256[4] memory collectedByLeg,
         uint128 positionSize
-    ) internal returns (int256 realizedPremia, int256[4] memory premiaByLeg) {
+    ) internal returns (int256 realizedPremia) {
         uint256 numLegs = tokenId.countLegs();
 
         // compute accumulated fees
-        premiaByLeg = _getPremia(tokenId, positionSize, owner, COMPUTE_ALL_PREMIA, type(int24).max);
+        int256[4] memory premiaByLeg = _getPremia(
+            tokenId,
+            positionSize,
+            owner,
+            COMPUTE_ALL_PREMIA,
+            type(int24).max
+        );
 
         // loop through each leg to update settled and gross amounts
 
