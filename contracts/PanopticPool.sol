@@ -437,7 +437,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ) {
                     int256 legPremia = premiaByLeg[leg];
-                    if (tokenId.isLong(leg) == 0 && !includePendingPremium) {
+                    if (tokenId.isLong(leg) == 0 && !includePendingPremium && legPremia > 0) {
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
                                 tokenId.strike(leg),
