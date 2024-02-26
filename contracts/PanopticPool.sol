@@ -1089,9 +1089,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList,
                 premiasByLeg,
                 collateralRemaining,
-                Math.getSqrtRatioAtTick(finalTick),
                 s_collateralToken0,
                 s_collateralToken1,
+                Math.getSqrtRatioAtTick(finalTick),
                 s_settledTokens
             );
 

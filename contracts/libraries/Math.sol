@@ -685,6 +685,16 @@ library Math {
         }
     }
 
+    /// @notice Calculates ceil(a÷b), returning 0 if b == 0
+    /// @param a The numerator
+    /// @param b The denominator
+    /// @return result The 256-bit result
+    function unsafeDivRoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        assembly ("memory-safe") {
+            result := add(div(a, b), gt(mod(a, b), 0))
+        }
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 SORTING
     //////////////////////////////////////////////////////////////*/
