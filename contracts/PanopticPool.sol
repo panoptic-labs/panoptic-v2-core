@@ -164,6 +164,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises
     SemiFungiblePositionManager internal immutable sfpm;
 
+    uint128 internal immutable VEGOID;
+
     /*//////////////////////////////////////////////////////////////
                                 STORAGE 
     //////////////////////////////////////////////////////////////*/
@@ -267,6 +269,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param _sfpm The address of the SemiFungiblePositionManager (SFPM) contract.
     constructor(SemiFungiblePositionManager _sfpm) {
         sfpm = _sfpm;
+        VEGOID = sfpm.VEGOID();
     }
 
     /// @notice Creates a method for creating a Panoptic Pool on top of an existing Uniswap v3 pair.
@@ -1779,8 +1782,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
                     }
                     {
-                        uint128 VEGOID = sfpm.VEGOID();
-
                         int256 numerator = int256(
                             totalLiquidity + (removedLiquidity ** 2) / netLiquidity / 2 ** VEGOID
                         );
