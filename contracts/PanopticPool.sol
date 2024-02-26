@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
-
+import "forge-std/Test.sol";
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -437,6 +437,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ) {
                     int256 legPremia = premiaByLeg[leg];
+                    console2.log("legPremia", legPremia);
                     if (tokenId.isLong(leg) == 0 && !includePendingPremium && legPremia > 0) {
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
@@ -1672,26 +1673,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int256 grossPremium,
         int256 premiumOwed
     ) internal pure returns (int256 availablePremium) {
-        unchecked {
+        uint256 available0;
+        uint256 available1;
+
+        uint256 gross0 = uint256(int256(grossPremium.rightSlot()));
+        if (gross0 > 0) {
             uint256 settled0 = uint256(int256(settledTokens.rightSlot()));
-            uint256 settled1 = uint256(int256(settledTokens.leftSlot()));
-
-            uint256 gross0 = uint256(int256(grossPremium.rightSlot()));
-            uint256 gross1 = uint256(int256(grossPremium.leftSlot()));
-
             uint256 requested0 = uint256(int256(premiumOwed.rightSlot()));
-            uint256 requested1 = uint256(int256(premiumOwed.leftSlot()));
-
-            uint256 available0 = Math.mulDiv(requested0, settled0, gross0);
-            uint256 available1 = Math.mulDiv(requested1, settled1, gross1);
-
+            available0 = Math.mulDiv(requested0, settled0, gross0);
             available0 = requested0 < available0 ? requested0 : available0;
-            available1 = requested1 < available1 ? requested1 : available1;
-
-            availablePremium = int256(0).toRightSlot(available0.toInt256().toInt128()).toLeftSlot(
-                available1.toInt256().toInt128()
-            );
         }
+
+        uint256 gross1 = uint256(int256(grossPremium.leftSlot()));
+        if (gross1 > 0) {
+            uint256 settled1 = uint256(int256(settledTokens.leftSlot()));
+            uint256 requested1 = uint256(int256(premiumOwed.leftSlot()));
+            available1 = Math.mulDiv(requested1, settled1, gross1);
+            available1 = requested1 < available1 ? requested1 : available1;
+        }
+
+        availablePremium = int256(0).toRightSlot(available0.toInt256().toInt128()).toLeftSlot(
+            available1.toInt256().toInt128()
+        );
     }
 
     /// @notice Query the total amount of liquidity sold in the corresponding chunk for a position leg
