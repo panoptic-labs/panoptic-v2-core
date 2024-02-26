@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.8.18;
 
-// Foundry
-import "forge-std/Test.sol";
 // Interfaces
 import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
@@ -764,17 +762,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             )
                         )
                     );
-                    console2.log(
-                        "legRangesC",
-                        uint256(Math.abs(int256(positionId.strike(leg) - currentTick) / range - 1))
-                    );
-                    console2.log("rangeC", range);
-                    console2.log("strikeC", positionId.strike(leg));
-                    console2.log("currentTickC", currentTick);
-                    maxNumRangesFromStrike = Math.max(
-                        uint256(Math.abs(int256(positionId.strike(leg)) - currentTick) / range),
-                        maxNumRangesFromStrike
-                    );
                 }
 
                 uint256 currentValue0;
@@ -823,9 +810,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at s_exerciseCost when moving OTM
             int256 fee = (s_exerciseCost >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
-            console2.log("feeC", fee);
-            console2.log("longAmountsC.right", longAmounts.rightSlot());
-            console2.log("longAmountsC.left", longAmounts.leftSlot());
+
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
                 .toRightSlot(int128((int256(longAmounts.rightSlot()) * int256(fee)) / DECIMALS_128))
@@ -1631,6 +1616,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionSize the size of the position.
     /// @param index the leg index of the LONG leg in the spread position.
     /// @param partnerIndex the index of the partnered SHORT leg in the spread position.
+    /// @param poolUtilization the pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
     /// @return spreadRequirement the required amount of collateral needed for the spread portion.
     function _computeSpread(
         uint256 tokenId,

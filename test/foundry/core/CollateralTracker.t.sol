@@ -2027,8 +2027,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
                 .optionPositionBalance(Alice, tokenId1);
 
-            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
-                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+            uint128 poolUtilizations = uint128(poolUtilization0) +
+                (uint128(poolUtilization1) << 64);
 
             uint128 required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
 
@@ -2132,8 +2132,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
                 .optionPositionBalance(Alice, tokenId1);
 
-            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
-                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+            uint128 poolUtilizations = uint128(poolUtilization0) +
+                (uint128(poolUtilization1) << 64);
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
@@ -2309,8 +2309,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
                 .optionPositionBalance(Alice, tokenId1);
 
-            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
-                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+            uint128 poolUtilizations = uint128(poolUtilization0) +
+                (uint128(poolUtilization1) << 64);
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
@@ -2697,9 +2697,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
                 .optionPositionBalance(Alice, tokenId1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
-                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+            uint128 poolUtilizations = uint128(poolUtilization0) +
+                (uint128(poolUtilization1) << 64);
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
@@ -2731,14 +2730,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
-                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
-
-            required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
-
             panopticPool.mintOptions(
                 positionIdList1,
                 positionSize0 / 2,
@@ -2746,6 +2737,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
+                .optionPositionBalance(Alice, tokenId1);
+
+            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
+                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+
+            required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
         }
 
         // mimic pool activity
@@ -2774,12 +2772,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
                 .optionPositionBalance(Alice, tokenId1);
+            console2.log("PU0", poolUtilization0);
+            console2.log("PU1", poolUtilization1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
 
             // only add premium requirement if there is net premia owed
             required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
+            console2.log("premium0", premium0);
             premium1 = premium1 < 0 ? int128((10_000 * uint128(-premium1)) / 10_000) : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
@@ -5999,7 +6000,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             }
                         }
                     }
-
+                    console2.log("spread req", _tempTokensRequired);
+                    console2.log("tokenType", tokenType);
+                    console2.log("poolUtilizations", poolUtilizations);
                     _tempTokensRequired = Math.max(
                         uint128(
                             collateralToken0.getRequiredCollateralAtUtilization(
@@ -6011,6 +6014,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             )
                         ),
                         _tempTokensRequired
+                    );
+                    console2.log(
+                        "util req",
+                        collateralToken0.getRequiredCollateralAtUtilization(
+                            uint128(tokenType == 0 ? movedRight : movedLeft),
+                            1,
+                            tokenType == 0
+                                ? int64(uint64(poolUtilizations))
+                                : int64(uint64(poolUtilizations >> 64))
+                        )
+                    );
+                    console2.log(
+                        "util req moved",
+                        uint128(tokenType == 0 ? movedRight : movedLeft)
+                    );
+                    console2.log(
+                        "util req poolutil",
+                        tokenType == 0
+                            ? int64(uint64(poolUtilizations))
+                            : int64(uint64(poolUtilizations >> 64))
                     );
 
                     vm.assume(_tempTokensRequired < type(uint128).max);
@@ -6066,106 +6089,69 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 buyCollateralRatio = 1_000;
                 sellCollateralRatio = 2_000;
 
-                if (isLong == 1) {
-                    // if buying
-                    buyCollateralRatio = utilization != 0
-                        ? buyCollateralRatio / 2
-                        : buyCollateralRatio; // 2x efficiency (doesn't compound at 0)
+                // if selling
+                sellCollateralRatio = utilization != 0
+                    ? sellCollateralRatio / 2
+                    : sellCollateralRatio; // 2x efficiency (doesn't compound at 0)
 
-                    if (utilization < targetPoolUtilization) {
-                        baseCollateralRatio = int128(int256(buyCollateralRatio));
-                    } else if (utilization > 10_000) {
-                        baseCollateralRatio = 10_000;
-                    } else if (utilization > saturatedPoolUtilization) {
-                        baseCollateralRatio = int128(int256(buyCollateralRatio)) / 2;
-                    } else {
-                        baseCollateralRatio =
-                            (int128(int256(buyCollateralRatio)) +
-                                int128(
-                                    int256(
-                                        (uint256(
-                                            int256(
-                                                int128(int256(int128(int256(buyCollateralRatio))))
-                                            )
-                                        ) *
-                                            uint256(
-                                                int256(saturatedPoolUtilization - utilization)
-                                            )) /
-                                            uint256(
-                                                int256(
-                                                    saturatedPoolUtilization - targetPoolUtilization
-                                                )
-                                            )
-                                    )
-                                )) /
-                            2;
-                    }
-
-                    tokensRequired = uint128(
-                        FullMath.mulDiv(notionalMoved, uint128(baseCollateralRatio), 10_000)
-                    );
+                if (utilization < targetPoolUtilization) {
+                    baseCollateralRatio = int128(int256(sellCollateralRatio));
+                } else if (utilization > saturatedPoolUtilization) {
+                    baseCollateralRatio = 10_000;
                 } else {
-                    // if selling
-                    sellCollateralRatio = utilization != 0
-                        ? sellCollateralRatio / 2
-                        : sellCollateralRatio; // 2x efficiency (doesn't compound at 0)
-
-                    if (utilization < targetPoolUtilization) {
-                        baseCollateralRatio = int128(int256(sellCollateralRatio));
-                    } else if (utilization > saturatedPoolUtilization) {
-                        baseCollateralRatio = 10_000;
-                    } else {
-                        baseCollateralRatio =
-                            int128(int256(sellCollateralRatio)) +
-                            int128(
-                                int256(
-                                    (uint256(int256(10_000 - int128(int256(sellCollateralRatio)))) *
-                                        uint256(int256(utilization - targetPoolUtilization))) /
-                                        uint256(
-                                            int256(saturatedPoolUtilization - targetPoolUtilization)
-                                        )
-                                )
-                            );
-                    }
-
-                    tokensRequired = uint128(
-                        FullMath.mulDiv(notionalMoved, uint128(baseCollateralRatio), 10_000)
-                    );
-
-                    // OTM
-                    if (
-                        ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
-                        ((atTick < (legLowerTick)) && (tokenType == 0))
-                    ) {
-                        tokensRequired = tokensRequired; // base
-                    } else {
-                        uint160 ratio;
-                        ratio = tokenType == 1
-                            ? TickMath.getSqrtRatioAtTick(
-                                Math.max24(2 * (atTick - strike), TickMath.MIN_TICK)
+                    baseCollateralRatio =
+                        int128(int256(sellCollateralRatio)) +
+                        int128(
+                            int256(
+                                (uint256(int256(10_000 - int128(int256(sellCollateralRatio)))) *
+                                    uint256(int256(utilization - targetPoolUtilization))) /
+                                    uint256(
+                                        int256(saturatedPoolUtilization - targetPoolUtilization)
+                                    )
                             )
-                            : TickMath.getSqrtRatioAtTick(
-                                Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
-                            );
+                        );
+                }
 
-                        // ITM
-                        if (
-                            ((atTick < (legLowerTick)) && (tokenType == 1)) ||
-                            ((atTick >= (legUpperTick)) && (tokenType == 0))
-                        ) {
-                            uint256 c2 = FixedPoint96.Q96 - ratio;
-                            tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
-                        } else {
-                            // ATM
-                            uint160 scaleFactor = TickMath.getSqrtRatioAtTick(2 * rangeUp0);
+                tokensRequired = uint128(
+                    FullMath.mulDiv(notionalMoved, uint128(baseCollateralRatio), 10_000)
+                );
+                console2.log("tokensrequired0T", tokensRequired);
 
-                            uint256 c3 = FullMath.mulDiv(
-                                notionalMoved,
-                                scaleFactor - ratio,
-                                scaleFactor + FixedPoint96.Q96
-                            );
-                            tokensRequired += uint128(c3);
-                        }
+                // OTM
+                if (
+                    ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
+                    ((atTick < (legLowerTick)) && (tokenType == 0))
+                ) {
+                    tokensRequired = tokensRequired; // base
+                } else {
+                    uint160 ratio;
+                    ratio = tokenType == 1
+                        ? TickMath.getSqrtRatioAtTick(
+                            Math.max24(2 * (atTick - strike), TickMath.MIN_TICK)
+                        )
+                        : TickMath.getSqrtRatioAtTick(
+                            Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
+                        );
+
+                    // ITM
+                    if (
+                        ((atTick < (legLowerTick)) && (tokenType == 1)) ||
+                        ((atTick >= (legUpperTick)) && (tokenType == 0))
+                    ) {
+                        uint256 c2 = FixedPoint96.Q96 - ratio;
+                        tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
+                    } else {
+                        // ATM
+                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
+                            (legUpperTick - strike) + (strike - legLowerTick)
+                        );
+
+                        uint256 c3 = FullMath.mulDiv(
+                            notionalMoved,
+                            scaleFactor - ratio,
+                            scaleFactor + FixedPoint96.Q96
+                        );
+                        tokensRequired += uint128(c3);
                     }
                 }
             }

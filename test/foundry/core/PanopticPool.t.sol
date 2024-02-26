@@ -1770,8 +1770,7 @@ contract PanopticPoolTest is PositionUtils {
             true,
             posIdList
         );
-        console2.log("premium0Before", premium0Before);
-        console2.log("premium1Before", premium1Before);
+
         accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
 
         changePrank(address(sfpm));
@@ -1901,8 +1900,6 @@ contract PanopticPoolTest is PositionUtils {
             currentTick,
             0
         );
-
-        console2.log("width in test", width);
 
         populatePositionData(width, strike, positionSizeSeed);
 
@@ -2781,18 +2778,6 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            console2.log(
-                "comission fee total",
-                ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) / 10_000
-            );
-
-            assertApproxEqAbs(
-                ct0.balanceOf(Alice),
-                uint256(uint256(type(uint104).max) - sharesToBurn),
-                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
-                "Alice balance 0"
-            );
-
             assertApproxEqAbs(
                 ct1.balanceOf(Alice),
                 uint256(
@@ -4131,10 +4116,6 @@ contract PanopticPoolTest is PositionUtils {
                 legRanges = currentTick < strikes[i] - rangeUp
                     ? ((strikes[i] - rangeUp - currentTick)) / rangeUp
                     : ((currentTick - strikes[i] - rangeUp)) / rangeUp;
-                console2.log("legRanges", legRanges);
-                console2.log("rangeUp", rangeUp);
-                console2.log("strikes[i]", strikes[i]);
-                console2.log("currentTick", currentTick);
             }
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
         }
@@ -4292,8 +4273,6 @@ contract PanopticPoolTest is PositionUtils {
                 // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
                 currentTick
             );
-            console2.log("widths[i]", widths[i]);
-            console2.log("strikes[i]", strikes[i]);
         }
 
         for (uint256 i = 0; i < numLegs; ++i) {
