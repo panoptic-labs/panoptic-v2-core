@@ -1331,8 +1331,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // loop through each active position.
         // Offset determined whether to consider the last tokenId from the list
         // (a potentially newly minted position)
-        uint256 totalIterations = positionBalanceArray.length;
-        for (uint256 i = 0; i < totalIterations; ) {
+        uint256 numberOfPositions = positionBalanceArray.length;
+        for (uint256 i = 0; i < numberOfPositions; ) {
             // read the ith tokenId from the account
             uint256 tokenId = positionBalanceArray[i][0];
 
