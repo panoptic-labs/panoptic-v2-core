@@ -950,27 +950,34 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
         // exercise the option and take the commission and addData
-
         {
-            int128 paid0 = s_collateralToken0.exercise(
+            int256 tokensToPay = int256(0).sub(realizedPremia);
+            int256 intrinsicValues = totalSwapped.sub(longAmounts.sub(shortAmounts));
+            int256 movedFlag = shortAmounts.add(longAmounts);
+            movedFlag = int256(0)
+                .toRightSlot(movedFlag.rightSlot() > 0 ? int128(1) : int128(0))
+                .toLeftSlot(movedFlag.leftSlot() > 0 ? int128(1) : int128(0));
+            tokensToPay = tokensToPay.add(intrinsicValues.mul(movedFlag));
+            paidAmounts = paidAmounts.add(tokensToPay);
+        }
+        {
+            s_collateralToken0.exercise(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 totalSwapped.rightSlot(),
                 realizedPremia.rightSlot()
             );
-            paidAmounts = paidAmounts.toRightSlot(paid0);
         }
 
         {
-            int128 paid1 = s_collateralToken1.exercise(
+            s_collateralToken1.exercise(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 totalSwapped.leftSlot(),
                 realizedPremia.leftSlot()
             );
-            paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 
         return (realizedPremia, newTick, paidAmounts);
@@ -1641,22 +1648,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 available0;
         uint256 available1;
 
-        uint256 gross0 = uint256(int256(grossPremium.rightSlot()));
-        if (gross0 > 0) {
-            uint256 settled0 = uint256(int256(settledTokens.rightSlot()));
-            uint256 requested0 = uint256(int256(premiumOwed.rightSlot()));
-            available0 = Math.mulDiv(requested0, settled0, gross0);
-            available0 = requested0 < available0 ? requested0 : available0;
-        }
+        unchecked {
+            uint256 gross0 = uint256(int256(grossPremium.rightSlot()));
+            if (gross0 > 0) {
+                uint256 settled0 = uint256(int256(settledTokens.rightSlot()));
+                uint256 requested0 = uint256(int256(premiumOwed.rightSlot()));
+                available0 = (requested0 * settled0) / gross0;
+                available0 = requested0 < available0 ? requested0 : available0;
+            }
 
-        uint256 gross1 = uint256(int256(grossPremium.leftSlot()));
-        if (gross1 > 0) {
-            uint256 settled1 = uint256(int256(settledTokens.leftSlot()));
-            uint256 requested1 = uint256(int256(premiumOwed.leftSlot()));
-            available1 = Math.mulDiv(requested1, settled1, gross1);
-            available1 = requested1 < available1 ? requested1 : available1;
+            uint256 gross1 = uint256(int256(grossPremium.leftSlot()));
+            if (gross1 > 0) {
+                uint256 settled1 = uint256(int256(settledTokens.leftSlot()));
+                uint256 requested1 = uint256(int256(premiumOwed.leftSlot()));
+                available1 = (requested1 * settled1) / gross1;
+                available1 = requested1 < available1 ? requested1 : available1;
+            }
         }
-
         availablePremium = int256(0).toRightSlot(available0.toInt256().toInt128()).toLeftSlot(
             available1.toInt256().toInt128()
         );
