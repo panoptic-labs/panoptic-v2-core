@@ -5903,7 +5903,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
                     } else {
                         // ATM
-                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(2 * rangeUp);
+                        uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
+                            (legUpperTick - strike) + (strike - legLowerTick)
+                        );
 
                         uint256 c3 = FullMath.mulDiv(
                             notionalMoved,
