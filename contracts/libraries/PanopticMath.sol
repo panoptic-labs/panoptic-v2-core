@@ -663,77 +663,115 @@ library PanopticMath {
         uint256[] memory positionIdList,
         int256[4][] memory premiasByLeg,
         int256 collateralRemaining,
-        uint160 sqrtPriceX96Final,
         CollateralTracker collateral0,
         CollateralTracker collateral1,
+        uint160 sqrtPriceX96Final,
         mapping(bytes32 chunkKey => uint256 settledTokens) storage settledTokens
     ) external returns (int256, int256) {
         unchecked {
             // get the amount of premium paid by the liquidatee
-            int256 haircut0;
-            int256 haircut1;
+            int256 longPremium;
             for (uint256 i = 0; i < positionIdList.length; ++i) {
                 uint256 tokenId = positionIdList[i];
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ++leg) {
                     if (tokenId.isLong(leg) == 1) {
-                        haircut0 += -premiasByLeg[i][leg].rightSlot();
-                        haircut1 += -premiasByLeg[i][leg].leftSlot();
+                        longPremium = longPremium.sub(premiasByLeg[i][leg]);
                     }
                 }
             }
-
             // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
             int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
             int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
-
+            int256 haircut0;
+            int256 haircut1;
             // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
             // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
-            if (haircut0 < collateralDelta0 && haircut1 > collateralDelta1) {
+            if (
+                longPremium.rightSlot() < collateralDelta0 &&
+                longPremium.leftSlot() > collateralDelta1
+            ) {
                 int256 protocolLoss1 = collateralDelta1;
                 (collateralDelta0, collateralDelta1) = (
                     -Math.min(
-                        collateralDelta0 - haircut0,
-                        PanopticMath.convert1to0(haircut1 - collateralDelta1, sqrtPriceX96Final)
+                        collateralDelta0 - longPremium.rightSlot(),
+                        PanopticMath.convert1to0(
+                            longPremium.leftSlot() - collateralDelta1,
+                            sqrtPriceX96Final
+                        )
                     ),
                     Math.min(
-                        haircut1 - collateralDelta1,
-                        PanopticMath.convert0to1(collateralDelta0 - haircut0, sqrtPriceX96Final)
+                        longPremium.leftSlot() - collateralDelta1,
+                        PanopticMath.convert0to1(
+                            collateralDelta0 - longPremium.rightSlot(),
+                            sqrtPriceX96Final
+                        )
                     )
                 );
 
+                haircut0 = longPremium.rightSlot();
                 haircut1 = protocolLoss1 + collateralDelta1;
-            } else if (haircut1 < collateralDelta1 && haircut0 > collateralDelta0) {
+            } else if (
+                longPremium.leftSlot() < collateralDelta1 &&
+                longPremium.rightSlot() > collateralDelta0
+            ) {
                 int256 protocolLoss0 = collateralDelta0;
                 (collateralDelta0, collateralDelta1) = (
                     Math.min(
-                        haircut0 - collateralDelta0,
-                        PanopticMath.convert1to0(collateralDelta1 - haircut1, sqrtPriceX96Final)
+                        longPremium.rightSlot() - collateralDelta0,
+                        PanopticMath.convert1to0(
+                            collateralDelta1 - longPremium.leftSlot(),
+                            sqrtPriceX96Final
+                        )
                     ),
                     -Math.min(
-                        collateralDelta1 - haircut1,
-                        PanopticMath.convert0to1(haircut0 - collateralDelta0, sqrtPriceX96Final)
+                        collateralDelta1 - longPremium.leftSlot(),
+                        PanopticMath.convert0to1(
+                            longPremium.rightSlot() - collateralDelta0,
+                            sqrtPriceX96Final
+                        )
                     )
                 );
 
                 haircut0 = collateralDelta0 + protocolLoss0;
+                haircut1 = longPremium.leftSlot();
             } else {
                 // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
-                haircut0 = Math.min(collateralDelta0, haircut0);
-                haircut1 = Math.min(collateralDelta1, haircut1);
+                haircut0 = Math.min(collateralDelta0, longPremium.rightSlot());
+                haircut1 = Math.min(collateralDelta1, longPremium.leftSlot());
 
                 collateralDelta0 = 0;
                 collateralDelta1 = 0;
             }
 
-            if (haircut0 != 0) collateral0.exercise(liquidatee, 0, 0, 0, int128(haircut0));
-            if (haircut1 != 0) collateral1.exercise(liquidatee, 0, 0, 0, int128(haircut1));
+            {
+                address _liquidatee = liquidatee;
+                if (haircut0 != 0) collateral0.exercise(_liquidatee, 0, 0, 0, int128(haircut0));
+                if (haircut1 != 0) collateral1.exercise(_liquidatee, 0, 0, 0, int128(haircut1));
+            }
 
             for (uint256 i = 0; i < positionIdList.length; i++) {
-                int256[4][] memory _premiasByLeg = premiasByLeg;
                 uint256 tokenId = positionIdList[i];
+                int256[4][] memory _premiasByLeg = premiasByLeg;
                 for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
                     if (tokenId.isLong(leg) == 1) {
+                        mapping(bytes32 chunkKey => uint256 settledTokens)
+                            storage _settledTokens = settledTokens;
+
+                        // calculate amounts to revoke from settled and subtract from haircut req
+                        int256 settled0 = int256(
+                            Math.unsafeDivRoundingUp(
+                                uint128(-_premiasByLeg[i][leg].rightSlot()) * uint256(haircut0),
+                                uint128(longPremium.rightSlot())
+                            )
+                        );
+                        int256 settled1 = int256(
+                            Math.unsafeDivRoundingUp(
+                                uint128(-_premiasByLeg[i][leg].leftSlot()) * uint256(haircut1),
+                                uint128(longPremium.leftSlot())
+                            )
+                        );
+
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
                                 tokenId.strike(0),
@@ -742,20 +780,13 @@ library PanopticMath {
                             )
                         );
 
-                        // calculate amounts to revoke from settled and subtract from haircut req
-                        int256 settled0 = Math.min(-_premiasByLeg[i][leg].rightSlot(), haircut0);
-                        int256 settled1 = Math.min(-_premiasByLeg[i][leg].leftSlot(), haircut1);
-                        haircut0 -= settled0;
-                        haircut1 -= settled1;
-
                         // The long premium is not commited to storage during the liquidation, so we add the entire adjusted amount
                         // for the haircut directly to the accumulator
-                        settled0 = -_premiasByLeg[i][leg].rightSlot() - settled0;
+                        settled0 = Math.max(0, -_premiasByLeg[i][leg].rightSlot() - settled0);
+                        settled1 = Math.max(0, -_premiasByLeg[i][leg].leftSlot() - settled1);
 
-                        settled1 = -_premiasByLeg[i][leg].leftSlot() - settled1;
-
-                        settledTokens[chunkKey] = uint256(
-                            settledTokens[chunkKey].add(
+                        _settledTokens[chunkKey] = uint256(
+                            _settledTokens[chunkKey].add(
                                 int256(0).toRightSlot(int128(settled0)).toLeftSlot(int128(settled1))
                             )
                         );
