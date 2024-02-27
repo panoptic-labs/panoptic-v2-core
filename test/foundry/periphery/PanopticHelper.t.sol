@@ -25,6 +25,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
+import {Dummy} from "../testUtils/Dummy.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -365,6 +366,11 @@ contract PanopticHelperTest is PositionUtils {
     }
 
     function setUp() public {
+        Dummy dummy = new Dummy();
+
+        // set BLAST address to dummy code so it returns `success`
+        vm.etch(0x4300000000000000000000000000000000000002, address(dummy).code);
+
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
         ph = new PanopticHelper(SemiFungiblePositionManager(sfpm));
 

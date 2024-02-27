@@ -34,6 +34,7 @@ import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 
 import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol";
+import {Dummy} from "../testUtils/Dummy.sol";
 
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
@@ -124,6 +125,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 // which enables us to use our modified CollateralTracker harness that exposes internal data
 contract PanopticPoolHarness is PanopticPool {
     constructor(SemiFungiblePositionManager _SFPM) PanopticPool(_SFPM) {}
+
+    function factoryOwner() external returns (address) {
+        return address(0);
+    }
 
     function modifiedStartPool(
         address token0,
@@ -603,7 +608,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
     }
 
-    function setUp() public {}
+    function setUp() public {
+        Dummy dummy = new Dummy();
+
+        // set BLAST address to dummy code so it returns `success`
+        vm.etch(0x4300000000000000000000000000000000000002, address(dummy).code);
+    }
 
     /*//////////////////////////////////////////////////////////////
                         START TOKEN TESTS
@@ -611,6 +621,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
+        changePrank(address(panopticPool));
+
         CollateralTracker ct = new CollateralTracker();
         ct.startToken(token0, pool, panopticPool);
 
@@ -620,6 +632,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Fail_startToken_alreadyInitializedToken(uint256 x) public {
         _initWorld(x);
+
+        changePrank(address(panopticPool));
 
         // Deploy collateral token
         collateralToken0 = new CollateralTrackerHarness();

@@ -23,6 +23,8 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {CallbackValidation} from "v3-periphery/libraries/CallbackValidation.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
+// Utils
+import {Dummy} from "../testUtils/Dummy.sol";
 
 contract PanopticFactoryHarness is PanopticFactory {
     constructor(
@@ -49,7 +51,7 @@ contract PanopticFactoryTest is Test {
     IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
 
     // deploy the semiFungiblePositionManager
-    SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(V3FACTORY);
+    SemiFungiblePositionManager sfpm;
 
     // store a few different mainnet pairs - the pool used is part of the fuzz
 
@@ -146,6 +148,12 @@ contract PanopticFactoryTest is Test {
     }
 
     function setUp() public {
+        Dummy dummy = new Dummy();
+
+        // set BLAST address to dummy code so it returns `success`
+        vm.etch(0x4300000000000000000000000000000000000002, address(dummy).code);
+
+        sfpm = new SemiFungiblePositionManager(V3FACTORY);
         // Deploy factory
         panopticFactory = new PanopticFactoryHarness(
             address(_WETH),

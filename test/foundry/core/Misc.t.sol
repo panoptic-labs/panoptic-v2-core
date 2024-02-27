@@ -16,6 +16,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {Math} from "@libraries/Math.sol";
 import {Errors} from "@libraries/Errors.sol";
+import {Dummy} from "../testUtils/Dummy.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -166,6 +167,11 @@ contract Misctest is Test, PositionUtils {
     uint256[][] collateralIdLists;
 
     function setUp() public {
+        Dummy dummy = new Dummy();
+
+        // set BLAST address to dummy code so it returns `success`
+        vm.etch(0x4300000000000000000000000000000000000002, address(dummy).code);
+
         vm.startPrank(Deployer);
 
         sfpm = new SemiFungiblePositionManager(V3FACTORY);
