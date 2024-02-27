@@ -762,6 +762,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             )
                         )
                     );
+                    maxNumRangesFromStrike = Math.max(
+                        maxNumRangesFromStrike,
+                        uint256(Math.abs(currentTick - positionId.strike(leg)) / range)
+                    );
                 }
 
                 uint256 currentValue0;
