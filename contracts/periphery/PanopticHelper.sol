@@ -4,6 +4,7 @@ pragma solidity =0.8.18;
 // Interfaces
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
@@ -53,7 +54,7 @@ contract PanopticHelper {
     ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
         (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool
-            .calculateAccumulatedFeesBatch(account, positionIdList);
+            .calculateAccumulatedFeesBatch(account, false, positionIdList);
 
         // Query the current and required collateral amounts for the two tokens
         uint256 tokenData0 = pool.collateralToken0().getAccountMarginDetails(

@@ -20,6 +20,21 @@ contract PanopticMathHarness is Test {
         return liquidityChunk;
     }
 
+    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
+    /// @param strike the strike price of the option
+    /// @param width the width of the option
+    /// @param tickSpacing the tick spacing of the underlying Uniswap v3 pool
+    /// @return tickLower the lower tick of the liquidity chunk.
+    /// @return tickUpper the upper tick of the liquidity chunk.
+    function getTicks(
+        int24 strike,
+        int24 width,
+        int24 tickSpacing
+    ) public pure returns (int24, int24) {
+        (int24 tickLower, int24 tickUpper) = PanopticMath.getTicks(strike, width, tickSpacing);
+        return (tickLower, tickUpper);
+    }
+
     function getPoolId(address univ3pool) public view returns (uint64) {
         uint64 poolId = PanopticMath.getPoolId(univ3pool);
         return poolId;
@@ -180,5 +195,13 @@ contract PanopticMathHarness is Test {
     function convert1to0(int256 amount, uint160 sqrtPriceX96) public pure returns (int256) {
         int256 result = PanopticMath.convert1to0(amount, sqrtPriceX96);
         return result;
+    }
+
+    function getRangesFromStrike(
+        int24 width,
+        int24 tickSpacing
+    ) public pure returns (int24 rangeDown, int24 rangeUp) {
+        (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+        return (result0, result1);
     }
 }

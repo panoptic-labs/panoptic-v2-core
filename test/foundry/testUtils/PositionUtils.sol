@@ -10,6 +10,7 @@ import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 contract MiniPositionManager {
     struct CallbackData {
@@ -165,13 +166,21 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, 2048)));
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 2048)))
+            : int24(int256(bound(widthSeed, 1, 2048)));
         int24 oneSidedRange = int24((width * ts) / 2);
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        int24 lowerBound = int24(minTick + oneSidedRange - strikeOffset);
-        int24 upperBound = int24(maxTick - oneSidedRange - strikeOffset);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
+
+        int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
+        int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -188,26 +197,34 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 1024)))
+            : int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
 
         // add (1 * ts) to minimum because range is exclusive of upper tick in UniV3
         // i.e TL <= CT < TU
         // so ensuring that TU is never included in the range
         int24 lowerBound = int24(
-            currentTick - oneSidedRange < minTick + oneSidedRange
-                ? minTick + oneSidedRange
-                : currentTick - oneSidedRange
+            currentTick - rangeUp < minTick + rangeDown
+                ? minTick + rangeDown
+                : currentTick - rangeUp
         ) +
             int24(ts) -
             strikeOffset;
 
         int24 upperBound = int24(
-            currentTick + oneSidedRange > maxTick - oneSidedRange
-                ? maxTick - oneSidedRange
-                : currentTick + oneSidedRange
+            currentTick + rangeDown > maxTick - rangeUp
+                ? maxTick - rangeUp
+                : currentTick + rangeDown
         ) - strikeOffset;
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
@@ -235,10 +252,14 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 1024)))
+            : int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
 
         // add (1 * ts) to minimum because range is exclusive of upper tick in UniV3
         // i.e TL <= CT < TU
@@ -274,10 +295,18 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 2048)))
+            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
 
         int24 lowerBound = tokenType == 0
             ? int24(currentTick + ts + oneSidedRange - strikeOffset)
@@ -285,6 +314,15 @@ contract PositionUtils is Test {
         int24 upperBound = tokenType == 0
             ? int24(maxTick - oneSidedRange - strikeOffset)
             : int24(currentTick - oneSidedRange - strikeOffset);
+
+        if (ts == 1) {
+            lowerBound = tokenType == 0
+                ? int24(currentTick + ts + rangeDown - strikeOffset)
+                : int24(minTick + rangeDown - strikeOffset);
+            upperBound = tokenType == 0
+                ? int24(maxTick - rangeUp - strikeOffset)
+                : int24(currentTick - rangeUp - strikeOffset);
+        }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -302,10 +340,18 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 2048)))
+            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
 
         int24 lowerBound = tokenType == 0
             ? int24(minTick + oneSidedRange - strikeOffset)
@@ -313,6 +359,15 @@ contract PositionUtils is Test {
         int24 upperBound = tokenType == 0
             ? int24(currentTick + ts - oneSidedRange - strikeOffset)
             : int24(maxTick - oneSidedRange - strikeOffset);
+
+        if (ts == 1) {
+            lowerBound = tokenType == 0
+                ? int24(minTick + rangeDown - strikeOffset)
+                : int24(currentTick + rangeDown - strikeOffset);
+            upperBound = tokenType == 0
+                ? int24(currentTick + ts - rangeUp - strikeOffset)
+                : int24(maxTick - rangeUp - strikeOffset);
+        }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -330,14 +385,21 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 2048)))
+            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
 
         // add ts(1) because range is inclusive of lower tick in UniV3
-        int24 lowerBound = int24(currentTick + ts + oneSidedRange - strikeOffset);
-        int24 upperBound = int24(maxTick - oneSidedRange - strikeOffset);
+        int24 lowerBound = int24(currentTick + ts + rangeDown - strikeOffset);
+        int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -354,14 +416,21 @@ contract PositionUtils is Test {
     ) public view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
+        width = ts == 1
+            ? width = int24(int256(bound(widthSeed, 1, 2048)))
+            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+            ? getContextFull(ts_, currentTick, width)
+            : getContext(ts_, currentTick, width);
 
         // add ts(1) because range is inclusive of lower tick in UniV3
-        int24 lowerBound = int24(minTick + oneSidedRange - strikeOffset);
-        int24 upperBound = int24(currentTick - oneSidedRange - strikeOffset);
+        int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
+        int24 upperBound = int24(currentTick - rangeUp - strikeOffset);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
@@ -1237,12 +1306,16 @@ contract PositionUtils is Test {
         deal(
             IUniswapV3Pool(uniPool).token0(),
             uniPool,
-            (IUniswapV3Pool(uniPool).liquidity() * posFees0) / posLiq
+            IERC20Partial(IUniswapV3Pool(uniPool).token0()).balanceOf(uniPool) +
+                (IUniswapV3Pool(uniPool).liquidity() * posFees0) /
+                posLiq
         );
         deal(
             IUniswapV3Pool(uniPool).token1(),
             uniPool,
-            (IUniswapV3Pool(uniPool).liquidity() * posFees1) / posLiq
+            IERC20Partial(IUniswapV3Pool(uniPool).token1()).balanceOf(uniPool) +
+                (IUniswapV3Pool(uniPool).liquidity() * posFees1) /
+                posLiq
         );
 
         // update global fees

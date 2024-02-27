@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 /// @title Panoptic's tokenId: the fundamental options position.
 /// @author Axicon Labs Limited
@@ -66,6 +67,10 @@ library TokenId {
     // This mask is used to clear all bits except for the option ratios
     uint256 internal constant OPTION_RATIO_MASK =
         0x0000000000FE_0000000000FE_0000000000FE_0000000000FE_0000000000000000;
+    // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType)
+    uint256 internal constant CHUNK_MASK =
+        0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
+
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
     // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
@@ -387,31 +392,11 @@ library TokenId {
         uint256 self,
         uint256 legIndex
     ) internal pure returns (int24 legLowerTick, int24 legUpperTick) {
-        unchecked {
-            int24 tickSpacing = self.tickSpacing();
-            int24 selfWidth = self.width(legIndex);
-            int24 selfStrike = self.strike(legIndex);
-
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
-
-            // The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            int24 oneSidedRange = (selfWidth * tickSpacing) / 2;
-
-            (legLowerTick, legUpperTick) = (selfStrike - oneSidedRange, selfStrike + oneSidedRange);
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                legLowerTick % tickSpacing != 0 ||
-                legUpperTick % tickSpacing != 0 ||
-                legLowerTick < minTick ||
-                legUpperTick > maxTick
-            ) revert Errors.TicksNotInitializable();
-        }
+        (legLowerTick, legUpperTick) = PanopticMath.getTicks(
+            self.strike(legIndex),
+            self.width(legIndex),
+            self.tickSpacing()
+        );
     }
 
     /// @notice Return the number of active legs in the option position.
@@ -477,6 +462,8 @@ library TokenId {
 
         // loop through the 4 (possible) legs in the tokenId `self`
         unchecked {
+            // extract strike, width, and tokenType
+            uint256 chunkData = (self & CHUNK_MASK) >> 64;
             for (uint256 i = 0; i < 4; ++i) {
                 if (self.optionRatio(i) == 0) {
                     // final leg in this position identified;
@@ -485,6 +472,14 @@ library TokenId {
                     if ((self >> (64 + 48 * i)) != 0) revert Errors.InvalidTokenIdParameter(1);
 
                     break; // we are done iterating over potential legs
+                }
+
+                // prevent legs touching the same chunks - all chunks in the position must be discrete
+                uint256 numLegs = self.countLegs();
+                for (uint256 j = i + 1; j < numLegs; ++j) {
+                    if (uint48(chunkData >> (48 * i)) == uint48(chunkData >> (48 * j))) {
+                        revert Errors.InvalidTokenIdParameter(6);
+                    }
                 }
                 // now validate this ith leg in the position:
 
@@ -536,30 +531,6 @@ library TokenId {
         return self.poolId();
     }
 
-    /// @notice Make sure that an option position `self`'s all active legs are out-of-the-money (OTM). Revert if not.
-    /// @dev OTMness depends on where the current price tick is in the AMM relative to the tick bounds of the leg.
-    /// @param self the option position Id (tokenId)
-    /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-    /// @param tickSpacing the tick spacing of the Univ3 pool.
-    function ensureIsOTM(uint256 self, int24 currentTick, int24 tickSpacing) internal pure {
-        unchecked {
-            uint256 numLegs = self.countLegs();
-            for (uint256 i = 0; i < numLegs; ++i) {
-                int24 optionStrike = self.strike(i);
-                int24 range = (self.width(i) * tickSpacing) / 2;
-
-                uint256 optionTokenType = self.tokenType(i);
-
-                if (
-                    ((optionTokenType == 1) && currentTick < (optionStrike + range)) ||
-                    ((optionTokenType == 0) && currentTick >= (optionStrike - range))
-                ) {
-                    revert Errors.OptionsNotOTM();
-                }
-            }
-        }
-    }
-
     /// @notice Validate that a position `self` and its legs/chunks are exercisable.
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @param self the option position Id (tokenId)
@@ -568,13 +539,14 @@ library TokenId {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
-                // compute the range of this leg/chunk
-                int24 range = (self.width(i) * self.tickSpacing()) / 2;
+                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                    self.width(i),
+                    self.tickSpacing()
+                );
+
+                int24 strike = self.strike(i);
                 // check if the price is outside this chunk
-                if (
-                    (currentTick >= (self.strike(i) + range)) ||
-                    (currentTick < (self.strike(i) - range))
-                ) {
+                if ((currentTick >= strike + rangeUp) || (currentTick < strike - rangeDown)) {
                     // if this leg is long and the price beyond the leg's range:
                     // this exercised ID, `self`, appears valid
                     if (self.isLong(i) == 1) return; // validated

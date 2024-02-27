@@ -62,6 +62,16 @@ contract MathTest is Test {
         assertEq(harness.toUint128(toDowncast), toDowncast);
     }
 
+    function test_Success_toUint128Capped(uint256 toDowncast) public {
+        vm.assume(toDowncast <= type(uint128).max);
+        assertEq(harness.toUint128Capped(toDowncast), toDowncast);
+    }
+
+    function test_Success_Cap_toUint128Capped(uint256 toDowncast) public {
+        vm.assume(toDowncast > type(uint128).max);
+        assertEq(harness.toUint128Capped(toDowncast), type(uint128).max);
+    }
+
     function test_Fail_toUint128_Overflow(uint256 toDowncast) public {
         vm.assume(toDowncast > type(uint128).max);
         vm.expectRevert(Errors.CastingError.selector);
@@ -158,6 +168,18 @@ contract MathTest is Test {
 
         vm.expectRevert();
         harness.mulDiv192(input, input);
+    }
+
+    function test_Success_unsafeDivRoundingUp(uint256 a, uint256 b) public {
+        uint256 divRes;
+        uint256 modRes;
+        assembly ("memory-safe") {
+            divRes := div(a, b)
+            modRes := mod(a, b)
+        }
+        unchecked {
+            assertEq(harness.unsafeDivRoundingUp(a, b), modRes > 0 ? divRes + 1 : divRes);
+        }
     }
 
     function test_Fail_getSqrtRatioAtTick() public {

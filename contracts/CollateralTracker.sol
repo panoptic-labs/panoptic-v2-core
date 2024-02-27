@@ -752,68 +752,52 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external view returns (int256 exerciseFees) {
         // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
         // we don't need the leg information itself, really just "the number of half ranges" from the strike price:
-        uint256 maxNumRangesFromStrike; // technically "maxNum(Half)RangesFromStrike" but the name is long
-
-        int24 _currentTick = currentTick;
-        int24 _medianTick = medianTick;
+        uint256 maxNumRangesFromStrike = 1; // technically "maxNum(Half)RangesFromStrike" but the name is long
 
         unchecked {
             for (uint256 leg = 0; leg < TokenId.countLegs(positionId); ++leg) {
                 // short legs are not counted - exercise is intended to be based on long legs
                 if (positionId.isLong(leg) == 0) continue;
 
-                int24 strike = positionId.strike(leg);
-
-                int24 range = (positionId.width(leg) * positionId.tickSpacing()) / 2;
-
-                uint256 currNumRangesFromStrike;
-
-                if (_currentTick < (strike - range)) {
-                    /**
-                         current      strike
-                           tick          │
-                            │      ┌─────▼─────┐
-                        ────▼──────┴───────────┴─
-                                <-  width ->
-                                range=width/2
-                    */
-                    currNumRangesFromStrike = uint256(
-                        (2 * int256(strike - range - _currentTick)) / range
-                    ); // = (strike - range - _currentTick) / (range / 2); the "range/2" are the "half ranges"
-                } else if (_currentTick > (strike + range)) {
-                    /**
-                           strike      current
-                              │         tick
-                          ┌───▼───┐       │
-                        ──┴───────┴───────▼────
-                            <-->
-                            range
-                    */
-                    currNumRangesFromStrike = uint256(
-                        (2 * int256(_currentTick - strike - range)) / range
+                {
+                    int24 range = int24(
+                        int256(
+                            Math.unsafeDivRoundingUp(
+                                uint24(positionId.width(leg) * positionId.tickSpacing()),
+                                2
+                            )
+                        )
+                    );
+                    maxNumRangesFromStrike = Math.max(
+                        maxNumRangesFromStrike,
+                        uint256(Math.abs(currentTick - positionId.strike(leg)) / range)
                     );
                 }
 
-                maxNumRangesFromStrike = Math.max(currNumRangesFromStrike, maxNumRangesFromStrike);
+                uint256 currentValue0;
+                uint256 currentValue1;
+                uint256 medianValue0;
+                uint256 medianValue1;
+
+                {
+                    uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                        positionId,
+                        leg,
+                        positionBalance
+                    );
+
+                    (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
+                        currentTick,
+                        liquidityChunk
+                    );
+
+                    (medianValue0, medianValue1) = Math.getAmountsForLiquidity(
+                        medianTick,
+                        liquidityChunk
+                    );
+                }
 
                 uint256 tokenType = positionId.tokenType(leg);
-
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
-                    positionId,
-                    leg,
-                    positionBalance
-                );
-
-                (uint256 currentValue0, uint256 currentValue1) = Math.getAmountsForLiquidity(
-                    _currentTick,
-                    liquidityChunk
-                );
-
-                (uint256 medianValue0, uint256 medianValue1) = Math.getAmountsForLiquidity(
-                    _medianTick,
-                    liquidityChunk
-                );
-
                 // compensate user for loss in value if chunk has lost money between current and median tick
                 // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
                 if (
@@ -834,7 +818,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-            int256 fee = (s_exerciseCost >> maxNumRangesFromStrike); // exponential decay of fee based on number of half ranges away from the price
+            // subtract 1 from max half ranges from strike so fee starts at s_exerciseCost when moving OTM
+            int256 fee = (s_exerciseCost >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
@@ -1179,30 +1164,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs to be exercised (if any).
     /// @param shortAmount The amount of shorts to be exercised (if any).
     /// @param swappedAmount The amount of tokens potentially swapped.
-    /// @param currentPositionPremium The position premium.
+    /// @param realizedPremium Premium to settle on the current positions.
     /// @return paidAmount The amount of tokens paid when closing that position.
-    /// @return realizedPremium The final premium paid/collected after accounting for available funds.
     function exercise(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
-        int128 currentPositionPremium
-    ) external onlyPanopticPool returns (int128, int128 realizedPremium) {
+        int128 realizedPremium
+    ) external onlyPanopticPool returns (int128) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
-
-            // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            // note: the +1 is for virtual assets that aren't included in the balance - this logic will all be removed soon anyway
-            realizedPremium = int128(
-                Math.min(
-                    currentPositionPremium,
-                    int256(IERC20Partial(s_underlyingToken).balanceOf(address(s_panopticPool))) -
-                        updatedAssets +
-                        1
-                )
-            );
 
             // add premium to be paid/collected on position close
             int256 tokenToPay = -realizedPremium;
@@ -1237,7 +1210,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)));
 
-            return (int128(tokenToPay), realizedPremium);
+            return (int128(tokenToPay));
         }
     }
 
@@ -1460,47 +1433,40 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int24 atTick,
         uint128 poolUtilization
     ) internal view returns (uint256 required) {
-        // compute the total amount of funds moved for that position
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
-
         // extract the tokenType (token0 or token1)
         uint256 tokenType = tokenId.tokenType(index);
+
+        // compute the total amount of funds moved for that position
+        uint256 amountMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+        // amount moved is right slot if tokenType=0, left slot otherwise
+        amountMoved = tokenType == 0 ? amountMoved.rightSlot() : amountMoved.leftSlot();
 
         // match tokenType with the correct pool utilization
         int64 utilization = tokenType == 0
             ? int64(uint64(poolUtilization))
             : int64(uint64(poolUtilization >> 64));
 
-        // extract the strike of the leg
-        int24 strike = tokenId.strike(index);
-
-        // amount moved is right slot if tokenType=0, left slot otherwise
-        uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
-
         uint256 isLong = tokenId.isLong(index);
+
         // start with base requirement, which is based on isLong value
-        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
+        required = _getRequiredCollateralAtUtilization(uint128(amountMoved), isLong, utilization);
 
         // if the position is long, required tokens does not depend on price
         unchecked {
             if (isLong == 0) {
                 // if position is short, check whether the position is out-the-money
 
-                int24 oneSidedRange;
-                {
-                    uint256 c_tokenId = tokenId;
-                    int24 width = c_tokenId.width(index);
-                    oneSidedRange = (width * c_tokenId.tickSpacing()) / 2;
-                }
-                // compute the collateral requirement as a fixed amount that doesn't depend on price
+                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
 
+                // compute the collateral requirement as a fixed amount that doesn't depend on price
                 if (
-                    ((atTick >= (strike + oneSidedRange)) && (tokenType == 1)) || // strike OTM when price >= upperTick for tokenType=1
-                    ((atTick < (strike - oneSidedRange)) && (tokenType == 0)) // strike OTM when price < lowerTick for tokenType=0
+                    ((atTick >= tickUpper) && (tokenType == 1)) || // strike OTM when price >= upperTick for tokenType=1
+                    ((atTick < tickLower) && (tokenType == 0)) // strike OTM when price < lowerTick for tokenType=0
                 ) {
                     // position is out-the-money, collateral requirement = SCR * amountMoved
                     required;
                 } else {
+                    int24 strike = tokenId.strike(index);
                     // if position is ITM or ATM, then the collateral requirement depends on price:
 
                     // compute the ratio of strike to price for calls (or price to strike for puts)
@@ -1522,8 +1488,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
                     /// ITM and out-of-range
                     if (
-                        ((atTick < (strike - oneSidedRange)) && (tokenType == 1)) || // strike ITM but out of range price < lowerTick for tokenType=1
-                        ((atTick >= (strike + oneSidedRange)) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
+                        ((atTick < tickLower) && (tokenType == 1)) || // strike ITM but out of range price < lowerTick for tokenType=1
+                        ((atTick >= tickUpper) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
                     ) {
                         /**
                                     Short put BPR = 100% - (price/strike) + SCR
@@ -1556,7 +1522,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         // the collateral requirement when in-range, which always over-estimates the amount of token required
                         // Specifically:
                         //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
-                        uint160 scaleFactor = Math.getSqrtRatioAtTick(2 * oneSidedRange);
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(
+                            (tickUpper - strike) + (strike - tickLower)
+                        );
                         uint256 c3 = Math.mulDiv(
                             amountMoved,
                             scaleFactor - ratio,
@@ -1658,6 +1626,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionSize the size of the position.
     /// @param index the leg index of the LONG leg in the spread position.
     /// @param partnerIndex the index of the partnered SHORT leg in the spread position.
+    /// @param poolUtilization the pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
     /// @return spreadRequirement the required amount of collateral needed for the spread portion.
     function _computeSpread(
         uint256 tokenId,

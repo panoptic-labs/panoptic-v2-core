@@ -49,13 +49,6 @@ jobs:
           forge --version
           forge build --sizes
         id: build_normal
-      - name: Build and check sizes (via-IR)
-        env:
-          FOUNDRY_PROFILE: ci_sizes_ir
-        run: |
-          forge --version
-          forge build --sizes --skip PanopticHelper
-        id: build
 
   deploy_sepolia:
     strategy:

@@ -251,8 +251,6 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
             revert Errors.PoolAlreadyInitialized();
 
         int24 tickSpacing = v3Pool.tickSpacing();
-        // The tickSpacing is assumed to be 2x the fee, which is not true for all pools (such as 1bps)
-        if (uint24(tickSpacing) != fee / 50) revert Errors.UniswapPoolNotSupported();
 
         // This creates a new Panoptic Pool
         // Create the new proxy clone for pool management

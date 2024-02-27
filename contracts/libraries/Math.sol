@@ -283,6 +283,14 @@ library Math {
         if ((downcastedInt = uint128(toDowncast)) != toDowncast) revert Errors.CastingError();
     }
 
+    /// @notice Downcast uint256 to uint128, but cap at type(uint128).max on overflow.
+    /// @return downcastedInt the downcasted uint (uint128 now)
+    function toUint128Capped(uint256 toDowncast) internal pure returns (uint128 downcastedInt) {
+        if ((downcastedInt = uint128(toDowncast)) != toDowncast) {
+            downcastedInt = type(uint128).max;
+        }
+    }
+
     /// @notice Recast uint128 to int128.
     /// @param toCast the uint256 to be downcasted.
     /// @return downcastedInt the downcasted int (int128 now)
@@ -674,6 +682,16 @@ library Math {
             prod0 |= prod1 * 2 ** 64;
 
             return prod0;
+        }
+    }
+
+    /// @notice Calculates ceil(a÷b), returning 0 if b == 0
+    /// @param a The numerator
+    /// @param b The denominator
+    /// @return result The 256-bit result
+    function unsafeDivRoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        assembly ("memory-safe") {
+            result := add(div(a, b), gt(mod(a, b), 0))
         }
     }
 

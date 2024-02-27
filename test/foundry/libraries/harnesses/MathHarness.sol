@@ -54,6 +54,11 @@ contract MathHarness {
         return r;
     }
 
+    function toUint128Capped(uint256 toDowncast) public pure returns (uint128) {
+        uint128 r = Math.toUint128Capped(toDowncast);
+        return r;
+    }
+
     /**
      * @notice Recast uint128 to int128.
      * @param toCast The uint256 to be downcasted
@@ -91,6 +96,11 @@ contract MathHarness {
 
     function mulDiv192(uint256 a, uint256 b) public pure returns (uint256) {
         uint256 result = Math.mulDiv192(a, b);
+        return result;
+    }
+
+    function unsafeDivRoundingUp(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 result = Math.unsafeDivRoundingUp(a, b);
         return result;
     }
 

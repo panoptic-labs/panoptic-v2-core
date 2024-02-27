@@ -57,6 +57,9 @@ library Errors {
     /// @notice max token amounts for position exceed 128 bits.
     error PositionTooLarge();
 
+    /// @notice The leg is not long
+    error NotALongLeg();
+
     /// @notice There is not enough liquidity to buy an option
     error NotEnoughLiquidity();
 
