@@ -477,6 +477,20 @@ library Math {
         }
     }
 
+    /// @notice Calculates ceil(a×b÷2^64) with full precision. Throws if result overflows a uint256.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return result The 256-bit result
+    function mulDiv64RoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        unchecked {
+            result = mulDiv64(a, b);
+            if (mulmod(a, b, 2 ** 64) > 0) {
+                require(result < type(uint256).max);
+                result++;
+            }
+        }
+    }
+
     /// @notice Calculates floor(a×b÷2^96) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
@@ -546,7 +560,7 @@ library Math {
     function mulDiv96RoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
         unchecked {
             result = mulDiv96(a, b);
-            if (mulmod(a, b, 2 ** 128) > 0) {
+            if (mulmod(a, b, 2 ** 96) > 0) {
                 require(result < type(uint256).max);
                 result++;
             }

@@ -1663,7 +1663,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    (uint256(
+                                    Math.mulDiv64RoundingUp(
                                         premiumAccumulators.rightSlot() >=
                                             premiumAccumulatorLast.rightSlot()
                                             ? premiumAccumulators.rightSlot() -
@@ -1672,15 +1672,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                 uint256(
                                                     type(uint128).max -
                                                         premiumAccumulatorLast.rightSlot()
-                                                )
-                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
+                                                ),
+                                        liquidityChunk.liquidity()
+                                    )
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    (uint256(
+                                    Math.mulDiv64RoundingUp(
                                         premiumAccumulators.leftSlot() >=
                                             premiumAccumulatorLast.leftSlot()
                                             ? premiumAccumulators.leftSlot() -
@@ -1689,8 +1690,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                 uint256(
                                                     type(uint128).max -
                                                         premiumAccumulatorLast.leftSlot()
-                                                )
-                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
+                                                ),
+                                        liquidityChunk.liquidity()
+                                    )
                                 )
                             )
                         );
