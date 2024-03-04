@@ -2899,11 +2899,13 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 .positions(PositionKey.compute(address(sfpm), tickLower, tickUpper));
             assertEq(
                 feesBase0,
-                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq)))
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq))),
+                "feesBase0"
             );
             assertEq(
                 feesBase1,
-                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq)))
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq))),
+                "feesBase1"
             );
         }
 
@@ -2974,7 +2976,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             );
             assertEq(
                 premiumToken0,
-                FullMath.mulDiv(
+                Math.mulDivRoundingUp(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
                             feesBase0 >
@@ -2986,11 +2988,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
-                )
+                ),
+                "premiumToken0"
             );
             assertEq(
                 premiumtoken1,
-                FullMath.mulDiv(
+                Math.mulDivRoundingUp(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
                             feesBase1 >
@@ -3002,7 +3005,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
-                )
+                ),
+                "premiumToken1"
             );
 
             // cached premia has not been updated yet, so should still be 0
