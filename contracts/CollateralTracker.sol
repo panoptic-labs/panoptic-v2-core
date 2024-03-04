@@ -1547,7 +1547,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
                         // compute the tokens required
                         // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
-                        required += Math.mulDiv96(amountMoved, c2);
+                        required += Math.mulDiv96RoundingUp(amountMoved, c2);
                     } else {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
@@ -1555,7 +1555,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         // Specifically:
                         //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
                         uint160 scaleFactor = Math.getSqrtRatioAtTick(2 * oneSidedRange);
-                        uint256 c3 = Math.mulDiv(
+                        uint256 c3 = Math.mulDivRoundingUp(
                             amountMoved,
                             scaleFactor - ratio,
                             scaleFactor + Constants.FP96
@@ -1632,7 +1632,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // compute required as amount*collateralRatio
             unchecked {
-                required = ((amount * sellCollateral) / DECIMALS);
+                required = Math.mulDivRoundingUp(amount, sellCollateral, DECIMALS);
             }
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
@@ -1644,7 +1644,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // compute required as amount*collateralRatio
             unchecked {
-                required = ((amount * buyCollateral) / DECIMALS);
+                required = Math.mulDivRoundingUp(amount, buyCollateral, DECIMALS);
             }
         }
     }
