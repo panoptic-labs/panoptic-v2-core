@@ -824,12 +824,32 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-            int256 fee = (s_exerciseCost >> maxNumRangesFromStrike); // exponential decay of fee based on number of half ranges away from the price
+            uint256 fee = uint256(int256(s_exerciseCost >> maxNumRangesFromStrike)); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
-                .toRightSlot(int128((int256(longAmounts.rightSlot()) * int256(fee)) / DECIMALS_128))
-                .toLeftSlot(int128((int256(longAmounts.leftSlot()) * int256(fee)) / DECIMALS_128));
+                .toRightSlot(
+                    int128(
+                        uint128(
+                            Math.mulDivRoundingUp(
+                                uint256(uint128(longAmounts.rightSlot())),
+                                fee,
+                                DECIMALS
+                            )
+                        )
+                    )
+                )
+                .toLeftSlot(
+                    int128(
+                        uint128(
+                            Math.mulDivRoundingUp(
+                                uint256(uint128(longAmounts.leftSlot())),
+                                fee,
+                                DECIMALS
+                            )
+                        )
+                    )
+                );
         }
     }
 
@@ -1719,8 +1739,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
                 spreadRequirement = (notional < notionalP)
-                    ? ((notionalP - notional) * contracts) / notional
-                    : ((notional - notionalP) * contracts) / notionalP;
+                    ? Math.mulDivRoundingUp(notionalP - notional, contracts, notional)
+                    : Math.mulDivRoundingUp(notional - notionalP, contracts, notionalP);
             }
         }
 
