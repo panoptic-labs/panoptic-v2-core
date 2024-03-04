@@ -827,13 +827,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             uint256 fee = uint256(int256(s_exerciseCost >> maxNumRangesFromStrike)); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
+            // rounding up, can use unsafe because numerator never overflows
             exerciseFees = exerciseFees
                 .toRightSlot(
                     int128(
                         uint128(
-                            Math.mulDivRoundingUp(
-                                uint256(uint128(longAmounts.rightSlot())),
-                                fee,
+                            Math.unsafeDivRoundingUp(
+                                uint256(uint128(longAmounts.rightSlot())) * fee,
                                 DECIMALS
                             )
                         )
@@ -842,9 +842,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 .toLeftSlot(
                     int128(
                         uint128(
-                            Math.mulDivRoundingUp(
-                                uint256(uint128(longAmounts.leftSlot())),
-                                fee,
+                            Math.unsafeDivRoundingUp(
+                                uint256(uint128(longAmounts.leftSlot())) * fee,
                                 DECIMALS
                             )
                         )
@@ -1651,8 +1650,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
 
             // compute required as amount*collateralRatio
+            // can use unsafe because numerator never overflows
             unchecked {
-                required = Math.mulDivRoundingUp(amount, sellCollateral, DECIMALS);
+                required = Math.unsafeDivRoundingUp(amount * sellCollateral, DECIMALS);
             }
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
@@ -1663,8 +1663,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
 
             // compute required as amount*collateralRatio
+            // can use unsafe because numerator never overflows
             unchecked {
-                required = Math.mulDivRoundingUp(amount, buyCollateral, DECIMALS);
+                required = Math.unsafeDivRoundingUp(amount * buyCollateral, DECIMALS);
             }
         }
     }
@@ -1738,9 +1739,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     contracts = movedRight;
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
+                // can use unsafe because numerator never overflows
                 spreadRequirement = (notional < notionalP)
-                    ? Math.mulDivRoundingUp(notionalP - notional, contracts, notional)
-                    : Math.mulDivRoundingUp(notional - notionalP, contracts, notionalP);
+                    ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notional)
+                    : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notionalP);
             }
         }
 
