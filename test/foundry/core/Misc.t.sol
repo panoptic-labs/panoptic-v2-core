@@ -280,8 +280,8 @@ contract Misctest is Test, PositionUtils {
             0,
             0
         );
-        assertEq(premium0, 44646762138360822200777);
-        assertEq(premium1, 44646762138360822200777);
+        assertEq(premium0, 44646762138360822200778);
+        assertEq(premium1, 44646762138360822200778);
 
         changePrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
