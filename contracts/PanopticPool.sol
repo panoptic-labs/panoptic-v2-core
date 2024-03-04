@@ -1663,7 +1663,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    Math.mulDiv64RoundingUp(
+                                    Math.mulDiv64(
                                         premiumAccumulators.rightSlot() >=
                                             premiumAccumulatorLast.rightSlot()
                                             ? premiumAccumulators.rightSlot() -
@@ -1674,14 +1674,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                         premiumAccumulatorLast.rightSlot()
                                                 ),
                                         liquidityChunk.liquidity()
-                                    )
+                                    ) + isLong // round up when it's a long leg
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    Math.mulDiv64RoundingUp(
+                                    Math.mulDiv64(
                                         premiumAccumulators.leftSlot() >=
                                             premiumAccumulatorLast.leftSlot()
                                             ? premiumAccumulators.leftSlot() -
@@ -1692,7 +1692,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                         premiumAccumulatorLast.leftSlot()
                                                 ),
                                         liquidityChunk.liquidity()
-                                    )
+                                    ) + isLong // round up when it's a long leg
                                 )
                             )
                         );
