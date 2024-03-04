@@ -1343,10 +1343,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
 
                     premium0X64_owed = uint128(
-                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity)
+                        Math.mulDivRoundingUp(premium0X64_base, numerator, totalLiquidity)
                     );
                     premium1X64_owed = uint128(
-                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity)
+                        Math.mulDivRoundingUp(premium1X64_base, numerator, totalLiquidity)
                     );
 
                     deltaPremiumOwed = uint256(0).toRightSlot(premium0X64_owed).toLeftSlot(
