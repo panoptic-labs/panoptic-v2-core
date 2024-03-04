@@ -1363,7 +1363,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             Math.getSqrtRatioAtTick(atTick)
         );
 
-        return balanceCross > Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+        // compare balance and required tokens, can use unsafe div because thresholdCross is always smaller than 2**192
+        return balanceCross > Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
     }
 
     /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
