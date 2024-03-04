@@ -824,31 +824,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-            uint256 fee = uint256(int256(s_exerciseCost >> maxNumRangesFromStrike)); // exponential decay of fee based on number of half ranges away from the price
+            int256 fee = (s_exerciseCost >> maxNumRangesFromStrike); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
             // rounding up, can use unsafe because numerator never overflows
             exerciseFees = exerciseFees
-                .toRightSlot(
-                    int128(
-                        uint128(
-                            Math.unsafeDivRoundingUp(
-                                uint256(uint128(longAmounts.rightSlot())) * fee,
-                                DECIMALS
-                            )
-                        )
-                    )
-                )
-                .toLeftSlot(
-                    int128(
-                        uint128(
-                            Math.unsafeDivRoundingUp(
-                                uint256(uint128(longAmounts.leftSlot())) * fee,
-                                DECIMALS
-                            )
-                        )
-                    )
-                );
+                .toRightSlot(int128((longAmounts.rightSlot() * fee) / DECIMALS_128))
+                .toLeftSlot(int128((longAmounts.leftSlot() * fee) / DECIMALS_128));
         }
     }
 
