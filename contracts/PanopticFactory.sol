@@ -467,19 +467,27 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
             // Since we know one of the tokens is WETH, we simply add 0.1 ETH + worth in tokens
             if (token0 == WETH) {
                 fullRangeLiquidity = uint128(
-                    (FULL_RANGE_LIQUIDITY_AMOUNT_WETH * currentSqrtPriceX96) / Constants.FP96
+                    Math.mulDiv96RoundingUp(FULL_RANGE_LIQUIDITY_AMOUNT_WETH, currentSqrtPriceX96)
                 );
             } else if (token1 == WETH) {
                 fullRangeLiquidity = uint128(
-                    (FULL_RANGE_LIQUIDITY_AMOUNT_WETH * Constants.FP96) / currentSqrtPriceX96
+                    Math.mulDivRoundingUp(
+                        FULL_RANGE_LIQUIDITY_AMOUNT_WETH,
+                        Constants.FP96,
+                        currentSqrtPriceX96
+                    )
                 );
             } else {
                 // Find the resulting liquidity for providing 1e6 of both tokens
                 uint128 liquidity0 = uint128(
-                    (FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN * currentSqrtPriceX96) / Constants.FP96
+                    Math.mulDiv96RoundingUp(FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN, currentSqrtPriceX96)
                 );
                 uint128 liquidity1 = uint128(
-                    (FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN * Constants.FP96) / currentSqrtPriceX96
+                    Math.mulDivRoundingUp(
+                        FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN,
+                        Constants.FP96,
+                        currentSqrtPriceX96
+                    )
                 );
 
                 // Pick the greater of the liquidities - i.e the more "expensive" option
