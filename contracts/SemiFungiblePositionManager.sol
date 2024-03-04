@@ -1323,12 +1323,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint128 collected1 = uint128(collectedAmounts.leftSlot());
 
                 // compute the base premium as collected * total / net^2 (from Eqn 3)
-                premium0X64_base = Math.mulDiv(
+                // round up to prevent owed premia to be zero when collected * T * 2**64 < N**2
+                premium0X64_base = Math.mulDivRoundingUp(
                     collected0,
                     totalLiquidity * 2 ** 64,
                     netLiquidity ** 2
                 );
-                premium1X64_base = Math.mulDiv(
+                premium1X64_base = Math.mulDivRoundingUp(
                     collected1,
                     totalLiquidity * 2 ** 64,
                     netLiquidity ** 2
@@ -1340,7 +1341,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint128 premium1X64_owed;
                 {
                     // compute the owed premium (from Eqn 3)
-                    uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
+                    // round up to prevent no vegoid term for small removedLiquidity
+                    uint256 numerator = netLiquidity +
+                        Math.unsafeDivRoundingUp(removedLiquidity, 2 ** VEGOID);
 
                     premium0X64_owed = uint128(
                         Math.mulDivRoundingUp(premium0X64_base, numerator, totalLiquidity)
