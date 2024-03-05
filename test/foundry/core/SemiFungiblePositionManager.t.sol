@@ -2917,7 +2917,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         _initWorld(x);
 
         vm.expectRevert();
-        sfpm.uniswapV3MintCallback(
+        sfpm.thrusterMintCallback(
             0,
             0,
             abi.encode(
@@ -2930,7 +2930,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         _initWorld(x);
 
         vm.expectRevert();
-        sfpm.uniswapV3SwapCallback(
+        sfpm.thrusterSwapCallback(
             0,
             0,
             abi.encode(

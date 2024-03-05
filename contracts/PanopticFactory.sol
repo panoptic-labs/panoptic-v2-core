@@ -23,6 +23,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {TokenId} from "@types/TokenId.sol";
 
+
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
 /// @notice Mimics the Uniswap v3 factory pool creation pattern.
@@ -193,7 +194,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
     /// @param amount0Owed The amount of token0 due to the pool for the minted liquidity
     /// @param amount1Owed The amount of token1 due to the pool for the minted liquidity
     /// @param data Contains the payer address and the pool features required to validate the callback
-    function uniswapV3MintCallback(
+    function thrusterMintCallback(
         uint256 amount0Owed,
         uint256 amount1Owed,
         bytes calldata data

@@ -28,3 +28,5 @@ runs = 30
 max_test_rejects = 9_999_999
 [rpc_endpoints]
 sepolia = 'https://sepolia.infura.io/v3/c5fc9ed5bfae494f9cac22bce8fb3b47'
+blast-sepolia = "https://rpc.ankr.com/blast_testnet_sepolia"
+
