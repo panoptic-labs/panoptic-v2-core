@@ -827,7 +827,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int256 fee = (s_exerciseCost >> maxNumRangesFromStrike); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
-            // rounding up, can use unsafe because numerator never overflows
             exerciseFees = exerciseFees
                 .toRightSlot(int128((longAmounts.rightSlot() * fee) / DECIMALS_128))
                 .toLeftSlot(int128((longAmounts.leftSlot() * fee) / DECIMALS_128));
@@ -1632,7 +1631,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
 
             // compute required as amount*collateralRatio
-            // can use unsafe because numerator never overflows
+            // can use unsafe because denominator is always nonzero
             unchecked {
                 required = Math.unsafeDivRoundingUp(amount * sellCollateral, DECIMALS);
             }
@@ -1645,7 +1644,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
 
             // compute required as amount*collateralRatio
-            // can use unsafe because numerator never overflows
+            // can use unsafe because denominator is always nonzero
             unchecked {
                 required = Math.unsafeDivRoundingUp(amount * buyCollateral, DECIMALS);
             }
@@ -1706,8 +1705,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
         } else {
             unchecked {
-                /// uint256 as intermediate may overflow
-                /// when divided by min notional the value is brought back under 128 bits
                 uint256 notional;
                 uint256 notionalP;
                 uint128 contracts;
@@ -1721,7 +1718,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     contracts = movedRight;
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
-                // can use unsafe because numerator never overflows
+                // can use unsafe because denominator is always nonzero
                 spreadRequirement = (notional < notionalP)
                     ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notional)
                     : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notionalP);

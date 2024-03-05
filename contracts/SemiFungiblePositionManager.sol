@@ -918,6 +918,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 unchecked {
                     // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
                     amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
+
                     amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
                 }
             }
@@ -1317,9 +1318,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             uint256 premium0X64_base;
             uint256 premium1X64_base;
 
-            uint128 collected0 = uint128(collectedAmounts.rightSlot());
-            uint128 collected1 = uint128(collectedAmounts.leftSlot());
             {
+                uint128 collected0 = uint128(collectedAmounts.rightSlot());
+                uint128 collected1 = uint128(collectedAmounts.leftSlot());
+
                 // compute the base premium as collected * total / net^2 (from Eqn 3)
                 premium0X64_base = Math.mulDiv(
                     collected0,
@@ -1338,24 +1340,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint128 premium1X64_owed;
                 {
                     // compute the owed premium (from Eqn 3)
-                    // round up to prevent no vegoid term for small removedLiquidity
-                    uint256 numerator = netLiquidity +
-                        Math.unsafeDivRoundingUp(removedLiquidity, 2 ** VEGOID);
+                    uint256 numerator = netLiquidity + (removedLiquidity / 2 ** VEGOID);
 
-                    // default to 1 to prevent owed premia to be zero when collected * T * 2**64 < N**2
                     premium0X64_owed = uint128(
-                        Math.mulDivRoundingUp(
-                            collected0 > 0 ? premium0X64_base + 1 : 0,
-                            numerator,
-                            totalLiquidity
-                        )
+                        Math.mulDiv(premium0X64_base, numerator, totalLiquidity)
                     );
                     premium1X64_owed = uint128(
-                        Math.mulDivRoundingUp(
-                            collected1 > 0 ? premium1X64_base + 1 : 0,
-                            numerator,
-                            totalLiquidity
-                        )
+                        Math.mulDiv(premium1X64_base, numerator, totalLiquidity)
                     );
 
                     deltaPremiumOwed = uint256(0).toRightSlot(premium0X64_owed).toLeftSlot(

@@ -204,7 +204,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         IERC20Partial(token0).approve(address(router), type(uint256).max);
         IERC20Partial(token1).approve(address(router), type(uint256).max);
 
-        vm.startPrank(Swapper);
+        changePrank(Swapper);
 
         IERC20Partial(token0).approve(address(router), type(uint256).max);
         IERC20Partial(token1).approve(address(router), type(uint256).max);
@@ -212,7 +212,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         deal(token0, Swapper, type(uint128).max);
         deal(token1, Swapper, type(uint128).max);
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         deal(token0, Alice, type(uint128).max);
         deal(token1, Alice, type(uint128).max);
@@ -832,7 +832,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             swapAmount = -$amount0Moved;
         }
 
-        vm.startPrank(address(sfpm));
+        changePrank(address(sfpm));
         ($swap0, $swap1) = PositionUtils.simulateSwap(
             pool,
             tickLower,
@@ -857,7 +857,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
     // used to accumulate premia for testing
     function twoWaySwap(uint256 swapSize) public {
-        vm.startPrank(Swapper);
+        changePrank(Swapper);
 
         swapSize = bound(swapSize, 10 ** 18, 10 ** 20);
         router.exactInputSingle(
@@ -1342,7 +1342,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             -amount0Required
         );
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
@@ -1432,7 +1432,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             -amount1Required
         );
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
@@ -1535,7 +1535,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             -netSurplus0
         );
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
@@ -1655,7 +1655,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             PanopticMath.convert1to0($amount1Moveds[2], currentSqrtPriceX96);
 
         // we have to burn from the SFPM because it owns the liquidity
-        vm.startPrank(address(sfpm));
+        changePrank(address(sfpm));
         (int256 amount0s, int256 amount1s) = PositionUtils.simulateSwapLong(
             pool,
             [tickLowers[0], tickLowers[1]],
@@ -1669,7 +1669,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             -netSurplus0
         );
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // The max/min tick cannot be set as slippage limits, so we subtract/add 1
         // We also invert the order; this is how we tell SFPM to trigger a swap
@@ -2105,9 +2105,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         );
 
         // poke uniswap pool to update tokens owed - needed because swap happens after mint
-        vm.startPrank(address(sfpm));
+        changePrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // calculate additional fees owed to position
         (, , , , uint128 tokensOwed1) = pool.positions(
@@ -2811,7 +2811,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.startPrank(Bob);
+        changePrank(Bob);
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -2820,7 +2820,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         vm.expectRevert(Errors.TransferFailed.selector);
 
@@ -2899,13 +2899,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 .positions(PositionKey.compute(address(sfpm), tickLower, tickUpper));
             assertEq(
                 feesBase0,
-                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq))),
-                "feesBase0"
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, expectedLiq)))
             );
             assertEq(
                 feesBase1,
-                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq))),
-                "feesBase1"
+                int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, expectedLiq)))
             );
         }
 
@@ -2923,7 +2921,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             assertEq(premiumtoken1, 0);
         }
 
-        vm.startPrank(Bob);
+        changePrank(Bob);
 
         swapSize = bound(swapSize, 10 ** 15, 10 ** 19);
 
@@ -2956,9 +2954,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         (, currentTick, , , , , ) = pool.slot0();
 
         // poke uniswap pool
-        vm.startPrank(address(sfpm));
+        changePrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = pool.positions(
             PositionKey.compute(address(sfpm), tickLower, tickUpper)
@@ -2976,7 +2974,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             );
             assertEq(
                 premiumToken0,
-                Math.mulDiv(
+                FullMath.mulDiv(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, expectedLiq))) -
                             feesBase0 >
@@ -2988,12 +2986,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
-                ),
-                "premiumToken0"
+                )
             );
             assertEq(
                 premiumtoken1,
-                Math.mulDiv(
+                FullMath.mulDiv(
                     uint128(
                         int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, expectedLiq))) -
                             feesBase1 >
@@ -3005,8 +3002,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                     ),
                     uint256(expectedLiq) * 2 ** 64,
                     uint256(expectedLiq) ** 2
-                ),
-                "premiumToken1"
+                )
             );
 
             // cached premia has not been updated yet, so should still be 0
@@ -3111,8 +3107,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickUpper
         );
 
-        assertEq(accountLiquidities.leftSlot(), 0, "liquidities0");
-        assertEq(accountLiquidities.rightSlot(), expectedLiq, "liquidities1");
+        assertEq(accountLiquidities.leftSlot(), 0);
+        assertEq(accountLiquidities.rightSlot(), expectedLiq);
 
         // premia is updated BEFORE the ITM swap, so cached (last collected) premia should still be 0
         (premium0Short, premium1Short) = sfpm.getAccountPremium(
@@ -3124,8 +3120,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             type(int24).max,
             0
         );
-        assertEq(premium0Short, 0, "premium0");
-        assertEq(premium1Short, 0, "premium1");
+        assertEq(premium0Short, 0);
+        assertEq(premium1Short, 0);
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
             address(pool),
@@ -3136,14 +3132,14 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             type(int24).max,
             1
         );
-        assertEq(premium0Long, 0, "premiumlong0");
-        assertEq(premium1Long, 0, "premiumlong1");
+        assertEq(premium0Long, 0);
+        assertEq(premium1Long, 0);
 
         twoWaySwap(swapSizeSeed);
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        vm.startPrank(address(sfpm));
+        changePrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         (, , , uint256 tokensOwed0, uint256 tokensOwed1) = pool.positions(
             keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
@@ -3158,22 +3154,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             0
         );
 
-        console2.log("premium0Short, tokensOwed0", premium0Short, tokensOwed0, expectedLiq);
         assertApproxEqAbs(
-            Math.mulDiv(premium0Short, expectedLiq, 2 ** 64),
-            tokensOwed0,
-            50,
-            "premia short0"
+            premium0Short,
+            (tokensOwed0 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 1
         );
-        assertTrue(Math.mulDiv(premium0Short, expectedLiq, 2 ** 64) <= tokensOwed0, "less than, 0");
-        console2.log("premium1Short, tokensOwed1", premium1Short, tokensOwed1, expectedLiq);
         assertApproxEqAbs(
-            Math.mulDiv(premium1Short, expectedLiq, 2 ** 64),
-            tokensOwed1,
-            50,
-            "premia short1"
+            premium1Short,
+            (tokensOwed1 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 1
         );
-        assertTrue(Math.mulDiv(premium1Short, expectedLiq, 2 ** 64) <= tokensOwed1, "less than, 1");
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
             address(pool),
@@ -3184,27 +3174,15 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick,
             1
         );
-        console2.log("premium0Long, tokensOwed0", tokensOwed0, premium0Long, expectedLiq);
         assertApproxEqAbs(
-            Math.mulDivRoundingUp(premium0Long, expectedLiq, 2 ** 64),
-            tokensOwed0,
-            50,
-            "premium long0"
+            premium0Long,
+            (tokensOwed0 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 1
         );
-        assertTrue(
-            Math.mulDivRoundingUp(premium0Long, expectedLiq, 2 ** 64) >= tokensOwed0,
-            "more owed0"
-        );
-        console2.log("premium1Long, tokensOwed1", tokensOwed1, premium1Long, expectedLiq);
         assertApproxEqAbs(
-            Math.mulDivRoundingUp(premium1Long, expectedLiq, 2 ** 64),
-            tokensOwed1,
-            50,
-            "premium long1"
-        );
-        assertTrue(
-            Math.mulDivRoundingUp(premium1Long, expectedLiq, 2 ** 64) >= tokensOwed1,
-            "more owed 1"
+            premium1Long,
+            (tokensOwed1 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 1
         );
 
         /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
@@ -3229,7 +3207,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         updateAmountsMovedSingleSwap(-int128(expectedLiqs[1]), tokenType);
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
         sfpm.mintTokenizedPosition(tokenId1, positionSize, TickMath.MAX_TICK, TickMath.MIN_TICK);
 
         assertApproxEqAbs(
@@ -3246,7 +3224,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         twoWaySwap(swapSizeSeed);
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // NOTE: all error bounds here are 10 + the delta in premium if collectedAmount changes by 1.
         // It's possible to be off-by-one there due to rounding errors
@@ -3261,12 +3239,16 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             0
         );
 
-        //console2.log('short0', premium0Short, tokensOwed0, expectedLiq);
-        assertApproxEqAbs(Math.mulDiv(premium0Short, expectedLiq, 2 ** 64), tokensOwed0, 50);
-        assertTrue(Math.mulDiv(premium0Short, expectedLiq, 2 ** 64) <= tokensOwed0);
-        //console2.log('short1', premium1Short, tokensOwed1, expectedLiq);
-        assertApproxEqAbs(Math.mulDiv(premium1Short, expectedLiq, 2 ** 64), tokensOwed1, 50);
-        assertTrue(Math.mulDiv(premium1Short, expectedLiq, 2 ** 64) <= tokensOwed1);
+        assertApproxEqAbs(
+            premium0Short,
+            (tokensOwed0 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 10
+        );
+        assertApproxEqAbs(
+            premium1Short,
+            (tokensOwed1 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 10
+        );
 
         (premium0Long, premium1Long) = sfpm.getAccountPremium(
             address(pool),
@@ -3277,33 +3259,21 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             type(int24).max,
             1
         );
-        //console2.log('long0', premium0Long, tokensOwed0, expectedLiq);
         assertApproxEqAbs(
-            Math.mulDivRoundingUp(premium0Long, expectedLiq, 2 ** 64),
-            tokensOwed0,
-            50
+            premium0Long,
+            (tokensOwed0 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 10
         );
-        //console2.log('dataIn0', Math.mulDivRoundingUp(premium0Long, expectedLiq, 2**64), tokensOwed0);
-        assertTrue(
-            Math.mulDivRoundingUp(premium0Long, expectedLiq, 2 ** 64) >= tokensOwed0,
-            "less than, 0"
-        );
-        //console2.log('long1', premium1Long, tokensOwed1, expectedLiq);
         assertApproxEqAbs(
-            Math.mulDivRoundingUp(premium1Long, expectedLiq, 2 ** 64),
-            tokensOwed1,
-            50
-        );
-        //console2.log('dataIn1', Math.mulDivRoundingUp(premium1Long, expectedLiq, 2**64), tokensOwed1);
-        assertTrue(
-            Math.mulDivRoundingUp(premium1Long, expectedLiq, 2 ** 64) >= tokensOwed1,
-            "less than, 1"
+            premium1Long,
+            (tokensOwed1 * 2 ** 64) / expectedLiq,
+            (1 * 2 ** 64) / expectedLiq + 10
         );
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        vm.startPrank(address(sfpm));
+        changePrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         (, , , tokensOwed0, tokensOwed1) = pool.positions(
             keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
@@ -3330,52 +3300,67 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             // 2 ** 2 = 2 ** VEGOID (VEGOID=2)
             uint256 netLiq = expectedLiq - expectedLiqs[1];
             uint256 shortLiq = expectedLiqs[1];
-            uint256 basePremia = Math.mulDiv(
+            uint256 basePremia = FullMath.mulDiv(
                 tokensOwed0,
                 uint256(expectedLiq) * 2 ** 64,
                 netLiq ** 2
             );
-            uint256 numerator = uint256(expectedLiq) ** 2 -
-                uint256(expectedLiq) *
-                shortLiq +
-                (shortLiq ** 2 / 2 ** 2);
             premiaError0[0] =
-                FullMath.mulDiv(
-                    (3 * uint256(expectedLiq) * 2 ** 64) / netLiq ** 2,
-                    numerator,
-                    uint256(expectedLiq) ** 2
+                ((1 * 2 ** 64) / expectedLiq) +
+                (
+                    tokensOwed0 == 0
+                        ? uint(0)
+                        : FullMath.mulDiv(
+                            (basePremia * 2) / tokensOwed0,
+                            uint256(expectedLiq) ** 2 -
+                                uint256(expectedLiq) *
+                                shortLiq +
+                                (shortLiq ** 2 / 2 ** 2),
+                            uint256(expectedLiq) ** 2
+                        )
                 ) +
-                1;
-            //console2.log('short - old', premium0Short, premium0ShortOld);
-            //console2.log('basePremia data0', tokensOwed0, expectedLiq, netLiq);
+                10;
             assertApproxEqAbs(
                 premium0Short - premium0ShortOld,
-                FullMath.mulDiv(basePremia, numerator, uint256(expectedLiq) ** 2),
+                FullMath.mulDiv(
+                    basePremia,
+                    uint256(expectedLiq) ** 2 -
+                        uint256(expectedLiq) *
+                        shortLiq +
+                        (shortLiq ** 2 / 2 ** 2),
+                    uint256(expectedLiq) ** 2
+                ),
                 premiaError0[0]
             );
 
-            assertTrue(
-                premium0Short - premium0ShortOld <=
-                    FullMath.mulDiv(basePremia, numerator, uint256(expectedLiq) ** 2)
-            );
-
-            basePremia = Math.mulDiv(tokensOwed1, uint256(expectedLiq) * 2 ** 64, netLiq ** 2);
+            basePremia = FullMath.mulDiv(tokensOwed1, uint256(expectedLiq) * 2 ** 64, netLiq ** 2);
             //store for later
             premiaError1[0] =
-                FullMath.mulDiv(
-                    (3 * uint256(expectedLiq) * 2 ** 64) / netLiq ** 2,
-                    numerator,
-                    uint256(expectedLiq) ** 2
+                ((1 * 2 ** 64) / expectedLiq) +
+                (
+                    tokensOwed1 == 0
+                        ? uint(0)
+                        : FullMath.mulDiv(
+                            (basePremia * 2) / tokensOwed1,
+                            uint256(expectedLiq) ** 2 -
+                                uint256(expectedLiq) *
+                                shortLiq +
+                                (shortLiq ** 2 / 2 ** 2),
+                            uint256(expectedLiq) ** 2
+                        )
                 ) +
-                1;
+                10;
             assertApproxEqAbs(
                 premium1Short - premium1ShortOld,
-                FullMath.mulDiv(basePremia, numerator, uint256(expectedLiq) ** 2),
+                FullMath.mulDiv(
+                    basePremia,
+                    uint256(expectedLiq) ** 2 -
+                        uint256(expectedLiq) *
+                        shortLiq +
+                        (shortLiq ** 2 / 2 ** 2),
+                    uint256(expectedLiq) ** 2
+                ),
                 premiaError1[0]
-            );
-            assertTrue(
-                premium1Short - premium1ShortOld <=
-                    FullMath.mulDiv(basePremia, numerator, uint256(expectedLiq) ** 2)
             );
         }
 
@@ -3396,59 +3381,37 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             // note - we do not need to calculate base premium seperately here because the totalLiquidity fully cancels
             uint256 netLiq = expectedLiq - expectedLiqs[1];
             uint256 shortLiq = expectedLiqs[1];
+
             premiaError0[1] =
-                FullMath.mulDivRoundingUp(
-                    2 * 2 ** 64,
-                    netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2),
-                    netLiq ** 2
+                (1 * 2 ** 64) /
+                expectedLiq +
+                (
+                    tokensOwed0 == 0
+                        ? uint(0)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
                 ) +
-                1;
+                10;
 
             assertApproxEqAbs(
                 premium0Long - premium0LongOld,
-                FullMath.mulDivRoundingUp(
-                    tokensOwed0 * 2 ** 64,
-                    netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2),
-                    netLiq ** 2
-                ),
+                FullMath.mulDiv(tokensOwed0 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
                 premiaError0[1]
             );
-            console2.log(
-                "67 data",
-                premium0Long - premium0LongOld,
-                FullMath.mulDivRoundingUp(
-                    tokensOwed0 * 2 ** 64,
-                    netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2),
-                    netLiq ** 2
-                )
-            );
 
-            //assertTrue(FullMath.mulDivRoundingUp(tokensOwed0 * 2 ** 64, netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2), netLiq ** 2) <= premium0Long - premium0LongOld);
-            premiaError1[1] = FullMath.mulDivRoundingUp(
-                2 * 2 ** 64,
-                netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2),
-                netLiq ** 2
-            );
-
-            console2.log(
-                "68 data",
-                premium1Long - premium1LongOld,
-                FullMath.mulDivRoundingUp(
-                    tokensOwed1 * 2 ** 64,
-                    netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2),
-                    netLiq ** 2
-                )
-            );
+            premiaError1[1] =
+                (1 * 2 ** 64) /
+                expectedLiq +
+                (
+                    tokensOwed1 == 0
+                        ? uint(0)
+                        : (2 * 2 ** 64 * (netLiq + shortLiq / 2 ** 2)) / (netLiq ** 2)
+                ) +
+                10;
             assertApproxEqAbs(
                 premium1Long - premium1LongOld,
-                FullMath.mulDivRoundingUp(
-                    tokensOwed1 * 2 ** 64,
-                    netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2),
-                    netLiq ** 2
-                ),
+                FullMath.mulDiv(tokensOwed1 * 2 ** 64, netLiq + shortLiq / 2 ** 2, netLiq ** 2),
                 premiaError1[1]
             );
-            //assertTrue(FullMath.mulDivRoundingUp(tokensOwed1 * 2 ** 64, netLiq + Math.unsafeDivRoundingUp(shortLiq, 2 ** 2), netLiq ** 2) <= premium1Long - premium1LongOld);
         }
 
         sfpm.burnTokenizedPosition(
@@ -3471,8 +3434,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             type(int24).max,
             1
         );
-
-        //console2.log('assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);');
         assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);
         assertApproxEqAbs(premium1Long, premium1LongOld, premiaError1[1]);
 
@@ -3485,8 +3446,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick,
             1
         );
-
-        //console2.log('assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);');
         assertApproxEqAbs(premium0Long, premium0LongOld, premiaError0[1]);
         assertApproxEqAbs(premium1Long, premium1LongOld, premiaError1[1]);
 
@@ -3507,7 +3466,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             0
         );
 
-        //console2.log('assertApproxEqAbs(premium0Short, premium0ShortOld, premiaError0[0]);');
         assertApproxEqAbs(premium0Short, premium0ShortOld, premiaError0[0]);
         assertApproxEqAbs(premium1Short, premium1ShortOld, premiaError1[0]);
 
@@ -3520,7 +3478,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             currentTick,
             0
         );
-        //console2.log('assertApproxEqAbs(premium0Short, premium0ShortOld, premiaError0[0]);');
         assertApproxEqAbs(premium0Short, premium0ShortOld, premiaError0[0]);
         assertApproxEqAbs(premium1Short, premium1ShortOld, premiaError1[0]);
     }
@@ -3581,7 +3538,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.startPrank(Bob);
+        changePrank(Bob);
 
         uint256 swapSize = 10 ** 20;
 
@@ -3613,7 +3570,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             );
         }
 
-        vm.startPrank(Alice);
+        changePrank(Alice);
 
         // this succeeding is the test - it should overflow cleanly instead of reverting and DOS-ing the positions
         sfpm.burnTokenizedPosition(

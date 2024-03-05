@@ -1363,8 +1363,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             Math.getSqrtRatioAtTick(atTick)
         );
 
-        // compare balance and required tokens, can use unsafe div because thresholdCross is always smaller than 2**192
-        return balanceCross > Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
+        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
+        unchecked {
+            return balanceCross > Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
+        }
     }
 
     /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
@@ -1664,7 +1666,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    Math.mulDiv64(
+                                    (uint256(
                                         premiumAccumulators.rightSlot() >=
                                             premiumAccumulatorLast.rightSlot()
                                             ? premiumAccumulators.rightSlot() -
@@ -1673,16 +1675,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                 uint256(
                                                     type(uint128).max -
                                                         premiumAccumulatorLast.rightSlot()
-                                                ),
-                                        liquidityChunk.liquidity()
-                                    )
+                                                )
+                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    Math.mulDiv64(
+                                    (uint256(
                                         premiumAccumulators.leftSlot() >=
                                             premiumAccumulatorLast.leftSlot()
                                             ? premiumAccumulators.leftSlot() -
@@ -1691,9 +1692,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                                 uint256(
                                                     type(uint128).max -
                                                         premiumAccumulatorLast.leftSlot()
-                                                ),
-                                        liquidityChunk.liquidity()
-                                    )
+                                                )
+                                    ) * (liquidityChunk.liquidity())) / 2 ** 64
                                 )
                             )
                         );
