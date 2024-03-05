@@ -26,12 +26,20 @@ contract DeployBLAST is Script {
         uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
         vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
 
-        IUniswapV3Factory UNISWAP_V3_FACTORY = IUniswapV3Factory(0xe832c58505D5BFECE4053B49f0c64Fb4c0a9AaD7);
+        IUniswapV3Factory UNISWAP_V3_FACTORY = IUniswapV3Factory(
+            0xe832c58505D5BFECE4053B49f0c64Fb4c0a9AaD7
+        );
         SemiFungiblePositionManager SFPM = new SemiFungiblePositionManager(UNISWAP_V3_FACTORY);
         address CT = address(new CollateralTracker());
         address PP = address(new PanopticPool(SFPM));
 
-        PanopticFactory PANOPTIC_FACTORY = new PanopticFactory(0x4200000000000000000000000000000000000023, SFPM, UNISWAP_V3_FACTORY, PP, CT);
+        PanopticFactory PANOPTIC_FACTORY = new PanopticFactory(
+            0x4200000000000000000000000000000000000023,
+            SFPM,
+            UNISWAP_V3_FACTORY,
+            PP,
+            CT
+        );
 
         ERC20S token0 = new ERC20S("Token0", "T0", 18);
         ERC20S token1 = new ERC20S("Token1", "T1", 18);
@@ -46,7 +54,9 @@ contract DeployBLAST is Script {
         // address unipool = UNISWAP_V3_FACTORY.createPool(address(token0), address(token1), 500);
 
         //initialize at tick 0
-        IUniswapV3Pool(0x1D1e3baC4E0a6870123C19edbb8410711848Da92).initialize(0x1000000000000000000000000);
+        IUniswapV3Pool(0x1D1e3baC4E0a6870123C19edbb8410711848Da92).initialize(
+            0x1000000000000000000000000
+        );
 
         PANOPTIC_FACTORY.deployNewPool(address(token0), address(token1), 500, 1337);
 

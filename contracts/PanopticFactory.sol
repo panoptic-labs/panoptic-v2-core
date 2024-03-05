@@ -23,7 +23,6 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {TokenId} from "@types/TokenId.sol";
 
-
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
 /// @notice Mimics the Uniswap v3 factory pool creation pattern.
