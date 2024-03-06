@@ -54,20 +54,6 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_underlyingIsToken0;
     }
 
-    function getSystemParameters()
-        external
-        returns (int128, int128, int128, int128, int128, int128)
-    {
-        return (
-            s_commissionFee,
-            s_sellCollateralRatio,
-            s_buyCollateralRatio,
-            s_exerciseCost,
-            s_targetPoolUtilization,
-            s_saturatedPoolUtilization
-        );
-    }
-
     function _inAMM() external returns (uint256) {
         return s_inAMM;
     }
@@ -5604,7 +5590,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 // pos is short
                 // base
                 tokensRequired = uint128(
-                    FullMath.mulDiv(notionalMoved, sellCollateralRatio, 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, 10_000)
                 );
                 // OTM
                 if (
@@ -5629,12 +5615,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     ) {
                         uint256 c2 = FixedPoint96.Q96 - ratio;
 
-                        return tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
+                        return
+                            tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
-                        uint256 c3 = FullMath.mulDiv(
+                        uint256 c3 = FullMath.mulDivRoundingUp(
                             notionalMoved,
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
@@ -5647,7 +5634,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 // base
                 return
                     tokensRequired = uint128(
-                        FullMath.mulDiv(notionalMoved, buyCollateralRatio, 10_000)
+                        FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, 10_000)
                     );
             }
         }
@@ -5714,17 +5701,30 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             if (tokenType == 1) {
                                 _tempTokensRequired = (
                                     movedRight < movedPartnerRight
-                                        ? ((movedPartnerRight - movedRight) * movedLeft) /
+                                        ? Math.mulDivRoundingUp(
+                                            movedPartnerRight - movedRight,
+                                            movedLeft,
                                             movedRight
-                                        : ((movedRight - movedPartnerRight) * movedLeft) /
+                                        )
+                                        : Math.mulDivRoundingUp(
+                                            movedRight - movedPartnerRight,
+                                            movedLeft,
                                             movedPartnerRight
+                                        )
                                 );
                             } else {
                                 _tempTokensRequired = (
                                     movedLeft < movedPartnerLeft
-                                        ? ((movedPartnerLeft - movedLeft) * movedRight) / movedLeft
-                                        : ((movedLeft - movedPartnerLeft) * movedRight) /
+                                        ? Math.mulDivRoundingUp(
+                                            movedPartnerLeft - movedLeft,
+                                            movedRight,
+                                            movedLeft
+                                        )
+                                        : Math.mulDivRoundingUp(
+                                            movedLeft - movedPartnerLeft,
+                                            movedRight,
                                             movedPartnerLeft
+                                        )
                                 );
                             }
                         }
@@ -5829,7 +5829,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     }
 
                     tokensRequired = uint128(
-                        FullMath.mulDiv(notionalMoved, uint128(baseCollateralRatio), 10_000)
+                        FullMath.mulDivRoundingUp(
+                            notionalMoved,
+                            uint128(baseCollateralRatio),
+                            10_000
+                        )
                     );
                 } else {
                     // if selling
@@ -5856,7 +5860,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     }
 
                     tokensRequired = uint128(
-                        FullMath.mulDiv(notionalMoved, uint128(baseCollateralRatio), 10_000)
+                        FullMath.mulDivRoundingUp(
+                            notionalMoved,
+                            uint128(baseCollateralRatio),
+                            10_000
+                        )
                     );
 
                     // OTM
@@ -5881,12 +5889,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             ((atTick >= (legUpperTick)) && (tokenType == 0))
                         ) {
                             uint256 c2 = FixedPoint96.Q96 - ratio;
-                            tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
+                            tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
                         } else {
                             // ATM
                             uint160 scaleFactor = TickMath.getSqrtRatioAtTick(width * tickSpacing);
 
-                            uint256 c3 = FullMath.mulDiv(
+                            uint256 c3 = FullMath.mulDivRoundingUp(
                                 notionalMoved,
                                 scaleFactor - ratio,
                                 scaleFactor + FixedPoint96.Q96

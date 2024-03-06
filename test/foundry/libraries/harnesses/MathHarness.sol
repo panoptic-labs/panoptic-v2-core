@@ -74,6 +74,11 @@ contract MathHarness {
         return result;
     }
 
+    function mulDiv96RoundingUp(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 result = Math.mulDiv96RoundingUp(a, b);
+        return result;
+    }
+
     function mulDiv128(uint256 a, uint256 b) public pure returns (uint256) {
         uint256 result = Math.mulDiv128(a, b);
         return result;
@@ -91,6 +96,11 @@ contract MathHarness {
 
     function mulDiv192(uint256 a, uint256 b) public pure returns (uint256) {
         uint256 result = Math.mulDiv192(a, b);
+        return result;
+    }
+
+    function unsafeDivRoundingUp(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 result = Math.unsafeDivRoundingUp(a, b);
         return result;
     }
 
