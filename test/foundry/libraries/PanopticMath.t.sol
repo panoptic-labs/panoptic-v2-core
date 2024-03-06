@@ -199,7 +199,8 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_getPoolId(address univ3pool, uint256 _tickSpacing) public {
         vm.assume(
             univ3pool > address(10) &&
-                univ3pool != address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D)
+                univ3pool != address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D) &&
+                univ3pool != address(0x000000000000000000636F6e736F6c652e6c6f67)
         );
         _tickSpacing = bound(_tickSpacing, 0, uint16(type(int16).max));
 
