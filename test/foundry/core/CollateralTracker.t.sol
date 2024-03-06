@@ -6140,7 +6140,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         ((atTick >= (legUpperTick)) && (tokenType == 0))
                     ) {
                         uint256 c2 = FixedPoint96.Q96 - ratio;
-                        tokensRequired += uint128(Math.mulDiv96(notionalMoved, c2));
+                        tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
