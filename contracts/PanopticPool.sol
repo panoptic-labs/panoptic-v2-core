@@ -1292,7 +1292,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             Math.getSqrtRatioAtTick(atTick)
         );
 
-        return balanceCross > (thresholdCross * buffer) / 10_000;
+        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
+        unchecked {
+            return balanceCross > Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
+        }
     }
 
     /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
@@ -1310,12 +1313,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
             // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows
             balanceCross =
-                ((uint256(tokenData1.rightSlot()) * 2 ** 96) / sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
+                Math.mulDivRoundingUp(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96RoundingUp(tokenData0.rightSlot(), sqrtPriceX96);
             // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
             thresholdCross =
-                ((uint256(tokenData1.leftSlot()) * 2 ** 96) / sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.leftSlot(), sqrtPriceX96);
+                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
         }
     }
 

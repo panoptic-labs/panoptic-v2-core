@@ -92,8 +92,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev saturatedPoolUtilization pool utilization at which sell collateral ratio reaches its maximum and buy collateral ratio reaches its minimum (basis points).
     /// @dev exerciseCost maximum cost of force exercising an OTM position immediately out-of-range, decreases exponentially as the tick moves more ranges away (basis points).
     struct Parameters {
-        int128 commissionFee;
-        int128 ITMSpreadFee;
+        uint128 commissionFee;
+        uint128 ITMSpreadFee;
         int128 sellCollateralRatio;
         int128 buyCollateralRatio;
         int128 targetPoolUtilization;
@@ -168,13 +168,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice when creating an option, collect a commission for the Panoptic LPs.
     /// In Panoptic, options never expire, commissions are only paid when a new position is minted.
     /// We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
-    int128 internal s_commissionFee;
+    uint128 internal s_commissionFee;
 
     /// @notice additional risk premium charged on intrinsic value of ITM positions,
     /// defined in basis points as a multiple of the pool fee / 10_000.
     /// @dev The result of the calculation is stored instead of the multiple to save gas during usage.
     /// When the fee is set, the multiple is calculated and stored
-    int128 internal s_ITMSpreadFee;
+    uint128 internal s_ITMSpreadFee;
 
     // base collateral ratios
     /// @notice Required collateral ratios for buying, represented as percentage * 10_000.
@@ -278,7 +278,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // Additional risk premium charged on intrinsic value of ITM positions
         // Initial ITM spread fee is double the underlying poolFee.
         unchecked {
-            s_ITMSpreadFee = int24(2 * _poolFee);
+            s_ITMSpreadFee = 2 * _poolFee;
         }
 
         // amount of ticks that correspond to a move of -s_sellCollateralRatio/DECIMALS
@@ -308,9 +308,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_commissionFee = newParameters.commissionFee;
         // precompute the final spread fee - ITMSpreadFee is passed as a multiplier of the pool fee in basis points
         unchecked {
-            s_ITMSpreadFee = int128(
-                (int256(newParameters.ITMSpreadFee) * int24(s_poolFee)) / DECIMALS_128
-            );
+            s_ITMSpreadFee = uint128((uint256(newParameters.ITMSpreadFee) * s_poolFee) / DECIMALS);
         }
         s_sellCollateralRatio = newParameters.sellCollateralRatio;
         // calculate amount of ticks required for upwards and downwards moves, used to check if current and mini-median tick
@@ -476,7 +474,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
         unchecked {
             shares = Math.mulDiv(
-                assets * (DECIMALS - uint128(s_commissionFee)),
+                assets * (DECIMALS - s_commissionFee),
                 totalSupply,
                 totalAssets() * DECIMALS
             );
@@ -522,9 +520,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return maxShares The maximum amount of shares that can be minted.
     function maxMint(address) external view returns (uint256 maxShares) {
         unchecked {
-            return
-                (convertToShares(type(uint104).max) * DECIMALS) /
-                (DECIMALS + uint128(s_commissionFee));
+            return (convertToShares(type(uint104).max) * DECIMALS) / (DECIMALS + s_commissionFee);
         }
     }
 
@@ -543,7 +539,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             assets = Math.mulDivRoundingUp(
                 shares * DECIMALS,
                 totalAssets(),
-                totalSupply * (DECIMALS - uint128(s_commissionFee))
+                totalSupply * (DECIMALS - s_commissionFee)
             );
         }
     }
@@ -832,8 +828,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
-                .toRightSlot(int128((int256(longAmounts.rightSlot()) * int256(fee)) / DECIMALS_128))
-                .toLeftSlot(int128((int256(longAmounts.leftSlot()) * int256(fee)) / DECIMALS_128));
+                .toRightSlot(int128((longAmounts.rightSlot() * fee) / DECIMALS_128))
+                .toLeftSlot(int128((longAmounts.leftSlot() * fee) / DECIMALS_128));
         }
     }
 
@@ -1241,14 +1237,22 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
-                int256 swapCommission = Math.abs((s_ITMSpreadFee * intrinsicValue) / DECIMALS_128);
+                uint256 swapCommission = Math.unsafeDivRoundingUp(
+                    s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
+                    DECIMALS
+                );
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
-                exchangedAmount = intrinsicValue + swapCommission;
+                exchangedAmount = intrinsicValue + int256(swapCommission);
             }
 
             //compute total commission amount = commission rate + spread fee
-            exchangedAmount += ((shortAmount + longAmount) * s_commissionFee) / DECIMALS_128;
+            exchangedAmount += int256(
+                Math.unsafeDivRoundingUp(
+                    uint256(uint128(shortAmount + longAmount)) * s_commissionFee,
+                    DECIMALS
+                )
+            );
         }
     }
 
@@ -1531,7 +1535,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
                         // compute the tokens required
                         // position is in-the-money, collateral requirement = amountMoved*(1-ratio) + SCR*amountMoved
-                        required += Math.mulDiv96(amountMoved, c2);
+                        required += Math.mulDiv96RoundingUp(amountMoved, c2);
                     } else {
                         // position is in-range (ie. current tick is between upper+lower tick): we draw a line between the
                         // collateral requirement at the lowerTick and the one at the upperTick. We use that interpolation as
@@ -1539,7 +1543,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         // Specifically:
                         //  required = amountMoved * (scaleFactor - ratio) / (scaleFactor + 1) + sellCollateralRatio*amountMoved
                         uint160 scaleFactor = Math.getSqrtRatioAtTick(2 * oneSidedRange);
-                        uint256 c3 = Math.mulDiv(
+                        uint256 c3 = Math.mulDivRoundingUp(
                             amountMoved,
                             scaleFactor - ratio,
                             scaleFactor + Constants.FP96
@@ -1615,8 +1619,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
 
             // compute required as amount*collateralRatio
+            // can use unsafe because denominator is always nonzero
             unchecked {
-                required = ((amount * sellCollateral) / DECIMALS);
+                required = Math.unsafeDivRoundingUp(amount * sellCollateral, DECIMALS);
             }
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
@@ -1627,8 +1632,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
 
             // compute required as amount*collateralRatio
+            // can use unsafe because denominator is always nonzero
             unchecked {
-                required = ((amount * buyCollateral) / DECIMALS);
+                required = Math.unsafeDivRoundingUp(amount * buyCollateral, DECIMALS);
             }
         }
     }
@@ -1687,8 +1693,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
         } else {
             unchecked {
-                /// uint256 as intermediate may overflow
-                /// when divided by min notional the value is brought back under 128 bits
                 uint256 notional;
                 uint256 notionalP;
                 uint128 contracts;
@@ -1702,9 +1706,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     contracts = movedRight;
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
+                // can use unsafe because denominator is always nonzero
                 spreadRequirement = (notional < notionalP)
-                    ? ((notionalP - notional) * contracts) / notional
-                    : ((notional - notionalP) * contracts) / notionalP;
+                    ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notional)
+                    : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notionalP);
             }
         }
 

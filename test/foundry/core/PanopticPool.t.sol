@@ -1439,8 +1439,8 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.updateParameters(
             CollateralTracker.Parameters(
-                parameters[0],
-                parameters[1],
+                uint128(parameters[0]),
+                uint128(parameters[1]),
                 int128(sellCollateralRatio),
                 parameters[3],
                 parameters[4],
@@ -1450,8 +1450,8 @@ contract PanopticPoolTest is PositionUtils {
         );
         ct1.updateParameters(
             CollateralTracker.Parameters(
-                parameters[0],
-                parameters[1],
+                uint128(parameters[0]),
+                uint128(parameters[1]),
                 int128(sellCollateralRatio),
                 parameters[3],
                 parameters[4],
@@ -1503,20 +1503,22 @@ contract PanopticPoolTest is PositionUtils {
                 )
             )
         );
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(10))),
-            bytes32(
-                uint128(uint256(((int256(parameters[1]) * int24(fee)) / 100) / 10_000)) +
-                    (uint256(int256(sellCollateralRatio)) << 128)
-            )
-        ); // itm spread fee + sellCollateralRatio
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(10))),
-            bytes32(
-                uint128(uint256(((int256(parameters[1]) * int24(fee)) / 100) / 10_000)) +
-                    (uint256(int256(sellCollateralRatio)) << 128)
-            )
-        );
+        unchecked {
+            assertEq(
+                vm.load(address(ct0), bytes32(uint256(10))),
+                bytes32(
+                    uint128((uint256(uint128(parameters[1])) * (uint24(fee) / 100)) / 10_000) +
+                        (uint256(int256(sellCollateralRatio)) << 128)
+                )
+            ); // itm spread fee + sellCollateralRatio
+            assertEq(
+                vm.load(address(ct1), bytes32(uint256(10))),
+                bytes32(
+                    uint128((uint256(uint128(parameters[1])) * (uint24(fee) / 100)) / 10_000) +
+                        (uint256(int256(sellCollateralRatio)) << 128)
+                )
+            );
+        }
         assertEq(
             vm.load(address(ct0), bytes32(uint256(11))),
             bytes32(uint256(uint128(parameters[3]) + (uint256(int256(parameters[6])) << 128)))
@@ -2885,7 +2887,7 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Charlie);
 
         ct0.deposit(
-            (uint128((shortAmounts.rightSlot() * 10) / 10000) * 10015) / 10000 + 3,
+            (uint128((shortAmounts.rightSlot() * 10) / 10000) * 10015) / 10000 + 4,
             Charlie
         );
 
