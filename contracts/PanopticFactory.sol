@@ -71,10 +71,10 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @dev the Uniswap v3 factory contract to use
-    IUniswapV3Factory internal immutable univ3Factory;
+    IUniswapV3Factory internal immutable UNIV3_FACTORY;
 
     /// @dev the Semi Fungible Position Manager (sfpm) which tracks option positions across Panoptic Pools
-    SemiFungiblePositionManager internal immutable sfpm;
+    SemiFungiblePositionManager internal immutable SFPM;
 
     /// @dev Reference implementation of the panoptic pool to clone
     address internal immutable POOL_REFERENCE;
@@ -137,10 +137,10 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         s_factoryOwner = _msgSender();
 
         // deploy base pool contract to use as reference
-        sfpm = _SFPM;
+        SFPM = _SFPM;
 
         // We store the Uniswap Factory contract - later we can use this to verify uniswap pools
-        univ3Factory = _univ3Factory;
+        UNIV3_FACTORY = _univ3Factory;
 
         // Import the Panoptic Pool reference (for cloning)
         POOL_REFERENCE = _poolReference;
@@ -196,7 +196,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         // Decode the mint callback data
         CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
         // Validate caller to ensure we got called from the AMM pool
-        CallbackLib.validateCallback(msg.sender, univ3Factory, decoded.poolFeatures);
+        CallbackLib.validateCallback(msg.sender, UNIV3_FACTORY, decoded.poolFeatures);
 
         // Sends the amount0Owed and amount1Owed quantities provided
         if (amount0Owed > 0)
@@ -259,12 +259,12 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         CollateralTracker collateralTracker0 = CollateralTracker(
             Clones.clone(COLLATERAL_REFERENCE)
         );
-        collateralTracker0.startToken(token0, v3Pool, newPoolContract);
+        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract);
 
         CollateralTracker collateralTracker1 = CollateralTracker(
             Clones.clone(COLLATERAL_REFERENCE)
         );
-        collateralTracker1.startToken(token1, v3Pool, newPoolContract);
+        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract);
 
         // connect the panoptic pool with the underlying univ3 pool
         s_getPanopticPool[v3Pool] = newPoolContract;
@@ -279,7 +279,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         // NOTE: make sure the donor has the funds necessary to deploy this liquidity
         // Behind the scenes the SFPM will move the required full-range liquidity from the donor to the Uniswap pool
         // (identified uniquely by token0, token1, and fee).
-        sfpm.initializeAMMPool(token0, token1, fee);
+        SFPM.initializeAMMPool(token0, token1, fee);
 
         // Full-Range Liquidity Deployment on Genesis
         (uint256 amount0, uint256 amount1) = _mintFullRange(
@@ -521,7 +521,7 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
         address _token1,
         uint24 _fee
     ) internal view returns (IUniswapV3Pool) {
-        return IUniswapV3Pool(univ3Factory.getPool(address(_token0), address(_token1), _fee));
+        return IUniswapV3Pool(UNIV3_FACTORY.getPool(address(_token0), address(_token1), _fee));
     }
 
     /// @notice Get a salt value to use with the clone deterministic pattern.

@@ -470,7 +470,9 @@ contract PanopticPoolTest is PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
-        collateralReference = address(new CollateralTracker());
+        collateralReference = address(
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1422,8 +1424,8 @@ contract PanopticPoolTest is PositionUtils {
         int256 assetDelta = convertToAssets(ct, shareDelta);
         vm.store(
             address(ct),
-            bytes32(uint256(8)),
-            bytes32(uint256(uint256(vm.load(address(ct), bytes32(uint256(8)))).add(assetDelta)))
+            bytes32(uint256(7)),
+            bytes32(uint256(uint256(vm.load(address(ct), bytes32(uint256(7)))).add(assetDelta)))
         );
         deal(
             ct.asset(),
@@ -1451,164 +1453,75 @@ contract PanopticPoolTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Success_parameters_initialState(uint256 x) public {
-        _initWorld(x);
+        // Pick a pool from the seed and cache initial state
+        _cacheWorldState(pools[bound(x, 0, pools.length - 1)]);
 
-        changePrank(Deployer);
-        // the parameters aren't exposed, so we have to read directly from storage
-        // all parameters start nonzero, so the easiest way is just to set them all to zero
-        // and ensure that change was applied
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(9))),
-            bytes32(uint256((uint256(fee / 100)) + (2230 << 24) + (10 << 48)))
-        ); // poolFee + tickDeviation + commission fee
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(9))),
-            bytes32(uint256((uint256(fee / 100)) + (2230 << 24) + (10 << 48)))
-        );
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(10))),
-            bytes32(uint256((((2 * fee) / 100) + (2_000 << 128))))
-        ); // itm spread fee + sellCollateralRatio
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(10))),
-            bytes32(uint256((((2 * fee) / 100) + (2_000 << 128))))
-        );
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(11))),
-            bytes32(uint256(1_000 + (uint256(int256(-1_024)) << 128)))
-        ); // buyCollateralRatio + exerciseCost
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(11))),
-            bytes32(uint256(1_000 + (uint256(int256(-1_024)) << 128)))
-        );
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(12))),
-            bytes32(uint256(5000 + (uint256(9000) << 128)))
-        ); // target pool utilization + saturated utilization
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(12))),
-            bytes32(uint256(5000 + (uint256(9000) << 128)))
-        );
-    }
+        _deployPanopticPool();
 
-    function test_Success_updateParameters(
-        uint256 x,
-        int256 sellCollateralRatio,
-        int128[7] memory parameters
-    ) public {
-        _initWorld(x);
+        assertEq(vm.load(address(ct0), bytes32(uint256(0))), bytes32(uint256(10 ** 6))); // totalSupply
+        assertEq(vm.load(address(ct1), bytes32(uint256(0))), bytes32(uint256(10 ** 6))); // totalSupply
 
-        changePrank(Deployer);
+        assertEq(vm.load(address(ct0), bytes32(uint256(1))), bytes32(uint256(0))); // balanceOf slot
+        assertEq(vm.load(address(ct1), bytes32(uint256(1))), bytes32(uint256(0))); // balanceOf slot
 
-        sellCollateralRatio = bound(sellCollateralRatio, 10, 10_000);
-
-        ct0.updateParameters(
-            CollateralTracker.Parameters(
-                uint128(parameters[0]),
-                uint128(parameters[1]),
-                int128(sellCollateralRatio),
-                parameters[3],
-                parameters[4],
-                parameters[5],
-                parameters[6]
-            )
-        );
-        ct1.updateParameters(
-            CollateralTracker.Parameters(
-                uint128(parameters[0]),
-                uint128(parameters[1]),
-                int128(sellCollateralRatio),
-                parameters[3],
-                parameters[4],
-                parameters[5],
-                parameters[6]
-            )
-        );
-
-        // the parameters aren't exposed, so we have to read directly from storage
-        // all parameters start nonzero, so the easiest way is just to set them all to zero
-        // and ensure that change was applied
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(9))),
-            bytes32(
-                uint256(
-                    (uint256(fee / 100)) +
-                        (uint256(
-                            uint128(
-                                int128(2230) +
-                                    (int128(12500) * (int128(sellCollateralRatio) - 2000)) /
-                                    10_000 +
-                                    (int128(7812) * (int128(sellCollateralRatio) - 2000) ** 2) /
-                                    10_000 ** 2 +
-                                    (int128(6510) * (int128(sellCollateralRatio) - 2000) ** 3) /
-                                    10_000 ** 3
-                            )
-                        ) << 24) +
-                        (uint256(uint128(parameters[0])) << 48)
-                )
-            )
-        ); // tickSpacing + poolFee + tickDeviation + commission fee
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(9))),
-            bytes32(
-                uint256(
-                    (uint256(fee / 100)) +
-                        (uint256(
-                            uint128(
-                                int128(2230) +
-                                    (int128(12500) * (int128(sellCollateralRatio) - 2000)) /
-                                    10_000 +
-                                    (int128(7812) * (int128(sellCollateralRatio) - 2000) ** 2) /
-                                    10_000 ** 2 +
-                                    (int128(6510) * (int128(sellCollateralRatio) - 2000) ** 3) /
-                                    10_000 ** 3
-                            )
-                        ) << 24) +
-                        (uint256(uint128(parameters[0])) << 48)
-                )
-            )
-        );
-        unchecked {
-            assertEq(
-                vm.load(address(ct0), bytes32(uint256(10))),
-                bytes32(
-                    uint128((uint256(uint128(parameters[1])) * (uint24(fee) / 100)) / 10_000) +
-                        (uint256(int256(sellCollateralRatio)) << 128)
-                )
-            ); // itm spread fee + sellCollateralRatio
-            assertEq(
-                vm.load(address(ct1), bytes32(uint256(10))),
-                bytes32(
-                    uint128((uint256(uint128(parameters[1])) * (uint24(fee) / 100)) / 10_000) +
-                        (uint256(int256(sellCollateralRatio)) << 128)
-                )
-            );
-        }
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(11))),
-            bytes32(uint256(uint128(parameters[3]) + (uint256(int256(parameters[6])) << 128)))
-        ); // buyCollateralRatio + exerciseCost
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(11))),
-            bytes32(uint256(uint128(parameters[3]) + (uint256(int256(parameters[6])) << 128)))
-        );
+        assertEq(vm.load(address(ct0), bytes32(uint256(2))), bytes32(uint256(0))); // allowance slot
+        assertEq(vm.load(address(ct1), bytes32(uint256(2))), bytes32(uint256(0))); // allowance slot
 
         assertEq(
-            vm.load(address(ct0), bytes32(uint256(12))),
-            bytes32(uint256(uint128(parameters[4]) + (uint256(int256(parameters[5])) << 128)))
-        ); // target pool utilization + saturated utilization
+            vm.load(address(ct0), bytes32(uint256(3))),
+            bytes32(uint256(uint256(1 << 160) + uint160(address(token0))))
+        ); // underlying token + initialized
         assertEq(
-            vm.load(address(ct1), bytes32(uint256(12))),
-            bytes32(uint256(uint128(parameters[4]) + (uint256(int256(parameters[5])) << 128)))
-        );
-    }
+            vm.load(address(ct1), bytes32(uint256(3))),
+            bytes32(uint256(uint256(1 << 160) + uint160(address(token1))))
+        ); // underlying token + initialized
 
-    function test_Fail_updateParameters_NotOwner(uint256 x) public {
-        _initWorld(x);
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(4))),
+            bytes32(uint256(uint160(address(token0))))
+        ); // token0
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(4))),
+            bytes32(uint256(uint160(address(token0))))
+        ); // token0
 
-        vm.expectRevert(Errors.NotOwner.selector);
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(5))),
+            bytes32(uint256(uint256(1 << 160) + uint160(address(token1))))
+        ); // token1 + underlyingistoken0
 
-        ct0.updateParameters(CollateralTracker.Parameters(0, 0, 0, 0, 0, 0, 0));
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(5))),
+            bytes32(uint256(uint160(address(token1))))
+        ); // token1 + underlyingistoken0
+
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(6))),
+            bytes32(uint256(uint160(address(pp))))
+        ); // pool
+
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(6))),
+            bytes32(uint256(uint160(address(pp))))
+        ); // pool
+
+        assertEq(vm.load(address(ct0), bytes32(uint256(7))), bytes32(uint256(1))); // poolAssets + inAMM
+
+        assertEq(vm.load(address(ct1), bytes32(uint256(7))), bytes32(uint256(1))); // poolAssets + inAMM
+
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(8))),
+            bytes32(uint256((2 * uint256(fee)) / 100 + (uint256(fee / 100) << 128)))
+        ); // ITMSpreadFee + poolFee
+
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(8))),
+            bytes32(uint256((2 * uint256(fee)) / 100 + (uint256(fee / 100) << 128)))
+        ); // ITMSpreadFee + poolFee
+
+        assertEq(vm.load(address(ct0), bytes32(uint256(9))), bytes32(uint256(0))); // 0
+
+        assertEq(vm.load(address(ct1), bytes32(uint256(9))), bytes32(uint256(0))); // 0
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1668,13 +1581,13 @@ contract PanopticPoolTest is PositionUtils {
 
         int256 poolUtilizationsAtMint;
         {
-            (, , int128 currentPoolUtilization) = ct0.getPoolData();
-            poolUtilizationsAtMint = int256(0).toRightSlot(currentPoolUtilization);
+            (, , int256 currentPoolUtilization) = ct0.getPoolData();
+            poolUtilizationsAtMint = int256(0).toRightSlot(int128(currentPoolUtilization));
         }
 
         {
-            (, , int128 currentPoolUtilization) = ct1.getPoolData();
-            poolUtilizationsAtMint = int256(0).toLeftSlot(currentPoolUtilization);
+            (, , int256 currentPoolUtilization) = ct1.getPoolData();
+            poolUtilizationsAtMint = int256(0).toLeftSlot(int128(currentPoolUtilization));
         }
 
         {

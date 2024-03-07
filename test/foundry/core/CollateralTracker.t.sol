@@ -39,6 +39,8 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     using LeftRight for int256;
 
+    constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000) {}
+
     // view deployer (panoptic pool)
     function panopticPool() external returns (PanopticPool) {
         return s_panopticPool;
@@ -87,7 +89,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function poolUtilizationHook() external view returns (int128) {
-        return _poolUtilization();
+        return int128(_poolUtilization());
     }
 
     function getTotalRequiredCollateral(
@@ -97,12 +99,12 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return _getTotalRequiredCollateral(currentTick, positionBalanceArray);
     }
 
-    function sellCollateralRatio(int128 utilization) external view returns (int128) {
+    function sellCollateralRatio(int256 utilization) external view returns (uint256) {
         return _sellCollateralRatio(utilization);
     }
 
-    function buyCollateralRatio(int128 utilization) external view returns (int128) {
-        return _buyCollateralRatio(utilization);
+    function buyCollateralRatio(int256 utilization) external view returns (uint256) {
+        return _buyCollateralRatio(uint256(utilization));
     }
 }
 
@@ -127,8 +129,8 @@ contract PanopticPoolHarness is PanopticPool {
         _initalizeCollateralPair(token0, token1, uniswapPool);
 
         // Approve transfers of Panoptic Pool funds by SFPM
-        IERC20Partial(s_token0).approve(address(sfpm), type(uint256).max);
-        IERC20Partial(s_token1).approve(address(sfpm), type(uint256).max);
+        IERC20Partial(s_token0).approve(address(SFPM), type(uint256).max);
+        IERC20Partial(s_token1).approve(address(SFPM), type(uint256).max);
 
         // Approve transfers of Panoptic Pool funds by Collateral token
         IERC20Partial(s_token0).approve(address(s_collateralToken0), type(uint256).max);
@@ -146,14 +148,8 @@ contract PanopticPoolHarness is PanopticPool {
         s_collateralToken1 = new CollateralTrackerHarness();
 
         // initialize the token
-        s_collateralToken0.startToken(token0, uniswapPool, this);
-        s_collateralToken1.startToken(token1, uniswapPool, this);
-    }
-
-    function updateParametersHook(CollateralTracker.Parameters calldata newParameters) external {
-        // Update the parameters for both collateral tokens
-        s_collateralToken0.updateParameters(newParameters);
-        s_collateralToken1.updateParameters(newParameters);
+        s_collateralToken0.startToken(true, token0, token1, uniswapPool.fee(), this);
+        s_collateralToken1.startToken(false, token0, token1, uniswapPool.fee(), this);
     }
 
     // mimics an internal Panoptic pool _delegate call onto the collateral tracker
@@ -582,8 +578,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker();
-        ct.startToken(token0, pool, panopticPool);
+        CollateralTracker ct = new CollateralTracker(
+            10,
+            2_000,
+            1_000,
+            -1_024,
+            5_000,
+            9_000,
+            20_000
+        );
+        ct.startToken(false, token0, token1, fee, panopticPool);
 
         assertEq(ct.totalSupply(), 10 ** 6);
         assertEq(ct.totalAssets(), 1);
@@ -596,11 +600,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0 = new CollateralTrackerHarness();
 
         // initialize the token
-        collateralToken0.startToken(token0, pool, PanopticPool(address(0)));
+        collateralToken0.startToken(false, token0, token1, fee, PanopticPool(address(0)));
 
         // fails if already initialized
         vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
-        collateralToken0.startToken(token0, pool, PanopticPool(address(0)));
+        collateralToken0.startToken(false, token0, token1, fee, PanopticPool(address(0)));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -5397,12 +5401,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // _inAMM() * DECIMALS) / totalAssets()
         uint256 expectedPoolUtilization = (expectedInAMM * 10_000) / expectedTotalBalance;
 
-        (uint256 poolAssets, uint256 insideAMM, int128 currentPoolUtilization) = collateralToken0
+        (uint256 poolAssets, uint256 insideAMM, int256 currentPoolUtilization) = collateralToken0
             .getPoolData();
 
         assertEq(expectedBal, poolAssets);
         assertEq(expectedInAMM, insideAMM);
-        assertEq(expectedPoolUtilization, uint128(currentPoolUtilization));
+        assertEq(expectedPoolUtilization, uint256(currentPoolUtilization));
     }
 
     function test_Success_name(uint256 x) public {

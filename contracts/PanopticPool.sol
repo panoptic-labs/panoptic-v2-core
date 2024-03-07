@@ -167,7 +167,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // Panoptic ecosystem contracts - addresses are set in the constructor
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises
-    SemiFungiblePositionManager internal immutable sfpm;
+    SemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE 
@@ -230,7 +230,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice During construction: sets the address of the panoptic factory smart contract and the SemiFungiblePositionMananger (SFPM).
     /// @param _sfpm The address of the SemiFungiblePositionManager (SFPM) contract.
     constructor(SemiFungiblePositionManager _sfpm) {
-        sfpm = _sfpm;
+        SFPM = _sfpm;
     }
 
     /// @notice Creates a method for creating a Panoptic Pool on top of an existing Uniswap v3 pair.
@@ -262,7 +262,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // SFPM: token0, token1
         // CollateralTracker0 - token0
         // CollateralTracker1 - token1
-        InteractionHelper.doApprovals(sfpm, collateralTracker0, collateralTracker1, token0, token1);
+        InteractionHelper.doApprovals(SFPM, collateralTracker0, collateralTracker1, token0, token1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -570,7 +570,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (tickLimitLow, tickLimitHigh) = _getSlippageLimits(tickLimitLow, tickLimitHigh);
 
         // make sure the tokenId is for this Panoptic pool
-        if (tokenId.poolId() != sfpm.getPoolId(address(s_univ3pool)))
+        if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
             revert Errors.InvalidTokenIdParameter(0);
         // disallow user to mint exact same position
         // in order to do it, user should burn it first and then mint
@@ -655,7 +655,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal returns (uint128 poolUtilizations, int24) {
         // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
         // Switch order of tickLimits to create "swapAtMint" flag
-        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = sfpm
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 newTick) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         // update premium settlement info
@@ -694,13 +694,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionSize
         );
 
-        int128 utilization0 = s_collateralToken0.takeCommissionAddData(
+        int256 utilization0 = s_collateralToken0.takeCommissionAddData(
             tickStateCallContext,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot()
         );
-        int128 utilization1 = s_collateralToken1.takeCommissionAddData(
+        int256 utilization1 = s_collateralToken1.takeCommissionAddData(
             tickStateCallContext,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -709,7 +709,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)
         unchecked {
-            return (uint128(utilization0) + uint128(utilization1 << 64));
+            return uint128(uint256(utilization0) + uint128(uint256(utilization1) << 64));
         }
     }
 
@@ -730,7 +730,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             (int24 tickLower, int24 tickUpper) = mintTokenId.asTicks(leg);
             uint256 isLong = mintTokenId.isLong(leg);
             {
-                (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
+                (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
                     address(s_univ3pool),
                     address(this),
                     TokenId.tokenType(mintTokenId, leg),
@@ -923,7 +923,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // burn the option in sfpm, switch order of tickLimits to create "swapAtMint" flag
         int256 totalSwapped;
         uint256[4] memory collectedByLeg;
-        (collectedByLeg, totalSwapped, newTick) = sfpm.burnTokenizedPosition(
+        (collectedByLeg, totalSwapped, newTick) = SFPM.burnTokenizedPosition(
             tokenId,
             positionSize,
             tickLimitLow,
@@ -1460,7 +1460,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickUpper,
         uint64 effectiveLiquidityLimitX32
     ) internal view {
-        uint256 accountLiquidities = sfpm.getAccountLiquidity(
+        uint256 accountLiquidities = SFPM.getAccountLiquidity(
             address(s_univ3pool),
             address(this),
             tokenId.tokenType(leg),
@@ -1509,7 +1509,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
                 uint256 tokenType = tokenId.tokenType(leg);
 
-                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = sfpm
+                (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = SFPM
                     .getAccountPremium(
                         address(s_univ3pool),
                         address(this),
@@ -1593,7 +1593,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
             uint256 tokenType = tokenId.tokenType(legIndex);
-            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
+            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
                 address(s_univ3pool),
                 address(this),
                 tokenType,
@@ -1699,7 +1699,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // Ln = (CR + TL)/(T+R)
 
                 uint256[2] memory grossCurrent;
-                (grossCurrent[0], grossCurrent[1]) = sfpm.getAccountPremium(
+                (grossCurrent[0], grossCurrent[1]) = SFPM.getAccountPremium(
                     address(s_univ3pool),
                     address(this),
                     tokenId.tokenType(leg),
@@ -1801,7 +1801,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
             uint256 tokenType = tokenId.tokenType(leg);
-            uint256 accountLiquidities = sfpm.getAccountLiquidity(
+            uint256 accountLiquidities = SFPM.getAccountLiquidity(
                 address(s_univ3pool),
                 address(this),
                 tokenType,

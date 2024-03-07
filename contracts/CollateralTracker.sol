@@ -2,7 +2,6 @@
 pragma solidity =0.8.18;
 
 // Interfaces
-import {PanopticFactory} from "./PanopticFactory.sol";
 import {PanopticPool} from "./PanopticPool.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -63,10 +62,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 shares
     );
 
-    /// @notice Emitted when the collateral tracking parameters are changed. See struct 'Parameters' for passed in arguments.
-    /// @param newParameters A single packed struct that contains information about the new parameters.
-    event ParametersUpdated(Parameters newParameters);
-
     /*//////////////////////////////////////////////////////////////
                                  TYPES
     //////////////////////////////////////////////////////////////*/
@@ -80,26 +75,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     using TickStateCallContext for uint256;
     // represents an option position of up to four legs as a single ERC1155 tokenId
     using TokenId for uint256;
-
-    /// @notice Mutable parameters that can be used to adjust various protocol mechanisms and behaviors.
-    /// These parameters are stored in CollateralTracker and are used in various calculations.
-    /// They can be updated with the 'updateParameters' function in this contract.
-    /// @dev commissionFee the commission fee (basis points).
-    /// @dev ITMSpreadFee additional risk premium charged on intrinsic value of ITM positions defined in basis points as a multiple of the pool fee / 10000.
-    /// @dev sellCollateralRatio minimum collateral ratio for selling options when pool utilization < targetPoolUtilization (basis points).
-    /// @dev buyCollateralRatio maximum collateral ratio for buying options when pool utilization < targetPoolUtilization (basis points).
-    /// @dev targetPoolUtilization utilization where sell collateral slopes upwards and buy collateral slopes downwards after (basis points).
-    /// @dev saturatedPoolUtilization pool utilization at which sell collateral ratio reaches its maximum and buy collateral ratio reaches its minimum (basis points).
-    /// @dev exerciseCost maximum cost of force exercising an OTM position immediately out-of-range, decreases exponentially as the tick moves more ranges away (basis points).
-    struct Parameters {
-        uint128 commissionFee;
-        uint128 ITMSpreadFee;
-        int128 sellCollateralRatio;
-        int128 buyCollateralRatio;
-        int128 targetPoolUtilization;
-        int128 saturatedPoolUtilization;
-        int128 exerciseCost;
-    }
 
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
@@ -146,14 +121,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev The Collateral Tracker Token keeps a reference to the Panoptic Pool using it.
     PanopticPool internal s_panopticPool;
 
-    /// @dev The Panoptic factory - permissioned operations such as 'updateParameters' are performed by this.
-    /// @dev When parameters are updated, the factory calls on behalf of the EOA/multisig/DAO that owns it, so we need this to gate access to the function.
-    PanopticFactory internal factory;
-
     /// @dev Cached amount of assets accounted to be held by the Panoptic Pool - ignores donations, pending fee payouts, and other untracked balance changes.
     uint128 internal s_poolAssets;
+
     /// @dev Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
+
+    /// @notice additional risk premium charged on intrinsic value of ITM positions,
+    /// defined in basis points as a multiple of the pool fee / 10_000.
+    /// @dev The result of the calculation is stored instead of the multiple to save gas during usage.
+    /// When the fee is set, the multiple is calculated and stored
+    uint128 internal s_ITMSpreadFee;
 
     /// @dev The fee of the Uniswap pool.
     uint24 internal s_poolFee;
@@ -162,50 +140,43 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev Amount of ticks that correspond to a move of -s_sellCollateralRatio/DECIMALS.
-    uint24 internal s_tickDeviation;
+    /// @dev Amount of ticks that correspond to a move of -SELLER_COLLATERAL_RATIO/DECIMALS.
+    uint256 immutable TICK_DEVIATION;
 
     /// @notice when creating an option, collect a commission for the Panoptic LPs.
     /// In Panoptic, options never expire, commissions are only paid when a new position is minted.
     /// We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
-    uint128 internal s_commissionFee;
-
-    /// @notice additional risk premium charged on intrinsic value of ITM positions,
-    /// defined in basis points as a multiple of the pool fee / 10_000.
-    /// @dev The result of the calculation is stored instead of the multiple to save gas during usage.
-    /// When the fee is set, the multiple is calculated and stored
-    uint128 internal s_ITMSpreadFee;
+    uint256 immutable COMMISSION_FEE;
 
     // base collateral ratios
     /// @notice Required collateral ratios for buying, represented as percentage * 10_000.
     /// i.e 20% -> 0.2 * 10_000 = 2_000.
-    int128 internal s_sellCollateralRatio;
+    uint256 immutable SELLER_COLLATERAL_RATIO;
+
     /// @notice Required collateral ratios for selling, represented as percentage * 10_000.
     /// i.e 10% -> 0.1 * 10_000 = 1_000.
-    int128 internal s_buyCollateralRatio;
+    uint256 immutable BUYER_COLLATERAL_RATIO;
 
     // liquidation parameters
     /// @notice basal cost to force exercise a position that is barely far-the-money (out-of-range).
-    int128 internal s_exerciseCost;
+    int256 immutable FORCE_EXERCISE_COST;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
     /// i.e 50% -> 0.5 * 10_000 = 5_000.
-    int128 internal s_targetPoolUtilization;
+    uint256 immutable TARGET_POOL_UTIL;
+
     /// @notice Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
     /// i.e 90% -> 0.9 * 10_000 = 9_000.
-    int128 internal s_saturatedPoolUtilization;
+    uint256 immutable SATURATED_POOL_UTIL;
+
+    /// @notice multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions.
+    /// e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee
+    uint256 immutable ITM_SPREAD_MULTIPLIER;
 
     /*//////////////////////////////////////////////////////////////
                             ACCESS CONTROL
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Ensure that the Panoptic Factory owner is the caller. Revert if not.
-    /// @notice the Panoptic Factory is what spins out new Panoptic Pools.
-    modifier onlyFactoryOwner() {
-        if (msg.sender != factory.factoryOwner()) revert Errors.NotOwner();
-        _;
-    }
 
     /// @notice Ensure that the associated Panoptic pool is the caller. Revert if not.
     modifier onlyPanopticPool() {
@@ -217,15 +188,54 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
+    constructor(
+        uint256 _commissionFee,
+        uint256 _sellerCollateralRatio,
+        uint256 _buyerCollateralRatio,
+        int256 _forceExerciseCost,
+        uint256 _targetPoolUtilization,
+        uint256 _saturatedPoolUtilization,
+        uint256 _ITMSpreadMultiplier
+    ) {
+        COMMISSION_FEE = _commissionFee;
+        SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
+        BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
+        FORCE_EXERCISE_COST = _forceExerciseCost;
+        TARGET_POOL_UTIL = _targetPoolUtilization;
+        SATURATED_POOL_UTIL = _saturatedPoolUtilization;
+        ITM_SPREAD_MULTIPLIER = _ITMSpreadMultiplier;
+
+        // calculate amount of ticks required for upwards and downwards moves, used to check if current and mini-median tick
+        // are out of sync (then apply a 100% collateral requirement)
+        unchecked {
+            // taylor expand log(1-sellCollateralRatio)/log(1.0001) around sellCollateralRatio=2000 up to 3rd order
+            /// since we're dropping the higher order terms, which are all negative, this will underestimate the number of ticks for a 20% move
+            int256 ratioTick = (int256(_sellerCollateralRatio) - 2000);
+            TICK_DEVIATION = uint256(
+                2230 +
+                    (12500 * ratioTick) /
+                    10_000 +
+                    (7812 * ratioTick ** 2) /
+                    10_000 ** 2 +
+                    (6510 * ratioTick ** 3) /
+                    10_000 ** 3
+            );
+        }
+    }
+
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
     /// @dev The factory calls this function to start a new collateral tracking system for the incoming token at 'underlyingToken'.
     /// The factory will do this for each of the two tokens being tracked. Thus, the collateral tracking system does not track *both* tokens at once.
-    /// @param underlyingToken the address of the token to track collateral for corresponding to the Panoptic Pool being created by the factory calling this (as 'msg.sender').
-    /// @param uniswapPool the address of the Uniswap pool that this token is a part of.
+    /// @param underlyingIsToken0 whether this collateral tracker is for token0 (true) or token1 (false).
+    /// @param token0 token 0 of the Uniswap pool.
+    /// @param token1 token 1 of the Uniswap pool.
+    /// @param fee the fee of the Uniswap pool.
     /// @param panopticPool the address of the Panoptic Pool being created and linked to this Collateral Tracker.
     function startToken(
-        address underlyingToken,
-        IUniswapV3Pool uniswapPool,
+        bool underlyingIsToken0,
+        address token0,
+        address token1,
+        uint24 fee,
         PanopticPool panopticPool
     ) external {
         // fails if already initialized
@@ -240,25 +250,16 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // the initial share price is defined by 1/virtualShares
         s_poolAssets = 1;
 
-        // cache the token0 and token1 addresses from the uniswap pool
-        address token0 = uniswapPool.token0();
-        address token1 = uniswapPool.token1();
-
-        // Set the factory to the pool creator
-        // This function is called within the same transaction as cloning the reference contract
-        // Ensuring that the deployer/owner sets the correct parameters on genesis
-        // Calling 'startToken' on the reference itself is not a concern, as it's storage is never accessed
-        factory = PanopticFactory(msg.sender);
-
         // store the address of the underlying ERC20 token
-        s_underlyingToken = underlyingToken;
+        s_underlyingToken = underlyingIsToken0 ? token0 : token1;
+
         // store the Panoptic pool for this collateral token
         s_panopticPool = panopticPool;
 
         // cache the pool fee in basis points
         uint24 _poolFee;
         unchecked {
-            _poolFee = uniswapPool.fee() / 100;
+            _poolFee = fee / 100;
         }
         s_poolFee = _poolFee;
 
@@ -267,74 +268,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_univ3token1 = token1;
 
         // store whether the current collateral token is token0 (true) or token1 (false; since there's always exactly two tokens it could be)
-        s_underlyingIsToken0 = underlyingToken == token0;
-
-        // Set the Collateral Tracking System Parameters
-
-        // Set default base parameters (see 'updateParameters(uint256)' for updating):
-        // commission fee levied when a new option is minted. This fee goes to the Panoptic LP's
-        s_commissionFee = 10;
+        s_underlyingIsToken0 = underlyingIsToken0;
 
         // Additional risk premium charged on intrinsic value of ITM positions
-        // Initial ITM spread fee is double the underlying poolFee.
         unchecked {
-            s_ITMSpreadFee = 2 * _poolFee;
+            s_ITMSpreadFee = uint128((ITM_SPREAD_MULTIPLIER * _poolFee) / DECIMALS);
         }
-
-        // amount of ticks that correspond to a move of -s_sellCollateralRatio/DECIMALS
-        // 1.0001**-2230 = 0.8 = (10000-2000)/10000
-        s_tickDeviation = 2230;
-
-        // basal collateral ratio for selling an option (20% of notional)
-        s_sellCollateralRatio = 2_000;
-        // basal collateral ratio for buying an option (10% of notional)
-        s_buyCollateralRatio = 1_000;
-
-        // Target pool utilization where buying+selling is optimal (50%)
-        s_targetPoolUtilization = 5_000;
-        // Pool utilization above which selling is 100% collateral backed (90%)
-        s_saturatedPoolUtilization = 9_000;
-
-        // basal cost to force exercise a position that is barely far-the-money (out-of-range).
-        s_exerciseCost = -1_024;
-    }
-
-    /// @notice update the parameters of the Collateral Tracking System.
-    /// @dev see struct 'Parameters' for passed in arguments.
-    /// @param newParameters Struct containing the new parameters to set.
-    function updateParameters(
-        CollateralTracker.Parameters calldata newParameters
-    ) external onlyFactoryOwner {
-        s_commissionFee = newParameters.commissionFee;
-        // precompute the final spread fee - ITMSpreadFee is passed as a multiplier of the pool fee in basis points
-        unchecked {
-            s_ITMSpreadFee = uint128((uint256(newParameters.ITMSpreadFee) * s_poolFee) / DECIMALS);
-        }
-        s_sellCollateralRatio = newParameters.sellCollateralRatio;
-        // calculate amount of ticks required for upwards and downwards moves, used to check if current and mini-median tick
-        // are out of sync (then apply a 100% collateral requirement)
-        unchecked {
-            // taylor expand log(1-sellCollateralRatio)/log(1.0001) around sellCollateralRatio=2000 up to 3rd order
-            /// since we're dropping the higher order terms, which are all negative, this will underestimate the number of ticks for a 20% move
-            int128 ratioTick = (newParameters.sellCollateralRatio - 2000);
-            s_tickDeviation = uint24(
-                uint128(
-                    2230 +
-                        (12500 * ratioTick) /
-                        10_000 +
-                        (7812 * ratioTick ** 2) /
-                        10_000 ** 2 +
-                        (6510 * ratioTick ** 3) /
-                        10_000 ** 3
-                )
-            );
-        }
-        s_buyCollateralRatio = newParameters.buyCollateralRatio;
-        s_targetPoolUtilization = newParameters.targetPoolUtilization;
-        s_saturatedPoolUtilization = newParameters.saturatedPoolUtilization;
-        s_exerciseCost = newParameters.exerciseCost;
-
-        emit ParametersUpdated(newParameters);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -351,7 +290,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function getPoolData()
         external
         view
-        returns (uint256 poolAssets, uint256 insideAMM, int128 currentPoolUtilization)
+        returns (uint256 poolAssets, uint256 insideAMM, int256 currentPoolUtilization)
     {
         poolAssets = s_poolAssets;
         insideAMM = s_inAMM;
@@ -474,7 +413,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
         unchecked {
             shares = Math.mulDiv(
-                assets * (DECIMALS - s_commissionFee),
+                assets * (DECIMALS - COMMISSION_FEE),
                 totalSupply,
                 totalAssets() * DECIMALS
             );
@@ -517,7 +456,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return maxShares The maximum amount of shares that can be minted.
     function maxMint(address) external view returns (uint256 maxShares) {
         unchecked {
-            return (convertToShares(type(uint104).max) * DECIMALS) / (DECIMALS + s_commissionFee);
+            return (convertToShares(type(uint104).max) * DECIMALS) / (DECIMALS + COMMISSION_FEE);
         }
     }
 
@@ -536,7 +475,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             assets = Math.mulDivRoundingUp(
                 shares * DECIMALS,
                 totalAssets(),
-                totalSupply * (DECIMALS - s_commissionFee)
+                totalSupply * (DECIMALS - COMMISSION_FEE)
             );
         }
     }
@@ -796,8 +735,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-            // subtract 1 from max half ranges from strike so fee starts at s_exerciseCost when moving OTM
-            int256 fee = (s_exerciseCost >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
+            // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
+            int256 fee = (FORCE_EXERCISE_COST >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
@@ -811,11 +750,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev compute: inAMM/totalAssets().
     /// @dev 1bps precision controlled by DECIMALS.
     /// @return poolUtilization the pool utilization as a fraction.
-    function _poolUtilization() internal view returns (int128 poolUtilization) {
-        uint256 _totalAssets = totalAssets();
-
+    function _poolUtilization() internal view returns (int256 poolUtilization) {
         unchecked {
-            return int128(int256((s_inAMM * DECIMALS) / _totalAssets));
+            return int256((s_inAMM * DECIMALS) / totalAssets());
         }
     }
 
@@ -824,8 +761,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param utilization The fraction of totalAssets() that belongs to the Uniswap Pool.
     /// @return sellCollateralRatio The sell collateral ratio.
     function _sellCollateralRatio(
-        int128 utilization
-    ) internal view returns (int128 sellCollateralRatio) {
+        int256 utilization
+    ) internal view returns (uint256 sellCollateralRatio) {
         // the sell ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
         //   (x0,y0) = (targetPoolUtilization,min_sell_ratio) and
         //   (x1,y1) = (saturatedPoolUtilization,max_sell_ratio)
@@ -844,10 +781,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                           +---------+-------+-+--->   POOL_
                                    50%    90% 100%     UTILIZATION
         */
-        int128 targetPoolUtilization = s_targetPoolUtilization;
 
-        int128 min_sell_ratio = s_sellCollateralRatio;
-
+        uint256 min_sell_ratio = SELLER_COLLATERAL_RATIO;
         /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
         /// at 0% utilization, strangle legs do not compound efficiency
         if (utilization < 0) {
@@ -858,27 +793,21 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
 
         // return the basal sell ratio if pool utilization is lower than target
-        if (utilization < targetPoolUtilization) {
+        if (uint256(utilization) < TARGET_POOL_UTIL) {
             return min_sell_ratio;
         }
 
-        int128 saturatedPoolUtilization = s_saturatedPoolUtilization;
-        int128 max_sell_ratio = DECIMALS_128;
         // return 100% collateral ratio if utilization is above saturated pool utilization
         // this means all new positions are fully collateralized, which reduces risks of insolvency at high pool utilization
-        if (utilization > saturatedPoolUtilization) {
-            return max_sell_ratio;
+        if (uint256(utilization) > SATURATED_POOL_UTIL) {
+            return DECIMALS;
         }
+
         unchecked {
             return
                 min_sell_ratio +
-                int128(
-                    int256(
-                        (uint256(int256(max_sell_ratio - min_sell_ratio)) *
-                            uint256(int256(utilization - targetPoolUtilization))) /
-                            uint256(int256(saturatedPoolUtilization - targetPoolUtilization))
-                    )
-                );
+                ((DECIMALS - min_sell_ratio) * (uint256(utilization) - TARGET_POOL_UTIL)) /
+                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL);
         }
     }
 
@@ -887,8 +816,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param utilization The fraction of totalBalance() that belongs to the Uniswap Pool.
     /// @return buyCollateralRatio The buy collateral ratio.
     function _buyCollateralRatio(
-        int128 utilization
-    ) internal view returns (int128 buyCollateralRatio) {
+        uint256 utilization
+    ) internal view returns (uint256 buyCollateralRatio) {
         // linear from BUY to BUY/2 between 50% and 90%
         // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
         //   (x0,y0) = (targetPoolUtilization,buyCollateralRatio) and
@@ -913,37 +842,30 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                  +---------+-------+-+--->   POOL_
                           50%    90% 100%      UTILIZATION
          */
-        int128 targetPoolUtilization = s_targetPoolUtilization;
-        buyCollateralRatio = s_buyCollateralRatio;
 
         // return the basal buy ratio if pool utilization is lower than target
-        if (utilization < targetPoolUtilization) {
-            return buyCollateralRatio;
+        if (utilization < TARGET_POOL_UTIL) {
+            return BUYER_COLLATERAL_RATIO;
         }
 
         // return 100% buy ratio if pool utilization is higher than 10_000
-        if (utilization > DECIMALS_128) {
-            return DECIMALS_128;
+        if (utilization > DECIMALS) {
+            return DECIMALS;
         }
 
         // return the basal ratio divided by 2 if pool utilization is above saturated pool utilization
         /// this is incentivized buying, which returns funds to the panoptic pool
-        int128 saturatedPoolUtilization = s_saturatedPoolUtilization;
-        if (utilization > saturatedPoolUtilization) {
+        if (utilization > SATURATED_POOL_UTIL) {
             unchecked {
-                return buyCollateralRatio / 2;
+                return BUYER_COLLATERAL_RATIO / 2;
             }
         }
+
         unchecked {
             return
-                (buyCollateralRatio +
-                    int128(
-                        int256(
-                            (uint256(int256(buyCollateralRatio)) *
-                                uint256(int256(saturatedPoolUtilization - utilization))) /
-                                uint256(int256(saturatedPoolUtilization - targetPoolUtilization))
-                        )
-                    )) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
+                (BUYER_COLLATERAL_RATIO +
+                    (BUYER_COLLATERAL_RATIO * (SATURATED_POOL_UTIL - utilization)) /
+                    (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
         }
     }
 
@@ -1092,7 +1014,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount
-    ) external onlyPanopticPool returns (int128 utilization) {
+    ) external onlyPanopticPool returns (int256 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1128,7 +1050,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int24 currentTick = tickStateCallContext.currentTick();
             int24 medianTick = tickStateCallContext.medianTick();
             // if the distance between the current and median tick is more than the accepted tick deviation, default to 100% collateral requirement
-            if (Math.abs(currentTick - medianTick) > int24(s_tickDeviation)) {
+            if (Math.abs(currentTick - medianTick) > int256(TICK_DEVIATION)) {
                 utilization = DECIMALS_128 + 1;
             } else {
                 utilization = _poolUtilization();
@@ -1222,7 +1144,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             //compute total commission amount = commission rate + spread fee
             exchangedAmount += int256(
                 Math.unsafeDivRoundingUp(
-                    uint256(uint128(shortAmount + longAmount)) * s_commissionFee,
+                    uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
                     DECIMALS
                 )
             );
@@ -1576,15 +1498,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _getRequiredCollateralAtUtilization(
         uint128 amount,
         uint256 isLong,
-        int64 utilization
+        int256 utilization
     ) internal view returns (uint256 required) {
         // if position is short, use sell collateral ratio
         if (isLong == 0) {
             // compute the sell collateral ratio, which depends on the pool utilization
-            uint256 sellCollateral = uint256(
-                // no need to typecast input to int128 as value will be interpreted appropriately
-                int256(_sellCollateralRatio(utilization))
-            );
+            uint256 sellCollateral = _sellCollateralRatio(utilization);
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
@@ -1594,10 +1513,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
             // compute the buy collateral ratio, which depends on the pool utilization
-            uint256 buyCollateral = uint256(
-                // no need to typecast input to int128 as value will be interpreted appropriately
-                int256(_buyCollateralRatio(utilization))
-            );
+            uint256 buyCollateral = _buyCollateralRatio(uint256(utilization));
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
