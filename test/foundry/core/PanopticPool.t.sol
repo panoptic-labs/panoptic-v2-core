@@ -1423,8 +1423,8 @@ contract PanopticPoolTest is PositionUtils {
         int256 assetDelta = convertToAssets(ct, shareDelta);
         vm.store(
             address(ct),
-            bytes32(uint256(8)),
-            bytes32(uint256(uint256(vm.load(address(ct), bytes32(uint256(8)))).add(assetDelta)))
+            bytes32(uint256(7)),
+            bytes32(uint256(uint256(vm.load(address(ct), bytes32(uint256(7)))).add(assetDelta)))
         );
         deal(
             ct.asset(),
