@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 /// @title Panoptic's tokenId: the fundamental options position.
 /// @author Axicon Labs Limited
@@ -69,6 +70,7 @@ library TokenId {
     // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType)
     uint256 internal constant CHUNK_MASK =
         0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
+
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
     // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
     // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
@@ -390,31 +392,11 @@ library TokenId {
         uint256 self,
         uint256 legIndex
     ) internal pure returns (int24 legLowerTick, int24 legUpperTick) {
-        unchecked {
-            int24 tickSpacing = self.tickSpacing();
-            int24 selfWidth = self.width(legIndex);
-            int24 selfStrike = self.strike(legIndex);
-
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
-
-            // The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            int24 oneSidedRange = (selfWidth * tickSpacing) / 2;
-
-            (legLowerTick, legUpperTick) = (selfStrike - oneSidedRange, selfStrike + oneSidedRange);
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                legLowerTick % tickSpacing != 0 ||
-                legUpperTick % tickSpacing != 0 ||
-                legLowerTick < minTick ||
-                legUpperTick > maxTick
-            ) revert Errors.TicksNotInitializable();
-        }
+        (legLowerTick, legUpperTick) = PanopticMath.getTicks(
+            self.strike(legIndex),
+            self.width(legIndex),
+            self.tickSpacing()
+        );
     }
 
     /// @notice Return the number of active legs in the option position.
