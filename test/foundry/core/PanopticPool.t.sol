@@ -93,7 +93,7 @@ contract PanopticPoolHarness is PanopticPool {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external returns (int256[4][] memory, int256) {
-        (, , int256 netExchanged, int256[4][] memory premiasByLeg) = _burnAllOptionsFrom(
+        (, int256 netExchanged, int256[4][] memory premiasByLeg, , ) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,

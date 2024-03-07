@@ -472,14 +472,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external {
-        (
-            int24 newTick,
-            ,
-            ,
-            ,
-            uint16 observationIndex,
-            uint16 observationCardinality
-        ) = _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
+        (int24 newTick, , , uint16 observationIndex, uint16 observationCardinality) = _burnOptions(
+            COMMIT_LONG_SETTLED,
+            tokenId,
+            msg.sender,
+            tickLimitLow,
+            tickLimitHigh
+        );
 
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(msg.sender, newPositionIdList, 0);
@@ -512,7 +511,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external {
         (
             int24 newTick,
-            ,
             ,
             ,
             uint16 observationIndex,
@@ -799,7 +797,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 int24 _tickLimitHigh = tickLimitHigh;
                 bool _commitLongSettled = commitLongSettled;
                 (
-                    medianTick,
                     newTick,
                     paidAmounts,
                     premiasByLeg[i],
@@ -856,15 +853,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
         int256 premiaOwed;
-        // burn position and do exercise checks
-        (premiaOwed, premiaByLeg, newTick, paidAmounts) = _burnAndHandleExercise(
-            commitLongSettled,
-            tickLimitLow,
-            tickLimitHigh,
-            tokenId,
-            positionSize,
-            owner
-        );
+        {
+            address _owner = owner;
+            uint256 _tokenId = tokenId;
+            // burn position and do exercise checks
+            (premiaOwed, premiaByLeg, newTick, paidAmounts) = _burnAndHandleExercise(
+                commitLongSettled,
+                tickLimitLow,
+                tickLimitHigh,
+                _tokenId,
+                positionSize,
+                _owner
+            );
+        }
 
         // erase position data
         _updatePositionDataBurn(owner, tokenId);
@@ -1577,7 +1578,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
+
+        ) = s_univ3pool.slot0();
 
         uint256 accumulatedPremium;
         {
@@ -1633,8 +1642,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // ensure the owner is solvent at the median tick (insolvent accounts are not permitted to pay premium unless they are being liquidated)
-        if (!_checkSolvency(owner, positionIdList, currentTick, getMedian(), NO_BUFFER))
-            revert Errors.NotEnoughCollateral();
+        if (
+            !_checkSolvency(
+                owner,
+                positionIdList,
+                currentTick,
+                PanopticMath.getLastMedianObservation(
+                    s_univ3pool,
+                    observationIndex,
+                    observationCardinality
+                ),
+                NO_BUFFER
+            )
+        ) revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added
