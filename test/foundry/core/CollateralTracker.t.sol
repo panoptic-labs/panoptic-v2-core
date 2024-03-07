@@ -4621,14 +4621,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(strike - rangeUp - atTick)) / rangeUp
             );
 
-            uint256 currNumRangesFromStrikeUp = uint256(
-                (int256(strike - rangeDown - atTick)) / rangeUp
-            );
-
-            int256 feeDown = (-1_024 >> currNumRangesFromStrikeUp);
             int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
-
-            if (rangeUp != rangeDown) assertTrue(feeUp >= feeDown);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
@@ -4749,15 +4742,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(strike - rangeUp - atTick)) / rangeUp
             );
 
-            uint256 currNumRangesFromStrikeUp = uint256(
-                (int256(strike - rangeDown - atTick)) / rangeUp
-            );
-            console2.log("currNumRangesFromStrikeUp", currNumRangesFromStrikeUp);
-
-            int256 feeDown = (-1_024 >> currNumRangesFromStrikeUp);
             int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
-            console2.log("feeUpC", feeUp);
-            if (rangeUp != rangeDown) assertTrue(feeUp >= feeDown);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
@@ -4878,14 +4863,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(atTick - strike - rangeUp)) / rangeUp
             );
 
-            uint256 currNumRangesFromStrikeUp = uint256(
-                (int256(atTick - strike - rangeDown)) / rangeUp
-            );
-
-            int256 feeDown = (-1_024 >> currNumRangesFromStrikeUp);
             int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
-
-            if (rangeUp != rangeDown) assertTrue(feeUp >= feeDown);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
@@ -5006,14 +4984,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(atTick - strike - rangeUp)) / rangeUp
             );
 
-            uint256 currNumRangesFromStrikeUp = uint256(
-                (int256(atTick - strike - rangeDown)) / rangeUp
-            );
-
-            int256 feeDown = (-1_024 >> currNumRangesFromStrikeUp);
             int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
-
-            if (rangeUp != rangeDown) assertTrue(feeUp >= feeDown);
 
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
