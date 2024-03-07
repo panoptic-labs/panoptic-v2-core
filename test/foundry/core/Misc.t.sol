@@ -13,6 +13,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
+import {Math} from "@libraries/Math.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -132,6 +133,9 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct1;
     PanopticHelper ph;
 
+    uint256 assetsBefore0;
+    uint256 assetsBefore1;
+
     IUniswapV3Pool uniPool;
     ERC20S token0;
     ERC20S token1;
@@ -143,6 +147,9 @@ contract Misctest is Test, PositionUtils {
     address Charlie = address(0x1234567891);
     address Seller = address(0x12345678912);
     SwapperC swapperc;
+
+    uint256[] $posIdList;
+    uint256[] $tempIdList;
 
     function setUp() public {
         vm.startPrank(Deployer);
@@ -226,6 +233,319 @@ contract Misctest is Test, PositionUtils {
 
         ct0.deposit(type(uint104).max, Bob);
         ct1.deposit(type(uint104).max, Bob);
+
+        changePrank(Charlie);
+
+        token0.mint(Charlie, type(uint104).max);
+        token1.mint(Charlie, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max, Charlie);
+        ct1.deposit(type(uint104).max, Charlie);
+
+        changePrank(Seller);
+
+        token0.mint(Seller, type(uint104).max);
+        token1.mint(Seller, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max / 1_000_000, Seller);
+        ct1.deposit(type(uint104).max / 1_000_000, Seller);
+    }
+
+    // these tests are PoCs for rounding issues in the premium distribution
+    // to demonstrate the issue log the settled, gross, and owed premia at burn
+    function test_settledPremiumDistribution_demoInflatedGross() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList = $posIdList;
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // the collectedAmount will always be a round number, so it's actually not possible to get a greater grossPremium than sum(collected, owed)
+        // (owed and gross are both calculated from collectedAmount)
+        for (uint256 i = 0; i < 1000; i++) {
+            changePrank(Alice);
+            $tempIdList[0] = $posIdList[1];
+            pp.mintOptions($tempIdList, 250_000, type(uint64).max, 0, 0);
+
+            changePrank(Bob);
+            pp.mintOptions($posIdList, 250_000, type(uint64).max, 0, 0);
+
+            changePrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+            // 1998600539
+            accruePoolFeesInRange(address(uniPool), (uniPool.liquidity() * 2) / 3, 1, 1);
+            swapperc.swapTo(uniPool, 2 ** 96);
+
+            changePrank(Bob);
+            $tempIdList[0] = $posIdList[0];
+            pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+
+            changePrank(Alice);
+            pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+        }
+
+        changePrank(Bob);
+        // burn Bob's short option
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+    }
+
+    function test_settledPremiumDistribution_demoInflatedOwed() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList = $posIdList;
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // only 20 tokens actually settled, but 22 owed... 2 tokens taken from PLPs
+        // we may need to redefine availablePremium as max(availablePremium, settledTokens)
+        for (uint256 i = 0; i < 10; i++) {
+            pp.mintOptions($posIdList, 499_999, type(uint64).max, 0, 0);
+            changePrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+            // 1998600539
+            accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1, 1);
+            swapperc.swapTo(uniPool, 2 ** 96);
+            changePrank(Bob);
+            pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+        }
+
+        // burn Bob's short option
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+    }
+
+    function test_success_settledPremiumDistribution() public {
+        SwapperC swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // move back to price=1
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        // mint OTM position
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        // mint some amount of liquidity with Alice owning 1/2 and Bob and Charlie owning 1/4 respectively
+        // then, remove 9.737% of that liquidity at the same ratio
+        // Once this state is in place, accumulate some amount of fees on the existing liquidity in the pool
+        // The fees should be immediately available for withdrawal because they have been paid to liquidity already in the pool
+        // 8.896% * 1.022x vegoid = +~10% of the fee amount accumulated will be owed by sellers
+        // First close Bob's position; they should receive 25% of the initial amount because no fees were paid on their position
+        // Close half (4.4468%) of the removed liquidity
+        // Then close Alice's position, they should receive ~53.3% (50%+ 2/3*5%)
+        // Close the other half of the removed liquidity (4.4468%)
+        // Finally, close Charlie's position, they should receive ~27.5% (25% + 10% * 25%)
+        changePrank(Alice);
+
+        pp.mintOptions($posIdList, 500_000, 0, 0, 0);
+
+        changePrank(Bob);
+
+        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+
+        changePrank(Charlie);
+
+        pp.mintOptions($posIdList, 250_000, 0, 0, 0);
+
+        $posIdList.push(
+            uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        changePrank(Alice);
+
+        // mint finely tuned amount of long options for Alice so premium paid = 1.1x
+        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+
+        changePrank(Bob);
+
+        // mint finely tuned amount of long options for Bob so premium paid = 1.1x
+        pp.mintOptions($posIdList, 44_468, type(uint64).max, 0, 0);
+
+        changePrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+
+        // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
+
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        changePrank(Bob);
+
+        // burn Bob's position, should get 25% of fees paid (no long fees avail.)
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        $tempIdList.push($posIdList[1]);
+
+        // burn Bob's short option
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
+            250_000,
+            "Incorrect Bob Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Bob)) - assetsBefore1,
+            249_999_999,
+            "Incorrect Bob Delta 1"
+        );
+
+        // re-mint the short option
+        $posIdList[1] = $posIdList[0];
+        $posIdList[0] = $tempIdList[0];
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        $tempIdList[0] = $posIdList[1];
+
+        // Burn the long options, adds 1/2 of the removed liq
+        // amount of premia paid = 50_000
+        pp.burnOptions($posIdList[0], $tempIdList, 0, 0);
+
+        changePrank(Alice);
+
+        // burn Alice's position, should get 53.3̅% of fees paid back (50% + (5% long paid) * (2/3 owned by Alice))
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        $tempIdList[0] = $posIdList[0];
+        pp.burnOptions($posIdList[1], $tempIdList, 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
+            533_333,
+            "Incorrect Alice Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1,
+            533_333_345,
+            "Incorrect Alice Delta 1"
+        );
+
+        // Burn other half of the removed liq
+        pp.burnOptions($posIdList[0], new uint256[](0), 0, 0);
+
+        changePrank(Charlie);
+
+        // Finally, burn Charlie's position, he should get 27.5% (25% + full 10% long paid (* 25% owned))
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Charlie));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Charlie));
+
+        pp.burnOptions($posIdList[1], new uint256[](0), 0, 0);
+
+        assertEq(
+            ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
+            275_000,
+            "Incorrect Charlie Delta 0"
+        );
+        assertEq(
+            ct1.convertToAssets(ct1.balanceOf(Charlie)) - assetsBefore1,
+            275_000_008,
+            "Incorrect Charlie Delta 1"
+        );
     }
 
     function test_success_PremiumRollover() public {
@@ -261,7 +581,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         // accumulate the maximum fees per liq SFPM supports
-        accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 2 ** 64 - 1);
+        accruePoolFeesInRange(address(uniPool), 1, 2 ** 64 - 1, 0);
 
         changePrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -270,18 +590,19 @@ contract Misctest is Test, PositionUtils {
         // works fine
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
-        uint256 balanceBefore = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         changePrank(Alice);
 
         // lock in almost-overflowed fees per liquidity
-        pp.mintOptions(posIdList, 1000, 0, 0, 0);
+        pp.mintOptions(posIdList, 1_000_000_000, 0, 0, 0);
 
         changePrank(Swapper);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        // overflow back to ~1_000_000 (fees per liq)
-        accruePoolFeesInRange(address(uniPool), 413, 1_000_000, 1_000_000);
+        // overflow back to ~1_000_000_000_000 (fees per liq)
+        accruePoolFeesInRange(address(uniPool), 412639631, 1_000_000_000_000, 1_000_000_000_000);
 
         // this should behave like the actual accumulator does and rollover, not revert on overflow
         (uint256 premium0, uint256 premium1) = sfpm.getAccountPremium(
@@ -293,8 +614,8 @@ contract Misctest is Test, PositionUtils {
             0,
             0
         );
-        assertEq(premium0, 44646762138360822200777);
-        assertEq(premium1, 44646762138360822200777);
+        assertEq(premium0, 340282366920938463444927863358058659840);
+        assertEq(premium1, 44704247211996718928643);
 
         changePrank(Swapper);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -304,11 +625,21 @@ contract Misctest is Test, PositionUtils {
         // Alice can be frontrun if her transaction goes to a public mempool (or is otherwise anticipated),
         // so the cost of the attack is just ~2**64 * active liquidity (shown here to be as low as 1 even with initial full-range!)
         // + fee to move price initially (if applicable)
-        // The solution is to wrap around the overflow once (so if the accumulator goes down, the fees are acc_current + (acc_max - acc_prev)
-        // If it overflows multiple times, we leave some fees unclaimed, but that's fine. Can't be exploited.
+        // The solution is to freeze fee accumulation if one of the token accumulators overflow
         pp.burnOptions(tokenId, new uint256[](0), 0, 0);
 
-        // make sure Alice is credited (not debited!) a reasonable amount of fees
-        assertEq(int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore), 997570);
+        // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
+        // the accumulator overflowed, so the accumulation was frozen. If she had poked before the accumulator overflowed,
+        // she could have still earned some fees, but now the accumulation is frozen forever.
+        assertEq(
+            int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
+            -1244790
+        );
+
+        // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
+        assertEq(
+            int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1),
+            999_999_999_998
+        );
     }
 }

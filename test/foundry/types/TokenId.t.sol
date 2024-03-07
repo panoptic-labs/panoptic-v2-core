@@ -8,6 +8,7 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
 // Internal
 import {Errors} from "@libraries/Errors.sol";
 import {TokenIdHarness} from "./harnesses/TokenIdHarness.sol";
+import {TokenId} from "@types/TokenId.sol";
 // Test util
 import "../testUtils/PositionUtils.sol";
 
@@ -17,6 +18,7 @@ import "../testUtils/PositionUtils.sol";
  * @author Axicon Labs Limited
  */
 contract TokenIdTest is Test, PositionUtils {
+    using TokenId for uint256;
     TokenIdHarness harness;
 
     // mask to clear all width bits (12 bits, offset of 36 bits)
@@ -57,7 +59,7 @@ contract TokenIdTest is Test, PositionUtils {
         harness = new TokenIdHarness();
     }
 
-    function test_Success_AddUniv3Pool(address y) public {
+    function test_Success_AddPoolId(address y) public {
         uint256 tokenId;
 
         tokenId = harness.addPoolId(tokenId, uint64(uint160(y)));
@@ -1281,6 +1283,16 @@ contract TokenIdTest is Test, PositionUtils {
             tokenId = harness.addTokenType(tokenId, 1, 1);
         }
 
+        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
+            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
+                vm.assume(
+                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
+                        tokenId.width(legIndex) == tokenId.width(j) &&
+                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
+                );
+            }
+        }
+
         // will fail as risk partners must have the same asset
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 4));
         harness.validate(tokenId);
@@ -2138,6 +2150,16 @@ contract TokenIdTest is Test, PositionUtils {
                     legIndex,
                     strike,
                     width
+                );
+            }
+        }
+
+        for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
+            for (uint256 j = legIndex + 1; j < totalLegs; ++j) {
+                vm.assume(
+                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
+                        tokenId.width(legIndex) == tokenId.width(j) &&
+                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
                 );
             }
         }
