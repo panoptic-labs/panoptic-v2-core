@@ -405,17 +405,6 @@ contract TokenIdHarness {
     }
 
     /**
-     * @notice Make sure that an option position `self`'s all active legs are out-of-the-money (OTM). Revert if not.
-     * @dev OTMness depends on where the current price tick is in the AMM relative to the tick bounds of the leg.
-     * @param self the option position Id (tokenId)
-     * @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-     * @param tickSpacing the tick spacing of the Univ3 pool.
-     */
-    function ensureIsOTM(uint256 self, int24 currentTick, int24 tickSpacing) public view {
-        TokenId.ensureIsOTM(self, currentTick, tickSpacing);
-    }
-
-    /**
      * @notice Validate that a position `self` and its legs/chunks are exercisable.
      * @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
      * @param self the option position Id (tokenId)

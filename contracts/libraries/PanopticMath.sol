@@ -24,6 +24,8 @@ library PanopticMath {
     // represents an option position of up to four legs as a sinlge ERC1155 tokenId
     using TokenId for uint256;
 
+    uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
+
     // masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
     uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
 
@@ -275,10 +277,9 @@ library PanopticMath {
             int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
             int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
 
-            // The width is from lower to upper tick, the one-sided range is from strike to upper/lower
-            int24 oneSidedRange = (width * tickSpacing) / 2;
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
-            (tickLower, tickUpper) = (strike - oneSidedRange, strike + oneSidedRange);
+            (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
 
             // Revert if the upper/lower ticks are not multiples of tickSpacing
             // Revert if the tick range extends from the strike outside of the valid tick range
@@ -426,6 +427,22 @@ library PanopticMath {
         }
     }
 
+    /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.
+    /// @dev given r = (width * tickSpacing) / 2, tickLower = strike - floor(r), tickUpper = strike + ceil(r)
+    /// @param width the width of the leg.
+    /// @param tickSpacing the tick spacing of the underlying pool.
+    /// @return rangeDown the lower tick of the range
+    /// @return rangeUp the upper tick of the range
+    function getRangesFromStrike(
+        int24 width,
+        int24 tickSpacing
+    ) internal pure returns (int24, int24) {
+        return (
+            (width * tickSpacing) / 2,
+            int24(int256(Math.unsafeDivRoundingUp(uint24(width) * uint24(tickSpacing), 2)))
+        );
+    }
+
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks
     /// @param amount the amount of token0 to convert into token1
@@ -488,21 +505,32 @@ library PanopticMath {
     ) internal pure returns (uint256 amountsMoved) {
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-
-        // positionSize: how many option contracts we have.
+        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
 
         uint128 amount0;
         uint128 amount1;
-        unchecked {
-            if (tokenId.asset(legIndex) == 0) {
-                // contractSize: is then the product of how many option contracts we have and the amount of underlying controlled per contract
-                amount0 = positionSize * uint128(tokenId.optionRatio(legIndex)); // in terms of the underlying tokens/shares
-                // notional is then "how many underlying tokens are controlled (contractSize) * (the price for each token -- strike price):
-                amount1 = convertNotional(amount0, tickLower, tickUpper, tokenId.asset(legIndex)); // how many tokens are controlled by this option position
-            } else {
-                amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
-                amount0 = convertNotional(amount1, tickLower, tickUpper, tokenId.asset(legIndex));
-            }
+        if (tokenId.asset(legIndex) == 0) {
+            // amount of tokens moved in token1
+            amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
+
+            // get liquidity for amount 1
+            uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0);
+            liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
+
+            // amount of tokens moved for token1
+            // safe cast to prevent overflows
+            amount1 = Math.getAmount1ForLiquidity(liquidityAmounts).toUint128();
+        } else {
+            // amount of tokens moved in token1
+            amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
+
+            // get liquidity for amount 1
+            uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);
+            liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
+
+            // amount of tokens moved for token1
+            // safe cast to prevent overflows
+            amount0 = Math.getAmount0ForLiquidity(liquidityAmounts).toUint128();
         }
         amountsMoved = amountsMoved.toRightSlot(amount0).toLeftSlot(amount1);
     }

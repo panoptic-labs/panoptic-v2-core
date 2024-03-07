@@ -531,30 +531,6 @@ library TokenId {
         return self.poolId();
     }
 
-    /// @notice Make sure that an option position `self`'s all active legs are out-of-the-money (OTM). Revert if not.
-    /// @dev OTMness depends on where the current price tick is in the AMM relative to the tick bounds of the leg.
-    /// @param self the option position Id (tokenId)
-    /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
-    /// @param tickSpacing the tick spacing of the Univ3 pool.
-    function ensureIsOTM(uint256 self, int24 currentTick, int24 tickSpacing) internal pure {
-        unchecked {
-            uint256 numLegs = self.countLegs();
-            for (uint256 i = 0; i < numLegs; ++i) {
-                int24 optionStrike = self.strike(i);
-                int24 range = (self.width(i) * tickSpacing) / 2;
-
-                uint256 optionTokenType = self.tokenType(i);
-
-                if (
-                    ((optionTokenType == 1) && currentTick < (optionStrike + range)) ||
-                    ((optionTokenType == 0) && currentTick >= (optionStrike - range))
-                ) {
-                    revert Errors.OptionsNotOTM();
-                }
-            }
-        }
-    }
-
     /// @notice Validate that a position `self` and its legs/chunks are exercisable.
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @param self the option position Id (tokenId)
@@ -563,13 +539,14 @@ library TokenId {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {
-                // compute the range of this leg/chunk
-                int24 range = (self.width(i) * self.tickSpacing()) / 2;
+                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                    self.width(i),
+                    self.tickSpacing()
+                );
+
+                int24 strike = self.strike(i);
                 // check if the price is outside this chunk
-                if (
-                    (currentTick >= (self.strike(i) + range)) ||
-                    (currentTick < (self.strike(i) - range))
-                ) {
+                if ((currentTick >= strike + rangeUp) || (currentTick < strike - rangeDown)) {
                     // if this leg is long and the price beyond the leg's range:
                     // this exercised ID, `self`, appears valid
                     if (self.isLong(i) == 1) return; // validated

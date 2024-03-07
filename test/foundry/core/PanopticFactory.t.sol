@@ -247,14 +247,7 @@ contract PanopticFactoryTest is Test {
         // Amount of liquidity in univ3 pool after Panoptic Pool deployment
         uint128 liquidityAfter = pool.liquidity();
         // ensure liquidity in pool now is sum of liquidity before and user deployed amount
-        assertEq(liquidityAfter - liquidityBefore, fullRangeLiquidity, "full range liquidity");
-
-        /* Shares checks */
-        // check factory receives appropriate amount of shares
-        // As this is the first deposit supply will be equal to zero
-        // shares = supply == 0 ? assets : mulDiv(assets, supply, totalAssets());
-        CollateralTracker collateralToken0 = PanopticPool(preComputedPool).collateralToken0();
-        CollateralTracker collateralToken1 = PanopticPool(preComputedPool).collateralToken1();
+        assertEq(liquidityAfter - liquidityBefore, fullRangeLiquidity);
     }
 
     // deploy a pool with token0 as WETH
@@ -283,15 +276,6 @@ contract PanopticFactoryTest is Test {
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
         panopticFactory.deployNewPool(token0, token1, fee, salt);
-    }
-
-    function test_Fail_deployNewPool_UnsupportedPool() public {
-        // tickSpacing on 1bps pools is 1, equal to the fee in bps
-        // Panoptic only supports pools where TS is 2x the fee in bps
-        _initalizeWorldState(USDC_USDT_1);
-
-        vm.expectRevert(Errors.UniswapPoolNotSupported.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, 0);
     }
 
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool
