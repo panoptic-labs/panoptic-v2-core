@@ -65,18 +65,16 @@ contract FirstPanoption is Script {
         });
 
         uint256[] memory positionIdList = new uint256[](1);
-        positionIdList[0] = uint256(0)
-            .addUniv3pool(SFPM.getPoolId(address(pp.univ3pool())))
-            .addLeg({
-                legIndex: 0,
-                _optionRatio: 1,
-                _asset: 1,
-                _isLong: 0,
-                _tokenType: 1,
-                _riskPartner: 0,
-                _strike: -5000,
-                _width: 2
-            });
+        positionIdList[0] = uint256(0).addPoolId(SFPM.getPoolId(address(pp.univ3pool()))).addLeg({
+            legIndex: 0,
+            _optionRatio: 1,
+            _asset: 1,
+            _isLong: 0,
+            _tokenType: 1,
+            _riskPartner: 0,
+            _strike: -5000,
+            _width: 2
+        });
 
         pp.mintOptions({
             positionIdList: positionIdList,

@@ -10,6 +10,7 @@ import {Math} from "@libraries/Math.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -464,5 +465,168 @@ library PanopticMath {
                 longs = longs.toLeftSlot(Math.toInt128(amountsMoved.leftSlot()));
             }
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                       REVOKE/REFUND COMPUTATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Check that the account is liquidatable, get the split of bonus0 and bonus1 amounts.
+    /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot.
+    /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot.
+    /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
+    /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user.
+    /// @param netExchanged The net exchanged value of the closed portfolio
+    /// @param premia premium across all positions being liquidated present in tokenData
+    /// @return bonus0 bonus amount for token0
+    /// @return bonus1 bonus amount for token1
+    function getLiquidationBonus(
+        uint256 tokenData0,
+        uint256 tokenData1,
+        uint160 sqrtPriceX96Twap,
+        uint160 sqrtPriceX96Final,
+        int256 netExchanged,
+        int256 premia
+    ) external pure returns (int256 bonus0, int256 bonus1) {
+        unchecked {
+            // compute bonus as min(collateralBalance/2, required-collateralBalance)
+            {
+                // compute the ratio of token0 to total collateral requirements
+                // evaluate at TWAP price to keep consistentcy with solvency calculations
+                uint256 required0 = PanopticMath.convert0to1(
+                    tokenData0.leftSlot(),
+                    sqrtPriceX96Twap
+                );
+                uint256 required1 = tokenData1.leftSlot();
+                uint256 requiredRatioX128 = (required0 << 128) / (required0 + required1);
+
+                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.convertCollateralData(
+                    tokenData0,
+                    tokenData1,
+                    0,
+                    sqrtPriceX96Twap
+                );
+
+                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
+
+                // convert that bonus to tokens 0 and 1
+                bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
+
+                bonus1 = int256(
+                    PanopticMath.convert0to1(
+                        Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                        sqrtPriceX96Final
+                    )
+                );
+            }
+
+            // negative premium (owed to the liquidatee) is credited to the collateral balance
+            // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
+            int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
+                Math.max(premia.rightSlot(), 0);
+            int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
+                Math.max(premia.leftSlot(), 0);
+
+            int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
+            int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
+
+            // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
+            // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
+            // have to work with before cutting into the liquidator's funds
+            if (paid0 > balance0 && paid1 > balance1) {
+                // liquidatee cannot pay back the liquidator fully in either token, so no protocol loss can be avoided
+                return (bonus0, bonus1);
+            } else if ((paid0 > balance0)) {
+                // liquidatee has insufficient token0 but some token1 left over, so we use what they have left to mitigate token0 losses
+                // we do this by substituting an equivalent value of token1 in our refund to the liquidator, plus a bonus, for the token0 we convert
+                // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
+                // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token1 balance: balance1 - paid1
+                // and paid0 - balance0 is the amount of token0 that the liquidatee is missing, i.e the protocol loss
+                // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
+                // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
+                bonus1 += Math.min(
+                    balance1 - paid1,
+                    PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
+                );
+                bonus0 -= Math.min(
+                    PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
+                    paid0 - balance0
+                );
+            } else if ((paid1 > balance1)) {
+                // liquidatee has insufficient token1 but some token0 left over, so we use what they have left to mitigate token1 losses
+                // we do this by substituting an equivalent value of token0 in our refund to the liquidator, plus a bonus, for the token1 we convert
+                // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
+                // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token0 balance: balance0 - paid0
+                // and paid1 - balance1 is the amount of token1 that the liquidatee is missing, i.e the protocol loss
+                // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
+                // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
+                bonus0 += Math.min(
+                    balance0 - paid0,
+                    PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
+                );
+                bonus1 -= Math.min(
+                    PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
+                    paid1 - balance1
+                );
+            }
+        }
+    }
+
+    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
+    /// @param refunder Address of the user the refund is coming from (the force exercisee).
+    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1.
+    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick.
+    /// @param collateral0 CollateralTracker for token0.
+    /// @param collateral1 CollateralTracker for token1.
+    /// @return refundAmounts The amount of tokens to refund to the user.
+    function getRefundAmounts(
+        address refunder,
+        int256 refundValues,
+        int24 atTick,
+        CollateralTracker collateral0,
+        CollateralTracker collateral1
+    ) external view returns (int256 refundAmounts) {
+        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
+        unchecked {
+            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
+            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
+            int256 balanceShortage = refundValues.rightSlot() -
+                int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
+
+            if (balanceShortage > 0) {
+                return
+                    int256(0)
+                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
+                        .toLeftSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
+                                ) + refundValues.leftSlot()
+                            )
+                        );
+            }
+
+            balanceShortage =
+                refundValues.leftSlot() -
+                int256(collateral1.convertToAssets(collateral1.balanceOf(refunder)));
+
+            if (balanceShortage > 0) {
+                return
+                    int256(0)
+                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
+                        .toRightSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
+                                ) + refundValues.rightSlot()
+                            )
+                        );
+            }
+        }
+
+        // otherwise, we can just refund the original amounts requested with no problems
+        return refundValues;
     }
 }
