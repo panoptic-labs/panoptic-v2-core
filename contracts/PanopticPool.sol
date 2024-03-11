@@ -1333,11 +1333,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
         unchecked {
             // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
-            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows
+            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
             balanceCross =
-                Math.mulDivRoundingUp(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96RoundingUp(tokenData0.rightSlot(), sqrtPriceX96);
+                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
             // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
+            // overstimate by rounding up
             thresholdCross =
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
