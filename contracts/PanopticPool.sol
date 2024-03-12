@@ -476,9 +476,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function _getPriceAndCheckSlippageViolation(
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal view returns (int24 currentTick, int24 medianTick, int24, int24) {
+    ) internal returns (int24 currentTick, int24 medianTick, int24, int24) {
         // Extract the current tick price
-        (, currentTick, , , , , ) = s_univ3pool.slot0();
+        uint16 observationIndex;
+        uint16 observationCardinality;
+        (, currentTick, observationIndex, observationCardinality, , , ) = s_univ3pool.slot0();
+
+        updateMedian(currentTick, observationIndex, observationCardinality);
 
         medianTick = getMedian();
 
@@ -633,8 +637,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitLow,
             tickLimitHigh
         );
-
-        updateMedian(newTick);
 
         // calculate and write position Data
         _addUserOption(tokenId, effectiveLiquidityLimitX32);
@@ -934,8 +936,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh,
             tickLimitLow
         );
-
-        updateMedian(newTick);
 
         int256 longAmounts;
         int256 shortAmounts;
@@ -1413,10 +1413,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Updates the mini twap of the PanopticPool, called externally
     function pokeMedian() external {
         // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
+
+        ) = s_univ3pool.slot0();
 
         // update the miniTWAP
-        updateMedian(currentTick);
+        updateMedian(currentTick, observationIndex, observationCardinality);
     }
 
     /// @notice Computes The mini twap of the PanopticPool.
@@ -1437,11 +1445,29 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Updates the mini twap of the PanopticPool.
     /// @param currentTick The currentTick.
-    function updateMedian(int24 currentTick) internal {
+    function updateMedian(
+        int24 currentTick,
+        uint256 observationIndex,
+        uint256 observationCardinality
+    ) internal {
         uint256 oldMedianData = s_miniMedian;
         unchecked {
             // only proceed if last entry is at least MEDIAN_PERIOD seconds old
             if (block.timestamp >= uint256(uint40(oldMedianData >> 216)) + MEDIAN_PERIOD) {
+                int24 tick;
+                {
+                    (uint256 timestamps_last, int56 tick_last, , ) = s_univ3pool.observations(
+                        observationIndex
+                    );
+                    (uint256 timestamps_old, int56 tick_old, , ) = s_univ3pool.observations(
+                        uint256(
+                            int256(observationIndex) - int256(1) + int256(observationCardinality)
+                        ) % observationCardinality
+                    );
+
+                    tick = int24((tick_last - tick_old) / int256(timestamps_last - timestamps_old));
+                }
+
                 uint24 orderMap = uint24(oldMedianData >> 192);
 
                 uint24 newOrderMap;
