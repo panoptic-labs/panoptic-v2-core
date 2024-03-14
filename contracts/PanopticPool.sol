@@ -167,6 +167,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // Prevents manipulation of the currentTick to liquidate positions at a less favorable price
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
+    /// The maximum allowed delta between the fast and slow oracle ticks at burn
+    /// Prevents burning positions during extremely volatile periods/price manipulation (to ensure the account is always solvent)
     int256 internal constant MAX_TWAP_DELTA_BURN = 1115;
 
     /// @dev The maximum allowed ratio for a single chunk, defined as: shortLiquidity / netLiquidity
@@ -349,6 +351,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                              QUERY HELPERS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Reverts if current Uniswap price is not within the provided bounds.
+    /// @dev Can be used for composable slippage checks with `multicall` (such as for a force exercise or liquidation)
+    /// @dev Can also be used for more granular subtick precision on slippage checks
+    /// @param sqrtLowerBound The lower bound of the acceptable open interval for `currentSqrtPriceX96`
+    /// @param sqrtUpperBound The upper bound of the acceptable open interval for `currentSqrtPriceX96`
+    function assertPriceWithinBounds(uint160 sqrtLowerBound, uint160 sqrtUpperBound) external view {
+        (uint160 currentSqrtPriceX96, , , , , , ) = s_univ3pool.slot0();
+
+        if (currentSqrtPriceX96 <= sqrtLowerBound || currentSqrtPriceX96 >= sqrtUpperBound) {
+            revert Errors.PriceBoundFail();
+        }
+    }
 
     /// @notice Returns the total number of contracts owned by user for a specified position.
     /// @param user Address of the account to be checked.
@@ -1640,15 +1655,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
-        (
-            ,
-            int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
-
-        ) = s_univ3pool.slot0();
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
         uint256 accumulatedPremium;
         {

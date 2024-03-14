@@ -127,7 +127,7 @@ library PanopticMath {
         uint256 observationCardinality,
         uint256 cardinality,
         uint256 period
-    ) internal view returns (int24) {
+    ) external view returns (int24) {
         unchecked {
             int256[] memory tickCumulatives = new int256[](cardinality + 1);
 

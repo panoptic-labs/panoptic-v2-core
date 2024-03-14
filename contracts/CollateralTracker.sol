@@ -655,14 +655,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// - 5% if the price is between 900 and 950 or (1100, 1150)
     /// - 2.5% if between (850, 900) or (1150, 1200)
     /// @param currentTick The current price tick.
-    /// @param medianTick The median price tick.
+    /// @param oracleTick The price oracle tick.
     /// @param positionId The position to be exercised
     /// @param positionBalance The balance in `account` of the position to be exercised
     /// @param longAmounts The amount of longs in the position.
     /// @return exerciseFees The fees for exercising the option position.
     function exerciseCost(
         int24 currentTick,
-        int24 medianTick,
+        int24 oracleTick,
         uint256 positionId,
         uint128 positionBalance,
         int256 longAmounts
@@ -693,8 +693,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
                 uint256 currentValue0;
                 uint256 currentValue1;
-                uint256 medianValue0;
-                uint256 medianValue1;
+                uint256 oracleValue0;
+                uint256 oracleValue1;
 
                 {
                     uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
@@ -708,8 +708,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         liquidityChunk
                     );
 
-                    (medianValue0, medianValue1) = Math.getAmountsForLiquidity(
-                        medianTick,
+                    (oracleValue0, oracleValue1) = Math.getAmountsForLiquidity(
+                        oracleTick,
                         liquidityChunk
                     );
                 }
@@ -718,16 +718,16 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // compensate user for loss in value if chunk has lost money between current and median tick
                 // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
                 if (
-                    (tokenType == 0 && currentValue1 < medianValue1) ||
-                    (tokenType == 1 && currentValue0 < medianValue0)
+                    (tokenType == 0 && currentValue1 < oracleValue1) ||
+                    (tokenType == 1 && currentValue0 < oracleValue0)
                 )
                     exerciseFees = exerciseFees.sub(
                         int256(0)
                             .toRightSlot(
-                                int128(uint128(medianValue0)) - int128(uint128(currentValue0))
+                                int128(uint128(oracleValue0)) - int128(uint128(currentValue0))
                             )
                             .toLeftSlot(
-                                int128(uint128(medianValue1)) - int128(uint128(currentValue1))
+                                int128(uint128(oracleValue1)) - int128(uint128(currentValue1))
                             )
                     );
             }
