@@ -718,12 +718,12 @@ library Math {
     /// @param arr the elements that must be sorted
     /// @param left the starting index
     /// @param right the ending index
-    function quickSort(int24[] memory arr, int256 left, int256 right) internal pure {
+    function quickSort(int256[] memory arr, int256 left, int256 right) internal pure {
         unchecked {
             int256 i = left;
             int256 j = right;
             if (i == j) return;
-            int24 pivot = arr[uint256(left + (right - left) / 2)];
+            int256 pivot = arr[uint256(left + (right - left) / 2)];
             while (i < j) {
                 while (arr[uint256(i)] < pivot) i++;
                 while (pivot < arr[uint256(j)]) j--;
@@ -740,7 +740,7 @@ library Math {
 
     /// @notice calls `quickSort` with default starting index of 0 and ending index of the last element in the array.
     /// @param data the elements that must be sorted
-    function sort(int24[] memory data) internal pure returns (int24[] memory) {
+    function sort(int256[] memory data) internal pure returns (int256[] memory) {
         unchecked {
             quickSort(data, int256(0), int256(data.length - 1));
         }

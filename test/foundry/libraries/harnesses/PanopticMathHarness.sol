@@ -78,15 +78,19 @@ contract PanopticMathHarness is Test {
         return twapTick;
     }
 
-    function getLastMedianObservation(
+    function computeMedianObservedPrice(
         IUniswapV3Pool univ3pool,
         uint256 observationIndex,
-        uint256 observationCardinality
+        uint256 observationCardinality,
+        uint256 cardinality,
+        uint256 period
     ) public returns (int24) {
-        int24 lastMedianObservation = PanopticMath.getLastMedianObservation(
+        int24 lastMedianObservation = PanopticMath.computeMedianObservedPrice(
             univ3pool,
             observationIndex,
-            observationCardinality
+            observationCardinality,
+            cardinality,
+            period
         );
         return lastMedianObservation;
     }

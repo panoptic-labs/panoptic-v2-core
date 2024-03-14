@@ -52,6 +52,10 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
+    function miniMedian() external view returns (uint256) {
+        return s_miniMedian;
+    }
+
     /**
      * @notice compute the TWAP price from the last 600s = 10mins
      * @return twapTick the TWAP price in ticks
@@ -93,7 +97,7 @@ contract PanopticPoolHarness is PanopticPool {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external returns (int256[4][] memory, int256) {
-        (, int256 netExchanged, int256[4][] memory premiasByLeg, , ) = _burnAllOptionsFrom(
+        (int256 netExchanged, int256[4][] memory premiasByLeg) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,
@@ -173,7 +177,9 @@ contract PanopticPoolTest is PositionUtils {
 
     uint16 observationIndex;
     uint16 observationCardinality;
-    int24 medianTick;
+    int24 fastOracleTick;
+
+    int24 slowOracleTick;
     uint160 medianSqrtPriceX96;
     int24 TWAPtick;
 
@@ -2441,10 +2447,21 @@ contract PanopticPoolTest is PositionUtils {
             pp.mintOptions(posIdList, positionSize, 0, 0, 0);
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
-        medianTick = PanopticMath.getLastMedianObservation(
+
+        fastOracleTick = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
-            observationCardinality
+            observationCardinality,
+            3,
+            1
+        );
+
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            60,
+            pp.miniMedian(),
+            pool
         );
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
@@ -2473,13 +2490,13 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(balance, positionSize);
             assertEq(
                 poolUtilization0,
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
                     : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) / ct0.totalSupply()
             );
             assertEq(
                 poolUtilization1,
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
                     : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) / ct1.totalSupply()
             );
@@ -2585,11 +2602,23 @@ contract PanopticPoolTest is PositionUtils {
         // price changes afters swap at mint so we need to update the price
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
-        medianTick = PanopticMath.getLastMedianObservation(
+
+        fastOracleTick = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
-            observationCardinality
+            observationCardinality,
+            3,
+            1
         );
+
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            60,
+            pp.miniMedian(),
+            pool
+        );
+
         updatePositionDataLong();
 
         int256 netSurplus0 = $amount0Moveds[1] -
@@ -2688,14 +2717,14 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(balance, positionSizes[1]);
             assertEq(
                 int64(poolUtilization0),
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? int64(10_001)
                     : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
                         int256(ct0.totalSupply())
             );
             assertEq(
                 int64(poolUtilization1),
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? int64(10_001)
                     : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
                         int256(ct1.totalSupply())
@@ -3697,14 +3726,16 @@ contract PanopticPoolTest is PositionUtils {
             int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
                 int256(lastCollateralBalance1[Alice]);
             (, , observationIndex, observationCardinality, , , ) = pool.slot0();
-            int24 _medianTick = PanopticMath.getLastMedianObservation(
+            int24 _fastOracleTick = PanopticMath.computeMedianObservedPrice(
                 pool,
                 observationIndex,
-                observationCardinality
+                observationCardinality,
+                3,
+                1
             );
             vm.revertTo(snap);
 
-            medianTick = _medianTick;
+            fastOracleTick = _fastOracleTick;
             $balanceDelta0 = balanceDelta0;
             $balanceDelta1 = balanceDelta1;
         }
@@ -3714,7 +3745,7 @@ contract PanopticPoolTest is PositionUtils {
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            medianTick,
+            fastOracleTick,
             0,
             $posIdLists[2]
         );
@@ -3742,7 +3773,7 @@ contract PanopticPoolTest is PositionUtils {
                             PanopticMath.convert0to1(
                                 (totalCollateralB0 *
                                     (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) / 10_000,
-                                Math.getSqrtRatioAtTick(medianTick)
+                                Math.getSqrtRatioAtTick(fastOracleTick)
                             )
                         )
                     )
@@ -3775,7 +3806,7 @@ contract PanopticPoolTest is PositionUtils {
                                     (totalCollateralB0 *
                                         (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) /
                                         10_000,
-                                    Math.getSqrtRatioAtTick(medianTick)
+                                    Math.getSqrtRatioAtTick(fastOracleTick)
                                 )
                             )
                         )
@@ -4325,12 +4356,6 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        medianTick = PanopticMath.getLastMedianObservation(
-            pool,
-            observationIndex,
-            observationCardinality
-        );
-
         for (uint256 i = 0; i < numLegs; ++i) {
             if (isLongs[i] == 0) continue;
 
@@ -4350,7 +4375,7 @@ contract PanopticPoolTest is PositionUtils {
 
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
 
-            medianSqrtPriceX96 = TickMath.getSqrtRatioAtTick(medianTick);
+            medianSqrtPriceX96 = TickMath.getSqrtRatioAtTick(TWAPtick);
 
             uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, i, positionSize);
 

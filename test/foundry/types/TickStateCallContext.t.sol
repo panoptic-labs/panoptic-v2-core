@@ -14,21 +14,15 @@ contract TickStateCallContextTest is Test {
         harness = new TickStateCallContextHarness();
     }
 
-    function test_Success_updateCurrentTick(uint256 start, int24 tick) public {
+    function test_Success_addFastOracleTick(uint256 start, int24 tick) public {
         unchecked {
-            assertEq(harness.updateCurrentTick(start, tick), ((start >> 24) << 24) + uint24(tick));
+            assertEq(harness.addFastOracleTick(start, tick), start + uint24(tick));
         }
     }
 
-    function test_Success_addCurrentTick(uint256 start, int24 tick) public {
+    function test_Success_addSlowOracleTick(uint256 start, int24 tick) public {
         unchecked {
-            assertEq(harness.addCurrentTick(start, tick), start + uint24(tick));
-        }
-    }
-
-    function test_Success_addMedianTick(uint256 start, int24 tick) public {
-        unchecked {
-            assertEq(harness.addMedianTick(start, tick), start + (uint256(uint24(tick)) << 24));
+            assertEq(harness.addSlowOracleTick(start, tick), start + (uint256(uint24(tick)) << 24));
         }
     }
 
@@ -41,15 +35,15 @@ contract TickStateCallContextTest is Test {
         }
     }
 
-    function test_Success_currentTick(uint256 start) public {
+    function test_Success_fastOracleTick(uint256 start) public {
         unchecked {
-            assertEq(harness.currentTick(start), int24(int256(start)));
+            assertEq(harness.fastOracleTick(start), int24(int256(start)));
         }
     }
 
-    function test_Success_medianTick(uint256 start) public {
+    function test_Success_slowOracleTick(uint256 start) public {
         unchecked {
-            assertEq(harness.medianTick(start), int24(int256(start >> 24)));
+            assertEq(harness.slowOracleTick(start), int24(int256(start >> 24)));
         }
     }
 

@@ -546,18 +546,23 @@ contract PanopticMathTest is Test, PositionUtils {
 
     function test_Success_getLastMedianObservation(
         uint256 observationIndex,
-        int256[4] memory ticks,
-        uint256[4] memory timestamps,
-        uint256 cardinality
+        int256[100] memory ticks,
+        uint256[100] memory timestamps,
+        uint256 observationCardinality,
+        uint256 cardinality,
+        uint256 period
     ) public {
-        cardinality = bound(cardinality, 4, 65535);
-        UniPoolObservationMock mockPool = new UniPoolObservationMock(cardinality);
-        observationIndex = bound(observationIndex, 0, cardinality - 1);
+        cardinality = bound(cardinality, 1, 50);
+        cardinality = cardinality * 2 - 1;
+        period = bound(period, 1, 100 / cardinality);
+        observationCardinality = bound(observationCardinality, cardinality * period + 1, 65535);
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
+        observationIndex = bound(observationIndex, 0, observationCardinality - 1);
         int56 tickCum;
-        for (uint256 i = 0; i < 4; ++i) {
+        for (uint256 i = 0; i < cardinality + 1; ++i) {
             ticks[i] = int24(bound(ticks[i], type(int24).min, type(int24).max));
             if (i == 0) {
-                timestamps[i] = bound(timestamps[i], 0, type(uint32).max - (3 - i));
+                timestamps[i] = bound(timestamps[i], 0, type(uint32).max - (cardinality - i));
 
                 // assume tickCum will not overflow
                 vm.assume(tickCum + ticks[i] * int256(timestamps[i]) < type(int56).max);
@@ -567,7 +572,7 @@ contract PanopticMathTest is Test, PositionUtils {
                 timestamps[i] = bound(
                     timestamps[i],
                     timestamps[i - 1] + 1,
-                    type(uint32).max - (3 - i)
+                    type(uint32).max - (cardinality - i)
                 );
 
                 // assume tickCum will not overflow
@@ -578,9 +583,10 @@ contract PanopticMathTest is Test, PositionUtils {
 
             mockPool.setObservation(
                 uint256(
-                    (int256(uint256(observationIndex)) - (3 - int256(i))) +
-                        int256(uint256(cardinality))
-                ) % cardinality,
+                    (int256(uint256(observationIndex)) -
+                        (int256(cardinality) - int256(i)) *
+                        int256(period)) + int256(uint256(observationCardinality))
+                ) % observationCardinality,
                 uint32(timestamps[i]),
                 tickCum
             );
@@ -588,19 +594,27 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // use bubble sort to get the median tick
         // note: the 4th tick is not actually deconstructed anywhere, but it is used as the base accumulator value.
-        int24[] memory sortedTicks = new int24[](3);
-        for (uint16 i = 0; i < 3; ++i) {
-            sortedTicks[i] = int24(ticks[i + 1]);
+        int256[] memory sortedTicks = new int256[](cardinality);
+        for (uint16 i = 0; i < cardinality; ++i) {
+            sortedTicks[i] = ticks[i + 1];
         }
         sortedTicks = Math.sort(sortedTicks);
-
+        for (uint16 i = 0; i < cardinality; ++i) {
+            console2.log(
+                "sortedTicks["
+                "]: ",
+                sortedTicks[i]
+            );
+        }
         assertEq(
-            harness.getLastMedianObservation(
+            harness.computeMedianObservedPrice(
                 IUniswapV3Pool(address(mockPool)),
                 observationIndex,
-                cardinality
+                observationCardinality,
+                cardinality,
+                period
             ),
-            sortedTicks[1]
+            sortedTicks[sortedTicks.length / 2]
         );
     }
 
@@ -610,7 +624,7 @@ contract PanopticMathTest is Test, PositionUtils {
         selectedPool = pools[bound(twapWindow, 0, 2)]; // reuse twapWindow as seed
 
         uint32[] memory secondsAgos = new uint32[](20);
-        int24[] memory twapMeasurement = new int24[](19);
+        int256[] memory twapMeasurement = new int256[](19);
 
         for (uint32 i = 0; i < 20; ++i) {
             secondsAgos[i] = ((i + 1) * twapWindow) / uint32(20);
@@ -620,16 +634,16 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // compute the average tick per 30s window
         for (uint32 i = 0; i < 19; ++i) {
-            twapMeasurement[i] = int24(
-                (tickCumulatives[i] - tickCumulatives[i + 1]) / int56(uint56(twapWindow / 20))
-            );
+            twapMeasurement[i] =
+                (tickCumulatives[i] - tickCumulatives[i + 1]) /
+                int56(uint56(twapWindow / 20));
         }
 
         // sort the tick measurements
-        int24[] memory sortedTicks = Math.sort(twapMeasurement);
+        int256[] memory sortedTicks = Math.sort(twapMeasurement);
 
         // Get the median value
-        int24 twapTick = sortedTicks[10];
+        int256 twapTick = sortedTicks[10];
 
         assertEq(twapTick, harness.twapFilter(selectedPool, twapWindow));
     }

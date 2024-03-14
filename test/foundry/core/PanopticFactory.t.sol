@@ -62,8 +62,6 @@ contract PanopticFactoryTest is Test {
     // 0.05% pools
     IUniswapV3Pool constant USDC_WETH_5 =
         IUniswapV3Pool(0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640);
-    IUniswapV3Pool constant FRAX_USDT_5 =
-        IUniswapV3Pool(0xc2A856c3afF2110c1171B8f942256d40E980C726);
     IUniswapV3Pool constant ETH_USDT_5 = IUniswapV3Pool(0x11b815efB8f581194ae79006d24E0d814B7697F6);
 
     // 0.3% pools
@@ -77,12 +75,10 @@ contract PanopticFactoryTest is Test {
         IUniswapV3Pool(0x9feBc984504356225405e26833608b17719c82Ae);
 
     // store in fixed array
-    IUniswapV3Pool[6] public pools = [
-        // currently unsupported
-        // DAI_USDC_1,
-        // USDC_USDT_1,
+    IUniswapV3Pool[7] public pools = [
+        DAI_USDC_1,
+        USDC_USDT_1,
         USDC_WETH_5,
-        FRAX_USDT_5,
         WBTC_ETH_30,
         MATIC_ETH_30,
         INCH_USDC_100,

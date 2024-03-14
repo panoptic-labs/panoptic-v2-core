@@ -108,44 +108,126 @@ library PanopticMath {
         }
     }
 
-    /// @notice Get the median tick of the last 3 observations in a Uniswap V3 pool.
-    /// @dev Used when we want a manipulation-resistant, but not mission-critical, price.
+    /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
+    /// @dev Used when we need a manipulation-resistant TWAP price.
+    /// Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
+    /// The maximum frequency of observations is 1 per block, but there is no guarantee that the pool will be observed at every block.
+    /// Each period has a minimum length of blocktime * period, but may be longer if the Uniswap pool is relatively inactive.
+    /// The final price used in the array (of length `cardinality`) is the average of all observations comprising `period` (which is itself a number of observations).
+    /// Thus, the minimum total time window is `cardinality` * `period` * `blocktime`.
     /// @param univ3pool the Uniswap pool to get the median observation from
     /// @param observationIndex the index of the last observation in the pool
     /// @param observationCardinality the number of observations in the pool
+    /// @param cardinality the number of `periods` to in the median price array, should be odd.
+    /// @param period the number of observations to average to compute one entry in the median price array
     /// @return medianObservedTick the median of the last 3 tick observations
-    function getLastMedianObservation(
+    function computeMedianObservedPrice(
         IUniswapV3Pool univ3pool,
         uint256 observationIndex,
-        uint256 observationCardinality
+        uint256 observationCardinality,
+        uint256 cardinality,
+        uint256 period
     ) internal view returns (int24) {
         unchecked {
-            int256[4] memory ticks;
+            int256[] memory tickCumulatives = new int256[](cardinality + 1);
 
-            uint256[4] memory timestamps;
+            uint256[] memory timestamps = new uint256[](cardinality + 1);
             // get the last 4 timestamps/tickCumulatives (if observationIndex < 3, the index will wrap back from observationCardinality)
-            for (uint256 i = 0; i < 4; ++i) {
-                (timestamps[i], ticks[i], , ) = univ3pool.observations(
+            for (uint256 i = 0; i < cardinality + 1; ++i) {
+                (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
                     uint256(
-                        (int256(observationIndex) - int256(i)) + int256(observationCardinality)
+                        (int256(observationIndex) - int256(i * period)) +
+                            int256(observationCardinality)
                     ) % observationCardinality
                 );
             }
 
+            int256[] memory ticks = new int256[](cardinality);
             // use the 3 periods given by the last 4 accumulator observations to compute the last 3 observed ticks
-            for (uint256 i = 0; i < 3; ++i) {
-                ticks[i] = (ticks[i] - ticks[i + 1]) / int256(timestamps[i] - timestamps[i + 1]);
+            for (uint256 i = 0; i < cardinality; ++i) {
+                ticks[i] =
+                    (tickCumulatives[i] - tickCumulatives[i + 1]) /
+                    int256(timestamps[i] - timestamps[i + 1]);
             }
 
             // get the median of the 3 calculated ticks
-            return
-                int24(
-                    (ticks[0] - ticks[1]) * (ticks[0] - ticks[2]) < 1
-                        ? ticks[0]
-                        : (ticks[1] - ticks[0]) * (ticks[1] - ticks[2]) < 1
-                        ? ticks[1]
-                        : ticks[2]
-                );
+            return int24(Math.sort(ticks)[cardinality / 2]);
+        }
+    }
+
+    /// @notice Takes a packed structure representing a sorted 7-slot ring buffer of ticks and returns the median of those values.
+    /// Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
+    /// @param observationIndex the index of the last observation in the Uniswap pool
+    /// @param observationCardinality the number of observations in the Uniswap pool
+    /// @param period the minimum time in seconds that must have passed since the last observation was inserted into the buffer
+    /// @param medianData the packed structure representing the sorted 7-slot ring buffer of ticks
+    /// @param univ3pool the Uniswap pool to retrieve observations from
+    /// @return medianTick the median of the provided 7-slot ring buffer of ticks in `medianData`
+    /// @return updatedMedianData the updated 7-slot ring buffer of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
+    function computeInternalMedian(
+        uint256 observationIndex,
+        uint256 observationCardinality,
+        uint256 period,
+        uint256 medianData,
+        IUniswapV3Pool univ3pool
+    ) external view returns (int24 medianTick, uint256 updatedMedianData) {
+        unchecked {
+            // return the average of the rank 3 and 4 values
+            medianTick =
+                (int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))) +
+                    int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) /
+                2;
+
+            // only proceed if last entry is at least MEDIAN_PERIOD seconds old
+            if (block.timestamp >= uint256(uint40(medianData >> 216)) + period) {
+                int24 lastObservedTick;
+                {
+                    (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
+                        uint256(
+                            int256(observationIndex) - int256(1) + int256(observationCardinality)
+                        ) % observationCardinality
+                    );
+
+                    (uint256 timestamp_last, int56 tickCumulative_last, , ) = univ3pool
+                        .observations(observationIndex);
+                    lastObservedTick = int24(
+                        (tickCumulative_last - tickCumulative_old) /
+                            int256(timestamp_last - timestamp_old)
+                    );
+                }
+
+                uint24 orderMap = uint24(medianData >> 192);
+
+                uint24 newOrderMap;
+                uint24 shift = 1;
+                bool below = true;
+                uint24 rank;
+                int24 entry;
+                for (uint8 i; i < 8; ++i) {
+                    // read the rank from the existing ordering
+                    rank = (orderMap >> (3 * i)) % 8;
+
+                    if (rank == 7) {
+                        shift -= 1;
+                        continue;
+                    }
+
+                    // read the corresponding entry
+                    entry = int24(uint24(medianData >> (rank * 24)));
+                    if ((below) && (lastObservedTick > entry)) {
+                        shift += 1;
+                        below = false;
+                    }
+
+                    newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
+                }
+
+                updatedMedianData =
+                    (block.timestamp << 216) +
+                    (uint256(newOrderMap) << 192) +
+                    uint256(uint192(medianData << 24)) +
+                    uint256(uint24(lastObservedTick));
+            }
         }
     }
 
@@ -161,29 +243,29 @@ library PanopticMath {
     ) external view returns (int24 twapTick) {
         uint32[] memory secondsAgos = new uint32[](20);
 
-        int24[] memory twapMeasurement = new int24[](19);
+        int256[] memory twapMeasurement = new int256[](19);
 
         unchecked {
             // construct the time stots
-            for (uint32 i = 0; i < 20; ++i) {
-                secondsAgos[i] = ((i + 1) * twapWindow) / uint32(20);
+            for (uint256 i = 0; i < 20; ++i) {
+                secondsAgos[i] = uint32(((i + 1) * twapWindow) / 20);
             }
 
             // observe the tickCumulative at the 20 pre-defined time slots
             (int56[] memory tickCumulatives, ) = univ3pool.observe(secondsAgos);
 
             // compute the average tick per 30s window
-            for (uint32 i = 0; i < 19; ++i) {
+            for (uint256 i = 0; i < 19; ++i) {
                 twapMeasurement[i] = int24(
                     (tickCumulatives[i] - tickCumulatives[i + 1]) / int56(uint56(twapWindow / 20))
                 );
             }
 
             // sort the tick measurements
-            int24[] memory sortedTicks = Math.sort(twapMeasurement);
+            int256[] memory sortedTicks = Math.sort(twapMeasurement);
 
             // Get the median value
-            twapTick = sortedTicks[10];
+            twapTick = int24(sortedTicks[10]);
         }
     }
 

@@ -1045,12 +1045,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint128(uint256(updatedAssets));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
 
-            // get the current Panoptic pool utilization
-            // Check if current tick is too far away from median, set to utilization to 10,001 if it is
-            int24 currentTick = tickStateCallContext.currentTick();
-            int24 medianTick = tickStateCallContext.medianTick();
             // if the distance between the current and median tick is more than the accepted tick deviation, default to 100% collateral requirement
-            if (Math.abs(currentTick - medianTick) > int256(TICK_DEVIATION)) {
+            if (
+                Math.abs(
+                    int256(tickStateCallContext.fastOracleTick()) -
+                        tickStateCallContext.slowOracleTick()
+                ) > int256(TICK_DEVIATION)
+            ) {
                 utilization = DECIMALS_128 + 1;
             } else {
                 utilization = _poolUtilization();

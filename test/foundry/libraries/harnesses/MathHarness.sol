@@ -69,8 +69,8 @@ contract MathHarness {
         return r;
     }
 
-    function sort(int24[] memory data) public returns (int24[] memory) {
-        int24[] memory sortedData = Math.sort(data);
+    function sort(int256[] memory data) public returns (int256[] memory) {
+        int256[] memory sortedData = Math.sort(data);
         return sortedData;
     }
 
