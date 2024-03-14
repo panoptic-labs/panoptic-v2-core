@@ -20,7 +20,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -171,7 +170,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// Prevents burning positions during extremely volatile periods/price manipulation (to ensure the account is always solvent)
     int256 internal constant MAX_TWAP_DELTA_BURN = 1115;
 
-    /// @dev The maximum allowed ratio for a single chunk, defined as: shortLiquidity / netLiquidity
+    /// @dev The maximum allowed ratio for a single chunk, defined as: totalLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
@@ -694,8 +693,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     )
                 )
                 .addCaller(msg.sender);
-            console2.log("slowOracleTick", tickStateCallContext.slowOracleTick());
-            console2.log("fastOracleTick", tickStateCallContext.fastOracleTick());
         }
 
         // Mint in the SFPM and update state of collateral

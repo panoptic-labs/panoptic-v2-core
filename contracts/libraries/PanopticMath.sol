@@ -132,7 +132,7 @@ library PanopticMath {
             int256[] memory tickCumulatives = new int256[](cardinality + 1);
 
             uint256[] memory timestamps = new uint256[](cardinality + 1);
-            // get the last 4 timestamps/tickCumulatives (if observationIndex < 3, the index will wrap back from observationCardinality)
+            // get the last 4 timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
             for (uint256 i = 0; i < cardinality + 1; ++i) {
                 (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
                     uint256(
@@ -143,7 +143,7 @@ library PanopticMath {
             }
 
             int256[] memory ticks = new int256[](cardinality);
-            // use the 3 periods given by the last 4 accumulator observations to compute the last 3 observed ticks
+            // use cardinality periods given by cardinality + 1 accumulator observations to compute the last cardinality observed ticks spaced by period
             for (uint256 i = 0; i < cardinality; ++i) {
                 ticks[i] =
                     (tickCumulatives[i] - tickCumulatives[i + 1]) /
