@@ -35,8 +35,8 @@ library PanopticMath {
 
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     /// @dev Example:
-    ///      the 64 bits are the 64 *last* (most significant) bits - and thus corresponds to the *first* 16 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (ie. max tickSpacing is 32768)
+    ///      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
+    ///      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
     ///      e.g.:
     ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
     ///        tickSpacing = 60
@@ -82,7 +82,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Update an existing accounts "positions hash" with a new single position `tokenId`.
+    /*//////////////////////////////////////////////////////////////
+                          ORACLE CALCULATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Update an existing account's "positions hash" with a new single position `tokenId`.
     /// @notice The positions hash contains a single fingerprint of all positions created by an account/user as well as a tally of the positions.
     /// @dev the combined hash is the XOR of all individual position hashes.
     /// @param existingHash the existing position hash containing all historical N positions created and the count of the positions
@@ -339,7 +343,7 @@ library PanopticMath {
         }
 
         // now pack this info into the bit pattern of the uint256 and return it
-        liquidityChunk = liquidityChunk.createChunk(tickLower, tickUpper, legLiquidity);
+        liquidityChunk = LiquidityChunk.createChunk(tickLower, tickUpper, legLiquidity);
     }
 
     /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
@@ -373,6 +377,22 @@ library PanopticMath {
                 tickUpper > maxTick
             ) revert Errors.TicksNotInitializable();
         }
+    }
+
+    /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.
+    /// @dev given r = (width * tickSpacing) / 2, tickLower = strike - floor(r), tickUpper = strike + ceil(r)
+    /// @param width the width of the leg.
+    /// @param tickSpacing the tick spacing of the underlying pool.
+    /// @return rangeDown the lower tick of the range
+    /// @return rangeUp the upper tick of the range
+    function getRangesFromStrike(
+        int24 width,
+        int24 tickSpacing
+    ) internal pure returns (int24, int24) {
+        return (
+            (width * tickSpacing) / 2,
+            int24(int256(Math.unsafeDivRoundingUp(uint24(width) * uint24(tickSpacing), 2)))
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -509,22 +529,6 @@ library PanopticMath {
         }
     }
 
-    /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.
-    /// @dev given r = (width * tickSpacing) / 2, tickLower = strike - floor(r), tickUpper = strike + ceil(r)
-    /// @param width the width of the leg.
-    /// @param tickSpacing the tick spacing of the underlying pool.
-    /// @return rangeDown the lower tick of the range
-    /// @return rangeUp the upper tick of the range
-    function getRangesFromStrike(
-        int24 width,
-        int24 tickSpacing
-    ) internal pure returns (int24, int24) {
-        return (
-            (width * tickSpacing) / 2,
-            int24(int256(Math.unsafeDivRoundingUp(uint24(width) * uint24(tickSpacing), 2)))
-        );
-    }
-
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks
     /// @param amount the amount of token0 to convert into token1
@@ -587,7 +591,7 @@ library PanopticMath {
     ) internal pure returns (uint256 amountsMoved) {
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
+        uint256 liquidityAmounts = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
 
         uint128 amount0;
         uint128 amount1;

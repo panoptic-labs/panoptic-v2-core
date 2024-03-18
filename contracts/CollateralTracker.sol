@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.18;
+pragma solidity =0.8.25;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
@@ -299,7 +299,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Returns name of token composed of underlying token symbol and pool data.
     /// @return name The name of the token.
-    function name() external view returns (string memory name) {
+    function name() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return
             InteractionHelper.computeName(
@@ -313,7 +313,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Returns symbol as prefixed symbol of underlying token.
     /// @return symbol The symbol of the token.
-    function symbol() external view returns (string memory symbol) {
+    function symbol() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return InteractionHelper.computeSymbol(s_underlyingToken, TICKER_PREFIX);
     }

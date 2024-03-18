@@ -34,7 +34,7 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the poolId (Panoptic's uni v3 pool fingerprint) of the Uniswap v3 pool
      */
-    function poolId(uint256 self) public view returns (uint64) {
+    function poolId(uint256 self) public pure returns (uint64) {
         uint64 r = TokenId.poolId(self);
         return r;
     }
@@ -44,7 +44,7 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the tickSpacing of the Uniswap v3 pool
      */
-    function tickSpacing(uint256 self) public view returns (int24) {
+    function tickSpacing(uint256 self) public pure returns (int24) {
         int24 r = TokenId.tickSpacing(self);
         return r;
     }
@@ -61,7 +61,7 @@ contract TokenIdHarness {
      * @dev The final mod: "% 2" = takes the leftmost bit of the pattern.
      * @return 0 if asset is token0, 1 if asset is token1
      */
-    function asset(uint256 self, uint256 legIndex) public view returns (uint256) {
+    function asset(uint256 self, uint256 legIndex) public pure returns (uint256) {
         uint256 r = TokenId.asset(self, legIndex);
         return r;
     }
@@ -72,7 +72,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @dev The final mod: "% 2**7" = takes the rightmost (2 ** 7 = 128) 7 bits of the pattern.
      */
-    function optionRatio(uint256 self, uint256 legIndex) public view returns (uint256) {
+    function optionRatio(uint256 self, uint256 legIndex) public pure returns (uint256) {
         uint256 r = TokenId.optionRatio(self, legIndex);
         return r;
     }
@@ -83,7 +83,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @return 1 if long; 0 if not long.
      */
-    function isLong(uint256 self, uint256 legIndex) public view returns (uint256) {
+    function isLong(uint256 self, uint256 legIndex) public pure returns (uint256) {
         uint256 r = TokenId.isLong(self, legIndex);
         return r;
     }
@@ -94,7 +94,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @return 1 if the token moved is token1 or 0 if the token moved is token0
      */
-    function tokenType(uint256 self, uint256 legIndex) public view returns (uint256) {
+    function tokenType(uint256 self, uint256 legIndex) public pure returns (uint256) {
         uint256 r = TokenId.tokenType(self, legIndex);
         return r;
     }
@@ -111,7 +111,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @return the leg index of `legIndex`'s risk partner.
      */
-    function riskPartner(uint256 self, uint256 legIndex) public view returns (uint256) {
+    function riskPartner(uint256 self, uint256 legIndex) public pure returns (uint256) {
         uint256 r = TokenId.riskPartner(self, legIndex);
         return r;
     }
@@ -122,7 +122,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @return the strike price (the underlying price of the leg).
      */
-    function strike(uint256 self, uint256 legIndex) public view returns (int24) {
+    function strike(uint256 self, uint256 legIndex) public pure returns (int24) {
         int24 r = TokenId.strike(self, legIndex);
         return r;
     }
@@ -134,7 +134,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @return the width of the position.
      */
-    function width(uint256 self, uint256 legIndex) public view returns (int24) {
+    function width(uint256 self, uint256 legIndex) public pure returns (int24) {
         int24 r = TokenId.width(self, legIndex);
         return r;
     }
@@ -152,7 +152,7 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the tokenId with the Uniswap V3 pool added to it.
      */
-    function addPoolId(uint256 self, uint64 _poolId) public view returns (uint256) {
+    function addPoolId(uint256 self, uint64 _poolId) public pure returns (uint256) {
         uint256 r = TokenId.addPoolId(self, _poolId);
         return r;
     }
@@ -162,7 +162,7 @@ contract TokenIdHarness {
      * @param self the option position Id.
      * @return the tokenId with the Uniswap V3 pool added to it.
      */
-    function addTickSpacing(uint256 self, int24 _tickSpacing) public view returns (uint256) {
+    function addTickSpacing(uint256 self, int24 _tickSpacing) public pure returns (uint256) {
         uint256 r = TokenId.addTickSpacing(self, _tickSpacing);
         return r;
     }
@@ -182,7 +182,7 @@ contract TokenIdHarness {
         uint256 self,
         uint256 _asset,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 r = TokenId.addAsset(self, _asset, legIndex);
         return r;
     }
@@ -198,7 +198,7 @@ contract TokenIdHarness {
         uint256 self,
         uint256 _optionRatio,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 r = TokenId.addOptionRatio(self, _optionRatio, legIndex);
         return r;
     }
@@ -215,7 +215,7 @@ contract TokenIdHarness {
         uint256 self,
         uint256 _isLong,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 r = TokenId.addIsLong(self, _isLong, legIndex);
         return r;
     }
@@ -230,7 +230,7 @@ contract TokenIdHarness {
         uint256 self,
         uint256 _tokenType,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 r = TokenId.addTokenType(self, _tokenType, legIndex);
         return r;
     }
@@ -245,7 +245,7 @@ contract TokenIdHarness {
         uint256 self,
         uint256 _riskPartner,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 r = TokenId.addRiskPartner(self, _riskPartner, legIndex);
         return r;
     }
@@ -260,7 +260,7 @@ contract TokenIdHarness {
         uint256 self,
         int24 _strike,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 r = TokenId.addStrike(self, _strike, legIndex);
         return r;
     }
@@ -271,7 +271,7 @@ contract TokenIdHarness {
      * @param legIndex the leg index of this position (in {0,1,2,3}).
      * @return the tokenId with width added to its relevant leg
      */
-    function addWidth(uint256 self, int24 _width, uint256 legIndex) public view returns (uint256) {
+    function addWidth(uint256 self, int24 _width, uint256 legIndex) public pure returns (uint256) {
         // % 4096 -> take 12 bits from the incoming 16 bits (there's no uint12)
         uint256 r = TokenId.addWidth(self, _width, legIndex);
         return r;
@@ -300,7 +300,7 @@ contract TokenIdHarness {
         uint256 _riskPartner,
         int24 _strike,
         int24 _width
-    ) public view returns (uint256 tokenId) {
+    ) public pure returns (uint256 tokenId) {
         uint256 r = TokenId.addLeg(
             self,
             legIndex,
@@ -330,7 +330,7 @@ contract TokenIdHarness {
      * an existing tokenId but now burn it. The way to do this is to simply flip it to a short instead.
      * @param self the tokenId in the SFPM representing an option position.
      */
-    function flipToBurnToken(uint256 self) public view returns (uint256) {
+    function flipToBurnToken(uint256 self) public pure returns (uint256) {
         uint256 r = TokenId.flipToBurnToken(self);
         return r;
     }
@@ -341,7 +341,7 @@ contract TokenIdHarness {
      * @param self the tokenId in the SFPM representing an option position.
      * @return the number of long positions (in the range {0,...,4}).
      */
-    function countLongs(uint256 self) public view returns (uint256) {
+    function countLongs(uint256 self) public pure returns (uint256) {
         uint256 r = TokenId.countLongs(self);
         return r;
     }
@@ -357,7 +357,7 @@ contract TokenIdHarness {
     function asTicks(
         uint256 self,
         uint256 legIndex
-    ) public view returns (int24 legLowerTick, int24 legUpperTick) {
+    ) public pure returns (int24 legLowerTick, int24 legUpperTick) {
         (legLowerTick, legUpperTick) = TokenId.asTicks(self, legIndex);
     }
 
@@ -368,7 +368,7 @@ contract TokenIdHarness {
      * @dev ASSUMPTION: For any leg, the option ratio is always > 0 (the leg always has a number of contracts associated with it).
      * @return the number of legs in the option position.
      */
-    function countLegs(uint256 self) public view returns (uint256) {
+    function countLegs(uint256 self) public pure returns (uint256) {
         uint256 r = TokenId.countLegs(self);
         return r;
     }
@@ -388,7 +388,7 @@ contract TokenIdHarness {
      * @param i the leg index to reset, in {0,1,2,3}
      * @return `self` with the `i`th leg zeroed including optionRatio and asset.
      */
-    function clearLeg(uint256 self, uint256 i) public view returns (uint256) {
+    function clearLeg(uint256 self, uint256 i) public pure returns (uint256) {
         uint256 r = TokenId.clearLeg(self, i);
         return r;
     }
@@ -399,7 +399,7 @@ contract TokenIdHarness {
      * @param self the option position id.
      * @return univ3PoolAddressId the first 64 bits of the underlying Uniswap V3 address.
      */
-    function validate(uint256 self) public view returns (uint64 univ3PoolAddressId) {
+    function validate(uint256 self) public pure returns (uint64 univ3PoolAddressId) {
         uint64 r = TokenId.validate(self);
         return r;
     }
@@ -410,7 +410,7 @@ contract TokenIdHarness {
      * @param self the option position Id (tokenId)
      * @param currentTick the current tick corresponding to the current price in the Univ3 pool.
      */
-    function validateIsExercisable(uint256 self, int24 currentTick) public view {
+    function validateIsExercisable(uint256 self, int24 currentTick) public pure {
         TokenId.validateIsExercisable(self, currentTick);
     }
 }

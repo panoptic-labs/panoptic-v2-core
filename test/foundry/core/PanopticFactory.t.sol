@@ -205,13 +205,8 @@ contract PanopticFactoryTest is Test {
         uint128 liquidityBefore = pool.liquidity();
 
         // amount of assets held before mint
-        uint256 balance0Before = IERC20Partial(token0).balanceOf(address(this));
-        uint256 balance1Before = IERC20Partial(token1).balanceOf(address(this));
-
         // Compute amount of liquidity to deploy
-        (uint128 fullRangeLiquidity, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity(
-            address(panopticFactory)
-        );
+        (uint128 fullRangeLiquidity, , ) = computeFullRangeLiquidity();
 
         {
             // Deploy pool
@@ -386,9 +381,10 @@ contract PanopticFactoryTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     /// Replicated logic from _mintFullRange in Panoptic Factory
-    function computeFullRangeLiquidity(
-        address panopticFactory
-    ) internal returns (uint128 fullRangeLiquidity, uint256 amount0, uint256 amount1) {
+    function computeFullRangeLiquidity()
+        internal
+        returns (uint128 fullRangeLiquidity, uint256 amount0, uint256 amount1)
+    {
         // get current tick
         (uint160 currentSqrtPriceX96, , , , , , ) = pool.slot0();
 

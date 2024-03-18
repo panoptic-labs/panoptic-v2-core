@@ -182,11 +182,11 @@ contract LeftRightTest is Test {
         if (uint128(uint256(y) + uint256(u)) < y) {
             // under/overflow
             vm.expectRevert(Errors.UnderOverFlow.selector);
-            uint256 other = harness.add(x, xx);
+            harness.add(x, xx);
         } else if (uint128(uint256(z) + uint256(v)) < z) {
             // under/overflow
             vm.expectRevert(Errors.UnderOverFlow.selector);
-            uint256 other = harness.add(x, xx);
+            harness.add(x, xx);
         } else {
             // normal case
             uint256 other = harness.add(x, xx);
@@ -214,21 +214,21 @@ contract LeftRightTest is Test {
             ) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.add(x, xx);
+                harness.add(x, xx);
             } else if (
                 (int256(uint256(z)) + v < int256(uint256(z)) && (v > 0)) ||
                 (int256(uint256(z)) + v > int256(uint256(z)) && (v < 0))
             ) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.add(x, xx);
+                harness.add(x, xx);
             } else if (
                 int256(uint256(y)) + u > type(int128).max ||
                 int256(uint256(z)) + v > type(int128).max
             ) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.add(x, xx);
+                harness.add(x, xx);
             } else {
                 // normal case
                 int256 other = harness.add(x, xx);
@@ -259,78 +259,17 @@ contract LeftRightTest is Test {
             if (y - u > y) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                uint256 other = harness.sub(x, xx);
+                harness.sub(x, xx);
             } else if (z - v > z) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                uint256 other = harness.sub(x, xx);
+                harness.sub(x, xx);
             } else {
                 // normal case
                 uint256 other = harness.sub(x, xx);
                 assertEq(uint128(harness.leftSlot(other)), y - u);
                 assertEq(uint128(harness.rightSlot(other)), z - v);
             }
-        }
-    }
-
-    function test_Success_MulUints(uint128 y, uint128 z, uint128 u, uint128 v) public {
-        uint256 x = 0;
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
-
-        assertEq(uint128(harness.leftSlot(x)), y);
-        assertEq(uint128(harness.rightSlot(x)), z);
-
-        uint256 xx = 0;
-        xx = harness.toRightSlot(xx, v);
-        xx = harness.toLeftSlot(xx, u);
-
-        assertEq(uint128(harness.leftSlot(xx)), u);
-        assertEq(uint128(harness.rightSlot(xx)), v);
-
-        // now test mul
-        unchecked {
-            // needed b/c we are checking for under/overflow cases to actually happen
-            if (y != 0 && (y * u) / y != u) {
-                // under/overflow
-                vm.expectRevert(Errors.UnderOverFlow.selector);
-                uint256 other = harness.mul(x, xx);
-            } else if (z != 0 && (z * v) / z != v) {
-                // under/overflow
-                vm.expectRevert(Errors.UnderOverFlow.selector);
-                uint256 other = harness.mul(x, xx);
-            } else {
-                // normal case
-                uint256 other = harness.mul(x, xx);
-                assertEq(uint128(harness.leftSlot(other)), y * u);
-                assertEq(uint128(harness.rightSlot(other)), z * v);
-            }
-        }
-    }
-
-    function test_Success_DivUints(uint128 y, uint128 z, uint128 u, uint128 v) public {
-        uint256 x = 0;
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
-
-        assertEq(uint128(harness.leftSlot(x)), y);
-        assertEq(uint128(harness.rightSlot(x)), z);
-
-        uint256 xx = 0;
-        xx = harness.toRightSlot(xx, v);
-        xx = harness.toLeftSlot(xx, u);
-
-        assertEq(uint128(harness.leftSlot(xx)), u);
-        assertEq(uint128(harness.rightSlot(xx)), v);
-
-        // now test div
-        if (u == 0 || v == 0) {
-            vm.expectRevert(Errors.LeftRightInputError.selector);
-            uint256 other = harness.div(x, xx);
-        } else {
-            uint256 other = harness.div(x, xx);
-            assertEq(uint128(harness.leftSlot(other)), y / u);
-            assertEq(uint128(harness.rightSlot(other)), z / v);
         }
     }
 
@@ -364,11 +303,11 @@ contract LeftRightTest is Test {
             if ((y + u < y && u > 0) || (y + u > y && u < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.add(x, xx);
+                harness.add(x, xx);
             } else if ((z + v < z && v > 0) || (z + v > z && v < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.add(x, xx);
+                harness.add(x, xx);
             } else {
                 // normal case
                 int256 other = harness.add(x, xx);
@@ -407,11 +346,11 @@ contract LeftRightTest is Test {
             if ((y - u > y && u > 0) || (y - u < y && u < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.sub(x, xx);
+                harness.sub(x, xx);
             } else if ((z - v > z && v > 0) || (z - v < z && v < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.sub(x, xx);
+                harness.sub(x, xx);
             } else {
                 // normal case
                 int256 other = harness.sub(x, xx);
@@ -436,11 +375,11 @@ contract LeftRightTest is Test {
             if ((y - u > y && u > 0) || (y - u < y && u < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.subRect(x, xx);
+                harness.subRect(x, xx);
             } else if ((z - v > z && v > 0) || (z - v < z && v < 0)) {
                 // under/overflow
                 vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.subRect(x, xx);
+                harness.subRect(x, xx);
             } else {
                 // normal case
                 int256 other = harness.subRect(x, xx);
@@ -556,87 +495,5 @@ contract LeftRightTest is Test {
             assertEq(r_x, harness.add(x, dx));
             assertEq(r_y, harness.add(y, dy));
         }
-    }
-
-    function test_Success_MulInts(int128 y, int128 z, int128 u, int128 v) public {
-        int256 x = 0;
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
-
-        assertEq(int128(harness.leftSlot(x)), y);
-        assertEq(int128(harness.rightSlot(x)), z);
-
-        int256 xx = 0;
-        xx = harness.toRightSlot(xx, v);
-        xx = harness.toLeftSlot(xx, u);
-
-        assertEq(int128(harness.leftSlot(xx)), u);
-        assertEq(int128(harness.rightSlot(xx)), v);
-
-        // now test mul
-        unchecked {
-            // needed b/c we are checking for under/overflow cases to actually happen
-            if (
-                (y != 0 && (int256(y) * u) > type(int128).max) || (int256(y) * u) < type(int128).min
-            ) {
-                // under/overflow
-                vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.mul(x, xx);
-            } else if (
-                (z != 0 && (int256(z) * v) > type(int128).max) || (int256(z) * v) < type(int128).min
-            ) {
-                // under/overflow
-                vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.mul(x, xx);
-            } else {
-                // normal case
-                int256 other = harness.mul(x, xx);
-                assertEq(int128(harness.leftSlot(other)), y * u);
-                assertEq(int128(harness.rightSlot(other)), z * v);
-            }
-        }
-    }
-
-    function test_Success_DivInts(int128 y, int128 z, int128 u, int128 v) public {
-        int256 x = 0;
-        x = harness.toLeftSlot(x, y);
-        x = harness.toRightSlot(x, z);
-
-        assertEq(int128(harness.leftSlot(x)), y);
-        assertEq(int128(harness.rightSlot(x)), z);
-
-        int256 xx = 0;
-        xx = harness.toRightSlot(xx, v);
-        xx = harness.toLeftSlot(xx, u);
-
-        assertEq(int128(harness.leftSlot(xx)), u);
-        assertEq(int128(harness.rightSlot(xx)), v);
-
-        // now test div
-        if (u == 0 || v == 0) {
-            // Foundry cannot handle compiler panics, this should panic with 0x12
-            vm.expectRevert();
-            int256 other = harness.div(x, xx);
-        } else {
-            if (
-                (harness.leftSlot(x) == type(int128).min && harness.leftSlot(xx) == -1) ||
-                (harness.rightSlot(x) == type(int128).min && harness.rightSlot(xx) == -1)
-            ) {
-                vm.expectRevert(Errors.UnderOverFlow.selector);
-                int256 other = harness.div(x, xx);
-            } else {
-                int256 other = harness.div(x, xx);
-                assertEq(int128(harness.leftSlot(other)), y / u);
-                assertEq(int128(harness.rightSlot(other)), z / v);
-            }
-        }
-    }
-
-    function test_Fail_DivInts() public {
-        int256 x = type(int128).min;
-        int256 xx = -1;
-
-        vm.expectRevert(Errors.UnderOverFlow.selector);
-        int256 other = harness.div(x, xx);
     }
 }

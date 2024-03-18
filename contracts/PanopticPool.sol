@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.18;
+pragma solidity =0.8.25;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -434,7 +434,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
         (value0, value1) = FeesCalc.getPortfolioValue(
-            s_univ3pool,
             atTick,
             s_positionBalance[user],
             positionIdList

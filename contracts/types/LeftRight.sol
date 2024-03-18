@@ -39,10 +39,10 @@ library LeftRight {
         return int128(self);
     }
 
-    /// @dev All toRightSlot functions add bits to the right slot without clearing it first
-    /// @dev Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
-    /// @dev Therefore, the assumption must not be made that the bits will be cleared while using these helpers
-    /// @dev Note that the values *within* the slots are allowed to overflow, but overflows are contained and will not leak into the other slot
+    // All toRightSlot functions add bits to the right slot without clearing it first
+    // Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
+    // Therefore, the assumption must not be made that the bits will be cleared while using these helpers
+    // Note that the values *within* the slots are allowed to overflow, but overflows are contained and will not leak into the other slot
 
     /// @notice Write the "right" slot to a uint256.
     /// @param self the original full uint256 bit pattern to be written to
@@ -176,48 +176,6 @@ library LeftRight {
         }
     }
 
-    /// @notice Multiply two uint256 bit LeftRight-encoded words; revert on overflow.
-    /// @param x the multiplicand
-    /// @param y the multiplier
-    /// @return z the product x/// y
-    function mul(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        unchecked {
-            // left slot
-            uint256 leftProd256 = uint256(x.leftSlot()) * uint256(y.leftSlot());
-            uint128 leftProd128 = uint128(leftProd256);
-
-            // right slot
-            uint256 rightProd256 = uint256(x.rightSlot()) * uint256(y.rightSlot());
-            uint128 rightProd128 = uint128(rightProd256);
-
-            // under/overflow checks
-            if (leftProd128 != leftProd256 || rightProd128 != rightProd256)
-                revert Errors.UnderOverFlow();
-
-            // if no error then return
-            // shift leftProd128 from its original position right, to the left slot
-            //          128 | 128
-            //  leftProd128 | rightProd128
-            return rightProd256.toLeftSlot(leftProd128);
-        }
-    }
-
-    /// @notice Divide two uint256 bit LeftRight-encoded words; revert on division by zero.
-    /// @param x the numerator
-    /// @param y the denominator
-    /// @return z the ratio x / y
-    function div(uint256 x, uint256 y) internal pure returns (uint256 z) {
-        unchecked {
-            // cache on stack reused values for efficiency
-            uint128 yLeftSlot = y.leftSlot();
-            uint128 yRightSlot = y.rightSlot();
-
-            if ((yLeftSlot == 0) || (yRightSlot == 0)) revert Errors.LeftRightInputError();
-
-            return z.toRightSlot(x.rightSlot() / yRightSlot).toLeftSlot(x.leftSlot() / yLeftSlot);
-        }
-    }
-
     /// @notice Add uint256 to an int256 LeftRight-encoded word; revert on overflow or underflow.
     /// @param x the augend
     /// @param y the addend
@@ -325,59 +283,6 @@ library LeftRight {
                 l_Enabled ? z_yL : y.leftSlot()
             )
         );
-    }
-
-    /// @notice Multiply two int256 bit LeftRight-encoded words; revert on overflow.
-    /// @param x the multiplicand
-    /// @param y the multiplier
-    /// @return z the product x * y
-    function mul(int256 x, int256 y) internal pure returns (int256 z) {
-        unchecked {
-            int256 leftProd256 = int256(x.leftSlot()) * int256(y.leftSlot());
-            int128 leftProd128 = int128(leftProd256);
-
-            int256 rightProd256 = int256(x.rightSlot()) * int256(y.rightSlot());
-            int128 rightProd128 = int128(rightProd256);
-
-            // under/overflow checks
-            if (leftProd128 != leftProd256 || rightProd128 != rightProd256)
-                revert Errors.UnderOverFlow();
-
-            // if no error then return
-            // shift leftProd128 from its original position right, to the left slot
-            //          128 | 128
-            //  leftProd128 | rightProd128
-            return z.toRightSlot(rightProd128).toLeftSlot(leftProd128);
-        }
-    }
-
-    /// @notice Divide two int256 bit LeftRight-encoded words; revert on division by zero.
-    /// @param x the numerator
-    /// @param y the denominator
-    /// @return z the ratio x / y
-    function div(int256 x, int256 y) internal pure returns (int256 z) {
-        unchecked {
-            // cache on stack reused values for efficiency
-            int128 xLeftSlot = x.leftSlot();
-            int128 xRightSlot = x.rightSlot();
-
-            // store as int256 so that the result of division is stored as an int256
-            // this way we can check if the left/right values don't fit into int128 slots
-            int256 yLeftSlot = y.leftSlot();
-            int256 yRightSlot = y.rightSlot();
-
-            // quotient values (result of division)
-            int256 leftQuotient256 = xLeftSlot / yLeftSlot;
-            int256 rightQuotient256 = xRightSlot / yRightSlot;
-            int128 leftQuotient128 = int128(leftQuotient256);
-            int128 rightQuotient128 = int128(rightQuotient256);
-
-            // if downcasted value does not match original value then an overflow has occured
-            if (leftQuotient128 != leftQuotient256 || rightQuotient128 != rightQuotient256)
-                revert Errors.UnderOverFlow();
-
-            return z.toRightSlot(rightQuotient128).toLeftSlot(leftQuotient128);
-        }
     }
 
     /*//////////////////////////////////////////////////////////////

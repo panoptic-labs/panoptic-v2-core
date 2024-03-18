@@ -169,7 +169,6 @@ contract PositionUtils is Test {
         width = ts == 1
             ? width = int24(int256(bound(widthSeed, 1, 2048)))
             : int24(int256(bound(widthSeed, 1, 2048)));
-        int24 oneSidedRange = int24((width * ts) / 2);
 
         int24 rangeDown;
         int24 rangeUp;
@@ -200,7 +199,6 @@ contract PositionUtils is Test {
         width = ts == 1
             ? width = int24(int256(bound(widthSeed, 1, 1024)))
             : int24(int256(bound(widthSeed, 1, (1024 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
 
         int24 rangeDown;
         int24 rangeUp;
@@ -237,7 +235,7 @@ contract PositionUtils is Test {
     function getMinWidthInRangeSW(
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
         // round current tick down to closest initializable tick, then add ts/2 to get strike
         strike = int24((currentTick / ts) * ts + ts / 2);
@@ -393,7 +391,7 @@ contract PositionUtils is Test {
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+        (int24 strikeOffset, , int24 maxTick) = ts == 1
             ? getContextFull(ts_, currentTick, width)
             : getContext(ts_, currentTick, width);
 
@@ -424,7 +422,7 @@ contract PositionUtils is Test {
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
+        (int24 strikeOffset, int24 minTick, ) = ts == 1
             ? getContextFull(ts_, currentTick, width)
             : getContext(ts_, currentTick, width);
 
@@ -557,7 +555,7 @@ contract PositionUtils is Test {
         int24 tickUpper,
         uint256 token,
         uint256 amountToken
-    ) internal view returns (uint256 contractAmount) {
+    ) internal pure returns (uint256 contractAmount) {
         uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(tick);
         uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
         uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
@@ -690,7 +688,7 @@ contract PositionUtils is Test {
     ) public returns (uint256, uint256) {
         vm.snapshot();
 
-        changePrank(address(0x123456789));
+        vm.startPrank(address(0x123456789));
 
         deal(token0, address(0x123456789), type(uint128).max);
         deal(token1, address(0x123456789), type(uint128).max);
@@ -850,7 +848,7 @@ contract PositionUtils is Test {
     ) public returns (int256, int256) {
         vm.snapshot();
 
-        changePrank(address(0x123456789));
+        vm.startPrank(address(0x123456789));
 
         deal(token0, address(0x123456789), type(uint128).max);
         deal(token1, address(0x123456789), type(uint128).max);
@@ -1115,7 +1113,7 @@ contract PositionUtils is Test {
         bool[2] memory zeroForOne,
         int256[2] memory amountSpecified
     ) public returns (uint256[2] memory amount0, uint256[2] memory amount1) {
-        changePrank(address(0x123456789));
+        vm.startPrank(address(0x123456789));
 
         deal(token0, address(0x123456789), type(uint128).max);
         deal(token1, address(0x123456789), type(uint128).max);

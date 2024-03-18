@@ -46,14 +46,12 @@ library FeesCalc {
     using TokenId for uint256;
 
     /// @notice Calculate NAV of user's option portfolio at a given tick.
-    /// @param univ3pool the pair the positions are on
     /// @param atTick the tick to calculate the value at
     /// @param userBalance the position balances of the user
     /// @param positionIdList a list of all positions the user holds on that pool
     /// @return value0 the amount of token0 owned by portfolio
     /// @return value1 the amount of token1 owned by portfolio
     function getPortfolioValue(
-        IUniswapV3Pool univ3pool,
         int24 atTick,
         mapping(uint256 tokenId => uint256 balance) storage userBalance,
         uint256[] calldata positionIdList
@@ -90,36 +88,6 @@ library FeesCalc {
                 ++k;
             }
         }
-    }
-
-    /// @notice Calculate the AMM Swap/Trading Fees for the incoming position (and leg `index` within that position)
-    /// This is what defines the option price/premium
-    /// @dev calculate the base (aka AMM swap trading) fees by looking at feeGrowth in the Uniswap v3 pool.
-    /// @param univ3pool the AMM/Uniswap pool where premia is collected in
-    /// @param currentTick the current price tick in the AMM
-    /// @param tokenId the option position
-    /// @param index the leg index to compute position fees for - this identifies a liquidity chunk in the AMM
-    /// @param positionSize the size of the option position
-    /// @return liquidityChunk the liquidity chunk in question representing the leg of the position
-    /// @return feesPerToken the fees collected (LeftRight-packed) per token0 (right slot) and token1 (left slot)
-    function calculateAMMSwapFees(
-        IUniswapV3Pool univ3pool,
-        int24 currentTick,
-        uint256 tokenId,
-        uint256 index,
-        uint128 positionSize
-    ) public view returns (uint256 liquidityChunk, int256 feesPerToken) {
-        // extract the liquidity chunk representing the leg `index` of the option position `tokenId`
-        liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, index, positionSize);
-
-        // Extract the AMM swap/trading fees collected by this option leg (liquidity chunk)
-        // packed as LeftRight with token0 fees in the right slot and token1 fees in the left slot
-        feesPerToken = calculateAMMSwapFeesLiquidityChunk(
-            univ3pool,
-            currentTick,
-            liquidityChunk.liquidity(),
-            liquidityChunk
-        );
     }
 
     /// @notice Calculate the AMM Swap/trading fees for a `liquidityChunk` of each token.

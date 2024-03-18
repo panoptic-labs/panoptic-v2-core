@@ -64,7 +64,7 @@ contract PanopticMathTest is Test, PositionUtils {
     int24 strikeOffset;
 
     function test_Success_getLiquidityChunk_asset0(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
         int24 strike,
@@ -76,7 +76,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint16 optionRatio = uint16(bound(optionRatioSeed, 1, 127));
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -124,14 +124,18 @@ contract PanopticMathTest is Test, PositionUtils {
             amount
         );
 
-        uint256 expectedLiquidityChunk = uint256(0).createChunk(tickLower, tickUpper, legLiquidity);
+        uint256 expectedLiquidityChunk = LiquidityChunk.createChunk(
+            tickLower,
+            tickUpper,
+            legLiquidity
+        );
         uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
     }
 
     function test_Success_getLiquidityChunk_asset1(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
         int24 strike,
@@ -143,7 +147,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -191,7 +195,11 @@ contract PanopticMathTest is Test, PositionUtils {
             amount
         );
 
-        uint256 expectedLiquidityChunk = uint256(0).createChunk(tickLower, tickUpper, legLiquidity);
+        uint256 expectedLiquidityChunk = LiquidityChunk.createChunk(
+            tickLower,
+            tickUpper,
+            legLiquidity
+        );
         uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
         assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
@@ -231,8 +239,8 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_getTicks_normalTickRange(
-        uint16 width,
-        int24 strike,
+        uint256 widthSeed,
+        int256 strikeSeed,
         uint256 poolSeed
     ) public {
         // bound fuzzed tick
@@ -240,12 +248,12 @@ contract PanopticMathTest is Test, PositionUtils {
         tickSpacing = selectedPool.tickSpacing();
 
         // Width must be > 0 < 4096
-        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
 
         // The position must not extend outside of the max/min tick
         int24 strike = int24(
             bound(
-                strike,
+                strikeSeed,
                 TickMath.MIN_TICK + (width * tickSpacing) / 2,
                 TickMath.MAX_TICK - (width * tickSpacing) / 2
             )
@@ -263,20 +271,20 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Fail_getTicks_TicksNotInitializable(
-        uint16 width,
-        int24 strike,
+        uint256 widthSeed,
+        int256 strikeSeed,
         uint256 poolSeed
     ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
         tickSpacing = selectedPool.tickSpacing();
         // Width must be > 0 < 4096
-        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
 
         // The position must not extend outside of the max/min tick
         int24 strike = int24(
             bound(
-                strike,
+                strikeSeed,
                 TickMath.MIN_TICK + (width * tickSpacing) / 2,
                 TickMath.MAX_TICK - (width * tickSpacing) / 2
             )
@@ -289,20 +297,24 @@ contract PanopticMathTest is Test, PositionUtils {
 
         vm.expectRevert(Errors.TicksNotInitializable.selector);
         // Test the asTicks function
-        (int24 tickLower, int24 tickUpper) = harness.getTicks(strike, width, tickSpacing);
+        harness.getTicks(strike, width, tickSpacing);
     }
 
-    function test_Fail_getTicks_belowMinTick(uint16 width, int24 strike, uint256 poolSeed) public {
+    function test_Fail_getTicks_belowMinTick(
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 poolSeed
+    ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
         tickSpacing = selectedPool.tickSpacing();
         // Width must be > 0 < 4096
-        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
         int24 oneSidedRange = (width * tickSpacing) / 2;
 
         // The position must extend beyond the min tick
         int24 strike = int24(
-            bound(strike, TickMath.MIN_TICK, TickMath.MIN_TICK + (width * tickSpacing) / 2 - 1)
+            bound(strikeSeed, TickMath.MIN_TICK, TickMath.MIN_TICK + (width * tickSpacing) / 2 - 1)
         );
 
         // assume for now
@@ -316,17 +328,21 @@ contract PanopticMathTest is Test, PositionUtils {
         harness.getTicks(strike, width, tickSpacing);
     }
 
-    function test_Fail_getTicks_aboveMinTick(uint16 width, int24 strike, uint256 poolSeed) public {
+    function test_Fail_getTicks_aboveMinTick(
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 poolSeed
+    ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
         tickSpacing = selectedPool.tickSpacing();
         // Width must be > 0 < 4095 (4095 is full range)
-        int24 width = int24(int256(bound(width, 1, 4094)));
+        int24 width = int24(int256(bound(widthSeed, 1, 4094)));
         int24 oneSidedRange = (width * tickSpacing) / 2;
 
         // The position must extend beyond the max tick
         int24 strike = int24(
-            bound(strike, TickMath.MAX_TICK - (width * tickSpacing) / 2 + 1, TickMath.MAX_TICK)
+            bound(strikeSeed, TickMath.MAX_TICK - (width * tickSpacing) / 2 + 1, TickMath.MAX_TICK)
         );
 
         // assume for now
@@ -351,7 +367,7 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_computeExercisedAmounts_emptyOldTokenId(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 asset,
         uint16 tokenType,
@@ -364,7 +380,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             vm.assume(positionSize * uint128(optionRatio) < type(uint56).max);
 
@@ -425,7 +441,7 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_updatePositionsHash_add(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 asset,
         uint16 tokenType,
@@ -437,7 +453,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -483,7 +499,7 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_updatePositionsHash_update(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 asset,
         uint16 tokenType,
@@ -495,7 +511,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1285,9 +1301,8 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_getAmountsMoved_asset0(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 isLong,
-        uint16 asset,
         uint16 tokenType,
         int24 strike,
         int24 width,
@@ -1298,7 +1313,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 1);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 1);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1341,7 +1356,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // get amount 1
         // construct liq object
-        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
+        uint256 liquidityAmounts = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
         uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0);
         liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
         // set amount 1
@@ -1356,9 +1371,8 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_getAmountsMoved_asset1(
-        uint16 optionRatio,
+        uint256 optionRatio,
         uint16 isLong,
-        uint16 asset,
         uint16 tokenType,
         int24 strike,
         int24 width,
@@ -1369,7 +1383,9 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
+
+            optionRatio = bound(optionRatio, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1377,7 +1393,6 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1415,7 +1430,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // get amount 0
         // construct liq object
-        uint256 liquidityAmounts = uint256(0).createChunk(tickLower, tickUpper, 0);
+        uint256 liquidityAmounts = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
         uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);
         liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
         // set amount 1
@@ -1431,7 +1446,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
     // // _calculateIOAmounts
     function test_Success_calculateIOAmounts_shortTokenType0(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 asset,
         int24 strike,
         int24 width,
@@ -1442,7 +1457,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 1);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 1);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1491,7 +1506,6 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_calculateIOAmounts_longTokenType0(
-        uint16 optionRatio,
         uint16 asset,
         int24 strike,
         int24 width,
@@ -1502,7 +1516,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 1);
+            uint256 optionRatio = 1;
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1564,7 +1578,7 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_calculateIOAmounts_shortTokenType1(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 asset,
         int24 strike,
         int24 width,
@@ -1575,7 +1589,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1621,7 +1635,7 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_calculateIOAmounts_longTokenType1(
-        uint16 optionRatio,
+        uint256 optionRatioSeed,
         uint16 asset,
         int24 strike,
         int24 width,
@@ -1632,7 +1646,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // max bound position size * optionRatio can be to avoid overflows
             vm.assume(positionSize * uint128(optionRatio) < type(uint56).max);
@@ -1684,7 +1698,7 @@ contract PanopticMathTest is Test, PositionUtils {
     // mul div as ticks
     function test_Success_getRangesFromStrike_1bps_1TickWide() public {
         int24 width = 1;
-        int24 tickSpacing = 1;
+        tickSpacing = 1;
 
         (int24 rangeDown, int24 rangeUp) = harness.getRangesFromStrike(width, tickSpacing);
 
@@ -1693,15 +1707,15 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_Success_getRangesFromStrike_allCombos(
-        uint16 widthSeed,
-        uint16 tickSpacing,
+        uint256 widthSeed,
+        uint256 tickSpacingSeed,
         int24 strike
     ) public {
         // bound the width (1 -> 4094)
         uint24 widthBounded = uint24(bound(widthSeed, 1, 4094));
 
         // bound the tickSpacing
-        uint24 tickSpacingBounded = uint24(bound(tickSpacing, 1, 1000));
+        uint24 tickSpacingBounded = uint24(bound(tickSpacingSeed, 1, 1000));
 
         // get a valid strike
         strike = int24((strike / int24(tickSpacingBounded)) * int24(tickSpacingBounded));
@@ -1730,9 +1744,6 @@ contract PanopticMathTest is Test, PositionUtils {
         } else {
             // else even -> rangeDown and rangeUp are both just (width * ts) / 2
             int24 range = int24((widthBounded * tickSpacingBounded) / 2);
-
-            int24 lowerTick = strike - range;
-            int24 upperTick = strike + range;
 
             assertEq(strike - rangeDown, strike - range);
             assertEq(strike + rangeUp, strike + range);

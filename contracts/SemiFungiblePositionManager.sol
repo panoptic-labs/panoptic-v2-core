@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.18;
+pragma solidity =0.8.25;
 
 // Interfaces
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -71,7 +71,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs
 contract SemiFungiblePositionManager is ERC1155, Multicall {
     /*//////////////////////////////////////////////////////////////
-                                EVENTS
+                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emitted when a UniswapV3Pool is initialized.
@@ -101,7 +101,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     );
 
     /*//////////////////////////////////////////////////////////////
-                                TYPES 
+                                 TYPES
     //////////////////////////////////////////////////////////////*/
 
     /// @dev Uses the LeftRight packaging methods for uint256/int256 to store 128bit values
@@ -130,7 +130,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
     // ν = 1/2**VEGOID = multiplicative factor for long premium (Eqns 1-5)
     // Similar to vega in options because the liquidity utilization is somewhat reflective of the implied volatility (IV),
-    // and vegoid modifies the sensitivity of the stremia to changes in that utilization,
+    // and vegoid modifies the sensitivity of the streamia to changes in that utilization,
     // much like vega measures the sensitivity of traditional option prices to IV.
     // The effect of vegoid on the long premium multiplier can be explored here: https://www.desmos.com/calculator/mdeqob2m04
     uint128 private constant VEGOID = 2;
@@ -335,7 +335,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            INITIALIZATION
+                             INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Construct the Semi-Fungible Position Manager (SFPM)
@@ -393,7 +393,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          CALLBACK HANDLERS
+                           CALLBACK HANDLERS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Called after minting liquidity to a position
@@ -529,7 +529,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    TRANSFER HOOK IMPLEMENTATIONS
+                     TRANSFER HOOK IMPLEMENTATIONS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Transfer a single token from one user to another
@@ -1367,9 +1367,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         }
     }
 
-    /*///////////////////////////////////////////////////////////////////////////
-                                    SFPM PROPERTIES
-    ///////////////////////////////////////////////////////////////////////////*/
+    /*//////////////////////////////////////////////////////////////
+                            SFPM PROPERTIES
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the liquidity associated with a given position.
     /// @dev Computes accountLiquidity[keccak256(abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper))]
@@ -1431,7 +1431,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint256 amountToCollect;
                 {
                     IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
-                    uint256 tempChunk = uint256(0).createChunk(tickLower, tickUpper, 0);
+                    uint256 tempChunk = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
                     // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
                     // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
                     // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())

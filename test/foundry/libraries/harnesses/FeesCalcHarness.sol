@@ -12,12 +12,10 @@ contract FeesCalcHarness {
     mapping(uint256 tokenId => uint256 balance) public userBalance;
 
     function getPortfolioValue(
-        IUniswapV3Pool univ3pool,
         int24 atTick,
         uint256[] calldata positionIdList
     ) public view returns (int256, int256) {
         (int256 value0, int256 value1) = FeesCalc.getPortfolioValue(
-            univ3pool,
             atTick,
             userBalance,
             positionIdList
@@ -25,29 +23,12 @@ contract FeesCalcHarness {
         return (value0, value1);
     }
 
-    function calculateAMMSwapFees(
-        IUniswapV3Pool univ3pool,
-        int24 currentTick,
-        uint256 tokenId,
-        uint256 index,
-        uint128 positionSize
-    ) public view returns (uint256, int256) {
-        (uint256 liquidityChunk, int256 feesPerToken) = FeesCalc.calculateAMMSwapFees(
-            univ3pool,
-            currentTick,
-            tokenId,
-            index,
-            positionSize
-        );
-        return (liquidityChunk, feesPerToken);
-    }
-
     function calculateAMMSwapFeesLiquidityChunk(
         IUniswapV3Pool univ3pool,
         int24 currentTick,
         uint128 startingLiquidity,
         uint256 liquidityChunk
-    ) public view returns (int256 feesEachToken) {
+    ) public view returns (int256) {
         int256 feesEachToken = FeesCalc.calculateAMMSwapFeesLiquidityChunk(
             univ3pool,
             currentTick,

@@ -44,19 +44,17 @@ contract LiquidityChunkHarness {
 
     /**
      * @notice Create a new liquidity chunk given by its bounding ticks and its liquidity.
-     * @param self the uint256 to turn into a liquidity chunk - assumed to be 0
-     * @param tickLower the lower tick of this chunk
-     * @param tickUpper the upper tick of this chunk
+     * @param _tickLower the lower tick of this chunk
+     * @param _tickUpper the upper tick of this chunk
      * @param amount the amount of liquidity to add to this chunk.
      * @return the new liquidity chunk
      */
     function createChunk(
-        uint256 self,
-        int24 tickLower,
-        int24 tickUpper,
+        int24 _tickLower,
+        int24 _tickUpper,
         uint128 amount
     ) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.createChunk(self, tickLower, tickUpper, amount);
+        uint256 r = LiquidityChunk.createChunk(_tickLower, _tickUpper, amount);
         return r;
     }
 
@@ -74,40 +72,40 @@ contract LiquidityChunkHarness {
     /**
      * @notice Add the lower tick to this chunk.
      * @param self the LiquidityChunk.
-     * @param tickLower the lower tick to add.
+     * @param _tickLower the lower tick to add.
      * @return the chunk with added lower tick
      */
-    function addTickLower(uint256 self, int24 tickLower) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.addTickLower(self, tickLower);
+    function addTickLower(uint256 self, int24 _tickLower) public pure returns (uint256) {
+        uint256 r = LiquidityChunk.addTickLower(self, _tickLower);
         return r;
     }
 
     /**
      * @notice Add the upper tick to this chunk.
      * @param self the LiquidityChunk.
-     * @param tickUpper the upper tick to add.
+     * @param _tickUpper the upper tick to add.
      * @return the chunk with added upper tick
      */
-    function addTickUpper(uint256 self, int24 tickUpper) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.addTickUpper(self, tickUpper);
+    function addTickUpper(uint256 self, int24 _tickUpper) public pure returns (uint256) {
+        uint256 r = LiquidityChunk.addTickUpper(self, _tickUpper);
         return r;
     }
 
     /// @notice Overwrites the lower tick to this chunk.
     /// @param self the LiquidityChunk
-    /// @param tickLower the lower tick to add
+    /// @param _tickLower the lower tick to add
     /// @return the chunk with added lower tick
-    function updateTickLower(uint256 self, int24 tickLower) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.updateTickLower(self, tickLower);
+    function updateTickLower(uint256 self, int24 _tickLower) public pure returns (uint256) {
+        uint256 r = LiquidityChunk.updateTickLower(self, _tickLower);
         return r;
     }
 
     /// @notice Overwrites the upper tick to this chunk.
     /// @param self the LiquidityChunk
-    /// @param tickUpper the upper tick to add
+    /// @param _tickUpper the upper tick to add
     /// @return the chunk with added upper tick
-    function updateTickUpper(uint256 self, int24 tickUpper) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.updateTickUpper(self, tickUpper);
+    function updateTickUpper(uint256 self, int24 _tickUpper) public pure returns (uint256) {
+        uint256 r = LiquidityChunk.updateTickUpper(self, _tickUpper);
         return r;
     }
 

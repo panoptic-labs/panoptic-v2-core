@@ -15,7 +15,7 @@ contract PanopticMathHarness is Test {
         uint256 tokenId,
         uint256 legIndex,
         uint128 positionSize
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, legIndex, positionSize);
         return liquidityChunk;
     }
@@ -41,14 +41,14 @@ contract PanopticMathHarness is Test {
     }
 
     function incrementPoolPattern(uint64 poolId) public pure returns (uint64) {
-        uint64 poolId = PanopticMath.incrementPoolPattern(poolId);
-        return poolId;
+        uint64 _poolId = PanopticMath.incrementPoolPattern(poolId);
+        return _poolId;
     }
 
     function computeExercisedAmounts(
         uint256 tokenId,
         uint128 positionSize
-    ) public view returns (int256, int256) {
+    ) public pure returns (int256, int256) {
         (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
             positionSize
@@ -65,15 +65,12 @@ contract PanopticMathHarness is Test {
         uint256 existingHash,
         uint256 tokenId,
         bool addFlag
-    ) public pure returns (uint256 newHash) {
+    ) public pure returns (uint256) {
         uint256 newHash = PanopticMath.updatePositionsHash(existingHash, tokenId, addFlag);
         return newHash;
     }
 
-    function twapFilter(
-        IUniswapV3Pool univ3pool,
-        uint32 twapWindow
-    ) public returns (int24 twapTick) {
+    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) public view returns (int24) {
         int24 twapTick = PanopticMath.twapFilter(univ3pool, twapWindow);
         return twapTick;
     }
@@ -84,7 +81,7 @@ contract PanopticMathHarness is Test {
         uint256 observationCardinality,
         uint256 cardinality,
         uint256 period
-    ) public returns (int24) {
+    ) public view returns (int24) {
         int24 lastMedianObservation = PanopticMath.computeMedianObservedPrice(
             univ3pool,
             observationIndex,
@@ -122,7 +119,7 @@ contract PanopticMathHarness is Test {
         int24 tickLower,
         int24 tickUpper,
         uint256 asset
-    ) public view returns (uint128) {
+    ) public pure returns (uint128) {
         uint128 notional = PanopticMath.convertNotional(contractSize, tickLower, tickUpper, asset);
         return notional;
     }
@@ -139,6 +136,7 @@ contract PanopticMathHarness is Test {
             return notional;
         } catch {
             vm.assume(2 + 2 == 5);
+            return 0;
         }
     }
 
@@ -146,7 +144,7 @@ contract PanopticMathHarness is Test {
         uint256 tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, legIndex);
         return amountsMoved;
     }
@@ -163,6 +161,7 @@ contract PanopticMathHarness is Test {
             return contractsNotional;
         } catch {
             vm.assume(2 + 2 == 5);
+            return 0;
         }
     }
 
@@ -170,7 +169,7 @@ contract PanopticMathHarness is Test {
         uint256 tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) public view returns (int256, int256) {
+    ) public pure returns (int256, int256) {
         (int256 longs, int256 shorts) = PanopticMath._calculateIOAmounts(
             tokenId,
             positionSize,
@@ -191,6 +190,7 @@ contract PanopticMathHarness is Test {
             return (longs, shorts);
         } catch {
             vm.assume(2 + 2 == 5);
+            return (0, 0);
         }
     }
 

@@ -57,8 +57,6 @@ contract FeesCalcTest is Test, PositionUtils {
     }
 
     function test_Success_getPortfolioValue(
-        int24 atTick,
-        uint256 totalLegs,
         uint256 poolIdSeed,
         uint256 optionRatioSeed,
         uint256 assetSeed,
@@ -131,7 +129,6 @@ contract FeesCalcTest is Test, PositionUtils {
             uint256[] memory posIdList = new uint256[](1);
             posIdList[0] = tokenId;
             (int256 returnedValue0, int256 returnedValue1) = harness.getPortfolioValue(
-                selectedPool,
                 currentTick,
                 posIdList
             );
@@ -141,56 +138,8 @@ contract FeesCalcTest is Test, PositionUtils {
         }
     }
 
-    function test_Success_calculateAMMSwapFees(
-        int24 atTick,
-        uint256 totalLegs,
-        uint256 poolIdSeed,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int256 strikeSeed,
-        int256 widthSeed,
-        uint64 positionSize
-    ) public {
-        vm.assume(positionSize != 0);
-        uint256 tokenId;
-        selectedPool = pools[bound(poolIdSeed, 0, 2)];
-
-        {
-            // construct one leg token
-            tokenId = fuzzedPosition(
-                1, // total amount of legs
-                poolIdSeed,
-                optionRatioSeed,
-                assetSeed,
-                isLongSeed,
-                tokenTypeSeed,
-                strikeSeed,
-                widthSeed
-            );
-        }
-
-        uint256 expectedLiquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
-
-        int256 expectedFeesPerToken = harness.calculateAMMSwapFeesLiquidityChunk(
-            selectedPool,
-            currentTick,
-            expectedLiquidityChunk.liquidity(),
-            expectedLiquidityChunk
-        );
-
-        (uint256 returnedLiquidityChunk, int256 returnedFeesPerToken) = harness
-            .calculateAMMSwapFees(selectedPool, currentTick, tokenId, 0, positionSize);
-
-        assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
-        assertEq(expectedFeesPerToken, returnedFeesPerToken);
-    }
-
     // above/below/in-range branches
     function test_Success_calculateAMMSwapFeesLiquidityChunk(
-        int24 atTick,
-        uint256 totalLegs,
         uint256 poolIdSeed,
         uint256 optionRatioSeed,
         uint256 assetSeed,

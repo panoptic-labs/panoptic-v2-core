@@ -582,16 +582,7 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(expectedToken, returnedToken);
     }
 
-    function test_Success_flipToBurnToken_emptyLegs(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
+    function test_Success_flipToBurnToken_emptyLegs() public {
         uint256 tokenId;
 
         // expected data
@@ -651,22 +642,22 @@ contract TokenIdTest is Test, PositionUtils {
                                 AS TICKS
     //////////////////////////////////////////////////////////////*/
     function test_Success_asTicks_normalTickRange(
-        uint16 width,
-        int24 strike,
+        uint256 widthSeed,
+        int256 strikeSeed,
         int24 poolStatusSeed
     ) public {
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
 
         // Width must be > 0 < 4096
-        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
 
         int24 rangeDown;
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         // The position must not extend outside of the max/min tick
-        int24 strike = int24(bound(strike, minTick + rangeDown, maxTick - rangeUp));
+        int24 strike = int24(bound(strikeSeed, minTick + rangeDown, maxTick - rangeUp));
 
         vm.assume(strike + ((rangeUp) % tickSpacing) == 0);
         vm.assume(strike - ((rangeDown) % tickSpacing) == 0);
@@ -685,22 +676,22 @@ contract TokenIdTest is Test, PositionUtils {
     }
 
     function test_Fail_asTicks_TicksNotInitializable(
-        uint16 width,
-        int24 strike,
+        uint256 widthSeed,
+        int256 strikeSeed,
         int24 poolStatusSeed
     ) public {
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
 
         // Width must be > 0 < 4096
-        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
 
         int24 rangeDown;
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
         // The position must not extend outside of the max/min tick
-        int24 strike = int24(bound(strike, minTick + rangeDown, maxTick - rangeUp));
+        int24 strike = int24(bound(strikeSeed, minTick + rangeDown, maxTick - rangeUp));
 
         vm.assume((strike + rangeDown) % tickSpacing != 0 || (strike - rangeUp) % tickSpacing != 0);
 
@@ -711,19 +702,19 @@ contract TokenIdTest is Test, PositionUtils {
 
         vm.expectRevert(Errors.TicksNotInitializable.selector);
         // Test the asTicks function
-        (int24 tickLower, int24 tickUpper) = harness.asTicks(tokenId, 0);
+        harness.asTicks(tokenId, 0);
     }
 
     function test_Fail_asTicks_belowMinTick(
-        uint16 width,
-        int24 strike,
+        uint256 widthSeed,
+        int256 strikeSeed,
         int24 poolStatusSeed
     ) public {
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
 
         // Width must be > 0 < 4096
-        int24 width = int24(uint24(bound(width, 1, 4095)));
+        int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
 
         int24 rangeDown;
         int24 rangeUp;
@@ -732,7 +723,7 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume(minTick != TickMath.MIN_TICK);
 
         // The position must extend beyond the min tick
-        int24 strike = int24(bound(strike, TickMath.MIN_TICK, minTick + rangeDown - 1));
+        int24 strike = int24(bound(strikeSeed, TickMath.MIN_TICK, minTick + rangeDown - 1));
 
         // assume for now
         vm.assume(
@@ -750,15 +741,15 @@ contract TokenIdTest is Test, PositionUtils {
     }
 
     function test_Fail_asTicks_aboveMaxTick(
-        uint16 width,
-        int24 strike,
+        uint256 widthSeed,
+        int256 strikeSeed,
         int24 poolStatusSeed
     ) public {
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
 
         // Width must be > 0 < 4095 (4095 is full range)
-        int24 width = int24(int256(bound(width, 1, 4094)));
+        int24 width = int24(int256(bound(widthSeed, 1, 4094)));
 
         int24 rangeDown;
         int24 rangeUp;
@@ -767,7 +758,7 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume(maxTick != TickMath.MAX_TICK);
 
         // The position must extend beyond the max tick
-        int24 strike = int24(bound(strike, maxTick - rangeUp + 1, TickMath.MAX_TICK));
+        int24 strike = int24(bound(strikeSeed, maxTick - rangeUp + 1, TickMath.MAX_TICK));
 
         // assume for now
         vm.assume(
@@ -919,16 +910,7 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(1, returnedLegs);
     }
 
-    function test_Success_countLegs_emptyLegs(
-        uint64 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed,
-        int24 poolStatusSeed
-    ) public {
+    function test_Success_countLegs_emptyLegs(int24 poolStatusSeed) public {
         uint256 tokenId;
 
         // fuzzes a valid currentTick
@@ -979,15 +961,7 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(expectedData, returnedData);
     }
 
-    function test_Fail_validate_emptyLegIndexZero(
-        uint256 poolId,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int24 strikeSeed,
-        int256 widthSeed
-    ) public {
+    function test_Fail_validate_emptyLegIndexZero(uint256 poolId, int24 strikeSeed) public {
         vm.assume(poolId != 0);
         uint256 tokenId;
 
@@ -1699,7 +1673,7 @@ contract TokenIdTest is Test, PositionUtils {
             (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // The position must
-            int24 minTick = (currentTick + rangeUp) + 1;
+            minTick = (currentTick + rangeUp) + 1;
             vm.assume(minTick < maxTick);
             int24 strike = int24(bound(strikeSeed, (currentTick + rangeUp) + 1, maxTick));
 
@@ -1986,7 +1960,7 @@ contract TokenIdTest is Test, PositionUtils {
         uint256 tokenTypeSeed,
         int24 strikeSeed,
         int256 widthSeed
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         uint64 poolId = uint64(
             ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
                 (uint64(uint24(tickSpacing)) << 48)

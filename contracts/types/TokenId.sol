@@ -194,10 +194,6 @@ library TokenId {
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                                ENCODING
-    //////////////////////////////////////////////////////////////*/
-
     /// @notice Add the asset basis for this position.
     /// @param self the option position Id.
     /// @param legIndex the leg index of this position (in {0,1,2,3})
@@ -507,22 +503,22 @@ library TokenId {
                     ) revert Errors.InvalidTokenIdParameter(3);
 
                     // long/short status of associated legs
-                    uint256 isLong = self.isLong(i);
+                    uint256 _isLong = self.isLong(i);
                     uint256 isLongP = self.isLong(riskPartnerIndex);
 
                     // token type status of associated legs (call/put)
-                    uint256 tokenType = self.tokenType(i);
+                    uint256 _tokenType = self.tokenType(i);
                     uint256 tokenTypeP = self.tokenType(riskPartnerIndex);
 
                     // if the position is the same i.e both long calls, short put's etc.
                     // then this is a regular position, not a defined risk position
-                    if ((isLong == isLongP) && (tokenType == tokenTypeP))
+                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP))
                         revert Errors.InvalidTokenIdParameter(4);
 
                     // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
                     // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
                     // unlike short stranlges, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
-                    if (((isLong != isLongP) || isLong == 1) && (tokenType != tokenTypeP))
+                    if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
                         revert Errors.InvalidTokenIdParameter(5);
                 }
             } // end for loop over legs
@@ -544,9 +540,9 @@ library TokenId {
                     self.tickSpacing()
                 );
 
-                int24 strike = self.strike(i);
+                int24 _strike = self.strike(i);
                 // check if the price is outside this chunk
-                if ((currentTick >= strike + rangeUp) || (currentTick < strike - rangeDown)) {
+                if ((currentTick >= _strike + rangeUp) || (currentTick < _strike - rangeDown)) {
                     // if this leg is long and the price beyond the leg's range:
                     // this exercised ID, `self`, appears valid
                     if (self.isLong(i) == 1) return; // validated

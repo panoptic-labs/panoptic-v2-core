@@ -59,13 +59,11 @@ library LiquidityChunk {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Create a new liquidity chunk given by its bounding ticks and its liquidity.
-    /// @param self the uint256 to turn into a liquidity chunk - assumed to be 0
     /// @param _tickLower the lower tick of this chunk
     /// @param _tickUpper the upper tick of this chunk
     /// @param amount the amount of liquidity to add to this chunk.
     /// @return the new liquidity chunk
     function createChunk(
-        uint256 self,
         int24 _tickLower,
         int24 _tickUpper,
         uint128 amount

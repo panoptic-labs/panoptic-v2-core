@@ -285,7 +285,7 @@ contract PanopticHelperTest is PositionUtils {
     }
 
     function _initAccounts() internal {
-        changePrank(Swapper);
+        vm.startPrank(Swapper);
 
         IERC20Partial(token0).approve(address(router), type(uint256).max);
         IERC20Partial(token1).approve(address(router), type(uint256).max);
@@ -293,7 +293,7 @@ contract PanopticHelperTest is PositionUtils {
         deal(token0, Swapper, type(uint104).max);
         deal(token1, Swapper, type(uint104).max);
 
-        changePrank(Charlie);
+        vm.startPrank(Charlie);
 
         deal(token0, Charlie, type(uint104).max);
         deal(token1, Charlie, type(uint104).max);
@@ -305,7 +305,7 @@ contract PanopticHelperTest is PositionUtils {
         IERC20Partial(token0).approve(address(ct0), type(uint256).max);
         IERC20Partial(token1).approve(address(ct1), type(uint256).max);
 
-        changePrank(Seller);
+        vm.startPrank(Seller);
 
         deal(token0, Seller, type(uint104).max);
         deal(token1, Seller, type(uint104).max);
@@ -324,7 +324,7 @@ contract PanopticHelperTest is PositionUtils {
         deal(address(ct0), Seller, type(uint104).max, true);
         deal(address(ct1), Seller, type(uint104).max, true);
 
-        changePrank(Bob);
+        vm.startPrank(Bob);
         // account for MEV tax
         deal(token0, Bob, (type(uint104).max * uint256(1010)) / 1000);
         deal(token1, Bob, (type(uint104).max * uint256(1010)) / 1000);
@@ -343,7 +343,7 @@ contract PanopticHelperTest is PositionUtils {
         deal(address(ct0), Bob, type(uint104).max, true);
         deal(address(ct1), Bob, type(uint104).max, true);
 
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         deal(token0, Alice, type(uint104).max);
         deal(token1, Alice, type(uint104).max);
@@ -974,8 +974,7 @@ contract PanopticHelperTest is PositionUtils {
         int256[2] memory strikeSeeds,
         uint256[2] memory positionSizeSeeds,
         int256 atTickSeed,
-        bool returnTokenType,
-        uint256 swapSize
+        bool returnTokenType
     ) public {
         _initPool(x);
 

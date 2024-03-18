@@ -7,13 +7,13 @@ import "@types/TickStateCallContext.sol";
 /// @notice Replicates the interface of the TickStateCallContext library, passing through any function calls
 /// @author Axicon Labs Limited
 contract TickStateCallContextHarness {
-    function addFastOracleTick(uint256 self, int24 fastOracleTick) public pure returns (uint256) {
-        uint256 r = TickStateCallContext.addFastOracleTick(self, fastOracleTick);
+    function addFastOracleTick(uint256 self, int24 _fastOracleTick) public pure returns (uint256) {
+        uint256 r = TickStateCallContext.addFastOracleTick(self, _fastOracleTick);
         return r;
     }
 
-    function addSlowOracleTick(uint256 self, int24 slowOracleTick) public pure returns (uint256) {
-        uint256 r = TickStateCallContext.addSlowOracleTick(self, slowOracleTick);
+    function addSlowOracleTick(uint256 self, int24 _slowOracleTick) public pure returns (uint256) {
+        uint256 r = TickStateCallContext.addSlowOracleTick(self, _slowOracleTick);
         return r;
     }
 

@@ -48,9 +48,7 @@ contract LiquidityChunkTest is Test {
     }
 
     function test_Success_AddTicksLiquidity(int24 y, int24 z, uint128 u) public {
-        uint256 x;
-
-        x = harness.createChunk(x, y, z, u);
+        uint256 x = harness.createChunk(y, z, u);
 
         assertEq(harness.tickLower(x), y);
         assertEq(harness.tickUpper(x), z);
@@ -58,9 +56,7 @@ contract LiquidityChunkTest is Test {
     }
 
     function test_Success_copyTickRange(int24 y, int24 z, uint128 u) public {
-        uint256 x;
-
-        x = harness.createChunk(x, y, z, u);
+        uint256 x = harness.createChunk(y, z, u);
 
         assertEq(harness.tickLower(x), y);
         assertEq(harness.tickUpper(x), z);
