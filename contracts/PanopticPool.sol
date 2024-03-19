@@ -1063,7 +1063,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Liquidates a distressed account. Will burn all positions and will issue a bonus to the liquidator.
-    /// @dev Will revert if: account is not margin called or if the user liquidates themselves.
+    /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
     /// @param positionIdListLiquidator List of positions owned by the liquidator.
     /// @param liquidatee Address of the distressed account.
     /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
@@ -1218,13 +1218,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
-    /// @notice Force the exercise of a single position. Exercisor will have to pay a small fee do force exercise.
+    /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
     /// @dev Will revert if: number of touchedId is larger than 1 or if user force exercises their own position
     /// @param account Address of the distressed account
     /// @param touchedId List of position to be force exercised. Can only contain one tokenId, written as [tokenId]
     /// @param positionIdListExercisee Post-burn list of open positions in the exercisee's (account) account
     /// @param positionIdListExercisor List of open positions in the exercisor's (msg.sender) account
-    /// @dev The collateral decrease resulting from burning these positions must be greater than the force exercise fee
     function forceExercise(
         address account,
         uint256[] calldata touchedId,
