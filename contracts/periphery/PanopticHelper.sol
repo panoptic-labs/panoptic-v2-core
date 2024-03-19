@@ -4,7 +4,6 @@ pragma solidity =0.8.25;
 // Interfaces
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";

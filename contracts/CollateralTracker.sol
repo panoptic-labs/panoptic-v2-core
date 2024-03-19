@@ -3,8 +3,6 @@ pragma solidity =0.8.25;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
-import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
 import {Multicall} from "@multicall/Multicall.sol";
