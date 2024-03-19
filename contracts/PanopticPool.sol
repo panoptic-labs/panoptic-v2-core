@@ -168,7 +168,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// The maximum allowed delta between the fast and slow oracle ticks at burn
     /// Prevents burning positions during extremely volatile periods/price manipulation (to ensure the account is always solvent)
-    int256 internal constant MAX_TWAP_DELTA_BURN = 1115;
+    int256 internal constant MAX_TWAP_DELTA_BURN = 1800;
 
     /// @dev The maximum allowed ratio for a single chunk, defined as: totalLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -696,7 +696,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // Mint in the SFPM and update state of collateral
-        uint128 poolUtilizations = _mintInSFPMAndUpdateCollateral(
+        (uint128 poolUtilizations, int24 finalTick) = _mintInSFPMAndUpdateCollateral(
             tokenId,
             tickStateCallContext,
             positionSize,
@@ -713,13 +713,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             .toLeftSlot(poolUtilizations)
             .toRightSlot(positionSize);
 
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
         if (
             !_checkSolvency(
                 msg.sender,
                 positionIdList,
-                currentTick,
+                finalTick,
                 tickStateCallContext.fastOracleTick(),
                 BP_DECREASE_BUFFER
             )
@@ -737,33 +735,32 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
     /// right 64bits for token0 and left 64bits for token1.
+    /// @return finalTick The final tick after minting.
     function _mintInSFPMAndUpdateCollateral(
         uint256 tokenId,
         uint256 tickStateCallContext,
         uint128 positionSize,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (uint128 poolUtilizations) {
+    ) internal returns (uint128, int24) {
         // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
         // Switch order of tickLimits to create "swapAtMint" flag
-        (uint256[4] memory collectedByLeg, int256 totalSwapped) = SFPM.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            tickLimitLow,
-            tickLimitHigh
-        );
+        (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 finalTick) = SFPM
+            .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         // update premium settlement info
         _updateSettlementPostMint(tokenId, collectedByLeg, positionSize);
 
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
-        poolUtilizations = _payCommissionAndWriteData(
+        uint128 poolUtilizations = _payCommissionAndWriteData(
             tickStateCallContext,
             tokenId,
             positionSize,
             totalSwapped
         );
+
+        return (poolUtilizations, finalTick);
     }
 
     /// @notice Pay the commission fees for creating the options and update internal state.
