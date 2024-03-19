@@ -1,7 +1,7 @@
 [profile.default]
 src = 'contracts'
 test = 'test/foundry'
-out = 'artifacts/contracts'
+out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"
 solc_version = '0.8.25'

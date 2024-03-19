@@ -114,7 +114,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     //used to avoid stack too deep on return values
-    int24 newTick;
     int256 totalCollectedBurn;
     int256 totalSwappedBurn;
     int256 totalCollectedMint;
