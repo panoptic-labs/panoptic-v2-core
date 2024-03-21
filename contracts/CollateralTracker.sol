@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.25;
+pragma solidity ^0.8.18;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
@@ -39,19 +39,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice emitted when assets are deposited into the Collateral Tracker.
-    /// @param sender the address of the caller (and depositor).
-    /// @param owner the address of the recipient of the newly minted shares.
-    /// @param assets the amount of assets deposited by 'sender' in exchange for 'shares'.
-    /// @param shares the amount of shares minted to 'owner'.
+    /// @notice Emitted when assets are deposited into the Collateral Tracker.
+    /// @param sender The address of the caller (and depositor)
+    /// @param owner the address of the recipient of the newly minted shares
+    /// @param assets the amount of assets deposited by 'sender' in exchange for 'shares'
+    /// @param shares the amount of shares minted to 'owner'
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
 
-    /// @notice emitted when assets are withdrawn from the Collateral Tracker.
-    /// @param sender the address of the caller.
-    /// @param receiver the address of the recipient of the withdrawn assets.
-    /// @param owner the address of the owner of the shares being burned.
-    /// @param assets the amount of assets withdrawn to 'receiver'.
-    /// @param shares the amount of shares burned by 'owner' in exchange for 'assets'.
+    /// @notice Emitted when assets are withdrawn from the Collateral Tracker.
+    /// @param sender The address of the caller
+    /// @param receiver The address of the recipient of the withdrawn assets
+    /// @param owner The address of the owner of the shares being burned
+    /// @param assets The amount of assets withdrawn to 'receiver'
+    /// @param shares The amount of shares burned by 'owner' in exchange for 'assets'
     event Withdraw(
         address indexed sender,
         address indexed receiver,
@@ -78,48 +78,49 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice prefix for the symbol (i.e poUSDC)
+    /// @notice Prefix for the token symbol (i.e. poUSDC).
     string internal constant TICKER_PREFIX = "po";
-    /// @notice prefix for the name (i.e POPT-V1 USDC LP on ETH/USDC 30bps)
+
+    /// @notice Prefix for the token name (i.e POPT-V1 USDC LP on ETH/USDC 30bps).
     string internal constant NAME_PREFIX = "POPT-V1";
 
-    /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%)
-    /// uint type for composability with unsigned integer based mathematical operations.
+    /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%).
+    /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000;
-    /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%)
-    /// int type for composability with signed integer based mathematical operations.
+
+    /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%).
+    /// @dev int type for composability with signed integer based mathematical operations.
     int128 internal constant DECIMALS_128 = 10_000;
 
     /*//////////////////////////////////////////////////////////////
                            UNISWAP POOL DATA
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev address of underlying token0 or token1 from the uniswapPool
-    /// whether this is token0 or token1 depends on which collateral token is being tracked in this CollateralTracker instance.
+    /// @notice The address of underlying token0 or token1 from the Uniswap Pool.
+    /// @dev Whether this is token0 or token1 depends on which collateral token is being tracked in this CollateralTracker instance.
     address internal s_underlyingToken;
 
-    /// @dev Boolean which tracks whether this CollateralTracker has been initialized.
-    /// As each instance is deployed via proxy clone, initial parameters must only be initalized once via startToken().
-    /// @notice a token can only be initialized once - which is done by the Panoptic pool.
+    /// @notice Boolean which tracks whether this CollateralTracker has been initialized.
+    /// @dev As each instance is deployed via proxy clone, initial parameters must only be initalized once via startToken().
     bool internal s_initialized;
 
-    /// @dev stores address of token0 from the underlying uniswap v3 pool.
+    /// @notice Stores address of token0 from the underlying Uniswap V3 pool.
     address internal s_univ3token0;
 
-    /// @dev stores address of token1 from the underlying uniswap v3 pool.
+    /// @notice Stores address of token1 from the underlying Uniswap V3 pool.
     address internal s_univ3token1;
 
-    /// @dev store whether the current collateral token is token0 of the AMM (true) or token1 (false).
+    /// @notice Store whether the current collateral token is token0 of the AMM (true) or token1 (false).
     bool internal s_underlyingIsToken0;
 
     /*//////////////////////////////////////////////////////////////
                            PANOPTIC POOL DATA
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev The Collateral Tracker Token keeps a reference to the Panoptic Pool using it.
+    /// @dev The Collateral Tracker keeps a reference to the Panoptic Pool using it.
     PanopticPool internal s_panopticPool;
 
-    /// @dev Cached amount of assets accounted to be held by the Panoptic Pool - ignores donations, pending fee payouts, and other untracked balance changes.
+    /// @dev Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
     uint128 internal s_poolAssets;
 
     /// @dev Amount of assets moved from the Panoptic Pool to the AMM.

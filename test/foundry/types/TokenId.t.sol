@@ -955,10 +955,7 @@ contract TokenIdTest is Test, PositionUtils {
             widthSeed
         );
 
-        uint64 expectedData = harness.poolId(tokenId);
-        uint64 returnedData = harness.validate(tokenId);
-
-        assertEq(expectedData, returnedData);
+        harness.validate(tokenId);
     }
 
     function test_Fail_validate_emptyLegIndexZero(uint256 poolId, int24 strikeSeed) public {

@@ -55,21 +55,6 @@ contract LiquidityChunkTest is Test {
         assertEq(harness.liquidity(x), u);
     }
 
-    function test_Success_copyTickRange(int24 y, int24 z, uint128 u) public {
-        uint256 x = harness.createChunk(y, z, u);
-
-        assertEq(harness.tickLower(x), y);
-        assertEq(harness.tickUpper(x), z);
-        assertEq(harness.liquidity(x), u);
-
-        uint256 xx;
-        xx = harness.copyTickRange(xx, x);
-        // now the tick range of `x` must be the same in `xx`:
-        assertEq(harness.tickLower(xx), y);
-        assertEq(harness.tickUpper(xx), z);
-        assertEq(harness.liquidity(xx), 0); // does not get copied
-    }
-
     function test_Success_updateTickLower(int24 y1, int24 y2) public {
         uint256 x;
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.25;
+pragma solidity ^0.8.18;
 
 // Interfaces
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -594,8 +594,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param id The tokenId being transferred'
     /// @param amount The amount of the token being transferred
     function registerTokenTransfer(address from, address to, uint256 id, uint256 amount) internal {
+        // Validate tokenId
+        id.validate();
+
         // Extract univ3pool from the poolId map to Uniswap Pool
-        IUniswapV3Pool univ3pool = s_poolContext[id.validate()].pool;
+        IUniswapV3Pool univ3pool = s_poolContext[id.poolId()].pool;
 
         uint256 numLegs = id.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
@@ -689,8 +692,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         }
 
         // Validate tokenId
+        tokenId.validate();
+
         // Extract univ3pool from the poolId map to Uniswap Pool
-        IUniswapV3Pool univ3pool = s_poolContext[tokenId.validate()].pool;
+        IUniswapV3Pool univ3pool = s_poolContext[tokenId.poolId()].pool;
 
         // Revert if the pool not been previously initialized
         if (univ3pool == IUniswapV3Pool(address(0))) revert Errors.UniswapPoolNotInitialized();

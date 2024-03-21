@@ -397,11 +397,9 @@ contract TokenIdHarness {
      * @notice Validate an option position and all its active legs; return the underlying AMM address.
      * @dev used to validate a position tokenId and its legs.
      * @param self the option position id.
-     * @return univ3PoolAddressId the first 64 bits of the underlying Uniswap V3 address.
      */
-    function validate(uint256 self) public pure returns (uint64 univ3PoolAddressId) {
-        uint64 r = TokenId.validate(self);
-        return r;
+    function validate(uint256 self) public pure returns (uint64) {
+        TokenId.validate(self);
     }
 
     /**

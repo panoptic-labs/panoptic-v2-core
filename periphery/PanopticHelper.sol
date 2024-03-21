@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.25;
+pragma solidity ^0.8.18;
 
 // Interfaces
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -104,7 +104,7 @@ contract PanopticHelper {
         uint256 numLegs = tokenId.countLegs();
         Leg[] memory legs = new Leg[](numLegs);
 
-        uint64 poolId = tokenId.validate();
+        uint64 poolId = tokenId.poolId();
         address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.poolId()));
         for (uint256 i = 0; i < numLegs; ++i) {
             legs[i].poolId = poolId;

@@ -12,30 +12,30 @@ import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Library for Fee Calculations.
-/// @notice Some options positions involve moving liquidity chunks to the AMM/Uniswap. Those chunks can then earn AMM swap fees.
-/// @dev
-/// @dev          When price tick moves within
-/// @dev          this liquidity chunk == an option leg within a `tokenId` option position:
-/// @dev          Fees accumulate.
-/// @dev                ◄────────────►
-/// @dev     liquidity  ┌───┼────────┐
-/// @dev          ▲     │   │        │
-/// @dev          │     │   :        ◄──────Liquidity chunk
-/// @dev          │     │   │        │      (an option position leg)
-/// @dev          │   ┌─┴───┼────────┴─┐
-/// @dev          │   │     │          │
-/// @dev          │   │     :          │
-/// @dev          │   │     │          │
-/// @dev          │   │     :          │
-/// @dev          │   │     │          │
-/// @dev          └───┴─────┴──────────┴────► price
-/// @dev                    ▲
-/// @dev                    │
-/// @dev            Current price tick
-/// @dev              of the AMM
-/// @dev
-/// @dev Collect fees accumulated within option position legs (a leg is a liquidity chunk)
 /// @author Axicon Labs Limited
+/// @notice Compute fees accumulated within option position legs (a leg is a liquidity chunk).
+/// @dev Some options positions involve moving liquidity chunks to the AMM/Uniswap. Those chunks can then earn AMM swap fees.
+//
+//          When price tick moves within
+//          this liquidity chunk == an option leg within a `tokenId` option position:
+//          Fees accumulate.
+//                ◄────────────►
+//     liquidity  ┌───┼────────┐
+//          ▲     │   │        │
+//          │     │   :        ◄──────Liquidity chunk
+//          │     │   │        │      (an option position leg)
+//          │   ┌─┴───┼────────┴─┐
+//          │   │     │          │
+//          │   │     :          │
+//          │   │     │          │
+//          │   │     :          │
+//          │   │     │          │
+//          └───┴─────┴──────────┴────► price
+//                    ▲
+//                    │
+//            Current price tick
+//              of the AMM
+//
 library FeesCalc {
     // enables packing of types within int128|int128 or uint128|uint128 containers.
     using LeftRight for int256;
@@ -46,11 +46,11 @@ library FeesCalc {
     using TokenId for uint256;
 
     /// @notice Calculate NAV of user's option portfolio at a given tick.
-    /// @param atTick the tick to calculate the value at
-    /// @param userBalance the position balances of the user
-    /// @param positionIdList a list of all positions the user holds on that pool
-    /// @return value0 the amount of token0 owned by portfolio
-    /// @return value1 the amount of token1 owned by portfolio
+    /// @param atTick The tick to calculate the value at
+    /// @param userBalance The position balances of the user
+    /// @param positionIdList A list of all positions the user holds on that pool
+    /// @return value0 The amount of token0 owned by portfolio
+    /// @return value1 The amount of token1 owned by portfolio
     function getPortfolioValue(
         int24 atTick,
         mapping(uint256 tokenId => uint256 balance) storage userBalance,
@@ -91,18 +91,18 @@ library FeesCalc {
     }
 
     /// @notice Calculate the AMM Swap/trading fees for a `liquidityChunk` of each token.
-    /// @dev read from the uniswap pool and compute the accumulated fees from swapping activity.
-    /// @param univ3pool the AMM/Uniswap pool where fees are collected from
-    /// @param currentTick the current price tick
-    /// @param startingLiquidity the liquidity of the option position leg deployed in the AMM
-    /// @param liquidityChunk the chunk of liquidity of the option position leg deployed in the AMM
-    /// @return feesEachToken the fees collected from the AMM for each token (LeftRight-packed) with token0 in the right slot and token1 in the left slot
+    /// @dev Read from the uniswap pool and compute the accumulated fees from swapping activity.
+    /// @param univ3pool The AMM/Uniswap pool where fees are collected from
+    /// @param currentTick The current price tick
+    /// @param startingLiquidity The liquidity of the option position leg deployed in the AMM
+    /// @param liquidityChunk The chunk of liquidity of the option position leg deployed in the AMM
+    /// @return The fees collected from the AMM for each token (LeftRight-packed) with token0 in the right slot and token1 in the left slot
     function calculateAMMSwapFeesLiquidityChunk(
         IUniswapV3Pool univ3pool,
         int24 currentTick,
         uint128 startingLiquidity,
         uint256 liquidityChunk
-    ) public view returns (int256 feesEachToken) {
+    ) public view returns (int256) {
         // extract the amount of AMM fees collected within the liquidity chunk`
         // note: the fee variables are *per unit of liquidity*; so more "rate" variables
         (
@@ -118,18 +118,23 @@ library FeesCalc {
         // Use the fee growth (rate) variable to compute the absolute fees accumulated within the chunk:
         //   ammFeesToken0X128 * liquidity / (2**128)
         // to store the (absolute) fees as int128:
-        feesEachToken = feesEachToken
-            .toRightSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, startingLiquidity))))
-            .toLeftSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, startingLiquidity))));
+        return
+            int256(0)
+                .toRightSlot(
+                    int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, startingLiquidity)))
+                )
+                .toLeftSlot(
+                    int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, startingLiquidity)))
+                );
     }
 
-    /// @notice Calculate the fee growth that has occurred (per unit of liquidity) in the AMM/Uniswap for an
-    /// option position's `liquidity chunk` within its tick range given.
-    /// @dev extract the feeGrowth from the uniswap v3 pool.
-    /// @param univ3pool the AMM pool where the leg is deployed
-    /// @param currentTick the current price tick in the AMM
-    /// @param tickLower the lower tick of the option position leg (a liquidity chunk)
-    /// @param tickUpper the upper tick of the option position leg (a liquidity chunk)
+    /// @notice Calculates the fee growth that has occurred (per unit of liquidity) in the AMM/Uniswap for an
+    /// option position's tick range.
+    /// @dev Extracts the feeGrowth from the uniswap v3 pool.
+    /// @param univ3pool The AMM pool where the leg is deployed
+    /// @param currentTick The current price tick in the AMM
+    /// @param tickLower The lower tick of the option position leg (a liquidity chunk)
+    /// @param tickUpper The upper tick of the option position leg (a liquidity chunk)
     /// @return feeGrowthInside0X128 the fee growth in the AMM of token0
     /// @return feeGrowthInside1X128 the fee growth in the AMM of token1
     function _getAMMSwapFeesPerLiquidityCollected(

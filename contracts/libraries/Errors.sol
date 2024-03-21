@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 /// @title Custom Errors library.
 /// @author Axicon Labs Limited
+/// @notice Contains all custom error messages used in Panoptic.
 library Errors {
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
@@ -14,11 +15,11 @@ library Errors {
     /// @notice CollateralTracker: the amount of shares (or assets) deposited is larger than the maximum permitted
     error DepositTooLarge();
 
-    /// @notice PanopticPool: the effective liquidity (X32) is greater than min(MAX_SPREAD, USER_PROVIDED_THRESHOLD) during a long mint or short burn
+    /// @notice PanopticPool: the effective liquidity (X32) is greater than min(`MAX_SPREAD`, `USER_PROVIDED_THRESHOLD`) during a long mint or short burn
     /// Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
     error EffectiveLiquidityAboveThreshold();
 
-    /// @notice CollateralTracker: ttempted to withdraw/redeem more than available liquidity, owned shares, or open positions would allow for
+    /// @notice CollateralTracker: attempted to withdraw/redeem more than available liquidity, owned shares, or open positions would allow for
     error ExceedsMaximumRedemption();
 
     /// @notice PanopticPool: force exercisee is insolvent - liquidatable accounts are not permitted to open or close positions outside of a liquidation
@@ -27,7 +28,7 @@ library Errors {
     /// @notice PanopticPool: the provided list of option positions is incorrect or invalid
     error InputListFail();
 
-    /// @notice Tick is not between MIN_TICK and MAX_TICK
+    /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
     error InvalidTick();
 
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
@@ -58,7 +59,7 @@ library Errors {
     /// @notice PanopticPool: there is not enough avaiable liquidity to buy an option
     error NotEnoughLiquidity();
 
-    /// @notice PanopticPool: osition is still solvent and cannot be liquidated
+    /// @notice PanopticPool: position is still solvent and cannot be liquidated
     error NotMarginCalled();
 
     /// @notice Caller needs to be the owner

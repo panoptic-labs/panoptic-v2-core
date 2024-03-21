@@ -9,10 +9,11 @@ import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 
 /// @title Core math library.
 /// @author Axicon Labs Limited
+/// @notice Contains general math helpers and functions
 library Math {
     using LiquidityChunk for uint256; // a leg within an option position `tokenId`
 
-    // equivalent to type(uint256).max - used in assembly blocks as a replacement
+    /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
     /*//////////////////////////////////////////////////////////////
@@ -20,65 +21,65 @@ library Math {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Compute the min of the incoming int24s `a` and `b`.
-    /// @param a the first number
-    /// @param b the second number
-    /// @return the min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
+    /// @param a The first number
+    /// @param b The second number
+    /// @return The min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
     function min24(int24 a, int24 b) internal pure returns (int24) {
         return a < b ? a : b;
     }
 
     /// @notice Compute the max of the incoming int24s `a` and `b`.
-    /// @param a the first number
-    /// @param b the second number
-    /// @return the max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
+    /// @param a The first number
+    /// @param b The second number
+    /// @return The max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
     function max24(int24 a, int24 b) internal pure returns (int24) {
         return a > b ? a : b;
     }
 
     /// @notice Compute the min of the incoming `a` and `b`.
-    /// @param a the first number
-    /// @param b the second number
-    /// @return the min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
+    /// @param a The first number
+    /// @param b The second number
+    /// @return The min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? a : b;
     }
 
     /// @notice Compute the min of the incoming `a` and `b`.
-    /// @param a the first number
-    /// @param b the second number
-    /// @return the min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
+    /// @param a The first number
+    /// @param b The second number
+    /// @return The min of `a` and `b`: min(a, b), e.g.: min(4, 1) = 1
     function min(int256 a, int256 b) internal pure returns (int256) {
         return a < b ? a : b;
     }
 
     /// @notice Compute the max of the incoming `a` and `b`.
-    /// @param a the first number
-    /// @param b the second number
-    /// @return the max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
+    /// @param a The first number
+    /// @param b The second number
+    /// @return The max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
         return a > b ? a : b;
     }
 
     /// @notice Compute the max of the incoming `a` and `b`.
-    /// @param a the first number
-    /// @param b the second number
-    /// @return the max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
+    /// @param a The first number
+    /// @param b The second number
+    /// @return The max of `a` and `b`: max(a, b), e.g.: max(4, 1) = 4
     function max(int256 a, int256 b) internal pure returns (int256) {
         return a > b ? a : b;
     }
 
     /// @notice Compute the absolute value of an integer (int256).
-    /// @param x the incoming *signed* integer to take the absolute value of
+    /// @param x The incoming *signed* integer to take the absolute value of
     /// @dev Does not support `type(int256).min` and will revert (type(int256).max is one less).
-    /// @return the absolute value of `x`, e.g. abs(-4) = 4
+    /// @return The absolute value of `x`, e.g. abs(-4) = 4
     function abs(int256 x) internal pure returns (int256) {
         return x > 0 ? x : -x;
     }
 
     /// @notice Compute the absolute value of an integer (int256).
-    /// @param x the incoming *signed* integer to take the absolute value of
+    /// @param x The incoming *signed* integer to take the absolute value of
     /// @dev Supports `type(int256).min` because the corresponding value can fit in a uint (unlike `type(int256).max`).
-    /// @return the absolute value of `x`, e.g. abs(-4) = 4
+    /// @return The absolute value of `x`, e.g. abs(-4) = 4
     function absUint(int256 x) internal pure returns (uint256) {
         unchecked {
             return x > 0 ? uint256(x) : uint256(-x);
@@ -87,8 +88,8 @@ library Math {
 
     /// @notice Returns the index of the most significant nibble of the 160-bit number,
     /// where the least significant nibble is at index 0 and the most significant nibble is at index 40.
-    /// @param x the value for which to compute the most significant nibble
-    /// @return r the index of the most significant nibble (default: 0)
+    /// @param x The value for which to compute the most significant nibble
+    /// @return r The index of the most significant nibble (default: 0)
     function mostSignificantNibble(uint160 x) internal pure returns (uint256 r) {
         unchecked {
             if (x >= 0x100000000000000000000000000000000) {
@@ -121,12 +122,12 @@ library Math {
                                TICK MATH
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Calculates 1.0001^(tick/2) as an X96 number
-    /// @dev Implemented using Uniswap's "incorrect" constants. Supplying commented-out real values for an accurate calculation
-    /// @dev Will revert if |tick| > max tick
+    /// @notice Calculates 1.0001^(tick/2) as an X96 number.
+    /// @dev Implemented using Uniswap's "incorrect" constants. Supplying commented-out real values for an accurate calculation.
+    /// @dev Will revert if |tick| > max tick.
     /// @param tick Value of the tick for which sqrt(1.0001^tick) is calculated
-    /// @return sqrtPriceX96 A Q64.96 number representing the sqrt price at the provided tick
-    function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160 sqrtPriceX96) {
+    /// @return A Q64.96 number representing the sqrt price at the provided tick
+    function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
         unchecked {
             uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
             if (absTick > uint256(int256(Constants.MAX_V3POOL_TICK))) revert Errors.InvalidTick();
@@ -177,7 +178,7 @@ library Math {
             if (tick > 0) sqrtR = type(uint256).max / sqrtR;
 
             // Downcast + rounding up to keep is consistent with Uniswap's
-            sqrtPriceX96 = uint160((sqrtR >> 32) + (sqrtR % (1 << 32) == 0 ? 0 : 1));
+            return uint160((sqrtR >> 32) + (sqrtR % (1 << 32) == 0 ? 0 : 1));
         }
     }
 
@@ -185,13 +186,11 @@ library Math {
                     LIQUIDITY AMOUNTS (STRIKE+WIDTH)
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Calculates the amount of token0 received for a given liquidityChunk
-    /// @dev Had to use a less optimal calculation to match Uniswap's implementation
-    /// @param liquidityChunk variable that efficiently packs the liquidity, tickLower, and tickUpper.
-    /// @return amount0 The amount of token0
-    function getAmount0ForLiquidity(
-        uint256 liquidityChunk
-    ) internal pure returns (uint256 amount0) {
+    /// @notice Calculates the amount of token0 received for a given liquidityChunk.
+    /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
+    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper.
+    /// @return The amount of token0
+    function getAmount0ForLiquidity(uint256 liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
         unchecked {
@@ -204,12 +203,10 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token1 received for a given liquidityChunk
-    /// @param liquidityChunk variable that efficiently packs the liquidity, tickLower, and tickUpper.
-    /// @return amount1 The amount of token1
-    function getAmount1ForLiquidity(
-        uint256 liquidityChunk
-    ) internal pure returns (uint256 amount1) {
+    /// @notice Calculates the amount of token1 received for a given liquidityChunk.
+    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
+    /// @return The amount of token1
+    function getAmount1ForLiquidity(uint256 liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
 
@@ -218,9 +215,9 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token0 and token1 received for a given liquidityChunk at the provided currentTick
-    /// @param currentTick the current tick to be evaluated
-    /// @param liquidityChunk variable that efficiently packs the liquidity, tickLower, and tickUpper.
+    /// @notice Calculates the amount of token0 and token1 received for a given liquidityChunk at the provided currentTick.
+    /// @param currentTick The current tick to be evaluated
+    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
     /// @return amount0 The amount of token0
     /// @return amount1 The amount of token1
     function getAmountsForLiquidity(
@@ -237,15 +234,15 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of liquidity for a given amount of token0 and liquidityChunk
-    /// @dev Had to use a less optimal calculation to match Uniswap's implementation
-    /// @param liquidityChunk variable that efficiently packs the liquidity, tickLower, and tickUpper.
+    /// @notice Calculates the amount of liquidity for a given amount of token0 and liquidityChunk.
+    /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
+    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
     /// @param amount0 The amount of token0
-    /// @return liquidity The calculated amount of liquidity
+    /// @return The calculated amount of liquidity
     function getLiquidityForAmount0(
         uint256 liquidityChunk,
         uint256 amount0
-    ) internal pure returns (uint128 liquidity) {
+    ) internal pure returns (uint128) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
 
@@ -257,14 +254,14 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of liquidity for a given amount of token0 and liquidityChunk
-    /// @param liquidityChunk variable that efficiently packs the liquidity, tickLower, and tickUpper.
+    /// @notice Calculates the amount of liquidity for a given amount of token0 and liquidityChunk.
+    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
     /// @param amount1 The amount of token1
-    /// @return liquidity The calculated amount of liquidity
+    /// @return The calculated amount of liquidity
     function getLiquidityForAmount1(
         uint256 liquidityChunk,
         uint256 amount1
-    ) internal pure returns (uint128 liquidity) {
+    ) internal pure returns (uint128) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
         unchecked {
@@ -277,14 +274,14 @@ library Math {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Downcast uint256 to uint128. Revert on overflow or underflow.
-    /// @param toDowncast the uint256 to be downcasted
-    /// @return downcastedInt the downcasted uint (uint128 now)
+    /// @param toDowncast The uint256 to be downcasted
+    /// @return downcastedInt The downcasted uint (uint128 now)
     function toUint128(uint256 toDowncast) internal pure returns (uint128 downcastedInt) {
         if ((downcastedInt = uint128(toDowncast)) != toDowncast) revert Errors.CastingError();
     }
 
     /// @notice Downcast uint256 to uint128, but cap at type(uint128).max on overflow.
-    /// @return downcastedInt the downcasted uint (uint128 now)
+    /// @return downcastedInt The downcasted uint (uint128 now)
     function toUint128Capped(uint256 toDowncast) internal pure returns (uint128 downcastedInt) {
         if ((downcastedInt = uint128(toDowncast)) != toDowncast) {
             downcastedInt = type(uint128).max;
@@ -292,8 +289,8 @@ library Math {
     }
 
     /// @notice Recast uint128 to int128.
-    /// @param toCast the uint256 to be downcasted.
-    /// @return downcastedInt the downcasted int (int128 now)
+    /// @param toCast The uint256 to be downcasted
+    /// @return downcastedInt The downcasted int (int128 now)
     function toInt128(uint128 toCast) internal pure returns (int128 downcastedInt) {
         if ((downcastedInt = int128(toCast)) < 0) revert Errors.CastingError();
     }
@@ -303,9 +300,9 @@ library Math {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Calculates floor(a×b÷denominator) with full precision. Throws if result overflows a uint256 or denominator == 0.
-    /// @param a the multiplicand
-    /// @param b the multiplier
-    /// @param denominator the divisor
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @param denominator The divisor
     /// @return result The 256-bit result
     /// @dev Credit to Remco Bloemen under MIT license https://xn--2-umb.com/21/muldiv
     function mulDiv(
@@ -400,11 +397,10 @@ library Math {
             // We don't need to compute the high bits of the result and prod1
             // is no longer required.
             result = prod0 * inv;
-            return result;
         }
     }
 
-    /// @notice Calculates ceil(a×b÷denominator) with full precision. Throws if result overflows a uint256 or denominator == 0
+    /// @notice Calculates ceil(a×b÷denominator) with full precision. Throws if result overflows a uint256 or denominator == 0.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @param denominator The divisor
@@ -426,8 +422,8 @@ library Math {
     /// @notice Calculates floor(a×b÷2^64) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
-    /// @return result The 256-bit result
-    function mulDiv64(uint256 a, uint256 b) internal pure returns (uint256 result) {
+    /// @return The 256-bit result
+    function mulDiv64(uint256 a, uint256 b) internal pure returns (uint256) {
         unchecked {
             // 512-bit multiply [prod1 prod0] = a * b
             // Compute the product mod 2**256 and mod 2**256 - 1
@@ -444,11 +440,12 @@ library Math {
 
             // Handle non-overflow cases, 256 by 256 division
             if (prod1 == 0) {
+                uint256 res;
                 assembly ("memory-safe") {
                     // Right shift by n is equivalent and 2 gas cheaper than division by 2^n
-                    result := shr(64, prod0)
+                    res := shr(64, prod0)
                 }
-                return result;
+                return res;
             }
 
             // Make sure the result is less than 2**256.
@@ -488,8 +485,8 @@ library Math {
     /// @notice Calculates floor(a×b÷2^96) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
-    /// @return result The 256-bit result
-    function mulDiv96(uint256 a, uint256 b) internal pure returns (uint256 result) {
+    /// @return The 256-bit result
+    function mulDiv96(uint256 a, uint256 b) internal pure returns (uint256) {
         unchecked {
             // 512-bit multiply [prod1 prod0] = a * b
             // Compute the product mod 2**256 and mod 2**256 - 1
@@ -506,11 +503,12 @@ library Math {
 
             // Handle non-overflow cases, 256 by 256 division
             if (prod1 == 0) {
+                uint256 res;
                 assembly ("memory-safe") {
                     // Right shift by n is equivalent and 2 gas cheaper than division by 2^n
-                    result := shr(96, prod0)
+                    res := shr(96, prod0)
                 }
-                return result;
+                return res;
             }
 
             // Make sure the result is less than 2**256.
@@ -564,8 +562,8 @@ library Math {
     /// @notice Calculates floor(a×b÷2^128) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
-    /// @return result The 256-bit result
-    function mulDiv128(uint256 a, uint256 b) internal pure returns (uint256 result) {
+    /// @return The 256-bit result
+    function mulDiv128(uint256 a, uint256 b) internal pure returns (uint256) {
         unchecked {
             // 512-bit multiply [prod1 prod0] = a * b
             // Compute the product mod 2**256 and mod 2**256 - 1
@@ -582,11 +580,12 @@ library Math {
 
             // Handle non-overflow cases, 256 by 256 division
             if (prod1 == 0) {
+                uint256 res;
                 assembly ("memory-safe") {
                     // Right shift by n is equivalent and 2 gas cheaper than division by 2^n
-                    result := shr(128, prod0)
+                    res := shr(128, prod0)
                 }
-                return result;
+                return res;
             }
 
             // Make sure the result is less than 2**256.
@@ -640,8 +639,8 @@ library Math {
     /// @notice Calculates floor(a×b÷2^192) with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
-    /// @return result The 256-bit result
-    function mulDiv192(uint256 a, uint256 b) internal pure returns (uint256 result) {
+    /// @return The 256-bit result
+    function mulDiv192(uint256 a, uint256 b) internal pure returns (uint256) {
         unchecked {
             // 512-bit multiply [prod1 prod0] = a * b
             // Compute the product mod 2**256 and mod 2**256 - 1
@@ -658,11 +657,12 @@ library Math {
 
             // Handle non-overflow cases, 256 by 256 division
             if (prod1 == 0) {
+                uint256 res;
                 assembly ("memory-safe") {
                     // Right shift by n is equivalent and 2 gas cheaper than division by 2^n
-                    result := shr(192, prod0)
+                    res := shr(192, prod0)
                 }
-                return result;
+                return res;
             }
 
             // Make sure the result is less than 2**256.
@@ -699,7 +699,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates ceil(a÷b), returning 0 if b == 0
+    /// @notice Calculates ceil(a÷b), returning 0 if b == 0.
     /// @param a The numerator
     /// @param b The denominator
     /// @return result The 256-bit result
@@ -715,9 +715,9 @@ library Math {
 
     /// @notice QuickSort is a sorting algorithm that employs the Divide and Conquer strategy. It selects a pivot element and arranges the given array around
     /// this pivot by correctly positioning it within the sorted array.
-    /// @param arr the elements that must be sorted
-    /// @param left the starting index
-    /// @param right the ending index
+    /// @param arr The elements that must be sorted
+    /// @param left The starting index
+    /// @param right The ending index
     function quickSort(int256[] memory arr, int256 left, int256 right) internal pure {
         unchecked {
             int256 i = left;
@@ -738,8 +738,9 @@ library Math {
         }
     }
 
-    /// @notice calls `quickSort` with default starting index of 0 and ending index of the last element in the array.
-    /// @param data the elements that must be sorted
+    /// @notice Calls `quickSort` with default starting index of 0 and ending index of the last element in the array.
+    /// @param data The elements that must be sorted
+    /// @return The sorted array
     function sort(int256[] memory data) internal pure returns (int256[] memory) {
         unchecked {
             quickSort(data, int256(0), int256(data.length - 1));

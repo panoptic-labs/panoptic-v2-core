@@ -9,80 +9,80 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 /// @title Panoptic's tokenId: the fundamental options position.
 /// @author Axicon Labs Limited
 /// @notice This is the token ID used in the ERC1155 representation of the option position in the SFPM.
-/// @notice The SFPM "Overloads" the ERC1155 `id` by storing all option information in said `id`.
+/// @notice The SFPM "overloads" the ERC1155 `id` by storing all option information in said `id`.
 /// @notice Contains methods for packing and unpacking a Panoptic options position into a uint256 bit pattern.
-/// @notice our terminology: "leg n" or "nth leg" (in {1,2,3,4}) corresponds to "leg index n-1" or `legIndex` (in {0,1,2,3})
-/// @dev PACKING RULES FOR A TOKENID:
-/// @dev this is how the token Id is packed into its bit-constituents containing position information.
-/// @dev the following is a diagram to be read top-down in a little endian format
-/// @dev (so (1) below occupies the first 64 least significant bits, e.g.):
-/// @dev From the LSB to the MSB:
-/// ===== 1 time (same for all legs) ==============================================================
-///      Property         Size      Offset      Comment
-/// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap v3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
-/// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
-/// ===== 4 times (one for each leg) ==============================================================
-/// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
-/// (3) optionRatio       7bits     1bits      : number of contracts per leg
-/// (4) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
-/// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
-/// (6) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
-/// (7) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
-/// (8) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
-/// Total                48bits                : Each leg takes up this many bits
-/// ===============================================================================================
-///
-/// The bit pattern is therefore, in general:
-///
-///                        (strike price tick of the 3rd leg)
-///                            |             (width of the 2nd leg)
-///                            |                   |
-/// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
-///  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
-///         Leg 4                  Leg 3                  Leg 2                   Leg 1          tickSpacing    Univ3 Pool Address
-///
-///  <--- most significant bit                                                                             least significant bit --->
-///
-/// @notice Some rules of how legs behave (we enforce these in a `validate()` function):
-///   - a leg is inactive if it's not part of the position. Technically it means that all bits are zero.
-///   - a leg is active if it has an optionRatio > 0 since this must always be set for an active leg.
-///   - if a leg is active (e.g. leg 1) there can be no gaps in other legs meaning: if leg 1 is active then leg 3 cannot be active if leg 2 is inactive.
-///
-/// Examples:
-///  We can think of the bit pattern as an array starting at bit index 0 going to bit index 255 (so 256 total bits)
-///  We also refer to the legs via their index, so leg number 2 has leg index 1 (legIndex) (counting from zero), and in general leg number N has leg index N-1.
-///  - the underlying strike price of the 2nd leg (leg index = 1) in this option position starts at bit index  (64 + 12 + 48 * (leg index=1))=123
-///  - the tokenType of the 4th leg in this option position starts at bit index 64+9+48*3=217
-///  - the Uniswap v3 pool id starts at bit index 0 and ends at bit index 63 (and thus takes up 64 bits).
-///  - the width of the 3rd leg in this option position starts at bit index 64+36+48*2=196
+// PACKING RULES FOR A TOKENID:
+// this is how the token Id is packed into its bit-constituents containing position information.
+// the following is a diagram to be read top-down in a little endian format
+// (so (1) below occupies the first 64 least significant bits, e.g.):
+// From the LSB to the MSB:
+// ===== 1 time (same for all legs) ==============================================================
+//      Property         Size      Offset      Comment
+// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap v3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
+// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
+// ===== 4 times (one for each leg) ==============================================================
+// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
+// (3) optionRatio       7bits     1bits      : number of contracts per leg
+// (4) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
+// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
+// (6) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
+// (7) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
+// (8) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
+// Total                48bits                : Each leg takes up this many bits
+// ===============================================================================================
+//
+// The bit pattern is therefore, in general:
+//
+//                        (strike price tick of the 3rd leg)
+//                            |             (width of the 2nd leg)
+//                            |                   |
+// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
+//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
+//         Leg 4                  Leg 3                  Leg 2                   Leg 1          tickSpacing    Univ3 Pool Address
+//
+//  <--- most significant bit                                                                             least significant bit --->
+//
+// Some rules of how legs behave (we enforce these in a `validate()` function):
+//   - a leg is inactive if it's not part of the position. Technically it means that all bits are zero.
+//   - a leg is active if it has an optionRatio > 0 since this must always be set for an active leg.
+//   - if a leg is active (e.g. leg 1) there can be no gaps in other legs meaning: if leg 1 is active then leg 3 cannot be active if leg 2 is inactive.
+//
+// Examples:
+//  We can think of the bit pattern as an array starting at bit index 0 going to bit index 255 (so 256 total bits)
+//  We also refer to the legs via their index, so leg number 2 has leg index 1 (legIndex) (counting from zero), and in general leg number N has leg index N-1.
+//  - the underlying strike price of the 2nd leg (leg index = 1) in this option position starts at bit index  (64 + 12 + 48 * (leg index=1))=123
+//  - the tokenType of the 4th leg in this option position starts at bit index 64+9+48*3=217
+//  - the Uniswap v3 pool id starts at bit index 0 and ends at bit index 63 (and thus takes up 64 bits).
+//  - the width of the 3rd leg in this option position starts at bit index 64+36+48*2=196
 library TokenId {
     using TokenId for uint256;
 
-    // this mask in hex has a 1 bit in each location of the "isLong" of the tokenId:
+    /// @notice AND mask to extract all `isLong` bits for each leg from a TokenId
     uint256 internal constant LONG_MASK =
         0x100_000000000100_000000000100_000000000100_0000000000000000;
-    // This mask contains zero bits where the poolId is. It is used via & to strip the poolId section from a number, leaving the rest.
+
+    /// @notice AND mask to clear `poolId` from a TokenId
     uint256 internal constant CLEAR_POOLID_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF_0000000000000000;
-    // This mask is used to clear all bits except for the option ratios
+
+    /// @notice AND mask to clear all bits except for the option ratios of the legs
     uint256 internal constant OPTION_RATIO_MASK =
         0x0000000000FE_0000000000FE_0000000000FE_0000000000FE_0000000000000000;
-    // This mask is used to clear all bits except for the components of the chunk key (strike, width, tokenType)
+
+    /// @notice AND mask to clear all bits except for the components of the chunk key (strike, width, tokenType) for each leg
     uint256 internal constant CHUNK_MASK =
         0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
 
+    /// @notice AND mask to cut a sign-extended int256 back to an int24
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
-    // this mask in hex has a 1 bit in each location except in the riskPartner of the 48bits on a position's tokenId:
-    // this RISK_PARTNER_MASK will make sure that two tokens will have the exact same parameters
-    uint256 internal constant RISK_PARTNER_MASK = 0xFFFFFFFFF3FF;
 
     /*//////////////////////////////////////////////////////////////
                                 DECODING
     //////////////////////////////////////////////////////////////*/
 
     /// @notice The full poolId (Uniswap pool identifier + pool pattern) of this option position.
-    /// @param self the option position Id
-    /// @return the poolId (Panoptic's uni v3 pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap v3 pool
+    /// @param self The TokenId to extract `poolId` from
+    /// @return The `poolId` (Panoptic's pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap V3 pool
     function poolId(uint256 self) internal pure returns (uint64) {
         unchecked {
             return uint64(self);
@@ -90,20 +90,19 @@ library TokenId {
     }
 
     /// @notice The tickSpacing of this option position.
-    /// @param self the option position Id
-    /// @return the tickSpacing of the Uniswap v3 pool
+    /// @param self The TokenId to extract `tickSpacing` from
+    /// @return The `tickSpacing` of the Uniswap v3 pool
     function tickSpacing(uint256 self) internal pure returns (int24) {
         unchecked {
             return int24(uint24((self >> 48) % 2 ** 16));
         }
     }
 
-    /// @notice Get the asset basis for this position.
-    /// @dev which token is the asset - can be token0 (return 0) or token1 (return 1)
-    /// @param self the option position Id
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @dev occupies the leftmost bit of the optionRatio 4 bits slot.
-    /// @dev The final mod: "% 2" = takes the leftmost bit of the pattern.
+    /// @notice Get the asset basis for this TokenId.
+    /// @dev Which token is the asset - can be token0 (return 0) or token1 (return 1).
+    /// @param self The TokenId to extract `asset` from
+    /// @param legIndex The leg index of this position (in {0,1,2,3}) to extract `asset` from
+    /// @dev Occupies the leftmost bit of the optionRatio 4 bits slot.
     /// @return 0 if asset is token0, 1 if asset is token1
     function asset(uint256 self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
@@ -111,10 +110,10 @@ library TokenId {
         }
     }
 
-    /// @notice Get the number of contracts per leg.
-    /// @param self the option position Id.
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @dev The final mod: "% 2**7" = takes the rightmost (2 ** 7 = 128) 7 bits of the pattern.
+    /// @notice Get the number of contracts multiplier for leg `legIndex`.
+    /// @param self The TokenId to extract `optionRatio` at `legIndex` from
+    /// @param legIndex The leg index of this position (in {0,1,2,3})
+    /// @return The number of contracts multiplier for leg `legIndex`
     function optionRatio(uint256 self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((self >> (64 + legIndex * 48 + 1)) % 128);
@@ -122,9 +121,9 @@ library TokenId {
     }
 
     /// @notice Return 1 if the nth leg (leg index `legIndex`) is a long position.
-    /// @param self the option position Id
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return 1 if long; 0 if not long.
+    /// @param self The TokenId to extract `isLong` at `legIndex` from
+    /// @param legIndex The leg index of this position (in {0,1,2,3})
+    /// @return 1 if long; 0 if not long
     function isLong(uint256 self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((self >> (64 + legIndex * 48 + 8)) % 2);
@@ -132,8 +131,8 @@ library TokenId {
     }
 
     /// @notice Get the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
-    /// @param self the tokenId in the SFPM representing an option position
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
+    /// @param self The TokenId to extract `tokenType` at `legIndex` from
+    /// @param legIndex The leg index of this position (in {0,1,2,3})
     /// @return 1 if the token moved is token1 or 0 if the token moved is token0
     function tokenType(uint256 self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
@@ -142,9 +141,9 @@ library TokenId {
     }
 
     /// @notice Get the associated risk partner of the leg index (generally another leg index in the position if enabled or the same leg index if no partner).
-    /// @param self the tokenId in the SFPM representing an option position
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the leg index of `legIndex`'s risk partner.
+    /// @param self The TokenId to extract `riskPartner` at `legIndex` from
+    /// @param legIndex The leg index of this position (in {0,1,2,3})
+    /// @return The leg index of `legIndex`'s risk partner
     function riskPartner(uint256 self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((self >> (64 + legIndex * 48 + 10)) % 4);
@@ -152,9 +151,9 @@ library TokenId {
     }
 
     /// @notice Get the strike price tick of the nth leg (with index `legIndex`).
-    /// @param self the tokenId in the SFPM representing an option position
+    /// @param self The TokenId to extract `strike` at `legIndex` from
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the strike price (the underlying price of the leg).
+    /// @return The strike price (the underlying price of the leg)
     function strike(uint256 self, uint256 legIndex) internal pure returns (int24) {
         unchecked {
             return int24(int256(self >> (64 + legIndex * 48 + 12)));
@@ -162,10 +161,10 @@ library TokenId {
     }
 
     /// @notice Get the width of the nth leg (index `legIndex`). This is half the tick-range covered by the leg (tickUpper - tickLower)/2.
-    /// @dev return as int24 to be compatible with the strike tick format (they naturally go together)
-    /// @param self the tokenId in the SFPM representing an option position
+    /// @dev Return as int24 to be compatible with the strike tick format (they naturally go together).
+    /// @param self The TokenId to extract `width` at `legIndex` from
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the width of the position.
+    /// @return The width of the position
     function width(uint256 self, uint256 legIndex) internal pure returns (int24) {
         unchecked {
             return int24(int256((self >> (64 + legIndex * 48 + 36)) % 4096));
@@ -176,18 +175,20 @@ library TokenId {
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Add the Uniswap v3 Pool pointed to by this option position (contains the entropy and tickSpacing).
-    /// @param self the option position Id.
-    /// @return the tokenId with the Uniswap V3 pool added to it.
+    /// @notice Add the Uniswap V3 Pool pointed to by this option position (contains the entropy and tickSpacing).
+    /// @param self The TokenId to add `_poolId` to
+    /// @param _poolId The PoolID to add to `self`
+    /// @return `self` with `_poolId` added to the PoolID slot
     function addPoolId(uint256 self, uint64 _poolId) internal pure returns (uint256) {
         unchecked {
             return self + uint256(_poolId);
         }
     }
 
-    /// @notice Add the Uniswap v3 Pool tickSpacing.
-    /// @param self the option position Id.
-    /// @return the tickSpacing of the Uniswap V3 pool.
+    /// @notice Add the `tickSpacing` to the PoolID for `self`.
+    /// @param self The TokenId to add `_tickSpacing` to
+    /// @param _tickSpacing The tickSpacing to add to `self`
+    /// @return `self` with `_tickSpacing` added to the TickSpacing slot in the PoolID.
     function addTickSpacing(uint256 self, int24 _tickSpacing) internal pure returns (uint256) {
         unchecked {
             return self + (uint256(uint24(_tickSpacing)) << 48);
@@ -195,11 +196,11 @@ library TokenId {
     }
 
     /// @notice Add the asset basis for this position.
-    /// @param self the option position Id.
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @dev occupies the leftmost bit of the optionRatio 4 bits slot
-    /// @dev The final mod: "% 2" = takes the rightmost bit of the pattern
-    /// @return the tokenId with numerarire added to the incoming leg index
+    /// @param self The TokenId to add `_asset` to
+    /// @param _asset The asset to add to the Asset slot in `self` for `legIndex`
+    /// @param legIndex The leg index of this position (in {0,1,2,3})
+    /// @dev Occupies the leftmost bit of the optionRatio 4 bits slot
+    /// @return `self` with `_asset` added to the Asset slot
     function addAsset(
         uint256 self,
         uint256 _asset,
@@ -210,11 +211,11 @@ library TokenId {
         }
     }
 
-    /// @notice Add the number of contracts to leg index `legIndex`.
-    /// @param self the option position Id
-    /// @param legIndex the leg index of the position (in {0,1,2,3})
-    /// @dev The final mod: "% 128" = takes the rightmost (2 ** 7 = 128) 7 bits of the pattern.
-    /// @return the tokenId with optionRatio added to the incoming leg index
+    /// @notice Add the number of contracts multiplier to leg index `legIndex`.
+    /// @param self The TokenId to add `_optionRatio` to
+    /// @param _optionRatio The number of contracts multiplier to add to the OptionRatio slot in `self` for LegIndex
+    /// @param legIndex The leg index of the position (in {0,1,2,3})
+    /// @return `self` with `_optionRatio` added to the OptionRatio slot for `legIndex`
     function addOptionRatio(
         uint256 self,
         uint256 _optionRatio,
@@ -225,12 +226,12 @@ library TokenId {
         }
     }
 
-    /// @notice Add "isLong" parameter indicating whether a leg is long (isLong=1) or short (isLong=0)
+    /// @notice Add "isLong" parameter indicating whether a leg is long (isLong=1) or short (isLong=0).
     /// @notice returns 1 if the nth leg (leg index n-1) is a long position.
-    /// @param self the option position Id
-    /// @param _isLong whether the leg is long
+    /// @param self The TokenId to add `_isLong` to
+    /// @param _isLong The isLong parameter to add to the IsLong slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the tokenId with isLong added to its relevant leg
+    /// @return `self` with `_isLong` added to the IsLong slot for `legIndex`
     function addIsLong(
         uint256 self,
         uint256 _isLong,
@@ -242,9 +243,10 @@ library TokenId {
     }
 
     /// @notice Add the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
-    /// @param self the tokenId in the SFPM representing an option position
+    /// @param self The TokenId to add `_tokenType` to
+    /// @param _tokenType The tokenType to add to the TokenType slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the tokenId with tokenType added to its relevant leg.
+    /// @return `self` with `_tokenType` added to the TokenType slot for `legIndex`
     function addTokenType(
         uint256 self,
         uint256 _tokenType,
@@ -256,9 +258,10 @@ library TokenId {
     }
 
     /// @notice Add the associated risk partner of the leg index (generally another leg in the overall position).
-    /// @param self the tokenId in the SFPM representing an option position
+    /// @param self The TokenId to add `_riskPartner` to
+    /// @param _riskPartner The riskPartner to add to the RiskPartner slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the tokenId with riskPartner added to its relevant leg.
+    /// @return `self` with `_riskPartner` added to the RiskPartner slot for `legIndex`
     function addRiskPartner(
         uint256 self,
         uint256 _riskPartner,
@@ -270,9 +273,10 @@ library TokenId {
     }
 
     /// @notice Add the strike price tick of the nth leg (index `legIndex`).
-    /// @param self the tokenId in the SFPM representing an option position.
+    /// @param self The TokenId to add `_strike` to
+    /// @param _strike The strike price tick to add to the Strike slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the tokenId with strike price tick added to its relevant leg
+    /// @return `self` with `_strike` added to the Strike slot for `legIndex`
     function addStrike(
         uint256 self,
         int24 _strike,
@@ -283,10 +287,11 @@ library TokenId {
         }
     }
 
-    /// @notice Add the width of the nth leg (index `legIndex`). This is half the tick-range covered by the leg (tickUpper - tickLower)/2.
-    /// @param self the tokenId in the SFPM representing an option position.
+    /// @notice Add the width of the nth leg (index `legIndex`).
+    /// @param self The TokenId to add `_width` to
+    /// @param _width The width to add to the Width slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @return the tokenId with width added to its relevant leg
+    /// @return `self` with `_width` added to the Width slot for `legIndex`
     function addWidth(
         uint256 self,
         int24 _width,
@@ -298,17 +303,17 @@ library TokenId {
         }
     }
 
-    /// @notice Add a leg to the tokenId.
-    /// @param self the tokenId in the SFPM representing an option position.
-    /// @param legIndex the leg index of this position (in {0,1,2,3})
-    /// @param _optionRatio the relative size of the leg
-    /// @param _asset the asset of the leg
-    /// @param _isLong whether the leg is long
-    /// @param _tokenType the type of token moved for the leg
-    /// @param _riskPartner the associated risk partner of the leg
-    /// @param _strike the strike price tick of the leg
-    /// @param _width the width of the leg
-    /// @return tokenId the tokenId with the leg added
+    /// @notice Add a leg to a TokenId.
+    /// @param self The tokenId in the SFPM representing an option position.
+    /// @param legIndex The leg index of this position (in {0,1,2,3}) to add
+    /// @param _optionRatio The relative size of the leg
+    /// @param _asset The asset of the leg
+    /// @param _isLong Whether the leg is long
+    /// @param _tokenType The type of token moved for the leg
+    /// @param _riskPartner The associated risk partner of the leg
+    /// @param _strike The strike price tick of the leg
+    /// @param _width The width of the leg
+    /// @return tokenId The tokenId with the leg added
     function addLeg(
         uint256 self,
         uint256 legIndex,
@@ -334,10 +339,11 @@ library TokenId {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Flip all the `isLong` positions in the legs in the `tokenId` option position.
-    /// @dev uses XOR on existing isLong bits.
-    /// @dev useful when we need to take an existing tokenId but now burn it.
+    /// @dev Uses XOR on existing isLong bits.
+    /// @dev Useful when we need to take an existing tokenId but now burn it.
     /// @dev The way to do this is to simply flip it to a short instead.
-    /// @param self the tokenId in the SFPM representing an option position.
+    /// @param self The TokenId to flip isLong for on all active legs
+    /// @return tokenId with all `isLong` bits flipped
     function flipToBurnToken(uint256 self) internal pure returns (uint256) {
         unchecked {
             // NOTE: This is a hack to avoid blowing up the contract size.
@@ -369,9 +375,9 @@ library TokenId {
     }
 
     /// @notice Get the number of longs in this option position.
-    /// @notice count the number of legs (out of a maximum of 4) that are long positions.
-    /// @param self the tokenId in the SFPM representing an option position.
-    /// @return the number of long positions (in the range {0,...,4}).
+    /// @notice Count the number of legs (out of a maximum of 4) that are long positions.
+    /// @param self The TokenId to count longs for
+    /// @return The number of long positions in `self` (in the range {0,...,4}).
     function countLongs(uint256 self) internal pure returns (uint256) {
         unchecked {
             return self.isLong(0) + self.isLong(1) + self.isLong(2) + self.isLong(3);
@@ -379,11 +385,11 @@ library TokenId {
     }
 
     /// @notice Get the option position's nth leg's (index `legIndex`) tick ranges (lower, upper).
-    /// @dev NOTE does not extract liquidity which is the third piece of information in a LiquidityChunk.
-    /// @param self the option position id.
-    /// @param legIndex the leg index of the position (in {0,1,2,3}).
-    /// @return legLowerTick the lower tick of the leg/liquidity chunk.
-    /// @return legUpperTick the upper tick of the leg/liquidity chunk.
+    /// @dev NOTE: Does not extract liquidity which is the third piece of information in a LiquidityChunk.
+    /// @param self The TokenId to extract the tick range from
+    /// @param legIndex The leg index of the position (in {0,1,2,3}).
+    /// @return legLowerTick The lower tick of the leg/liquidity chunk.
+    /// @return legUpperTick The upper tick of the leg/liquidity chunk.
     function asTicks(
         uint256 self,
         uint256 legIndex
@@ -396,10 +402,10 @@ library TokenId {
     }
 
     /// @notice Return the number of active legs in the option position.
-    /// @param self the option position Id (tokenId).
+    /// @param self The TokenId to count active legs for
     /// @dev ASSUMPTION: There is at least 1 leg in this option position.
     /// @dev ASSUMPTION: For any leg, the option ratio is always > 0 (the leg always has a number of contracts associated with it).
-    /// @return the number of legs in the option position.
+    /// @return The number of active legs in `self` (in the range {0,...,4})
     function countLegs(uint256 self) internal pure returns (uint256) {
         // Strip all bits except for the option ratios
         uint256 optionRatios = self & OPTION_RATIO_MASK;
@@ -422,15 +428,15 @@ library TokenId {
     /// @notice Clear a leg in an option position with index `i`.
     /// @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
     /// @dev NOTE it's important that the caller fills in the leg details after.
-    /// @dev  - optionRatio is zeroed
-    /// @dev  - asset is zeroed
-    /// @dev  - width is zeroed
-    /// @dev  - strike is zeroed
-    /// @dev  - tokenType is zeroed
-    /// @dev  - isLong is zeroed
-    /// @dev  - riskPartner is zeroed
-    /// @param self the tokenId to reset the leg of
-    /// @param i the leg index to reset, in {0,1,2,3}
+    //  - optionRatio is zeroed
+    //  - asset is zeroed
+    //  - width is zeroed
+    // - strike is zeroed
+    //  - tokenType is zeroed
+    //  - isLong is zeroed
+    //  - riskPartner is zeroed
+    /// @param self The TokenId to clear the leg from
+    /// @param i The leg index to reset, in {0,1,2,3}
     /// @return `self` with the `i`th leg zeroed including optionRatio and asset.
     function clearLeg(uint256 self, uint256 i) internal pure returns (uint256) {
         if (i == 0)
@@ -450,10 +456,9 @@ library TokenId {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validate an option position and all its active legs; return the underlying AMM address.
-    /// @dev used to validate a position tokenId and its legs.
-    /// @param self the option position id.
-    /// @return the first 64 bits of the underlying Uniswap V3 address.
-    function validate(uint256 self) internal pure returns (uint64) {
+    /// @dev Used to validate a position tokenId and its legs.
+    /// @param self The TokenId to validate
+    function validate(uint256 self) internal pure {
         if (self.optionRatio(0) == 0) revert Errors.InvalidTokenIdParameter(1);
 
         // loop through the 4 (possible) legs in the tokenId `self`
@@ -523,14 +528,13 @@ library TokenId {
                 }
             } // end for loop over legs
         }
-
-        return self.poolId();
     }
 
     /// @notice Validate that a position `self` and its legs/chunks are exercisable.
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
-    /// @param self the option position Id (tokenId)
-    /// @param currentTick the current tick corresponding to the current price in the Univ3 pool.
+    /// @dev Reverts if the position is not exercisable.
+    /// @param self The TokenId to validate for exercisability
+    /// @param currentTick The current tick corresponding to the current price in the Univ3 pool.
     function validateIsExercisable(uint256 self, int24 currentTick) internal pure {
         unchecked {
             uint256 numLegs = self.countLegs();

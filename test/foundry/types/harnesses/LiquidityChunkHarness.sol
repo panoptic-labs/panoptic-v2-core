@@ -109,21 +109,6 @@ contract LiquidityChunkHarness {
         return r;
     }
 
-    /**
-     * @notice Copy the tick range (upper and lower ticks) of a chunk `from` to `self`.
-     * @notice This is helpful if you have a pre-existing liquidity amount, say "100" as a uint128. Simply cast to a uint256 and then we want
-     *  to pack in the tick range as well so we add that to the front (towards the MSB) of the bit pattern keeping the liquidity amount the same.
-     * @dev note that the liquidity itself is not transferred over from `other` - only the chunk bounds/ticks are.
-     * @dev assumes that the incoming chunk does *not* already have ticks since the operation is additive.
-     * @param self the chunk to copy the ticks *to* (recipient of the tick range).
-     * @param from pre-existing chunk with lower and upper ticks that we want to copy *from*.
-     * @return a liquidity chunk with the lower and upper tick values added to it.
-     */
-    function copyTickRange(uint256 self, uint256 from) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.copyTickRange(self, from);
-        return r;
-    }
-
     /*****************************************************************/
     /*
     /* READ FROM A LIQUIDITYCHUNK
