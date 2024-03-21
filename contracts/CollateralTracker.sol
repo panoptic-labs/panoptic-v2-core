@@ -16,7 +16,6 @@ import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
-import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
@@ -71,8 +70,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     using LeftRight for uint256;
     // represents a single liquidity chunk in Uniswap. Contains tickLower, tickUpper, and amount of liquidity
     using LiquidityChunk for uint256;
-    // container that holds current tick, median tick, and caller
-    using TickStateCallContext for uint256;
     // represents an option position of up to four legs as a single ERC1155 tokenId
     using TokenId for uint256;
 
@@ -848,11 +845,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             return BUYER_COLLATERAL_RATIO;
         }
 
-        // return 100% buy ratio if pool utilization is higher than 10_000
-        if (utilization > DECIMALS) {
-            return DECIMALS;
-        }
-
         // return the basal ratio divided by 2 if pool utilization is above saturated pool utilization
         /// this is incentivized buying, which returns funds to the panoptic pool
         if (utilization > SATURATED_POOL_UTIL) {
@@ -1004,13 +996,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Take commission on option creation/opening (commissions will not be taken on closing).
-    /// @param tickStateCallContext Container that holds current tick, median tick, and caller.
+    /// @param optionOwner The user minting the option.
     /// @param longAmount The amount of longs.
     /// @param shortAmount The amount of shorts.
     /// @param swappedAmount The amount of tokens swapped during creation of the option position (non-zero for options minted ITM).
     /// @return utilization The utilization of the Panoptic Pool.
     function takeCommissionAddData(
-        uint256 tickStateCallContext,
+        address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount
@@ -1031,11 +1023,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
-                _burn(tickStateCallContext.caller(), sharesToBurn);
+                _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(tickStateCallContext.caller(), sharesToMint);
+                _mint(optionOwner, sharesToMint);
             }
 
             // update stored asset balances with net moved amounts
@@ -1045,17 +1037,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint128(uint256(updatedAssets));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
 
-            // if the distance between the current and median tick is more than the accepted tick deviation, default to 100% collateral requirement
-            if (
-                Math.abs(
-                    int256(tickStateCallContext.fastOracleTick()) -
-                        tickStateCallContext.slowOracleTick()
-                ) > int256(TICK_DEVIATION)
-            ) {
-                utilization = DECIMALS_128 + 1;
-            } else {
-                utilization = _poolUtilization();
-            }
+            utilization = _poolUtilization();
         }
     }
 

@@ -487,7 +487,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         emit TokenizedPositionBurnt(msg.sender, tokenId, positionSize);
 
         // Call a function that contains other functions to mint/burn position, collect amounts, swap if necessary
-        (collectedByLeg, totalSwapped, ) = _validateAndForwardToAMM(
+        (collectedByLeg, totalSwapped) = _validateAndForwardToAMM(
             tokenId,
             positionSize,
             slippageTickLimitLow,
@@ -503,7 +503,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param slippageTickLimitHigh The higher slippage limit when minting an ITM position (set to lower than slippageTickLimitLow for swapping when minting)
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return totalSwapped A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
-    /// @return finalTick The final tick of the pool after minting and swapping
     function mintTokenizedPosition(
         uint256 tokenId,
         uint128 positionSize,
@@ -512,7 +511,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     )
         external
         ReentrancyLock(tokenId.poolId())
-        returns (uint256[4] memory collectedByLeg, int256 totalSwapped, int24 finalTick)
+        returns (uint256[4] memory collectedByLeg, int256 totalSwapped)
     {
         // create the option position via its ID in this erc1155
         _mint(msg.sender, tokenId, positionSize);
@@ -520,7 +519,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         emit TokenizedPositionMinted(msg.sender, tokenId, positionSize);
 
         // validate the incoming option position, then forward to the AMM for minting/burning required liquidity chunks
-        (collectedByLeg, totalSwapped, finalTick) = _validateAndForwardToAMM(
+        (collectedByLeg, totalSwapped) = _validateAndForwardToAMM(
             tokenId,
             positionSize,
             slippageTickLimitLow,
@@ -672,14 +671,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param isBurn is equal to false for mints and true for burns
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return totalMoved the total amount of funds swapped in Uniswap as part of building potential ITM positions
-    /// @return finalTick the final tick of the pool after minting and swapping
     function _validateAndForwardToAMM(
         uint256 tokenId,
         uint128 positionSize,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool isBurn
-    ) internal returns (uint256[4] memory collectedByLeg, int256 totalMoved, int24 finalTick) {
+    ) internal returns (uint256[4] memory collectedByLeg, int256 totalMoved) {
         // Reverts if positionSize is 0 and user did not own the position before minting/burning
         if (positionSize == 0) revert Errors.OptionsBalanceZero();
 
@@ -716,9 +714,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         }
 
         // Get the current tick of the Uniswap pool, check slippage
-        (, finalTick, , , , , ) = univ3pool.slot0();
+        (, int24 currentTick, , , , , ) = univ3pool.slot0();
 
-        if ((finalTick >= tickLimitHigh) || (finalTick <= tickLimitLow))
+        if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
             revert Errors.PriceBoundFail();
     }
 

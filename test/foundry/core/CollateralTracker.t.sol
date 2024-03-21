@@ -16,7 +16,6 @@ import {Errors} from "@libraries/Errors.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {Constants} from "@libraries/Constants.sol";
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -336,7 +335,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     using LeftRight for int256;
     using TokenId for uint256;
     using LiquidityChunk for uint256;
-    using TickStateCallContext for uint256;
 
     // users who will send/receive deposits, transfers, and withdrawals
     address Alice = makeAddr("Alice");
@@ -1698,7 +1696,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.refund(address(0), address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.takeCommissionAddData(0, 0, 0, 0);
+        collateralToken0.takeCommissionAddData(address(0), 0, 0, 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
         collateralToken0.exercise(address(0), 0, 0, 0, 0);
