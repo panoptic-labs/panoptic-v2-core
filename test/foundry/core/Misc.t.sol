@@ -174,7 +174,9 @@ contract Misctest is Test, PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(sfpm));
-        collateralReference = address(new CollateralTracker());
+        collateralReference = address(
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
+        );
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
