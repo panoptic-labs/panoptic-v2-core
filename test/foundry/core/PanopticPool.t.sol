@@ -809,10 +809,10 @@ contract PanopticPoolTest is PositionUtils {
         expectedLiqs.push(
             isWETH == 0
                 ? Math
-                    .getLiquidityForAmount0(tickLowers[0], tickUppers[0], positionSizes[1])
+                    .getLiquidityForAmount0(tickLowers[1], tickUppers[1], positionSizes[1])
                     .liquidity()
                 : Math
-                    .getLiquidityForAmount1(tickLowers[0], tickUppers[0], positionSizes[1])
+                    .getLiquidityForAmount1(tickLowers[1], tickUppers[1], positionSizes[1])
                     .liquidity()
         );
 
