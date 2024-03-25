@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
@@ -58,11 +58,6 @@ contract PanopticPoolHarness is PanopticPool {
 }
 
 contract PanopticHelperTest is PositionUtils {
-    using TokenId for uint256;
-    using LeftRight for uint256;
-    using LeftRight for int256;
-    using LeftRight for uint128;
-    using LiquidityChunk for uint256;
     /*//////////////////////////////////////////////////////////////
                            MAINNET CONTRACTS
     //////////////////////////////////////////////////////////////*/
@@ -137,7 +132,7 @@ contract PanopticHelperTest is PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     // used to pass into libraries
-    mapping(uint256 tokenId => uint256 balance) userBalance;
+    mapping(TokenId tokenId => uint256 balance) userBalance;
 
     mapping(address actor => uint256 lastBalance0) lastCollateralBalance0;
     mapping(address actor => uint256 lastBalance1) lastCollateralBalance1;
@@ -205,8 +200,8 @@ contract PanopticHelperTest is PositionUtils {
     int256 $balanceDelta0;
     int256 $balanceDelta1;
 
-    uint256 tokenData0;
-    uint256 tokenData1;
+    LeftRightUnsigned tokenData0;
+    LeftRightUnsigned tokenData1;
 
     uint256 collateralBalance;
     uint256 requiredCollateral;
@@ -470,7 +465,7 @@ contract PanopticHelperTest is PositionUtils {
 
         optionRatio = uint8(bound(optionRatio, uint8(1), uint8(2 ** 7 - 1)));
 
-        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             optionRatio,
             asset ? 1 : 0,
@@ -524,7 +519,7 @@ contract PanopticHelperTest is PositionUtils {
 
         uint256 long = isLong ? 1 : 0;
         uint256 tt = tokenType ? 1 : 0;
-        uint256 tokenId = uint256(0).addPoolId(poolId);
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
 
         {
             tokenId = tokenId.addOptionRatio(optionRatio, 0);
@@ -584,7 +579,7 @@ contract PanopticHelperTest is PositionUtils {
         uint256 numberOfLegs = uint256((seed % 4) + 1);
         PanopticHelper.Leg[] memory inputLeg = new PanopticHelper.Leg[](numberOfLegs);
 
-        uint256 tokenId = uint256(0).addPoolId(poolId);
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
 
         for (uint256 i; i < numberOfLegs; ++i) {
             // update seed
@@ -673,72 +668,85 @@ contract PanopticHelperTest is PositionUtils {
 
         PanopticHelper.Leg[] memory inputLeg = new PanopticHelper.Leg[](numberOfLegs);
 
-        uint256[10] memory riskArray;
-        riskArray[0] = uint256(0)
+        TokenId[10] memory riskArray;
+        riskArray[0] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(3, 3);
-        riskArray[1] = uint256(0)
+        riskArray[1] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(2, 1)
             .addRiskPartner(1, 2)
             .addRiskPartner(3, 3);
-        riskArray[2] = uint256(0)
+        riskArray[2] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(3, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(1, 3);
-        riskArray[3] = uint256(0)
+        riskArray[3] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(3, 2)
             .addRiskPartner(2, 3);
-        riskArray[4] = uint256(0)
+        riskArray[4] = TokenId
+            .wrap(0)
             .addRiskPartner(1, 0)
             .addRiskPartner(0, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(3, 3);
-        riskArray[5] = uint256(0)
+        riskArray[5] = TokenId
+            .wrap(0)
             .addRiskPartner(1, 0)
             .addRiskPartner(0, 1)
             .addRiskPartner(3, 2)
             .addRiskPartner(2, 3);
-        riskArray[6] = uint256(0)
+        riskArray[6] = TokenId
+            .wrap(0)
             .addRiskPartner(2, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(0, 2)
             .addRiskPartner(3, 3);
-        riskArray[7] = uint256(0)
+        riskArray[7] = TokenId
+            .wrap(0)
             .addRiskPartner(2, 0)
             .addRiskPartner(3, 1)
             .addRiskPartner(0, 2)
             .addRiskPartner(1, 3);
-        riskArray[8] = uint256(0)
+        riskArray[8] = TokenId
+            .wrap(0)
             .addRiskPartner(3, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(0, 3);
-        riskArray[9] = uint256(0)
+        riskArray[9] = TokenId
+            .wrap(0)
             .addRiskPartner(3, 0)
             .addRiskPartner(2, 1)
             .addRiskPartner(1, 2)
             .addRiskPartner(0, 3);
 
-        uint256[10] memory isLongArray; // first of the partered leg is long, the rest are not
-        isLongArray[0] = uint256(0);
-        isLongArray[1] = uint256(0).addIsLong(1, 1);
-        isLongArray[2] = uint256(0).addIsLong(1, 1);
-        isLongArray[3] = uint256(0).addIsLong(1, 2);
-        isLongArray[4] = uint256(0).addIsLong(1, 0);
-        isLongArray[5] = uint256(0).addIsLong(1, 0).addIsLong(1, 2);
-        isLongArray[6] = uint256(0).addIsLong(1, 0);
-        isLongArray[7] = uint256(0).addIsLong(1, 0).addIsLong(1, 1);
-        isLongArray[8] = uint256(0).addIsLong(1, 0);
-        isLongArray[9] = uint256(0).addIsLong(1, 0).addIsLong(1, 1);
+        TokenId[10] memory isLongArray; // first of the partered leg is long, the rest are not
+        isLongArray[0] = TokenId.wrap(0);
+        isLongArray[1] = TokenId.wrap(0).addIsLong(1, 1);
+        isLongArray[2] = TokenId.wrap(0).addIsLong(1, 1);
+        isLongArray[3] = TokenId.wrap(0).addIsLong(1, 2);
+        isLongArray[4] = TokenId.wrap(0).addIsLong(1, 0);
+        isLongArray[5] = TokenId.wrap(0).addIsLong(1, 0).addIsLong(1, 2);
+        isLongArray[6] = TokenId.wrap(0).addIsLong(1, 0);
+        isLongArray[7] = TokenId.wrap(0).addIsLong(1, 0).addIsLong(1, 1);
+        isLongArray[8] = TokenId.wrap(0).addIsLong(1, 0);
+        isLongArray[9] = TokenId.wrap(0).addIsLong(1, 0).addIsLong(1, 1);
 
         uint256 riskPreset = uint256(keccak256(abi.encode(seed))) % 10;
-        uint256 tokenId = riskArray[riskPreset].addPoolId(poolId) + isLongArray[riskPreset];
+        TokenId tokenId = TokenId.wrap(
+            TokenId.unwrap(riskArray[riskPreset].addPoolId(poolId)) +
+                TokenId.unwrap(isLongArray[riskPreset])
+        );
 
         uint256 optionRatio = uint256(seed % 2 ** 7);
         optionRatio = optionRatio == 0 ? 1 : optionRatio;
@@ -821,72 +829,85 @@ contract PanopticHelperTest is PositionUtils {
 
         PanopticHelper.Leg[] memory inputLeg = new PanopticHelper.Leg[](numberOfLegs);
 
-        uint256[10] memory riskArray;
-        riskArray[0] = uint256(0)
+        TokenId[10] memory riskArray;
+        riskArray[0] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(3, 3);
-        riskArray[1] = uint256(0)
+        riskArray[1] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(2, 1)
             .addRiskPartner(1, 2)
             .addRiskPartner(3, 3);
-        riskArray[2] = uint256(0)
+        riskArray[2] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(3, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(1, 3);
-        riskArray[3] = uint256(0)
+        riskArray[3] = TokenId
+            .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(3, 2)
             .addRiskPartner(2, 3);
-        riskArray[4] = uint256(0)
+        riskArray[4] = TokenId
+            .wrap(0)
             .addRiskPartner(1, 0)
             .addRiskPartner(0, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(3, 3);
-        riskArray[5] = uint256(0)
+        riskArray[5] = TokenId
+            .wrap(0)
             .addRiskPartner(1, 0)
             .addRiskPartner(0, 1)
             .addRiskPartner(3, 2)
             .addRiskPartner(2, 3);
-        riskArray[6] = uint256(0)
+        riskArray[6] = TokenId
+            .wrap(0)
             .addRiskPartner(2, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(0, 2)
             .addRiskPartner(3, 3);
-        riskArray[7] = uint256(0)
+        riskArray[7] = TokenId
+            .wrap(0)
             .addRiskPartner(2, 0)
             .addRiskPartner(3, 1)
             .addRiskPartner(0, 2)
             .addRiskPartner(1, 3);
-        riskArray[8] = uint256(0)
+        riskArray[8] = TokenId
+            .wrap(0)
             .addRiskPartner(3, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(0, 3);
-        riskArray[9] = uint256(0)
+        riskArray[9] = TokenId
+            .wrap(0)
             .addRiskPartner(3, 0)
             .addRiskPartner(2, 1)
             .addRiskPartner(1, 2)
             .addRiskPartner(0, 3);
 
-        uint256[10] memory tokenTypeArray; // first of the partered leg is 1, the other are 0
-        tokenTypeArray[0] = uint256(0);
-        tokenTypeArray[1] = uint256(0).addTokenType(1, 1);
-        tokenTypeArray[2] = uint256(0).addTokenType(1, 1);
-        tokenTypeArray[3] = uint256(0).addTokenType(1, 2);
-        tokenTypeArray[4] = uint256(0).addTokenType(1, 0);
-        tokenTypeArray[5] = uint256(0).addTokenType(1, 0).addTokenType(1, 2);
-        tokenTypeArray[6] = uint256(0).addTokenType(1, 0);
-        tokenTypeArray[7] = uint256(0).addTokenType(1, 0).addTokenType(1, 1);
-        tokenTypeArray[8] = uint256(0).addTokenType(1, 0);
-        tokenTypeArray[9] = uint256(0).addTokenType(1, 0).addTokenType(1, 1);
+        TokenId[10] memory tokenTypeArray; // first of the partered leg is 1, the other are 0
+        tokenTypeArray[0] = TokenId.wrap(0);
+        tokenTypeArray[1] = TokenId.wrap(0).addTokenType(1, 1);
+        tokenTypeArray[2] = TokenId.wrap(0).addTokenType(1, 1);
+        tokenTypeArray[3] = TokenId.wrap(0).addTokenType(1, 2);
+        tokenTypeArray[4] = TokenId.wrap(0).addTokenType(1, 0);
+        tokenTypeArray[5] = TokenId.wrap(0).addTokenType(1, 0).addTokenType(1, 2);
+        tokenTypeArray[6] = TokenId.wrap(0).addTokenType(1, 0);
+        tokenTypeArray[7] = TokenId.wrap(0).addTokenType(1, 0).addTokenType(1, 1);
+        tokenTypeArray[8] = TokenId.wrap(0).addTokenType(1, 0);
+        tokenTypeArray[9] = TokenId.wrap(0).addTokenType(1, 0).addTokenType(1, 1);
 
         uint256 riskPreset = uint256(keccak256(abi.encode(seed))) % 10;
-        uint256 tokenId = riskArray[riskPreset].addPoolId(poolId) + tokenTypeArray[riskPreset];
+        TokenId tokenId = TokenId.wrap(
+            TokenId.unwrap(riskArray[riskPreset].addPoolId(poolId)) +
+                TokenId.unwrap(tokenTypeArray[riskPreset])
+        );
 
         uint256 optionRatio = uint256(seed % 2 ** 7);
         optionRatio = optionRatio == 0 ? 1 : optionRatio;
@@ -1001,7 +1022,7 @@ contract PanopticHelperTest is PositionUtils {
 
         /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
         // leg 1
-        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -1012,7 +1033,7 @@ contract PanopticHelperTest is PositionUtils {
             $width
         );
         // leg 2
-        uint256 tokenId2 = uint256(0).addPoolId(poolId).addLeg(
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
             isWETH,
@@ -1023,14 +1044,14 @@ contract PanopticHelperTest is PositionUtils {
             $width2
         );
         {
-            uint256[] memory posIdList = new uint256[](1);
+            TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
             pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
         }
 
         {
-            uint256[] memory posIdList = new uint256[](2);
+            TokenId[] memory posIdList = new TokenId[](2);
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
 

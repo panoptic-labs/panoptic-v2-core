@@ -4,6 +4,9 @@ pragma solidity ^0.8.0;
 // Custom types
 import {TokenId} from "@types/TokenId.sol";
 
+type LiquidityChunk is uint256;
+using LiquidityChunkLibrary for LiquidityChunk global;
+
 /// @title A Panoptic Liquidity Chunk. Tracks Tick Range and Liquidity Information for a "chunk." Used to track movement of chunks.
 /// @author Axicon Labs Limited
 ///
@@ -46,9 +49,7 @@ import {TokenId} from "@types/TokenId.sol";
 //
 //        <--- most significant bit        least significant bit --->
 //
-library LiquidityChunk {
-    using LiquidityChunk for uint256;
-
+library LiquidityChunkLibrary {
     /// @notice AND mask to strip the `tickLower` value from a packed LiquidityChunk
     uint256 internal constant CLEAR_TL_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
@@ -70,12 +71,14 @@ library LiquidityChunk {
         int24 _tickLower,
         int24 _tickUpper,
         uint128 amount
-    ) internal pure returns (uint256) {
+    ) internal pure returns (LiquidityChunk) {
         unchecked {
             return
-                (uint256(uint24(_tickLower)) << 232) +
-                (uint256(uint24(_tickUpper)) << 208) +
-                uint256(amount);
+                LiquidityChunk.wrap(
+                    (uint256(uint24(_tickLower)) << 232) +
+                        (uint256(uint24(_tickUpper)) << 208) +
+                        uint256(amount)
+                );
         }
     }
 
@@ -83,9 +86,12 @@ library LiquidityChunk {
     /// @param self The LiquidityChunk to add liquidity to
     /// @param amount The amount of liquidity to add to `self`
     /// @return `self` with added liquidity `amount`
-    function addLiquidity(uint256 self, uint128 amount) internal pure returns (uint256) {
+    function addLiquidity(
+        LiquidityChunk self,
+        uint128 amount
+    ) internal pure returns (LiquidityChunk) {
         unchecked {
-            return self + uint256(amount);
+            return LiquidityChunk.wrap(LiquidityChunk.unwrap(self) + amount);
         }
     }
 
@@ -93,9 +99,15 @@ library LiquidityChunk {
     /// @param self The LiquidityChunk to add the lower tick to
     /// @param _tickLower The lower tick to add to `self`
     /// @return `self` with added lower tick `_tickLower`
-    function addTickLower(uint256 self, int24 _tickLower) internal pure returns (uint256) {
+    function addTickLower(
+        LiquidityChunk self,
+        int24 _tickLower
+    ) internal pure returns (LiquidityChunk) {
         unchecked {
-            return self + (uint256(uint24(_tickLower)) << 232);
+            return
+                LiquidityChunk.wrap(
+                    LiquidityChunk.unwrap(self) + (uint256(uint24(_tickLower)) << 232)
+                );
         }
     }
 
@@ -103,10 +115,16 @@ library LiquidityChunk {
     /// @param self The LiquidityChunk to add the upper tick to
     /// @param _tickUpper The upper tick to add to `self`
     /// @return `self` with added upper tick `_tickUpper`
-    function addTickUpper(uint256 self, int24 _tickUpper) internal pure returns (uint256) {
+    function addTickUpper(
+        LiquidityChunk self,
+        int24 _tickUpper
+    ) internal pure returns (LiquidityChunk) {
         unchecked {
             // convert tick upper to uint24 as explicit conversion from int24 to uint256 is not allowed
-            return self + ((uint256(uint24(_tickUpper))) << 208);
+            return
+                LiquidityChunk.wrap(
+                    LiquidityChunk.unwrap(self) + ((uint256(uint24(_tickUpper))) << 208)
+                );
         }
     }
 
@@ -114,9 +132,15 @@ library LiquidityChunk {
     /// @param self The LiquidityChunk to overwrite the lower tick on
     /// @param _tickLower The lower tick to overwrite `self` with
     /// @return `self` with `_tickLower` as the new lower tick
-    function updateTickLower(uint256 self, int24 _tickLower) internal pure returns (uint256) {
+    function updateTickLower(
+        LiquidityChunk self,
+        int24 _tickLower
+    ) internal pure returns (LiquidityChunk) {
         unchecked {
-            return (self & CLEAR_TL_MASK).addTickLower(_tickLower);
+            return
+                LiquidityChunk.wrap(LiquidityChunk.unwrap(self) & CLEAR_TL_MASK).addTickLower(
+                    _tickLower
+                );
         }
     }
 
@@ -124,10 +148,16 @@ library LiquidityChunk {
     /// @param self The LiquidityChunk to overwrite the upper tick on
     /// @param _tickUpper The upper tick to overwrite `self` with
     /// @return `self` with `_tickUpper` as the new upper tick
-    function updateTickUpper(uint256 self, int24 _tickUpper) internal pure returns (uint256) {
+    function updateTickUpper(
+        LiquidityChunk self,
+        int24 _tickUpper
+    ) internal pure returns (LiquidityChunk) {
         unchecked {
             // convert tick upper to uint24 as explicit conversion from int24 to uint256 is not allowed
-            return (self & CLEAR_TU_MASK).addTickUpper(_tickUpper);
+            return
+                LiquidityChunk.wrap(LiquidityChunk.unwrap(self) & CLEAR_TU_MASK).addTickUpper(
+                    _tickUpper
+                );
         }
     }
 
@@ -138,27 +168,27 @@ library LiquidityChunk {
     /// @notice Get the lower tick of `self`.
     /// @param self The LiquidityChunk to get the lower tick from
     /// @return The lower tick of `self`
-    function tickLower(uint256 self) internal pure returns (int24) {
+    function tickLower(LiquidityChunk self) internal pure returns (int24) {
         unchecked {
-            return int24(int256(self >> 232));
+            return int24(int256(LiquidityChunk.unwrap(self) >> 232));
         }
     }
 
     /// @notice Get the upper tick of `self`.
     /// @param self The LiquidityChunk to get the upper tick from
     /// @return The upper tick of `self`
-    function tickUpper(uint256 self) internal pure returns (int24) {
+    function tickUpper(LiquidityChunk self) internal pure returns (int24) {
         unchecked {
-            return int24(int256(self >> 208));
+            return int24(int256(LiquidityChunk.unwrap(self) >> 208));
         }
     }
 
     /// @notice Get the amount of liquidity/size of `self`.
     /// @param self The LiquidityChunk to get the liquidity from
     /// @return The liquidity of `self`
-    function liquidity(uint256 self) internal pure returns (uint128) {
+    function liquidity(LiquidityChunk self) internal pure returns (uint128) {
         unchecked {
-            return uint128(self);
+            return uint128(LiquidityChunk.unwrap(self));
         }
     }
 }

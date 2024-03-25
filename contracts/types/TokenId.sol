@@ -6,6 +6,9 @@ import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 
+type TokenId is uint256;
+using TokenIdLibrary for TokenId global;
+
 /// @title Panoptic's tokenId: the fundamental options position.
 /// @author Axicon Labs Limited
 /// @notice This is the token ID used in the ERC1155 representation of the option position in the SFPM.
@@ -54,9 +57,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 //  - the tokenType of the 4th leg in this option position starts at bit index 64+9+48*3=217
 //  - the Uniswap v3 pool id starts at bit index 0 and ends at bit index 63 (and thus takes up 64 bits).
 //  - the width of the 3rd leg in this option position starts at bit index 64+36+48*2=196
-library TokenId {
-    using TokenId for uint256;
-
+library TokenIdLibrary {
     /// @notice AND mask to extract all `isLong` bits for each leg from a TokenId
     uint256 internal constant LONG_MASK =
         0x100_000000000100_000000000100_000000000100_0000000000000000;
@@ -83,18 +84,18 @@ library TokenId {
     /// @notice The full poolId (Uniswap pool identifier + pool pattern) of this option position.
     /// @param self The TokenId to extract `poolId` from
     /// @return The `poolId` (Panoptic's pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap V3 pool
-    function poolId(uint256 self) internal pure returns (uint64) {
+    function poolId(TokenId self) internal pure returns (uint64) {
         unchecked {
-            return uint64(self);
+            return uint64(TokenId.unwrap(self));
         }
     }
 
     /// @notice The tickSpacing of this option position.
     /// @param self The TokenId to extract `tickSpacing` from
     /// @return The `tickSpacing` of the Uniswap v3 pool
-    function tickSpacing(uint256 self) internal pure returns (int24) {
+    function tickSpacing(TokenId self) internal pure returns (int24) {
         unchecked {
-            return int24(uint24((self >> 48) % 2 ** 16));
+            return int24(uint24((TokenId.unwrap(self) >> 48) % 2 ** 16));
         }
     }
 
@@ -104,9 +105,9 @@ library TokenId {
     /// @param legIndex The leg index of this position (in {0,1,2,3}) to extract `asset` from
     /// @dev Occupies the leftmost bit of the optionRatio 4 bits slot.
     /// @return 0 if asset is token0, 1 if asset is token1
-    function asset(uint256 self, uint256 legIndex) internal pure returns (uint256) {
+    function asset(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
-            return uint256((self >> (64 + legIndex * 48)) % 2);
+            return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48)) % 2);
         }
     }
 
@@ -114,9 +115,9 @@ library TokenId {
     /// @param self The TokenId to extract `optionRatio` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
     /// @return The number of contracts multiplier for leg `legIndex`
-    function optionRatio(uint256 self, uint256 legIndex) internal pure returns (uint256) {
+    function optionRatio(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
-            return uint256((self >> (64 + legIndex * 48 + 1)) % 128);
+            return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 1)) % 128);
         }
     }
 
@@ -124,9 +125,9 @@ library TokenId {
     /// @param self The TokenId to extract `isLong` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
     /// @return 1 if long; 0 if not long
-    function isLong(uint256 self, uint256 legIndex) internal pure returns (uint256) {
+    function isLong(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
-            return uint256((self >> (64 + legIndex * 48 + 8)) % 2);
+            return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 8)) % 2);
         }
     }
 
@@ -134,9 +135,9 @@ library TokenId {
     /// @param self The TokenId to extract `tokenType` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
     /// @return 1 if the token moved is token1 or 0 if the token moved is token0
-    function tokenType(uint256 self, uint256 legIndex) internal pure returns (uint256) {
+    function tokenType(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
-            return uint256((self >> (64 + legIndex * 48 + 9)) % 2);
+            return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 9)) % 2);
         }
     }
 
@@ -144,9 +145,9 @@ library TokenId {
     /// @param self The TokenId to extract `riskPartner` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
     /// @return The leg index of `legIndex`'s risk partner
-    function riskPartner(uint256 self, uint256 legIndex) internal pure returns (uint256) {
+    function riskPartner(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
-            return uint256((self >> (64 + legIndex * 48 + 10)) % 4);
+            return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 10)) % 4);
         }
     }
 
@@ -154,9 +155,9 @@ library TokenId {
     /// @param self The TokenId to extract `strike` at `legIndex` from
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return The strike price (the underlying price of the leg)
-    function strike(uint256 self, uint256 legIndex) internal pure returns (int24) {
+    function strike(TokenId self, uint256 legIndex) internal pure returns (int24) {
         unchecked {
-            return int24(int256(self >> (64 + legIndex * 48 + 12)));
+            return int24(int256(TokenId.unwrap(self) >> (64 + legIndex * 48 + 12)));
         }
     }
 
@@ -165,9 +166,9 @@ library TokenId {
     /// @param self The TokenId to extract `width` at `legIndex` from
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return The width of the position
-    function width(uint256 self, uint256 legIndex) internal pure returns (int24) {
+    function width(TokenId self, uint256 legIndex) internal pure returns (int24) {
         unchecked {
-            return int24(int256((self >> (64 + legIndex * 48 + 36)) % 4096));
+            return int24(int256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 36)) % 4096));
         } // "% 4096" = take last (2 ** 12 = 4096) 12 bits
     }
 
@@ -179,9 +180,9 @@ library TokenId {
     /// @param self The TokenId to add `_poolId` to
     /// @param _poolId The PoolID to add to `self`
     /// @return `self` with `_poolId` added to the PoolID slot
-    function addPoolId(uint256 self, uint64 _poolId) internal pure returns (uint256) {
+    function addPoolId(TokenId self, uint64 _poolId) internal pure returns (TokenId) {
         unchecked {
-            return self + uint256(_poolId);
+            return TokenId.wrap(TokenId.unwrap(self) + _poolId);
         }
     }
 
@@ -189,9 +190,9 @@ library TokenId {
     /// @param self The TokenId to add `_tickSpacing` to
     /// @param _tickSpacing The tickSpacing to add to `self`
     /// @return `self` with `_tickSpacing` added to the TickSpacing slot in the PoolID.
-    function addTickSpacing(uint256 self, int24 _tickSpacing) internal pure returns (uint256) {
+    function addTickSpacing(TokenId self, int24 _tickSpacing) internal pure returns (TokenId) {
         unchecked {
-            return self + (uint256(uint24(_tickSpacing)) << 48);
+            return TokenId.wrap(TokenId.unwrap(self) + (uint256(uint24(_tickSpacing)) << 48));
         }
     }
 
@@ -202,12 +203,13 @@ library TokenId {
     /// @dev Occupies the leftmost bit of the optionRatio 4 bits slot
     /// @return `self` with `_asset` added to the Asset slot
     function addAsset(
-        uint256 self,
+        TokenId self,
         uint256 _asset,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         unchecked {
-            return self + (uint256(_asset % 2) << (64 + legIndex * 48));
+            return
+                TokenId.wrap(TokenId.unwrap(self) + (uint256(_asset % 2) << (64 + legIndex * 48)));
         }
     }
 
@@ -217,12 +219,15 @@ library TokenId {
     /// @param legIndex The leg index of the position (in {0,1,2,3})
     /// @return `self` with `_optionRatio` added to the OptionRatio slot for `legIndex`
     function addOptionRatio(
-        uint256 self,
+        TokenId self,
         uint256 _optionRatio,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         unchecked {
-            return self + (uint256(_optionRatio % 128) << (64 + legIndex * 48 + 1));
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) + (uint256(_optionRatio % 128) << (64 + legIndex * 48 + 1))
+                );
         }
     }
 
@@ -233,12 +238,12 @@ library TokenId {
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return `self` with `_isLong` added to the IsLong slot for `legIndex`
     function addIsLong(
-        uint256 self,
+        TokenId self,
         uint256 _isLong,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         unchecked {
-            return self + ((_isLong % 2) << (64 + legIndex * 48 + 8));
+            return TokenId.wrap(TokenId.unwrap(self) + ((_isLong % 2) << (64 + legIndex * 48 + 8)));
         }
     }
 
@@ -248,12 +253,15 @@ library TokenId {
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return `self` with `_tokenType` added to the TokenType slot for `legIndex`
     function addTokenType(
-        uint256 self,
+        TokenId self,
         uint256 _tokenType,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         unchecked {
-            return self + (uint256(_tokenType % 2) << (64 + legIndex * 48 + 9));
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) + (uint256(_tokenType % 2) << (64 + legIndex * 48 + 9))
+                );
         }
     }
 
@@ -263,12 +271,15 @@ library TokenId {
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return `self` with `_riskPartner` added to the RiskPartner slot for `legIndex`
     function addRiskPartner(
-        uint256 self,
+        TokenId self,
         uint256 _riskPartner,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         unchecked {
-            return self + (uint256(_riskPartner % 4) << (64 + legIndex * 48 + 10));
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) + (uint256(_riskPartner % 4) << (64 + legIndex * 48 + 10))
+                );
         }
     }
 
@@ -278,12 +289,16 @@ library TokenId {
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return `self` with `_strike` added to the Strike slot for `legIndex`
     function addStrike(
-        uint256 self,
+        TokenId self,
         int24 _strike,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         unchecked {
-            return self + uint256((int256(_strike) & BITMASK_INT24) << (64 + legIndex * 48 + 12));
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) +
+                        uint256((int256(_strike) & BITMASK_INT24) << (64 + legIndex * 48 + 12))
+                );
         }
     }
 
@@ -293,13 +308,17 @@ library TokenId {
     /// @param legIndex the leg index of this position (in {0,1,2,3})
     /// @return `self` with `_width` added to the Width slot for `legIndex`
     function addWidth(
-        uint256 self,
+        TokenId self,
         int24 _width,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         // % 4096 -> take 12 bits from the incoming 24 bits (there's no uint12)
         unchecked {
-            return self + (uint256(uint24(_width) % 4096) << (64 + legIndex * 48 + 36));
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) +
+                        (uint256(uint24(_width) % 4096) << (64 + legIndex * 48 + 36))
+                );
         }
     }
 
@@ -315,7 +334,7 @@ library TokenId {
     /// @param _width The width of the leg
     /// @return tokenId The tokenId with the leg added
     function addLeg(
-        uint256 self,
+        TokenId self,
         uint256 legIndex,
         uint256 _optionRatio,
         uint256 _asset,
@@ -324,7 +343,7 @@ library TokenId {
         uint256 _riskPartner,
         int24 _strike,
         int24 _width
-    ) internal pure returns (uint256 tokenId) {
+    ) internal pure returns (TokenId tokenId) {
         tokenId = addOptionRatio(self, _optionRatio, legIndex);
         tokenId = addAsset(tokenId, _asset, legIndex);
         tokenId = addIsLong(tokenId, _isLong, legIndex);
@@ -344,12 +363,12 @@ library TokenId {
     /// @dev The way to do this is to simply flip it to a short instead.
     /// @param self The TokenId to flip isLong for on all active legs
     /// @return tokenId with all `isLong` bits flipped
-    function flipToBurnToken(uint256 self) internal pure returns (uint256) {
+    function flipToBurnToken(TokenId self) internal pure returns (TokenId) {
         unchecked {
             // NOTE: This is a hack to avoid blowing up the contract size.
             // We copy the logic from the countLegs function, using it here adds 5K to the contract size with IR for some reason
             // Strip all bits except for the option ratios
-            uint256 optionRatios = self & OPTION_RATIO_MASK;
+            uint256 optionRatios = TokenId.unwrap(self) & OPTION_RATIO_MASK;
 
             // The legs are filled in from least to most significant
             // Each comparison here is to the start of the next leg's option ratio
@@ -370,7 +389,11 @@ library TokenId {
             // In order to achieve this, we shift our long bit mask to the right by (4-# active legs)
             // i.e the whole mask is used to flip all legs with 4 legs, but only the first leg is flipped with 1 leg so we shift by 3 legs
             // We also clear the poolId area of the mask to ensure the bits that are shifted right into the area don't flip and cause issues
-            return self ^ ((LONG_MASK >> (48 * (4 - optionRatios))) & CLEAR_POOLID_MASK);
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) ^
+                        ((LONG_MASK >> (48 * (4 - optionRatios))) & CLEAR_POOLID_MASK)
+                );
         }
     }
 
@@ -378,7 +401,7 @@ library TokenId {
     /// @notice Count the number of legs (out of a maximum of 4) that are long positions.
     /// @param self The TokenId to count longs for
     /// @return The number of long positions in `self` (in the range {0,...,4}).
-    function countLongs(uint256 self) internal pure returns (uint256) {
+    function countLongs(TokenId self) internal pure returns (uint256) {
         unchecked {
             return self.isLong(0) + self.isLong(1) + self.isLong(2) + self.isLong(3);
         }
@@ -387,11 +410,11 @@ library TokenId {
     /// @notice Get the option position's nth leg's (index `legIndex`) tick ranges (lower, upper).
     /// @dev NOTE: Does not extract liquidity which is the third piece of information in a LiquidityChunk.
     /// @param self The TokenId to extract the tick range from
-    /// @param legIndex The leg index of the position (in {0,1,2,3}).
-    /// @return legLowerTick The lower tick of the leg/liquidity chunk.
-    /// @return legUpperTick The upper tick of the leg/liquidity chunk.
+    /// @param legIndex The leg index of the position (in {0,1,2,3})
+    /// @return legLowerTick The lower tick of the leg/liquidity chunk
+    /// @return legUpperTick The upper tick of the leg/liquidity chunk
     function asTicks(
-        uint256 self,
+        TokenId self,
         uint256 legIndex
     ) internal pure returns (int24 legLowerTick, int24 legUpperTick) {
         (legLowerTick, legUpperTick) = PanopticMath.getTicks(
@@ -406,9 +429,9 @@ library TokenId {
     /// @dev ASSUMPTION: There is at least 1 leg in this option position.
     /// @dev ASSUMPTION: For any leg, the option ratio is always > 0 (the leg always has a number of contracts associated with it).
     /// @return The number of active legs in `self` (in the range {0,...,4})
-    function countLegs(uint256 self) internal pure returns (uint256) {
+    function countLegs(TokenId self) internal pure returns (uint256) {
         // Strip all bits except for the option ratios
-        uint256 optionRatios = self & OPTION_RATIO_MASK;
+        uint256 optionRatios = TokenId.unwrap(self) & OPTION_RATIO_MASK;
 
         // The legs are filled in from least to most significant
         // Each comparison here is to the start of the next leg's option ratio section
@@ -437,16 +460,32 @@ library TokenId {
     //  - riskPartner is zeroed
     /// @param self The TokenId to clear the leg from
     /// @param i The leg index to reset, in {0,1,2,3}
-    /// @return `self` with the `i`th leg zeroed including optionRatio and asset.
-    function clearLeg(uint256 self, uint256 i) internal pure returns (uint256) {
+    /// @return `self` with the `i`th leg zeroed including optionRatio and asset
+    function clearLeg(TokenId self, uint256 i) internal pure returns (TokenId) {
         if (i == 0)
-            return self & 0xFFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFFFFFF;
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) &
+                        0xFFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFFFFFF
+                );
         if (i == 1)
-            return self & 0xFFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF;
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) &
+                        0xFFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF
+                );
         if (i == 2)
-            return self & 0xFFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF;
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) &
+                        0xFFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF
+                );
         if (i == 3)
-            return self & 0x000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF;
+            return
+                TokenId.wrap(
+                    TokenId.unwrap(self) &
+                        0x000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF
+                );
 
         return self;
     }
@@ -458,19 +497,20 @@ library TokenId {
     /// @notice Validate an option position and all its active legs; return the underlying AMM address.
     /// @dev Used to validate a position tokenId and its legs.
     /// @param self The TokenId to validate
-    function validate(uint256 self) internal pure {
+    function validate(TokenId self) internal pure {
         if (self.optionRatio(0) == 0) revert Errors.InvalidTokenIdParameter(1);
 
         // loop through the 4 (possible) legs in the tokenId `self`
         unchecked {
             // extract strike, width, and tokenType
-            uint256 chunkData = (self & CHUNK_MASK) >> 64;
+            uint256 chunkData = (TokenId.unwrap(self) & CHUNK_MASK) >> 64;
             for (uint256 i = 0; i < 4; ++i) {
                 if (self.optionRatio(i) == 0) {
                     // final leg in this position identified;
                     // make sure any leg above this are zero as well
                     // (we don't allow gaps eg having legs 1 and 4 active without 2 and 3 is not allowed)
-                    if ((self >> (64 + 48 * i)) != 0) revert Errors.InvalidTokenIdParameter(1);
+                    if ((TokenId.unwrap(self) >> (64 + 48 * i)) != 0)
+                        revert Errors.InvalidTokenIdParameter(1);
 
                     break; // we are done iterating over potential legs
                 }
@@ -534,8 +574,8 @@ library TokenId {
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @dev Reverts if the position is not exercisable.
     /// @param self The TokenId to validate for exercisability
-    /// @param currentTick The current tick corresponding to the current price in the Univ3 pool.
-    function validateIsExercisable(uint256 self, int24 currentTick) internal pure {
+    /// @param currentTick The current tick corresponding to the current price in the Univ3 pool
+    function validateIsExercisable(TokenId self, int24 currentTick) internal pure {
         unchecked {
             uint256 numLegs = self.countLegs();
             for (uint256 i = 0; i < numLegs; ++i) {

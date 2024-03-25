@@ -7,7 +7,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
@@ -37,31 +37,27 @@ import {TokenId} from "@types/TokenId.sol";
 //              of the AMM
 //
 library FeesCalc {
-    // enables packing of types within int128|int128 or uint128|uint128 containers.
-    using LeftRight for int256;
-    using LeftRight for uint256;
-    // represents a single liquidity chunk in Uniswap. Contains tickLower, tickUpper, and amount of liquidity
-    using LiquidityChunk for uint256;
-    // represents an option position of up to four legs as a sinlge ERC1155 tokenId
-    using TokenId for uint256;
-
     /// @notice Calculate NAV of user's option portfolio at a given tick.
     /// @param atTick The tick to calculate the value at
-    /// @param userBalance The position balances of the user
+    /// @param userBalance The position balance array for the user (left=tokenId, right=positionSize)
     /// @param positionIdList A list of all positions the user holds on that pool
     /// @return value0 The amount of token0 owned by portfolio
     /// @return value1 The amount of token1 owned by portfolio
     function getPortfolioValue(
         int24 atTick,
-        mapping(uint256 tokenId => uint256 balance) storage userBalance,
-        uint256[] calldata positionIdList
+        mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
+        TokenId[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
         for (uint256 k = 0; k < positionIdList.length; ) {
-            uint256 tokenId = positionIdList[k];
+            TokenId tokenId = positionIdList[k];
             uint128 positionSize = userBalance[tokenId].rightSlot();
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
-                uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, leg, positionSize);
+                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize
+                );
 
                 (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
                     atTick,
@@ -94,38 +90,32 @@ library FeesCalc {
     /// @dev Read from the uniswap pool and compute the accumulated fees from swapping activity.
     /// @param univ3pool The AMM/Uniswap pool where fees are collected from
     /// @param currentTick The current price tick
-    /// @param startingLiquidity The liquidity of the option position leg deployed in the AMM
-    /// @param liquidityChunk The chunk of liquidity of the option position leg deployed in the AMM
+    /// @param tickLower The lower tick of the chunk to calculate fees for
+    /// @param tickUpper The upper tick of the chunk to calculate fees for
+    /// @param liquidity The liquidity amount of the chunk to calculate fees for
     /// @return The fees collected from the AMM for each token (LeftRight-packed) with token0 in the right slot and token1 in the left slot
-    function calculateAMMSwapFeesLiquidityChunk(
+    function calculateAMMSwapFees(
         IUniswapV3Pool univ3pool,
         int24 currentTick,
-        uint128 startingLiquidity,
-        uint256 liquidityChunk
-    ) public view returns (int256) {
+        int24 tickLower,
+        int24 tickUpper,
+        uint128 liquidity
+    ) public view returns (LeftRightSigned) {
         // extract the amount of AMM fees collected within the liquidity chunk`
         // note: the fee variables are *per unit of liquidity*; so more "rate" variables
         (
             uint256 ammFeesPerLiqToken0X128,
             uint256 ammFeesPerLiqToken1X128
-        ) = _getAMMSwapFeesPerLiquidityCollected(
-                univ3pool,
-                currentTick,
-                liquidityChunk.tickLower(),
-                liquidityChunk.tickUpper()
-            );
+        ) = _getAMMSwapFeesPerLiquidityCollected(univ3pool, currentTick, tickLower, tickUpper);
 
         // Use the fee growth (rate) variable to compute the absolute fees accumulated within the chunk:
         //   ammFeesToken0X128 * liquidity / (2**128)
         // to store the (absolute) fees as int128:
         return
-            int256(0)
-                .toRightSlot(
-                    int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, startingLiquidity)))
-                )
-                .toLeftSlot(
-                    int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, startingLiquidity)))
-                );
+            LeftRightSigned
+                .wrap(0)
+                .toRightSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, liquidity))))
+                .toLeftSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, liquidity))));
     }
 
     /// @notice Calculates the fee growth that has occurred (per unit of liquidity) in the AMM/Uniswap for an

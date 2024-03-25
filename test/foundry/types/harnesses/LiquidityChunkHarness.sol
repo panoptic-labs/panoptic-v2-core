@@ -1,47 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 
 /// @title LeftRightHarness: A harness to expose the LeftRight library for code coverage analysis.
 /// @notice Replicates the interface of the LeftRight library, passing through any function calls
 /// @author Axicon Labs Limited
 contract LiquidityChunkHarness {
-    /**
-     * @dev PACKING RULES FOR A LIQUIDITYCHUNK:
-     * =================================================================================================
-     * @dev From the LSB to the MSB:
-     * (1) Liquidity        128bits  : The liquidity within the chunk (uint128).
-     * ( ) (Zero-bits)       80bits  : Zero-bits to match a total uint256.
-     * (2) tick Upper        24bits  : The upper tick of the chunk (int24).
-     * (3) tick Lower        24bits  : The lower tick of the chunk (int24).
-     * Total                256bits  : Total bits used by a chunk.
-     * ===============================================================================================
-     *
-     * The bit pattern is therefore:
-     *
-     *           (3)             (2)             ( )                (1)
-     *    <-- 24 bits -->  <-- 24 bits -->  <-- 80 bits -->   <-- 128 bits -->
-     *        tickLower       tickUpper         Zeros             Liquidity
-     *
-     *        <--- most significant bit        least significant bit --->
-     */
-
-    /*****************************************************************/
-    /*
-    /* CONSTANTS AND "USING FOR"
-    /*
-    /*****************************************************************/
-    using LiquidityChunk for uint256;
-
-    int256 public constant BITMASK_INT24 = 0xFFFFFF;
-
-    /*****************************************************************/
-    /*
-    /* WRITE TO A LIQUIDITYCHUNK
-    /*
-    /*****************************************************************/
-
     /**
      * @notice Create a new liquidity chunk given by its bounding ticks and its liquidity.
      * @param _tickLower the lower tick of this chunk
@@ -53,8 +18,8 @@ contract LiquidityChunkHarness {
         int24 _tickLower,
         int24 _tickUpper,
         uint128 amount
-    ) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.createChunk(_tickLower, _tickUpper, amount);
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk r = LiquidityChunkLibrary.createChunk(_tickLower, _tickUpper, amount);
         return r;
     }
 
@@ -64,8 +29,11 @@ contract LiquidityChunkHarness {
      * @param amount the amount of liquidity to add to this chunk.
      * @return the chunk with added liquidity
      */
-    function addLiquidity(uint256 self, uint128 amount) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.addLiquidity(self, amount);
+    function addLiquidity(
+        LiquidityChunk self,
+        uint128 amount
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk r = LiquidityChunkLibrary.addLiquidity(self, amount);
         return r;
     }
 
@@ -75,8 +43,11 @@ contract LiquidityChunkHarness {
      * @param _tickLower the lower tick to add.
      * @return the chunk with added lower tick
      */
-    function addTickLower(uint256 self, int24 _tickLower) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.addTickLower(self, _tickLower);
+    function addTickLower(
+        LiquidityChunk self,
+        int24 _tickLower
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk r = LiquidityChunkLibrary.addTickLower(self, _tickLower);
         return r;
     }
 
@@ -86,8 +57,11 @@ contract LiquidityChunkHarness {
      * @param _tickUpper the upper tick to add.
      * @return the chunk with added upper tick
      */
-    function addTickUpper(uint256 self, int24 _tickUpper) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.addTickUpper(self, _tickUpper);
+    function addTickUpper(
+        LiquidityChunk self,
+        int24 _tickUpper
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk r = LiquidityChunkLibrary.addTickUpper(self, _tickUpper);
         return r;
     }
 
@@ -95,8 +69,11 @@ contract LiquidityChunkHarness {
     /// @param self the LiquidityChunk
     /// @param _tickLower the lower tick to add
     /// @return the chunk with added lower tick
-    function updateTickLower(uint256 self, int24 _tickLower) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.updateTickLower(self, _tickLower);
+    function updateTickLower(
+        LiquidityChunk self,
+        int24 _tickLower
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk r = LiquidityChunkLibrary.updateTickLower(self, _tickLower);
         return r;
     }
 
@@ -104,8 +81,11 @@ contract LiquidityChunkHarness {
     /// @param self the LiquidityChunk
     /// @param _tickUpper the upper tick to add
     /// @return the chunk with added upper tick
-    function updateTickUpper(uint256 self, int24 _tickUpper) public pure returns (uint256) {
-        uint256 r = LiquidityChunk.updateTickUpper(self, _tickUpper);
+    function updateTickUpper(
+        LiquidityChunk self,
+        int24 _tickUpper
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk r = LiquidityChunkLibrary.updateTickUpper(self, _tickUpper);
         return r;
     }
 
@@ -117,31 +97,31 @@ contract LiquidityChunkHarness {
 
     /**
      * @notice Get the lower tick of a chunk.
-     * @param self the LiquidityChunk uint256.
+     * @param self the LiquidityChunk LiquidityChunk.
      * @return the lower tick of this chunk.
      */
-    function tickLower(uint256 self) public pure returns (int24) {
-        int24 r = LiquidityChunk.tickLower(self);
+    function tickLower(LiquidityChunk self) public pure returns (int24) {
+        int24 r = LiquidityChunkLibrary.tickLower(self);
         return r;
     }
 
     /**
      * @notice Get the upper tick of a chunk.
-     * @param self the LiquidityChunk uint256.
+     * @param self the LiquidityChunk LiquidityChunk.
      * @return the upper tick of this chunk.
      */
-    function tickUpper(uint256 self) public pure returns (int24) {
-        int24 r = LiquidityChunk.tickUpper(self);
+    function tickUpper(LiquidityChunk self) public pure returns (int24) {
+        int24 r = LiquidityChunkLibrary.tickUpper(self);
         return r;
     }
 
     /**
      * @notice Get the amount of liquidity/size of a chunk.
-     * @param self the LiquidityChunk uint256.
+     * @param self the LiquidityChunk LiquidityChunk.
      * @return the size of this chunk.
      */
-    function liquidity(uint256 self) public pure returns (uint128) {
-        uint128 r = LiquidityChunk.liquidity(self);
+    function liquidity(LiquidityChunk self) public pure returns (uint128) {
+        uint128 r = LiquidityChunkLibrary.liquidity(self);
         return r;
     }
 }

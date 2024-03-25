@@ -9,20 +9,15 @@ import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 // Custom types
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
 library PanopticMath {
-    // enables packing of types within int128|int128 or uint128|uint128 containers.
-    using LeftRight for int256;
-    using LeftRight for uint256;
-    // represents a single liquidity chunk in Uniswap. Contains tickLower, tickUpper, and amount of liquidity
-    using LiquidityChunk for uint256;
-    // represents an option position of up to four legs as a sinlge ERC1155 tokenId
-    using TokenId for uint256;
+    // Used for safecasting
+    using Math for uint256;
 
     /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
@@ -96,7 +91,7 @@ library PanopticMath {
     /// @return newHash The new positionHash with the updated hash
     function updatePositionsHash(
         uint256 existingHash,
-        uint256 tokenId,
+        TokenId tokenId,
         bool addFlag
     ) internal pure returns (uint256) {
         // add the XOR`ed hash of the single option position `tokenId` to the `existingHash`
@@ -290,12 +285,12 @@ library PanopticMath {
     /// @param tokenId The option position id
     /// @param legIndex The leg index of the option position, can be {0,1,2,3}
     /// @param positionSize The number of contracts held by this leg
-    /// @return A uint256 bit-packed (see `LiquidityChunk.sol`) with `tickLower`, `tickUpper`, and `liquidity`
+    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and `liquidity`
     function getLiquidityChunk(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 legIndex,
         uint128 positionSize
-    ) internal pure returns (uint256) {
+    ) internal pure returns (LiquidityChunk) {
         // get the tick range for this leg
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
@@ -326,22 +321,12 @@ library PanopticMath {
         //  the definition for getLiquidityForAmount0 or getLiquidityForAmount1 when relevant.
         //
         //
-        uint128 legLiquidity;
         uint256 amount = uint256(positionSize) * tokenId.optionRatio(legIndex);
         if (tokenId.asset(legIndex) == 0) {
-            legLiquidity = Math.getLiquidityForAmount0(
-                uint256(0).addTickLower(tickLower).addTickUpper(tickUpper),
-                amount
-            );
+            return Math.getLiquidityForAmount0(tickLower, tickUpper, amount);
         } else {
-            legLiquidity = Math.getLiquidityForAmount1(
-                uint256(0).addTickLower(tickLower).addTickUpper(tickUpper),
-                amount
-            );
+            return Math.getLiquidityForAmount1(tickLower, tickUpper, amount);
         }
-
-        // now pack this info into the bit pattern of the uint256 and return it
-        return LiquidityChunk.createChunk(tickLower, tickUpper, legLiquidity);
     }
 
     /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
@@ -403,13 +388,17 @@ library PanopticMath {
     /// @return longAmounts Left-right packed word where the right contains the total contract size and the left total notional
     /// @return shortAmounts Left-right packed word where the right contains the total contract size and the left total notional
     function computeExercisedAmounts(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize
-    ) internal pure returns (int256 longAmounts, int256 shortAmounts) {
+    ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             // Compute the amount of funds that have been removed from the Panoptic Pool
-            (int256 longs, int256 shorts) = _calculateIOAmounts(tokenId, positionSize, leg);
+            (LeftRightSigned longs, LeftRightSigned shorts) = _calculateIOAmounts(
+                tokenId,
+                positionSize,
+                leg
+            );
 
             longAmounts = longAmounts.add(longs);
             shortAmounts = shortAmounts.add(shorts);
@@ -428,8 +417,8 @@ library PanopticMath {
     /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
     /// @return The combined collateral requirement for a user in terms of tokenType
     function convertCollateralData(
-        uint256 tokenData0,
-        uint256 tokenData1,
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
         uint256 tokenType,
         uint160 sqrtPriceX96
     ) internal pure returns (uint256, uint256) {
@@ -454,8 +443,8 @@ library PanopticMath {
     /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
     /// @return The combined collateral requirement for a user in terms of tokenType
     function convertCollateralData(
-        uint256 tokenData0,
-        uint256 tokenData1,
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
         uint256 tokenType,
         int24 tick
     ) internal pure returns (uint256, uint256) {
@@ -583,40 +572,30 @@ library PanopticMath {
     /// @param legIndex The leg index of the option contract, can be {0,1,2,3}
     /// @return A LeftRight encoded variable containing the amount0 and the amount1 value controlled by this option position's leg
     function getAmountsMoved(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) internal pure returns (uint256) {
+    ) internal pure returns (LeftRightUnsigned) {
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-        uint256 liquidityAmounts = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
 
         uint128 amount0;
         uint128 amount1;
         if (tokenId.asset(legIndex) == 0) {
-            // amount of tokens moved in token1
             amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            // get liquidity for amount 1
-            uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0);
-            liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
-
-            // amount of tokens moved for token1
-            // safe cast to prevent overflows
-            amount1 = Math.getAmount1ForLiquidity(liquidityAmounts).toUint128();
+            amount1 = Math
+                .getAmount1ForLiquidity(Math.getLiquidityForAmount0(tickLower, tickUpper, amount0))
+                .toUint128();
         } else {
-            // amount of tokens moved in token1
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            // get liquidity for amount 1
-            uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);
-            liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
-
-            // amount of tokens moved for token1
-            // safe cast to prevent overflows
-            amount0 = Math.getAmount0ForLiquidity(liquidityAmounts).toUint128();
+            amount0 = Math
+                .getAmount0ForLiquidity(Math.getLiquidityForAmount1(tickLower, tickUpper, amount1))
+                .toUint128();
         }
-        return uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
+
+        return LeftRightUnsigned.wrap(0).toRightSlot(amount0).toLeftSlot(amount1);
     }
 
     /// @notice Compute the amount of funds that are moved to and removed from the Panoptic Pool.
@@ -626,12 +605,12 @@ library PanopticMath {
     /// @return longs A LeftRight-packed word containing the total amount of long positions
     /// @return shorts A LeftRight-packed word containing the amount of short positions
     function _calculateIOAmounts(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) internal pure returns (int256 longs, int256 shorts) {
+    ) internal pure returns (LeftRightSigned longs, LeftRightSigned shorts) {
         // compute amounts moved
-        uint256 amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
+        LeftRightUnsigned amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
 
         bool isShort = tokenId.isLong(legIndex) == 0;
 
@@ -665,18 +644,18 @@ library PanopticMath {
     /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
     /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user
     /// @param netExchanged The net exchanged value of the closed portfolio
-    /// @param premia {remium across all positions being liquidated present in tokenData
+    /// @param premia Premium across all positions being liquidated present in tokenData
     /// @return bonus0 Bonus amount for token0
     /// @return bonus1 Bonus amount for token1
     /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's balance and expended tokens
     function getLiquidationBonus(
-        uint256 tokenData0,
-        uint256 tokenData1,
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
         uint160 sqrtPriceX96Twap,
         uint160 sqrtPriceX96Final,
-        int256 netExchanged,
-        int256 premia
-    ) external pure returns (int256 bonus0, int256 bonus1, int256) {
+        LeftRightSigned netExchanged,
+        LeftRightSigned premia
+    ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
@@ -767,7 +746,9 @@ library PanopticMath {
             return (
                 bonus0,
                 bonus1,
-                int256(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(int128(balance1 - paid1))
+                LeftRightSigned.wrap(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(
+                    int128(balance1 - paid1)
+                )
             );
         }
     }
@@ -786,19 +767,19 @@ library PanopticMath {
     /// @return The delta in bonus1 for the liquidator post-haircut
     function haircutPremia(
         address liquidatee,
-        uint256[] memory positionIdList,
-        int256[4][] memory premiasByLeg,
-        int256 collateralRemaining,
+        TokenId[] memory positionIdList,
+        LeftRightSigned[4][] memory premiasByLeg,
+        LeftRightSigned collateralRemaining,
         CollateralTracker collateral0,
         CollateralTracker collateral1,
         uint160 sqrtPriceX96Final,
-        mapping(bytes32 chunkKey => uint256 settledTokens) storage settledTokens
+        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
     ) external returns (int256, int256) {
         unchecked {
             // get the amount of premium paid by the liquidatee
-            int256 longPremium;
+            LeftRightSigned longPremium;
             for (uint256 i = 0; i < positionIdList.length; ++i) {
-                uint256 tokenId = positionIdList[i];
+                TokenId tokenId = positionIdList[i];
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ++leg) {
                     if (tokenId.isLong(leg) == 1) {
@@ -877,25 +858,21 @@ library PanopticMath {
             }
 
             for (uint256 i = 0; i < positionIdList.length; i++) {
-                uint256 tokenId = positionIdList[i];
-                int256[4][] memory _premiasByLeg = premiasByLeg;
+                TokenId tokenId = positionIdList[i];
+                LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
                 for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
                     if (tokenId.isLong(leg) == 1) {
-                        mapping(bytes32 chunkKey => uint256 settledTokens)
+                        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens)
                             storage _settledTokens = settledTokens;
 
                         // calculate amounts to revoke from settled and subtract from haircut req
-                        int256 settled0 = int256(
-                            Math.unsafeDivRoundingUp(
-                                uint128(-_premiasByLeg[i][leg].rightSlot()) * uint256(haircut0),
-                                uint128(longPremium.rightSlot())
-                            )
+                        uint256 settled0 = Math.unsafeDivRoundingUp(
+                            uint128(-_premiasByLeg[i][leg].rightSlot()) * uint256(haircut0),
+                            uint128(longPremium.rightSlot())
                         );
-                        int256 settled1 = int256(
-                            Math.unsafeDivRoundingUp(
-                                uint128(-_premiasByLeg[i][leg].leftSlot()) * uint256(haircut1),
-                                uint128(longPremium.leftSlot())
-                            )
+                        uint256 settled1 = Math.unsafeDivRoundingUp(
+                            uint128(-_premiasByLeg[i][leg].leftSlot()) * uint256(haircut1),
+                            uint128(longPremium.leftSlot())
                         );
 
                         bytes32 chunkKey = keccak256(
@@ -908,12 +885,18 @@ library PanopticMath {
 
                         // The long premium is not commited to storage during the liquidation, so we add the entire adjusted amount
                         // for the haircut directly to the accumulator
-                        settled0 = Math.max(0, -_premiasByLeg[i][leg].rightSlot() - settled0);
-                        settled1 = Math.max(0, -_premiasByLeg[i][leg].leftSlot() - settled1);
+                        settled0 = Math.max(
+                            0,
+                            uint128(-_premiasByLeg[i][leg].rightSlot()) - settled0
+                        );
+                        settled1 = Math.max(
+                            0,
+                            uint128(-_premiasByLeg[i][leg].leftSlot()) - settled1
+                        );
 
-                        _settledTokens[chunkKey] = uint256(
-                            _settledTokens[chunkKey].add(
-                                int256(0).toRightSlot(int128(settled0)).toLeftSlot(int128(settled1))
+                        _settledTokens[chunkKey] = _settledTokens[chunkKey].add(
+                            LeftRightUnsigned.wrap(0).toRightSlot(uint128(settled0)).toLeftSlot(
+                                uint128(settled1)
                             )
                         );
                     }
@@ -933,11 +916,11 @@ library PanopticMath {
     /// @return The LeftRight-packed amount of token0/token1 to refund to the user.
     function getRefundAmounts(
         address refunder,
-        int256 refundValues,
+        LeftRightSigned refundValues,
         int24 atTick,
         CollateralTracker collateral0,
         CollateralTracker collateral1
-    ) external view returns (int256) {
+    ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
@@ -947,7 +930,8 @@ library PanopticMath {
 
             if (balanceShortage > 0) {
                 return
-                    int256(0)
+                    LeftRightSigned
+                        .wrap(0)
                         .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
                         .toLeftSlot(
                             int128(
@@ -964,7 +948,8 @@ library PanopticMath {
 
             if (balanceShortage > 0) {
                 return
-                    int256(0)
+                    LeftRightSigned
+                        .wrap(0)
                         .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
                         .toRightSlot(
                             int128(

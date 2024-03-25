@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {Math} from "@libraries/Math.sol";
+import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 
 /// @title MathHarness: A harness to expose the Math library for code coverage analysis.
 /// @notice Replicates the interface of the Math library, passing through any function calls
@@ -56,6 +57,16 @@ contract MathHarness {
 
     function toUint128Capped(uint256 toDowncast) public pure returns (uint128) {
         uint128 r = Math.toUint128Capped(toDowncast);
+        return r;
+    }
+
+    function toInt256(uint256 toCast) public pure returns (int256) {
+        int256 r = Math.toInt256(toCast);
+        return r;
+    }
+
+    function toInt128(int256 toCast) public pure returns (int128) {
+        int128 r = Math.toInt128(toCast);
         return r;
     }
 
@@ -114,28 +125,39 @@ contract MathHarness {
         return result;
     }
 
-    function getAmount0ForLiquidity(uint256 a) public pure returns (uint256) {
+    function getAmount0ForLiquidity(LiquidityChunk a) public pure returns (uint256) {
         uint256 result = Math.getAmount0ForLiquidity(a);
         return result;
     }
 
-    function getAmount1ForLiquidity(uint256 a) public pure returns (uint256) {
+    function getAmount1ForLiquidity(LiquidityChunk a) public pure returns (uint256) {
         uint256 result = Math.getAmount1ForLiquidity(a);
         return result;
     }
 
-    function getAmountsForLiquidity(int24 t, uint256 a) public pure returns (uint256, uint256) {
+    function getAmountsForLiquidity(
+        int24 t,
+        LiquidityChunk a
+    ) public pure returns (uint256, uint256) {
         (uint256 result0, uint256 result1) = Math.getAmountsForLiquidity(t, a);
         return (result0, result1);
     }
 
-    function getLiquidityForAmount0(uint256 c, uint256 a0) public pure returns (uint256) {
-        uint256 result = Math.getLiquidityForAmount0(c, a0);
+    function getLiquidityForAmount0(
+        int24 tl,
+        int24 tu,
+        uint256 a0
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk result = Math.getLiquidityForAmount0(tl, tu, a0);
         return result;
     }
 
-    function getLiquidityForAmount1(uint256 c, uint256 a1) public pure returns (uint256) {
-        uint256 result = Math.getLiquidityForAmount1(c, a1);
+    function getLiquidityForAmount1(
+        int24 tl,
+        int24 tu,
+        uint256 a1
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk result = Math.getLiquidityForAmount1(tl, tu, a1);
         return result;
     }
 }

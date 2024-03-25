@@ -5,14 +5,12 @@ pragma solidity ^0.8.0;
 import {Errors} from "@libraries/Errors.sol";
 import {Constants} from "@libraries/Constants.sol";
 // Custom types
-import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 
 /// @title Core math library.
 /// @author Axicon Labs Limited
 /// @notice Contains general math helpers and functions
 library Math {
-    using LiquidityChunk for uint256; // a leg within an option position `tokenId`
-
     /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
@@ -186,11 +184,11 @@ library Math {
                     LIQUIDITY AMOUNTS (STRIKE+WIDTH)
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Calculates the amount of token0 received for a given liquidityChunk.
+    /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
     /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
     /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper.
     /// @return The amount of token0
-    function getAmount0ForLiquidity(uint256 liquidityChunk) internal pure returns (uint256) {
+    function getAmount0ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
         unchecked {
@@ -203,10 +201,10 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token1 received for a given liquidityChunk.
+    /// @notice Calculates the amount of token1 received for a given LiquidityChunk.
     /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
     /// @return The amount of token1
-    function getAmount1ForLiquidity(uint256 liquidityChunk) internal pure returns (uint256) {
+    function getAmount1ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
 
@@ -215,14 +213,14 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token0 and token1 received for a given liquidityChunk at the provided currentTick.
+    /// @notice Calculates the amount of token0 and token1 received for a given LiquidityChunk at the provided currentTick.
     /// @param currentTick The current tick to be evaluated
     /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
     /// @return amount0 The amount of token0
     /// @return amount1 The amount of token1
     function getAmountsForLiquidity(
         int24 currentTick,
-        uint256 liquidityChunk
+        LiquidityChunk liquidityChunk
     ) internal pure returns (uint256 amount0, uint256 amount1) {
         if (currentTick <= liquidityChunk.tickLower()) {
             amount0 = getAmount0ForLiquidity(liquidityChunk);
@@ -234,38 +232,56 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of liquidity for a given amount of token0 and liquidityChunk.
+    /// @notice Returns a LiquidityChunk with `liquidity` corresponding to `amount0` at the provided ticks.
     /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
-    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
+    /// @param tickLower The lower tick of the chunk
+    /// @param tickUpper The upper tick of the chunk
     /// @param amount0 The amount of token0
-    /// @return The calculated amount of liquidity
+    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity
     function getLiquidityForAmount0(
-        uint256 liquidityChunk,
+        int24 tickLower,
+        int24 tickUpper,
         uint256 amount0
-    ) internal pure returns (uint128) {
-        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
-        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+    ) internal pure returns (LiquidityChunk) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
+        uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
 
         unchecked {
             return
-                toUint128(
-                    mulDiv(amount0, mulDiv96(highPriceX96, lowPriceX96), highPriceX96 - lowPriceX96)
+                LiquidityChunkLibrary.createChunk(
+                    tickLower,
+                    tickUpper,
+                    toUint128(
+                        mulDiv(
+                            amount0,
+                            mulDiv96(highPriceX96, lowPriceX96),
+                            highPriceX96 - lowPriceX96
+                        )
+                    )
                 );
         }
     }
 
-    /// @notice Calculates the amount of liquidity for a given amount of token0 and liquidityChunk.
-    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
+    /// @notice Returns a LiquidityChunk with `liquidity` corresponding to `amount1` at the provided ticks.
+    /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
+    /// @param tickLower The lower tick of the chunk
+    /// @param tickUpper The upper tick of the chunk
     /// @param amount1 The amount of token1
-    /// @return The calculated amount of liquidity
+    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity
     function getLiquidityForAmount1(
-        uint256 liquidityChunk,
+        int24 tickLower,
+        int24 tickUpper,
         uint256 amount1
-    ) internal pure returns (uint128) {
-        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
-        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+    ) internal pure returns (LiquidityChunk) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
+        uint160 highPriceX96 = getSqrtRatioAtTick(tickLower);
         unchecked {
-            return toUint128(mulDiv(amount1, Constants.FP96, highPriceX96 - lowPriceX96));
+            return
+                LiquidityChunkLibrary.createChunk(
+                    tickLower,
+                    tickUpper,
+                    toUint128(mulDiv(amount1, Constants.FP96, highPriceX96 - lowPriceX96))
+                );
         }
     }
 
@@ -293,6 +309,21 @@ library Math {
     /// @return downcastedInt The downcasted int (int128 now)
     function toInt128(uint128 toCast) internal pure returns (int128 downcastedInt) {
         if ((downcastedInt = int128(toCast)) < 0) revert Errors.CastingError();
+    }
+
+    /// @notice Cast an int256 to an int128, revert on overflow or underflow.
+    /// @param toCast the int256 to be downcasted to int128
+    /// @return downcastedInt the downcasted integer, now of type int128
+    function toInt128(int256 toCast) internal pure returns (int128 downcastedInt) {
+        if (!((downcastedInt = int128(toCast)) == toCast)) revert Errors.CastingError();
+    }
+
+    /// @notice Cast a uint256 to an int256, revert on overflow.
+    /// @param toCast The value to be downcasted to uint128
+    /// @return The incoming uint256 but now of type int256
+    function toInt256(uint256 toCast) internal pure returns (int256) {
+        if (toCast > uint256(type(int256).max)) revert Errors.CastingError();
+        return int256(toCast);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -14,7 +14,7 @@ import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
@@ -34,15 +34,18 @@ import {TokenId} from "@types/TokenId.sol";
 //
 /// @notice 2) get any gain in capital that results from buying an option that becomes in-the-money.
 contract CollateralTracker is ERC20Minimal, Multicall {
+    // Used for safecasting
+    using Math for uint256;
+
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emitted when assets are deposited into the Collateral Tracker.
     /// @param sender The address of the caller (and depositor)
-    /// @param owner the address of the recipient of the newly minted shares
-    /// @param assets the amount of assets deposited by 'sender' in exchange for 'shares'
-    /// @param shares the amount of shares minted to 'owner'
+    /// @param owner The address of the recipient of the newly minted shares
+    /// @param assets The amount of assets deposited by 'sender' in exchange for 'shares'
+    /// @param shares The amount of shares minted to 'owner'
     event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares);
 
     /// @notice Emitted when assets are withdrawn from the Collateral Tracker.
@@ -58,18 +61,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 assets,
         uint256 shares
     );
-
-    /*//////////////////////////////////////////////////////////////
-                                 TYPES
-    //////////////////////////////////////////////////////////////*/
-
-    // enables packing of types within int128|int128 or uint128|uint128 containers.
-    using LeftRight for int256;
-    using LeftRight for uint256;
-    // represents a single liquidity chunk in Uniswap. Contains tickLower, tickUpper, and amount of liquidity
-    using LiquidityChunk for uint256;
-    // represents an option position of up to four legs as a single ERC1155 tokenId
-    using TokenId for uint256;
 
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
@@ -659,16 +650,16 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
-        uint256 positionId,
+        TokenId positionId,
         uint128 positionBalance,
-        int256 longAmounts
-    ) external view returns (int256 exerciseFees) {
+        LeftRightSigned longAmounts
+    ) external view returns (LeftRightSigned exerciseFees) {
         // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
         // we don't need the leg information itself, really just "the number of half ranges" from the strike price:
         uint256 maxNumRangesFromStrike = 1; // technically "maxNum(Half)RangesFromStrike" but the name is long
 
         unchecked {
-            for (uint256 leg = 0; leg < TokenId.countLegs(positionId); ++leg) {
+            for (uint256 leg = 0; leg < positionId.countLegs(); ++leg) {
                 // short legs are not counted - exercise is intended to be based on long legs
                 if (positionId.isLong(leg) == 0) continue;
 
@@ -693,7 +684,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 uint256 oracleValue1;
 
                 {
-                    uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+                    LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                         positionId,
                         leg,
                         positionBalance
@@ -718,7 +709,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     (tokenType == 1 && currentValue0 < oracleValue0)
                 )
                     exerciseFees = exerciseFees.sub(
-                        int256(0)
+                        LeftRightSigned
+                            .wrap(0)
                             .toRightSlot(
                                 int128(uint128(oracleValue0)) - int128(uint128(currentValue0))
                             )
@@ -1151,7 +1143,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int24 currentTick,
         uint256[2][] memory positionBalanceArray,
         int128 premiumAllPositions
-    ) public view returns (uint256 tokenData) {
+    ) public view returns (LeftRightUnsigned tokenData) {
         tokenData = _getAccountMargin(user, currentTick, positionBalanceArray, premiumAllPositions);
     }
 
@@ -1169,7 +1161,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
         int128 premiumAllPositions
-    ) internal view returns (uint256 tokenData) {
+    ) internal view returns (LeftRightUnsigned tokenData) {
         uint256 tokenRequired;
 
         // if the account has active options, compute the required collateral to keep account in good health
@@ -1215,13 +1207,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 totalIterations = positionBalanceArray.length;
         for (uint256 i = 0; i < totalIterations; ) {
             // read the ith tokenId from the account
-            uint256 tokenId = positionBalanceArray[i][0];
+            TokenId tokenId = TokenId.wrap(positionBalanceArray[i][0]);
 
             // read the position size and the pool utilization at mint
-            uint128 positionSize = positionBalanceArray[i][1].rightSlot();
+            uint128 positionSize = LeftRightUnsigned.wrap(positionBalanceArray[i][1]).rightSlot();
 
             // read the pool utilization at mint
-            uint128 poolUtilization = positionBalanceArray[i][1].leftSlot();
+            uint128 poolUtilization = LeftRightUnsigned.wrap(positionBalanceArray[i][1]).leftSlot();
 
             // Get tokens required for the current tokenId (a single active position)
             uint256 _tokenRequired = _getRequiredCollateralAtTickSinglePosition(
@@ -1251,7 +1243,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param poolUtilization The utilization of the Panoptic pool (balance of buying and selling).
     /// @return tokenRequired total required tokens for all legs of the specified tokenId.
     function _getRequiredCollateralAtTickSinglePosition(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         int24 atTick,
         uint128 poolUtilization
@@ -1284,7 +1276,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
     /// @return required The required amount collateral needed for this leg 'index'.
     function _getRequiredCollateralSingleLeg(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 index,
         uint128 positionSize,
         int24 atTick,
@@ -1317,7 +1309,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param poolUtilization The pool utilization: ratio of how much funds are in the Panoptic pool versus the AMM pool.
     /// @return required The required amount collateral needed for this leg 'index'.
     function _getRequiredCollateralSingleLegNoPartner(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 index,
         uint128 positionSize,
         int24 atTick,
@@ -1327,9 +1319,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 tokenType = tokenId.tokenType(index);
 
         // compute the total amount of funds moved for that position
-        uint256 amountMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+
         // amount moved is right slot if tokenType=0, left slot otherwise
-        amountMoved = tokenType == 0 ? amountMoved.rightSlot() : amountMoved.leftSlot();
+        uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
         // match tokenType with the correct pool utilization
         int64 utilization = tokenType == 0
@@ -1339,7 +1332,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 isLong = tokenId.isLong(index);
 
         // start with base requirement, which is based on isLong value
-        required = _getRequiredCollateralAtUtilization(uint128(amountMoved), isLong, utilization);
+        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
 
         // if the position is long, required tokens does not depend on price
         unchecked {
@@ -1444,7 +1437,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param poolUtilization the pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
     /// @return required the required amount collateral needed for this leg 'index', accounting for what the leg's risk partner is.
     function _getRequiredCollateralSingleLegPartner(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 index,
         uint128 positionSize,
         int24 atTick,
@@ -1515,17 +1508,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param poolUtilization the pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
     /// @return spreadRequirement the required amount of collateral needed for the spread portion.
     function _computeSpread(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 index,
         uint256 partnerIndex,
         uint128 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         // compute the total amount of funds moved for the position's current leg
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
 
         // compute the total amount of funds moved for the position's partner leg
-        uint256 amountsMovedPartner = PanopticMath.getAmountsMoved(
+        LeftRightUnsigned amountsMovedPartner = PanopticMath.getAmountsMoved(
             tokenId,
             positionSize,
             partnerIndex
@@ -1605,7 +1598,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
     /// @return strangleRequired The required amount of collateral needed for the strangle leg.
     function _computeStrangle(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 index,
         uint128 positionSize,
         int24 atTick,

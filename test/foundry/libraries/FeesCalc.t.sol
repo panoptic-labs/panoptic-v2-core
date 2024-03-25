@@ -10,7 +10,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {FeesCalcHarness} from "./harnesses/FeesCalcHarness.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 // Uniswap
@@ -28,12 +28,6 @@ import {PositionUtils} from "../testUtils/PositionUtils.sol";
 contract FeesCalcTest is Test, PositionUtils {
     // harness
     FeesCalcHarness harness;
-
-    // libraries
-    using TokenId for uint256;
-    using LeftRight for int256;
-    using LeftRight for uint256;
-    using LiquidityChunk for uint256;
 
     // store a few different mainnet pairs - the pool used is part of the fuzz
     IUniswapV3Pool constant USDC_WETH_5 =
@@ -67,7 +61,7 @@ contract FeesCalcTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
         selectedPool = pools[bound(poolIdSeed, 0, 2)];
 
         {
@@ -88,10 +82,10 @@ contract FeesCalcTest is Test, PositionUtils {
         addBalance(tokenId, positionSize);
 
         // liquidity chunk
-        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             0,
-            uint128(harness.userBalance(tokenId))
+            harness.userBalance(tokenId).rightSlot()
         );
 
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
@@ -101,10 +95,11 @@ contract FeesCalcTest is Test, PositionUtils {
             liquidityChunk.liquidity()
         );
 
-        int256 positionAmounts = int256(0).toRightSlot(int128(int256(amount0))).toLeftSlot(
-            int128(int256(amount1))
-        );
-        int256 portfolioAmounts;
+        LeftRightSigned positionAmounts = LeftRightSigned
+            .wrap(0)
+            .toRightSlot(int128(int256(amount0)))
+            .toLeftSlot(int128(int256(amount1)));
+        LeftRightSigned portfolioAmounts;
         {
             // portfolio amounts
             unchecked {
@@ -126,7 +121,7 @@ contract FeesCalcTest is Test, PositionUtils {
             }
 
             /// actual values
-            uint256[] memory posIdList = new uint256[](1);
+            TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
             (int256 returnedValue0, int256 returnedValue1) = harness.getPortfolioValue(
                 currentTick,
@@ -151,7 +146,7 @@ contract FeesCalcTest is Test, PositionUtils {
         uint64 startingLiquidity
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
         selectedPool = pools[bound(poolIdSeed, 0, 2)];
 
         {
@@ -168,7 +163,7 @@ contract FeesCalcTest is Test, PositionUtils {
             );
         }
 
-        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, 0, positionSize);
 
         (uint256 ammFeesPerLiqToken0X128, uint256 ammFeesPerLiqToken1X128) = harness
             .getAMMSwapFeesPerLiquidityCollected(
@@ -178,19 +173,23 @@ contract FeesCalcTest is Test, PositionUtils {
                 liquidityChunk.tickUpper()
             );
 
-        int256 expectedFeesEachToken;
+        LeftRightSigned expectedFeesEachToken;
         expectedFeesEachToken = expectedFeesEachToken
             .toRightSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, startingLiquidity))))
             .toLeftSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, startingLiquidity))));
 
-        int256 returnedFeesEachToken = harness.calculateAMMSwapFeesLiquidityChunk(
+        LeftRightSigned returnedFeesEachToken = harness.calculateAMMSwapFees(
             selectedPool,
             currentTick,
-            startingLiquidity,
-            liquidityChunk
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper(),
+            startingLiquidity
         );
 
-        assertEq(expectedFeesEachToken, returnedFeesEachToken);
+        assertEq(
+            LeftRightSigned.unwrap(expectedFeesEachToken),
+            LeftRightSigned.unwrap(returnedFeesEachToken)
+        );
     }
 
     // returns token containing 'totalLegs' amount of legs
@@ -205,14 +204,14 @@ contract FeesCalcTest is Test, PositionUtils {
         uint256 tokenTypeSeed,
         int256 strikeSeed,
         int256 widthSeed
-    ) internal returns (uint256) {
+    ) internal returns (TokenId) {
         tickSpacing = selectedPool.tickSpacing();
         // add univ3pool to token
         uint64 poolId = uint64(
             ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
                 (uint64(uint24(tickSpacing)) << 48)
         );
-        uint256 tokenId = uint256(poolId);
+        TokenId tokenId = TokenId.wrap(uint256(poolId));
 
         for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
             // We don't want the same data for each leg
@@ -287,7 +286,7 @@ contract FeesCalcTest is Test, PositionUtils {
         return tokenId;
     }
 
-    function addBalance(uint256 tokenId, uint128 balance) public {
+    function addBalance(TokenId tokenId, uint128 balance) public {
         harness.addBalance(tokenId, balance);
     }
 }

@@ -18,7 +18,6 @@ import "../testUtils/PositionUtils.sol";
  * @author Axicon Labs Limited
  */
 contract TokenIdTest is Test, PositionUtils {
-    using TokenId for uint256;
     TokenIdHarness harness;
 
     // mask to clear all width bits (12 bits, offset of 36 bits)
@@ -60,7 +59,7 @@ contract TokenIdTest is Test, PositionUtils {
     }
 
     function test_Success_AddPoolId(address y) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         tokenId = harness.addPoolId(tokenId, uint64(uint160(y)));
 
@@ -68,7 +67,7 @@ contract TokenIdTest is Test, PositionUtils {
     }
 
     function test_Success_AddTickSpacing(int24 y) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         y = int24(bound(y, int24(0), int24(2 ** 16 - 1)));
         tokenId = harness.addTickSpacing(tokenId, y);
@@ -80,7 +79,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD WIDTH
     //////////////////////////////////////////////////////////////*/
     function test_Success_AddWidth(int24 y, int24 z, int24 u, int24 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         unchecked {
             if (y < 0) y = -y;
@@ -125,7 +124,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD OPTION RATIO
     //////////////////////////////////////////////////////////////*/
     function test_Success_AddOptionRatio(uint16 y, uint16 z, uint16 u, uint16 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // the optionRatio is 7 bits so mask it:
         uint16 MASK = 0x7F; // takes first 7 bits of the uint16
@@ -163,7 +162,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD NUMERAIRE
     //////////////////////////////////////////////////////////////*/
     function test_Success_AddAsset(uint16 y, uint16 z, uint16 u, uint16 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // the asset is 1 bit so mask it:
         uint16 MASK = 0x1; // takes first 1 bit of the uint16
@@ -201,7 +200,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD STRIKE
     //////////////////////////////////////////////////////////////*/
     function test_Success_AddStrike(int24 y, int24 z, int24 u, int24 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         tokenId = harness.addStrike(tokenId, y, 0);
         assertEq(harness.strike(tokenId, 0), y);
@@ -233,7 +232,7 @@ contract TokenIdTest is Test, PositionUtils {
     //////////////////////////////////////////////////////////////*/
 
     function test_Success_AddIsLong(uint16 y, uint16 z, uint16 u, uint16 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         uint256 numLongs; // also test the long counter
 
@@ -287,7 +286,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD RISK PARTNER
     //////////////////////////////////////////////////////////////*/
     function test_Success_AddRiskPartner(uint16 y, uint16 z, uint16 u, uint16 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // the riskPartner is 2 bits so mask it:
         uint16 MASK = 0x2; // takes first 2 bits of the uint16
@@ -325,7 +324,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD TOKEN TYPE
     //////////////////////////////////////////////////////////////*/
     function test_Success_AddTokenType(uint16 y, uint16 z, uint16 u, uint16 v) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // the tokenType is 1 bit so mask it:
         uint16 MASK = 0x1; // takes first 1 bit of the uint16
@@ -372,7 +371,7 @@ contract TokenIdTest is Test, PositionUtils {
         int24 strike,
         int24 width
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         /// do validations
         {
@@ -437,7 +436,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -456,13 +455,15 @@ contract TokenIdTest is Test, PositionUtils {
 
         // expected data
         uint256 optionRatios = harness.countLegs(tokenId);
-        uint256 expectedToken = tokenId ^
-            ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK());
+        TokenId expectedToken = TokenId.wrap(
+            TokenId.unwrap(tokenId) ^
+                ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK())
+        );
 
-        uint256 returnedToken = harness.flipToBurnToken(tokenId);
+        TokenId returnedToken = harness.flipToBurnToken(tokenId);
 
         // expected data should be equivalent to returned data
-        assertEq(expectedToken, returnedToken);
+        assertEq(TokenId.unwrap(expectedToken), TokenId.unwrap(returnedToken));
     }
 
     function test_Success_flipToBurnToken_threeLegs(
@@ -475,7 +476,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -494,14 +495,15 @@ contract TokenIdTest is Test, PositionUtils {
 
         // expected data
         uint256 optionRatios = harness.countLegs(tokenId);
-        uint256 expectedToken = tokenId ^
-            ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK());
+        TokenId expectedToken = TokenId.wrap(
+            TokenId.unwrap(tokenId) ^
+                ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK())
+        );
 
-        // returned data
-        uint256 returnedToken = harness.flipToBurnToken(tokenId);
+        TokenId returnedToken = harness.flipToBurnToken(tokenId);
 
         // expected data should be equivalent to returned data
-        assertEq(expectedToken, returnedToken);
+        assertEq(TokenId.unwrap(expectedToken), TokenId.unwrap(returnedToken));
     }
 
     function test_Success_flipToBurnToken_twoLegs(
@@ -514,7 +516,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -533,14 +535,15 @@ contract TokenIdTest is Test, PositionUtils {
 
         // expected data
         uint256 optionRatios = harness.countLegs(tokenId);
-        uint256 expectedToken = tokenId ^
-            ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK());
+        TokenId expectedToken = TokenId.wrap(
+            TokenId.unwrap(tokenId) ^
+                ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK())
+        );
 
-        // returned data
-        uint256 returnedToken = harness.flipToBurnToken(tokenId);
+        TokenId returnedToken = harness.flipToBurnToken(tokenId);
 
         // expected data should be equivalent to returned data
-        assertEq(expectedToken, returnedToken);
+        assertEq(TokenId.unwrap(expectedToken), TokenId.unwrap(returnedToken));
     }
 
     function test_Success_flipToBurnToken_OneLegs(
@@ -553,7 +556,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -572,29 +575,31 @@ contract TokenIdTest is Test, PositionUtils {
 
         // expected data
         uint256 optionRatios = harness.countLegs(tokenId);
-        uint256 expectedToken = tokenId ^
-            ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK());
+        TokenId expectedToken = TokenId.wrap(
+            TokenId.unwrap(tokenId) ^
+                ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK())
+        );
 
-        // returned data
-        uint256 returnedToken = harness.flipToBurnToken(tokenId);
+        TokenId returnedToken = harness.flipToBurnToken(tokenId);
 
         // expected data should be equivalent to returned data
-        assertEq(expectedToken, returnedToken);
+        assertEq(TokenId.unwrap(expectedToken), TokenId.unwrap(returnedToken));
     }
 
     function test_Success_flipToBurnToken_emptyLegs() public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // expected data
         uint256 optionRatios = harness.countLegs(tokenId);
-        uint256 expectedToken = tokenId ^
-            ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK());
+        TokenId expectedToken = TokenId.wrap(
+            TokenId.unwrap(tokenId) ^
+                ((harness.LONG_MASK() >> (48 * (4 - optionRatios))) & harness.CLEAR_POOLID_MASK())
+        );
 
-        // returned data
-        uint256 returnedToken = harness.flipToBurnToken(tokenId);
+        TokenId returnedToken = harness.flipToBurnToken(tokenId);
 
         // expected data should be equivalent to returned data
-        assertEq(expectedToken, returnedToken);
+        assertEq(TokenId.unwrap(expectedToken), TokenId.unwrap(returnedToken));
     }
 
     // countLongs
@@ -609,7 +614,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -663,7 +668,7 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume(strike - ((rangeDown) % tickSpacing) == 0);
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        TokenId tokenId = harness.addTickSpacing(TokenId.wrap(0), tickSpacing);
         tokenId = harness.addWidth(tokenId, width, 0);
         tokenId = harness.addStrike(tokenId, strike, 0);
 
@@ -696,7 +701,7 @@ contract TokenIdTest is Test, PositionUtils {
         vm.assume((strike + rangeDown) % tickSpacing != 0 || (strike - rangeUp) % tickSpacing != 0);
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        TokenId tokenId = harness.addTickSpacing(TokenId.wrap(0), tickSpacing);
         tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
@@ -731,7 +736,7 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        TokenId tokenId = harness.addTickSpacing(TokenId.wrap(0), tickSpacing);
         tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
@@ -766,7 +771,7 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // We now construct the tokenId with properly bounded fuzz values
-        uint256 tokenId = harness.addTickSpacing(0, tickSpacing);
+        TokenId tokenId = harness.addTickSpacing(TokenId.wrap(0), tickSpacing);
         tokenId = harness.addWidth(tokenId, width, 0); // width
         tokenId = harness.addStrike(tokenId, strike, 0); // strike
 
@@ -788,7 +793,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -821,7 +826,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -854,7 +859,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -887,7 +892,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -911,7 +916,7 @@ contract TokenIdTest is Test, PositionUtils {
     }
 
     function test_Success_countLegs_emptyLegs(int24 poolStatusSeed) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -937,7 +942,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -960,7 +965,7 @@ contract TokenIdTest is Test, PositionUtils {
 
     function test_Fail_validate_emptyLegIndexZero(uint256 poolId, int24 strikeSeed) public {
         vm.assume(poolId != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         setPoolStatus(strikeSeed);
 
@@ -983,7 +988,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1020,7 +1025,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1038,7 +1043,7 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // clear all width bits
-        tokenId = tokenId & CLEAR_WIDTH_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_WIDTH_MASK);
 
         /// will fail as tokenId's cannot have legs with width of zero
         vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 5));
@@ -1055,7 +1060,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1073,7 +1078,7 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         //clear all strike bits
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_STRIKE_MASK);
 
         // add invalid strike
         tokenId = harness.addStrike(tokenId, TickMath.MIN_TICK, 0);
@@ -1093,7 +1098,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1111,7 +1116,7 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         //clear all strike bits
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_STRIKE_MASK);
 
         // add invalid strike
         tokenId = harness.addStrike(tokenId, TickMath.MAX_TICK, 0);
@@ -1131,7 +1136,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1150,7 +1155,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
 
             // leg 1 will have risk partner as itself
             tokenId = harness.addRiskPartner(tokenId, 0, 0);
@@ -1173,7 +1178,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1193,7 +1198,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create defined risk position
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
 
             // leg 1 will have risk partner as leg 2
             tokenId = harness.addRiskPartner(tokenId, 1, 0);
@@ -1204,7 +1209,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             // clear all asset bits
-            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
 
             // leg 1 asset 0
             tokenId = harness.addAsset(tokenId, 0, 1);
@@ -1216,7 +1221,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create legs with differing option ratios
         {
             //clear all option ratio bits
-            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
 
             // leg 1 option pseudorandom option ratio
             tokenId = harness.addOptionRatio(tokenId, 10, 0); // hardcode for now
@@ -1228,7 +1233,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create legs with same option ratio
         {
             //clear all option ratio bits
-            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
 
             // leg 1 option pseudorandom option ratio
             tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
@@ -1239,7 +1244,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all is long bits
-            tokenId = tokenId & CLEAR_IS_LONG_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
             // leg 1 will be short
             tokenId = harness.addIsLong(tokenId, 0, 0);
@@ -1250,7 +1255,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_TOKEN_TYPE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_TOKEN_TYPE_MASK);
 
             // leg 1 will be asset 1
             tokenId = harness.addTokenType(tokenId, 1, 0);
@@ -1284,7 +1289,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1303,7 +1308,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
 
             // leg 1 will have risk partner as leg 2
             tokenId = harness.addRiskPartner(tokenId, 1, 0);
@@ -1314,7 +1319,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             // clear all asset bits
-            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
 
             // leg 1 asset 0
             tokenId = harness.addAsset(tokenId, 0, 1);
@@ -1326,7 +1331,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create legs with same option ratio
         {
             //clear all option ratio bits
-            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
 
             // leg 1 option pseudorandom option ratio
             tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
@@ -1337,7 +1342,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all is long bits
-            tokenId = tokenId & CLEAR_IS_LONG_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
             // leg 1 will be long
             tokenId = harness.addIsLong(tokenId, 1, 0);
@@ -1348,7 +1353,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_TOKEN_TYPE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_TOKEN_TYPE_MASK);
 
             // leg 1 will be asset 0
             tokenId = harness.addTokenType(tokenId, 0, 0);
@@ -1372,7 +1377,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1392,7 +1397,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create defined risk position
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
 
             // leg 1 will have risk partner as leg 2
             tokenId = harness.addRiskPartner(tokenId, 1, 0);
@@ -1403,7 +1408,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             // clear all asset bits
-            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
 
             // leg 1 asset 0
             tokenId = harness.addAsset(tokenId, 0, 1);
@@ -1415,7 +1420,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create legs with same option ratio
         {
             //clear all option ratio bits
-            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
 
             // leg 1 option pseudorandom option ratio
             tokenId = harness.addOptionRatio(tokenId, 1, 0); // hardcode for now
@@ -1426,7 +1431,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all is long bits
-            tokenId = tokenId & CLEAR_IS_LONG_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
             // leg 1 will be short
             tokenId = harness.addIsLong(tokenId, 0, 0);
@@ -1437,7 +1442,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_TOKEN_TYPE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_TOKEN_TYPE_MASK);
 
             // leg 1 will be asset 0
             tokenId = harness.addTokenType(tokenId, 0, 0);
@@ -1461,7 +1466,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1481,7 +1486,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create defined risk position
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
 
             // leg 1 will have risk partner as leg 2
             tokenId = harness.addRiskPartner(tokenId, 1, 0);
@@ -1492,7 +1497,7 @@ contract TokenIdTest is Test, PositionUtils {
 
         {
             // clear all asset bits
-            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
 
             // leg 1 asset 0
             tokenId = harness.addAsset(tokenId, 0, 1);
@@ -1516,7 +1521,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1536,7 +1541,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create defined risk position
         {
             //clear all risk partner bits
-            tokenId = tokenId & CLEAR_RISK_PARTNER_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_RISK_PARTNER_MASK);
 
             // leg 1 will have risk partner as leg 2
             tokenId = harness.addRiskPartner(tokenId, 1, 0);
@@ -1548,7 +1553,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create legs with the same asset
         {
             // clear all asset bits
-            tokenId = tokenId & CLEAR_NUMERAIRE_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_NUMERAIRE_MASK);
 
             // leg 1 asset 1
             tokenId = harness.addAsset(tokenId, 1, 0);
@@ -1560,7 +1565,7 @@ contract TokenIdTest is Test, PositionUtils {
         /// create legs with differing option ratios
         {
             //clear all option ratio bits
-            tokenId = tokenId & CLEAR_OPTION_RATIO_MASK;
+            tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_OPTION_RATIO_MASK);
 
             // leg 1 option pseudorandom option ratio
             tokenId = harness.addOptionRatio(tokenId, 10, 0); // hardcode for now
@@ -1588,7 +1593,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1606,9 +1611,9 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // clear strike
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_STRIKE_MASK);
         // clear isLong
-        tokenId = tokenId & CLEAR_IS_LONG_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
         for (uint256 i; i < 4; i++) {
             // get this legs width and range
@@ -1639,7 +1644,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1657,9 +1662,9 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // clear strike
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_STRIKE_MASK);
         // clear isLong
-        tokenId = tokenId & CLEAR_IS_LONG_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
         for (uint256 i; i < 4; i++) {
             // get this legs width and range
@@ -1691,7 +1696,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1709,7 +1714,7 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // clear isLong
-        tokenId = tokenId & CLEAR_IS_LONG_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
         harness.validateIsExercisable(tokenId, currentTick);
@@ -1725,7 +1730,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1743,9 +1748,9 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // clear strike
-        tokenId = tokenId & CLEAR_STRIKE_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_STRIKE_MASK);
         // clear isLong
-        tokenId = tokenId & CLEAR_IS_LONG_MASK;
+        tokenId = TokenId.wrap(TokenId.unwrap(tokenId) & CLEAR_IS_LONG_MASK);
 
         for (uint256 i; i < 4; i++) {
             // get this legs width and range
@@ -1786,7 +1791,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1819,7 +1824,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1852,7 +1857,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1885,7 +1890,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1918,7 +1923,7 @@ contract TokenIdTest is Test, PositionUtils {
         int256 widthSeed,
         int24 poolStatusSeed
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // fuzzes a valid currentTick
         setPoolStatus(poolStatusSeed);
@@ -1936,9 +1941,9 @@ contract TokenIdTest is Test, PositionUtils {
         );
 
         // clear leg 4 (non-existent)
-        uint256 returnedToken = harness.clearLeg(tokenId, 4);
+        TokenId returnedToken = harness.clearLeg(tokenId, 4);
 
-        assertEq(tokenId, returnedToken);
+        assertEq(TokenId.unwrap(tokenId), TokenId.unwrap(returnedToken));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1957,13 +1962,13 @@ contract TokenIdTest is Test, PositionUtils {
         uint256 tokenTypeSeed,
         int24 strikeSeed,
         int256 widthSeed
-    ) internal view returns (uint256) {
+    ) internal view returns (TokenId) {
         uint64 poolId = uint64(
             ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
                 (uint64(uint24(tickSpacing)) << 48)
         );
         // add poolId to token
-        uint256 tokenId = harness.addPoolId(0, poolId);
+        TokenId tokenId = harness.addPoolId(TokenId.wrap(0), poolId);
 
         for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
             // We don't want the same data for each leg

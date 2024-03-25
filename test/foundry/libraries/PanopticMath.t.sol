@@ -10,7 +10,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {PanopticMathHarness} from "./harnesses/PanopticMathHarness.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
 // Uniswap
@@ -24,20 +24,17 @@ import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {UniPoolObservationMock} from "../testUtils/PriceMocks.sol";
 
+import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
+
 /**
  * Test the PanopticMath functionality with Foundry and Fuzzing.
  *
  * @author Axicon Labs Limited
  */
 contract PanopticMathTest is Test, PositionUtils {
+    using Math for uint256;
     // harness
     PanopticMathHarness harness;
-
-    // libraries
-    using LeftRight for int256;
-    using LeftRight for uint256;
-    using TokenId for uint256;
-    using LiquidityChunk for uint256;
 
     // store a few different mainnet pairs - the pool used is part of the fuzz
     IUniswapV3Pool constant USDC_WETH_5 =
@@ -72,7 +69,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -107,7 +104,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
         }
 
@@ -124,14 +121,17 @@ contract PanopticMathTest is Test, PositionUtils {
             amount
         );
 
-        uint256 expectedLiquidityChunk = LiquidityChunk.createChunk(
+        LiquidityChunk expectedLiquidityChunk = LiquidityChunkLibrary.createChunk(
             tickLower,
             tickUpper,
             legLiquidity
         );
-        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
+        LiquidityChunk returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
-        assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
+        assertEq(
+            LiquidityChunk.unwrap(expectedLiquidityChunk),
+            LiquidityChunk.unwrap(returnedLiquidityChunk)
+        );
     }
 
     function test_Success_getLiquidityChunk_asset1(
@@ -143,7 +143,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -178,7 +178,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
         }
 
@@ -195,14 +195,17 @@ contract PanopticMathTest is Test, PositionUtils {
             amount
         );
 
-        uint256 expectedLiquidityChunk = LiquidityChunk.createChunk(
+        LiquidityChunk expectedLiquidityChunk = LiquidityChunkLibrary.createChunk(
             tickLower,
             tickUpper,
             legLiquidity
         );
-        uint256 returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
+        LiquidityChunk returnedLiquidityChunk = harness.getLiquidityChunk(tokenId, 0, positionSize);
 
-        assertEq(expectedLiquidityChunk, returnedLiquidityChunk);
+        assertEq(
+            LiquidityChunk.unwrap(expectedLiquidityChunk),
+            LiquidityChunk.unwrap(returnedLiquidityChunk)
+        );
     }
 
     function test_Success_getPoolId(address univ3pool, uint256 _tickSpacing) public {
@@ -360,7 +363,7 @@ contract PanopticMathTest is Test, PositionUtils {
         unchecked {
             uint48 pattern = uint48(poolId & 0x0000FFFFFFFFFFFF);
             pattern += 1;
-            uint64 _tickSpacing = uint24(uint256(poolId).tickSpacing());
+            uint64 _tickSpacing = uint24(TokenId.wrap(uint256(poolId)).tickSpacing());
             _tickSpacing <<= 48;
             assertEq(harness.incrementPoolPattern(poolId), _tickSpacing + pattern);
         }
@@ -376,7 +379,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -414,23 +417,18 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
-        (int256 expectedLongs, int256 expectedShorts) = harness.calculateIOAmounts(
-            tokenId,
-            positionSize,
-            0
-        );
+        (LeftRightSigned expectedLongs, LeftRightSigned expectedShorts) = harness
+            .calculateIOAmounts(tokenId, positionSize, 0);
 
-        (int256 returnedLongs, int256 returnedShorts) = harness.computeExercisedAmounts(
-            tokenId,
-            positionSize
-        );
+        (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
+            .computeExercisedAmounts(tokenId, positionSize);
 
-        assertEq(expectedLongs, returnedLongs);
-        assertEq(expectedShorts, returnedShorts);
+        assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
+        assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
     }
 
     function test_Success_numberOfLeadingHexZeros(address addr) public {
@@ -449,7 +447,7 @@ contract PanopticMathTest is Test, PositionUtils {
         int24 width,
         uint256 existingHash
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -485,7 +483,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
@@ -507,7 +505,7 @@ contract PanopticMathTest is Test, PositionUtils {
         int24 width,
         uint256 existingHash
     ) public {
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -543,7 +541,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, isLong, tokenType, 0, strike, width);
         }
 
@@ -675,8 +673,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(atTick);
 
         (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            uint256(0).toRightSlot(balance0).toLeftSlot(required0),
-            uint256(0).toRightSlot(balance1).toLeftSlot(required1),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
             0,
             sqrtPriceX96
         );
@@ -695,8 +693,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(atTick);
 
         (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            uint256(0).toRightSlot(balance0).toLeftSlot(required0),
-            uint256(0).toRightSlot(balance1).toLeftSlot(required1),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
             1,
             sqrtPriceX96
         );
@@ -716,8 +714,8 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            uint256(0).toRightSlot(balance0).toLeftSlot(required0),
-            uint256(0).toRightSlot(balance1).toLeftSlot(required1),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
             0,
             sqrtPriceX96
         );
@@ -737,8 +735,8 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            uint256(0).toRightSlot(balance0).toLeftSlot(required0),
-            uint256(0).toRightSlot(balance1).toLeftSlot(required1),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
+            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
             1,
             sqrtPriceX96
         );
@@ -1309,7 +1307,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -1344,7 +1342,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
         }
 
@@ -1356,18 +1354,30 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // get amount 1
         // construct liq object
-        uint256 liquidityAmounts = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
-        uint128 liq0 = Math.getLiquidityForAmount0(liquidityAmounts, amount0);
-        liquidityAmounts = liquidityAmounts.addLiquidity(liq0);
+        LiquidityChunk liquidityAmounts = Math.getLiquidityForAmount0(
+            tickLower,
+            tickUpper,
+            amount0
+        );
         // set amount 1
         uint256 intermediateAmount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
         vm.assume(intermediateAmount1 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
         uint128 amount1 = intermediateAmount1.toUint128();
 
-        uint256 expectedContractsNotional = uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
+        LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
+            .wrap(0)
+            .toRightSlot(amount0)
+            .toLeftSlot(amount1);
 
-        uint256 returnedContractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
-        assertEq(expectedContractsNotional, returnedContractsNotional);
+        LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0
+        );
+        assertEq(
+            LeftRightUnsigned.unwrap(expectedContractsNotional),
+            LeftRightUnsigned.unwrap(returnedContractsNotional)
+        );
     }
 
     function test_Success_getAmountsMoved_asset1(
@@ -1379,7 +1389,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -1418,7 +1428,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
         }
 
@@ -1430,18 +1440,30 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // get amount 0
         // construct liq object
-        uint256 liquidityAmounts = LiquidityChunk.createChunk(tickLower, tickUpper, 0);
-        uint128 liq1 = Math.getLiquidityForAmount1(liquidityAmounts, amount1);
-        liquidityAmounts = liquidityAmounts.addLiquidity(liq1);
+        LiquidityChunk liquidityAmounts = Math.getLiquidityForAmount1(
+            tickLower,
+            tickUpper,
+            amount1
+        );
         // set amount 1
         uint256 intermediateAmount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
         vm.assume(intermediateAmount0 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
         uint128 amount0 = intermediateAmount0.toUint128();
 
-        uint256 expectedContractsNotional = uint256(0).toRightSlot(amount0).toLeftSlot(amount1);
+        LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
+            .wrap(0)
+            .toRightSlot(amount0)
+            .toLeftSlot(amount1);
 
-        uint256 returnedContractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
-        assertEq(expectedContractsNotional, returnedContractsNotional);
+        LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
+            tokenId,
+            positionSize,
+            0
+        );
+        assertEq(
+            LeftRightUnsigned.unwrap(expectedContractsNotional),
+            LeftRightUnsigned.unwrap(returnedContractsNotional)
+        );
     }
 
     // // _calculateIOAmounts
@@ -1453,7 +1475,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -1487,22 +1509,21 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 0, 0, strike, width);
         }
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
-        int256 expectedShorts = int256(0).toRightSlot(Math.toInt128(contractsNotional.rightSlot()));
-        (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
-            tokenId,
-            positionSize,
-            0
+        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).toRightSlot(
+            Math.toInt128(contractsNotional.rightSlot())
         );
+        (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
+            .calculateIOAmounts(tokenId, positionSize, 0);
 
-        assertEq(expectedShorts, returnedShorts);
-        assertEq(0, returnedLongs);
+        assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
+        assertEq(0, LeftRightSigned.unwrap(returnedLongs));
     }
 
     function test_Success_calculateIOAmounts_longTokenType0(
@@ -1512,7 +1533,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -1546,7 +1567,7 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 0, 0, strike, width);
         }
 
@@ -1563,18 +1584,17 @@ contract PanopticMathTest is Test, PositionUtils {
             )
         );
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
-        int256 expectedLongs = int256(0).toRightSlot(Math.toInt128(contractsNotional.rightSlot()));
-        (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
-            tokenId,
-            positionSize,
-            0
+        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).toRightSlot(
+            Math.toInt128(contractsNotional.rightSlot())
         );
+        (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
+            .calculateIOAmounts(tokenId, positionSize, 0);
 
-        assertEq(0, returnedShorts);
-        assertEq(expectedLongs, returnedLongs);
+        assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
+        assertEq(0, LeftRightSigned.unwrap(returnedShorts));
     }
 
     function test_Success_calculateIOAmounts_shortTokenType1(
@@ -1585,7 +1605,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         positionSize = uint64(bound(positionSize, 1, type(uint64).max));
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -1616,22 +1636,21 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, 0, 1, 0, strike, width);
         }
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
 
-        int256 expectedShorts = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
-        (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
-            tokenId,
-            positionSize,
-            0
+        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).toLeftSlot(
+            Math.toInt128(contractsNotional.leftSlot())
         );
+        (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
+            .calculateIOAmounts(tokenId, positionSize, 0);
 
-        assertEq(expectedShorts, returnedShorts);
-        assertEq(0, returnedLongs);
+        assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
+        assertEq(0, LeftRightSigned.unwrap(returnedLongs));
     }
 
     function test_Success_calculateIOAmounts_longTokenType1(
@@ -1642,7 +1661,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint64 positionSize
     ) public {
         vm.assume(positionSize != 0);
-        uint256 tokenId;
+        TokenId tokenId;
 
         // contruct a tokenId
         {
@@ -1676,23 +1695,22 @@ contract PanopticMathTest is Test, PositionUtils {
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
             strike = int24(strike * tickSpacing + strikeOffset);
 
-            tokenId = uint256(uint24(tickSpacing)) << 48;
+            tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, asset, 1, 1, 0, strike, width);
         }
 
-        uint256 contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
+        LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
-        int256 expectedLongs = int256(0).toLeftSlot(Math.toInt128(contractsNotional.leftSlot()));
-
-        (int256 returnedLongs, int256 returnedShorts) = harness.calculateIOAmounts(
-            tokenId,
-            positionSize,
-            0
+        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).toLeftSlot(
+            Math.toInt128(contractsNotional.leftSlot())
         );
 
-        assertEq(0, returnedShorts);
-        assertEq(expectedLongs, returnedLongs);
+        (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
+            .calculateIOAmounts(tokenId, positionSize, 0);
+
+        assertEq(LeftRightSigned.unwrap(expectedLongs), LeftRightSigned.unwrap(returnedLongs));
+        assertEq(0, LeftRightSigned.unwrap(returnedShorts));
     }
 
     // mul div as ticks
