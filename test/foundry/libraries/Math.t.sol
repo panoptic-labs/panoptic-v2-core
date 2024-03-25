@@ -240,7 +240,7 @@ contract MathTest is Test {
             a
         );
 
-        uint256 returnedResult = harness.getAmount0ForLiquidity(
+        uint256 returnedResult = harness.getAmount1ForLiquidity(
             LiquidityChunkLibrary.createChunk(int24(-14), int24(10), a)
         );
 

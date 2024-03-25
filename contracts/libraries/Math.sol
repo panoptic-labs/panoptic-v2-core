@@ -274,7 +274,8 @@ library Math {
         uint256 amount1
     ) internal pure returns (LiquidityChunk) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = getSqrtRatioAtTick(tickLower);
+        uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
+
         unchecked {
             return
                 LiquidityChunkLibrary.createChunk(
