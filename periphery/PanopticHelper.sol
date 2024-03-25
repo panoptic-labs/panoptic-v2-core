@@ -1,21 +1,19 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.18;
+pragma solidity ^0.8.18;
 
 // Interfaces
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types
-import {TokenId} from "@types/TokenId.sol";
+import {LeftRightUnsigned} from "@types/LeftRight.sol";
+import {TokenId, TokenIdLibrary} from "@types/TokenId.sol";
 
 /// @title Utility contract for token ID construction and advanced queries.
 /// @author Axicon Labs Limited
 contract PanopticHelper {
-    using TokenId for uint256;
-
     SemiFungiblePositionManager internal immutable SFPM;
 
     struct Leg {
@@ -50,20 +48,20 @@ contract PanopticHelper {
         address account,
         int24 atTick,
         uint256 tokenType,
-        uint256[] calldata positionIdList
+        TokenId[] calldata positionIdList
     ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
         (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool
             .calculateAccumulatedFeesBatch(account, false, positionIdList);
 
         // Query the current and required collateral amounts for the two tokens
-        uint256 tokenData0 = pool.collateralToken0().getAccountMarginDetails(
+        LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
             premium0
         );
-        uint256 tokenData1 = pool.collateralToken1().getAccountMarginDetails(
+        LeftRightUnsigned tokenData1 = pool.collateralToken1().getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
@@ -85,7 +83,7 @@ contract PanopticHelper {
         address pool,
         address account,
         int24 tick,
-        uint256[] calldata positionIdList
+        TokenId[] calldata positionIdList
     ) internal view returns (int256) {
         (uint256 balanceCross, uint256 requiredCross) = checkCollateral(
             PanopticPool(pool),
@@ -101,11 +99,11 @@ contract PanopticHelper {
     /// @notice Unwraps the contents of the tokenId into its legs.
     /// @param tokenId the input tokenId
     /// @return legs an array of leg structs
-    function unwrapTokenId(uint256 tokenId) public view returns (Leg[] memory) {
+    function unwrapTokenId(TokenId tokenId) public view returns (Leg[] memory) {
         uint256 numLegs = tokenId.countLegs();
         Leg[] memory legs = new Leg[](numLegs);
 
-        uint64 poolId = tokenId.validate();
+        uint64 poolId = tokenId.poolId();
         address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.poolId()));
         for (uint256 i = 0; i < numLegs; ++i) {
             legs[i].poolId = poolId;
@@ -130,7 +128,7 @@ contract PanopticHelper {
     function findLiquidationPriceDown(
         address pool,
         address account,
-        uint256[] calldata positionIdList
+        TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
         (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
@@ -178,7 +176,7 @@ contract PanopticHelper {
     function findLiquidationPriceUp(
         address pool,
         address account,
-        uint256[] calldata positionIdList
+        TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
         (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
@@ -228,7 +226,7 @@ contract PanopticHelper {
     /// @param width width of the leg
     /// @return tokenId with the leg initialized
     function addCallLeg(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 legIndex,
         uint256 optionRatio,
         uint256 asset,
@@ -236,9 +234,9 @@ contract PanopticHelper {
         uint256 riskPartner,
         int24 strike,
         int24 width
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         return
-            TokenId.addLeg(
+            TokenIdLibrary.addLeg(
                 tokenId,
                 legIndex,
                 optionRatio,
@@ -262,7 +260,7 @@ contract PanopticHelper {
     /// @param width width of the leg
     /// @return tokenId with the leg initialized
     function addPutLeg(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 legIndex,
         uint256 optionRatio,
         uint256 asset,
@@ -270,9 +268,9 @@ contract PanopticHelper {
         uint256 riskPartner,
         int24 strike,
         int24 width
-    ) internal pure returns (uint256) {
+    ) internal pure returns (TokenId) {
         return
-            TokenId.addLeg(
+            TokenIdLibrary.addLeg(
                 tokenId,
                 legIndex,
                 optionRatio,
@@ -305,7 +303,7 @@ contract PanopticHelper {
         uint256 isLong,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -356,7 +354,7 @@ contract PanopticHelper {
         uint256 isLong,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -389,7 +387,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -422,7 +420,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -457,7 +455,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -510,7 +508,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -561,7 +559,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // calendar spread is a diagonal spread where the legs have identical strike prices
         // so we can create one using the diagonal spread function
         tokenId = createCallDiagonalSpread(
@@ -594,7 +592,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 optionRatio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // calendar spread is a diagonal spread where the legs have identical strike prices
         // so we can create one using the diagonal spread function
         tokenId = createPutDiagonalSpread(
@@ -625,7 +623,7 @@ contract PanopticHelper {
         int24 putStrike,
         int24 wingWidth,
         uint256 asset
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // an iron condor is composed of
         // 1. a call spread
         // 2. a put spread
@@ -643,14 +641,19 @@ contract PanopticHelper {
         );
 
         // put spread
-        tokenId += createPutSpread(
-            address(0),
-            width,
-            putStrike - wingWidth,
-            putStrike,
-            asset,
-            1,
-            2
+        tokenId = TokenId.wrap(
+            TokenId.unwrap(tokenId) +
+                TokenId.unwrap(
+                    createPutSpread(
+                        address(0),
+                        width,
+                        putStrike - wingWidth,
+                        putStrike,
+                        asset,
+                        1,
+                        2
+                    )
+                )
         );
     }
 
@@ -670,7 +673,7 @@ contract PanopticHelper {
         int24 shortCallStrike,
         int24 shortPutStrike,
         uint256 asset
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // a jade lizard is composed of
         // 1. a short strangle
         // 2. a long call
@@ -696,7 +699,7 @@ contract PanopticHelper {
         int24 longCallStrike,
         int24 straddleStrike,
         uint256 asset
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // a big lizard is composed of
         // 1. a short straddle
         // 2. a long call
@@ -724,7 +727,7 @@ contract PanopticHelper {
         int24 shortCallStrike,
         int24 shortPutStrike,
         uint256 asset
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // a super bull is composed of
         // 1. a long call spread
         // 2. a short put
@@ -752,7 +755,7 @@ contract PanopticHelper {
         int24 shortPutStrike,
         int24 shortCallStrike,
         uint256 asset
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // a super bear is composed of
         // 1. a long put spread
         // 2. a short call
@@ -778,7 +781,7 @@ contract PanopticHelper {
         int24 strike,
         int24 wingWidth,
         uint256 asset
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // an iron butterfly is composed of
         // 1. a long call spread
         // 2. a short put spread
@@ -787,7 +790,12 @@ contract PanopticHelper {
         tokenId = createCallSpread(univ3pool, width, strike, strike + wingWidth, asset, 1, 0);
 
         // short put spread
-        tokenId += createPutSpread(address(0), width, strike, strike - wingWidth, asset, 1, 2);
+        tokenId = TokenId.wrap(
+            TokenId.unwrap(tokenId) +
+                TokenId.unwrap(
+                    createPutSpread(address(0), width, strike, strike - wingWidth, asset, 1, 2)
+                )
+        );
     }
 
     /// @notice creates a ratio spread w/ long call and multiple short calls.
@@ -809,7 +817,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 ratio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -842,7 +850,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 ratio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -875,7 +883,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 ratio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -908,7 +916,7 @@ contract PanopticHelper {
         uint256 asset,
         uint256 ratio,
         uint256 start
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // Pool
         tokenId = tokenId.addPoolId(SFPM.getPoolId(univ3pool));
 
@@ -939,7 +947,7 @@ contract PanopticHelper {
         int24 shortStrike,
         uint256 asset,
         uint256 ratio
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // a ZEEHBS(Zero extrinsic hedged back spread) is composed of
         // 1. a call ZEBRA spread
         // 2. a put ZEBRA spread
@@ -948,14 +956,19 @@ contract PanopticHelper {
         tokenId = createCallZEBRASpread(univ3pool, width, longStrike, shortStrike, asset, ratio, 0);
 
         // put ZEBRA
-        tokenId += createPutZEBRASpread(
-            address(0),
-            width,
-            longStrike,
-            shortStrike,
-            asset,
-            ratio,
-            2
+        tokenId = TokenId.wrap(
+            TokenId.unwrap(tokenId) +
+                TokenId.unwrap(
+                    createPutZEBRASpread(
+                        address(0),
+                        width,
+                        longStrike,
+                        shortStrike,
+                        asset,
+                        ratio,
+                        2
+                    )
+                )
         );
     }
 
@@ -975,7 +988,7 @@ contract PanopticHelper {
         int24 shortStrike,
         uint256 asset,
         uint256 ratio
-    ) public view returns (uint256 tokenId) {
+    ) public view returns (TokenId tokenId) {
         // a BATS(double ratio spread) is composed of
         // 1. a call ratio spread
         // 2. a put ratio spread
@@ -984,14 +997,19 @@ contract PanopticHelper {
         tokenId = createCallRatioSpread(univ3pool, width, longStrike, shortStrike, asset, ratio, 0);
 
         // put ratio spread
-        tokenId += createPutRatioSpread(
-            address(0),
-            width,
-            longStrike,
-            shortStrike,
-            asset,
-            ratio,
-            2
+        tokenId = TokenId.wrap(
+            TokenId.unwrap(tokenId) +
+                TokenId.unwrap(
+                    createPutRatioSpread(
+                        address(0),
+                        width,
+                        longStrike,
+                        shortStrike,
+                        asset,
+                        ratio,
+                        2
+                    )
+                )
         );
     }
 }

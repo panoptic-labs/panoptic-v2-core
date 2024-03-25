@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {MathHarness} from "./harnesses/MathHarness.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
@@ -87,6 +87,27 @@ contract MathTest is Test {
         vm.assume(toCast > uint128(type(int128).max));
         vm.expectRevert(Errors.CastingError.selector);
         harness.toInt128(toCast);
+    }
+
+    // CASTING
+    function test_Success_ToInt256(uint256 x) public {
+        if (x > uint256(type(int256).max)) {
+            vm.expectRevert(Errors.CastingError.selector);
+            harness.toInt256(x);
+        } else {
+            int256 y = harness.toInt256(x);
+            assertEq(y, int256(x));
+        }
+    }
+
+    function test_Success_ToInt128(int256 x) public {
+        if (x > type(int128).max || x < type(int128).min) {
+            vm.expectRevert(Errors.CastingError.selector);
+            harness.toInt128(x);
+        } else {
+            int128 y = harness.toInt128(x);
+            assertEq(int128(x), y);
+        }
     }
 
     function test_Success_sort(int256[] memory data) public {
@@ -205,11 +226,9 @@ contract MathTest is Test {
             a
         );
 
-        uint256 chunk = LiquidityChunk.addLiquidity(uint256(0), a);
-        chunk = LiquidityChunk.addTickLower(chunk, int24(-14));
-        chunk = LiquidityChunk.addTickUpper(chunk, int24(10));
-
-        uint256 returnedResult = harness.getAmount0ForLiquidity(chunk);
+        uint256 returnedResult = harness.getAmount0ForLiquidity(
+            LiquidityChunkLibrary.createChunk(int24(-14), int24(10), a)
+        );
 
         assertEq(uniV3Result, returnedResult);
     }
@@ -221,11 +240,9 @@ contract MathTest is Test {
             a
         );
 
-        uint256 chunk = LiquidityChunk.addLiquidity(uint256(0), a);
-        chunk = LiquidityChunk.addTickLower(chunk, int24(-14));
-        chunk = LiquidityChunk.addTickUpper(chunk, int24(10));
-
-        uint256 returnedResult = harness.getAmount1ForLiquidity(chunk);
+        uint256 returnedResult = harness.getAmount1ForLiquidity(
+            LiquidityChunkLibrary.createChunk(int24(-14), int24(10), a)
+        );
 
         assertEq(uniV3Result, returnedResult);
     }
@@ -238,13 +255,9 @@ contract MathTest is Test {
             a
         );
 
-        uint256 chunk = LiquidityChunk.addLiquidity(uint256(0), a);
-        chunk = LiquidityChunk.addTickLower(chunk, int24(-14));
-        chunk = LiquidityChunk.addTickUpper(chunk, int24(10));
-
         (uint256 returnedResult0, uint256 returnedResult1) = harness.getAmountsForLiquidity(
             int24(2),
-            chunk
+            LiquidityChunkLibrary.createChunk(int24(-14), int24(10), a)
         );
 
         assertEq(uniV3Result0, returnedResult0);
@@ -258,11 +271,9 @@ contract MathTest is Test {
             a
         );
 
-        uint256 chunk = LiquidityChunk.addLiquidity(uint256(0), 0);
-        chunk = LiquidityChunk.addTickLower(chunk, int24(-14));
-        chunk = LiquidityChunk.addTickUpper(chunk, int24(10));
-
-        uint256 returnedResult = harness.getLiquidityForAmount0(chunk, a);
+        uint256 returnedResult = harness
+            .getLiquidityForAmount0(int24(-14), int24(10), a)
+            .liquidity();
 
         assertEq(uniV3Result, returnedResult);
     }
@@ -274,11 +285,9 @@ contract MathTest is Test {
             a
         );
 
-        uint256 chunk = LiquidityChunk.addLiquidity(uint256(0), 0);
-        chunk = LiquidityChunk.addTickLower(chunk, int24(-14));
-        chunk = LiquidityChunk.addTickUpper(chunk, int24(10));
-
-        uint256 returnedResult = harness.getLiquidityForAmount1(chunk, a);
+        uint256 returnedResult = harness
+            .getLiquidityForAmount1(int24(-14), int24(10), a)
+            .liquidity();
 
         assertEq(uniV3Result, returnedResult);
     }
