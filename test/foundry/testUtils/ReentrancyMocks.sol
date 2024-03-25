@@ -6,8 +6,6 @@ import {TokenId} from "@types/TokenId.sol";
 import "../core/SemiFungiblePositionManager.t.sol";
 
 contract ReenterBurn {
-    using TokenId for uint256;
-
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
 
@@ -58,7 +56,7 @@ contract ReenterBurn {
         activated = true;
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).burnTokenizedPosition(
-                uint256(0).addPoolId(PanopticMath.getPoolId(address(this))),
+                TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this))),
                 0,
                 0,
                 0
@@ -67,8 +65,6 @@ contract ReenterBurn {
 }
 
 contract ReenterMint {
-    using TokenId for uint256;
-
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
 
@@ -120,7 +116,7 @@ contract ReenterMint {
 
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
-                uint256(0).addPoolId(PanopticMath.getPoolId(address(this))),
+                TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this))),
                 0,
                 0,
                 0
@@ -129,8 +125,6 @@ contract ReenterMint {
 }
 
 contract ReenterTransferSingle {
-    using TokenId for uint256;
-
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
 
@@ -184,7 +178,7 @@ contract ReenterTransferSingle {
             SemiFungiblePositionManagerHarness(msg.sender).safeTransferFrom(
                 address(0),
                 address(0),
-                uint256(0).addPoolId(PanopticMath.getPoolId(address(this))),
+                TokenId.unwrap(TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this)))),
                 0,
                 ""
             );
@@ -192,8 +186,6 @@ contract ReenterTransferSingle {
 }
 
 contract ReenterTransferBatch {
-    using TokenId for uint256;
-
     // ensure storage conflicts don't occur with etched contract
     uint256[65535] private __gap;
 
@@ -244,7 +236,7 @@ contract ReenterTransferBatch {
         activated = true;
 
         uint256[] memory ids = new uint256[](1);
-        ids[0] = uint256(0).addPoolId(PanopticMath.getPoolId(address(this)));
+        ids[0] = TokenId.unwrap(TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(this))));
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).safeBatchTransferFrom(
                 address(0),
@@ -285,7 +277,12 @@ contract Reenter1155Initialize {
         if (reenter)
             SemiFungiblePositionManagerHarness(msg.sender).initializeAMMPool(token0, token1, fee);
         if (reenter)
-            SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(poolId, 0, 0, 0);
+            SemiFungiblePositionManagerHarness(msg.sender).mintTokenizedPosition(
+                TokenId.wrap(poolId),
+                0,
+                0,
+                0
+            );
         return this.onERC1155Received.selector;
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity =0.8.18;
+pragma solidity ^0.8.18;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -20,8 +20,6 @@ import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
-// Custom types
-import {TokenId} from "@types/TokenId.sol";
 
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
@@ -63,8 +61,6 @@ contract PanopticFactory is ReentrancyGuard, ERC1155, Multicall {
 
     /// @dev Using clones for deterministic create2 contract deployment
     using Clones for address;
-    /// @dev needed to construct genesisId
-    using TokenId for uint256; // an option position
 
     /*//////////////////////////////////////////////////////////////
                          CONSTANTS & IMMUTABLE

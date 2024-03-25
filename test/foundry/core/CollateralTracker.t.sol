@@ -13,7 +13,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/PanopticMath.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {LeftRight} from "@types/LeftRight.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -36,34 +36,32 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
-    using LeftRight for int256;
-
     constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000) {}
 
     // view deployer (panoptic pool)
-    function panopticPool() external returns (PanopticPool) {
+    function panopticPool() external view returns (PanopticPool) {
         return s_panopticPool;
     }
 
     // whether the token has been initialized already or not
-    function initalized() external returns (bool) {
+    function initalized() external view returns (bool) {
         return s_initialized;
     }
 
     // whether the current instance is token 0
-    function underlyingIsToken0() external returns (bool) {
+    function underlyingIsToken0() external view returns (bool) {
         return s_underlyingIsToken0;
     }
 
-    function _inAMM() external returns (uint256) {
+    function _inAMM() external view returns (uint256) {
         return s_inAMM;
     }
 
-    function _totalAssets() external returns (uint256 totalManagedAssets) {
+    function _totalAssets() external view returns (uint256 totalManagedAssets) {
         return totalAssets();
     }
 
-    function _availableAssets() external returns (uint256) {
+    function _availableAssets() external view returns (uint256) {
         return s_poolAssets;
     }
 
@@ -83,7 +81,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         uint128 amount,
         uint256 isLong,
         int64 utilization
-    ) external returns (uint256 required) {
+    ) external view returns (uint256 required) {
         return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
     }
 
@@ -94,7 +92,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     function getTotalRequiredCollateral(
         int24 currentTick,
         uint256[2][] memory positionBalanceArray
-    ) external returns (uint256 tokenRequired) {
+    ) external view returns (uint256 tokenRequired) {
         return _getTotalRequiredCollateral(currentTick, positionBalanceArray);
     }
 
@@ -216,29 +214,14 @@ contract PanopticPoolHarness is PanopticPool {
         collateralToken.refund(delegatee, requestedAmount);
     }
 
-    function getTWAP() external returns (int24 twapTick) {
+    function getTWAP() external view returns (int24 twapTick) {
         return PanopticPool.getUniV3TWAP();
-    }
-
-    // // temp override
-    // function _getTWAP() internal override returns (int24 twapTick) {
-    //     console2.log("called override");
-    //     (, int24 currentTick,,,,,) = s_univ3pool.slot0();
-    //     return currentTick;
-    // }
-
-    function optionsMap(
-        address account,
-        uint256 tokenId,
-        uint256 leg
-    ) external returns (uint256 premiaGrowth) {
-        premiaGrowth = s_options[account][tokenId][leg];
     }
 
     function positionBalance(
         address account,
-        uint256 tokenId
-    ) external returns (uint256 balanceAndUtilizations) {
+        TokenId tokenId
+    ) external view returns (LeftRightUnsigned balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
     }
 }
@@ -248,7 +231,7 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 
     function accountLiquidity(
         bytes32 positionKey
-    ) external view returns (uint256 shortAndNetLiquidity) {
+    ) external view returns (LeftRightUnsigned shortAndNetLiquidity) {
         return s_accountLiquidity[positionKey];
     }
 }
@@ -331,10 +314,7 @@ contract UniswapV3PoolMock {
 }
 
 contract CollateralTrackerTest is Test, PositionUtils {
-    using LeftRight for uint256;
-    using LeftRight for int256;
-    using TokenId for uint256;
-    using LiquidityChunk for uint256;
+    using Math for uint256;
 
     // users who will send/receive deposits, transfers, and withdrawals
     address Alice = makeAddr("Alice");
@@ -412,10 +392,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     uint128 positionSize0;
     uint128 positionSize1;
-    uint256[] positionIdList1;
-    uint256[] positionIdList;
-    uint256 tokenId;
-    uint256 tokenId1;
+    TokenId[] positionIdList1;
+    TokenId[] positionIdList;
+    TokenId tokenId;
+    TokenId tokenId1;
 
     // Positional details
     int24 width;
@@ -438,8 +418,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     // notional / contracts
     uint128 notionalMoved;
-    uint256 amountsMoved;
-    uint256 amountsMovedPartner;
+    LeftRightUnsigned amountsMoved;
+    LeftRightUnsigned amountsMovedPartner;
     uint256 movedRight;
     uint256 movedLeft;
     uint256 movedPartnerRight;
@@ -455,8 +435,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
     uint256 isLongP;
 
     // liquidity
-    uint256 liquidityChunk;
+    LiquidityChunk liquidityChunk;
     uint256 liquidity;
+
+    uint256 balanceData0;
+    uint256 thresholdData0;
 
     function _initWorld(uint256 seed) internal {
         // Pick a pool from the seed and cache initial state
@@ -479,15 +462,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function _deployCustomPanopticPool(
-        address token0,
-        address token1,
+        address _token0,
+        address _token1,
         IUniswapV3Pool uniswapPool
     ) internal {
         // deploy the semiFungiblePositionManager
         sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
 
         // Initialize the world pool
-        sfpm.initializeAMMPool(token0, token1, fee);
+        sfpm.initializeAMMPool(_token0, _token1, fee);
 
         panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
 
@@ -495,7 +478,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         panopticPool = new PanopticPoolHarness(sfpm);
 
         // initalize Panoptic Pool
-        panopticPool.modifiedStartPool(token0, token1, uniswapPool);
+        panopticPool.modifiedStartPool(_token0, _token1, uniswapPool);
 
         collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
         collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
@@ -550,7 +533,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     // used to accumulate premia for testing
     function twoWaySwap(uint256 swapSize) public {
-        changePrank(Swapper);
+        vm.startPrank(Swapper);
 
         // give Swapper the max amount of tokens
         _grantTokens(Swapper);
@@ -694,9 +677,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assets = bound(assets, uint256(type(uint104).max) + 1, type(uint256).max);
 
         vm.expectRevert(Errors.DepositTooLarge.selector);
-        uint256 returnedShares0 = collateralToken0.deposit(assets, Bob);
+        collateralToken0.deposit(assets, Bob);
         vm.expectRevert(Errors.DepositTooLarge.selector);
-        uint256 returnedShares1 = collateralToken1.deposit(assets, Bob);
+        collateralToken1.deposit(assets, Bob);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -808,7 +791,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // deposit fuzzed amount of tokens
         _mockMaxDeposit(Bob);
 
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         // Bob's token balance before withdraw
         uint256 balanceBefore0 = IERC20Partial(token0).balanceOf(Alice);
@@ -939,9 +922,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.assume((collateralToken0.convertToAssets(shares) * 10_000) / 10_010 > type(uint104).max);
 
         vm.expectRevert(Errors.DepositTooLarge.selector);
-        uint256 returnedShares0 = collateralToken0.mint(shares, Bob);
+        collateralToken0.mint(shares, Bob);
         vm.expectRevert(Errors.DepositTooLarge.selector);
-        uint256 returnedShares1 = collateralToken1.mint(shares, Bob);
+        collateralToken1.mint(shares, Bob);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1010,7 +993,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // sell as Bob
-        tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
         /// calculate position size
@@ -1052,7 +1035,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(amount, Bob);
         collateralToken1.deposit(amount, Bob);
 
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         uint256 bal0 = collateralToken0.balanceOf(Bob);
         uint256 bal1 = collateralToken1.balanceOf(Bob);
@@ -1099,7 +1082,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // sell as Bob
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
@@ -1116,7 +1099,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 bal1 = collateralToken1.balanceOf(Bob);
 
         // redeem from Alice on behalf of Bob
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         // Check if test reverted
         vm.expectRevert(Errors.PositionCountNotZero.selector);
@@ -1221,10 +1204,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // execute redemption
         vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
-        uint256 returnedAssets0 = collateralToken0.redeem(shares0, Bob, Bob);
+        collateralToken0.redeem(shares0, Bob, Bob);
 
         vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
-        uint256 returnedAssets1 = collateralToken1.redeem(shares1, Bob, Bob);
+        collateralToken1.redeem(shares1, Bob, Bob);
     }
 
     function test_Success_Redeem_onBehalf(uint128 x, uint104 shares) public {
@@ -1265,7 +1248,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IERC20Partial(address(collateralToken0)).approve(Alice, shares0);
         IERC20Partial(address(collateralToken1)).approve(Alice, shares1);
 
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         // execute redemption
         uint256 returnedAssets0 = collateralToken0.redeem(shares0, Alice, Bob);
@@ -1312,7 +1295,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _mockMaxDeposit(Bob);
 
         // Start new interactions with user Alice
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         // execute redemption
         // should fail as Alice is not authorized to withdraw assets on Bob behalf
@@ -1475,7 +1458,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // Invoke all interactions with the Collateral Tracker from user Alice
-        changePrank(Alice);
+        vm.startPrank(Alice);
 
         // give Bob the max amount of tokens
         _grantTokens(Alice);
@@ -1648,7 +1631,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // check delegatee balance before
         uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
 
         // invoke delegate transactions from the Panoptic pool
         panopticPool.refund(
@@ -1754,7 +1736,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             vm.assume(width != width1 || strike != strike1);
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -1775,7 +1757,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -1786,7 +1768,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 0, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -1827,13 +1809,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -1866,13 +1848,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -1882,7 +1864,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Alice,
                 currentTick,
@@ -1890,8 +1872,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -1948,7 +1930,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             vm.assume(width != width1 || strike != strike1);
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -1966,7 +1948,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -1978,7 +1960,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2004,13 +1986,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -2037,13 +2019,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -2053,7 +2035,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -2061,8 +2043,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -2115,7 +2097,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             vm.assume(width != width1 || strike != strike1);
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2141,7 +2123,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -2153,7 +2135,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 1, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2179,13 +2161,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -2213,13 +2195,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -2229,7 +2211,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -2237,8 +2219,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -2291,7 +2273,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             vm.assume(width != width1 || strike != strike1);
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2318,7 +2300,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -2330,7 +2312,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 1, strike, width);
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2356,13 +2338,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -2390,13 +2372,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -2406,7 +2388,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -2414,8 +2396,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -2472,7 +2454,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (rangeDown1, rangeUp1) = PanopticMath.getRangesFromStrike(width1, tickSpacing);
 
             vm.assume(width != width1 || strike != strike1);
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                isWETH,
+                0,
+                0,
+                0,
+                strike,
+                width
+            );
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2508,7 +2499,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -2520,7 +2511,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 1, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                isWETH,
+                1,
+                0,
+                1,
+                strike,
+                width
+            );
             tokenId1 = tokenId1.addLeg(1, 1, isWETH, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2546,13 +2546,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -2581,13 +2581,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -2597,7 +2597,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -2605,8 +2605,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -2663,7 +2663,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (rangeDown0, rangeUp0) = PanopticMath.getRangesFromStrike(width, tickSpacing);
             (rangeDown1, rangeUp1) = PanopticMath.getRangesFromStrike(width1, tickSpacing);
             vm.assume(width != width1 || strike != strike1);
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                isWETH,
+                0,
+                0,
+                0,
+                strike,
+                width
+            );
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
 
@@ -2706,7 +2715,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -2718,7 +2727,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // award corresponding shares
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 1, 0, 1, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                isWETH,
+                1,
+                0,
+                1,
+                strike,
+                width
+            );
             tokenId1 = tokenId1.addLeg(1, 1, isWETH, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
@@ -2750,13 +2768,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -2767,9 +2785,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 .optionPositionBalance(Alice, tokenId1);
             console2.log("PU0", poolUtilization0);
             console2.log("PU1", poolUtilization1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
 
             // only add premium requirement if there is net premia owed
             required += premium0 < 0 ? uint128((uint128(10_000) * uint128(-premium0)) / 10_000) : 0;
@@ -2785,13 +2800,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -2801,7 +2816,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Alice,
                 currentTick,
@@ -2809,8 +2824,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -2824,7 +2839,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
         int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
@@ -2861,7 +2875,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -2881,7 +2895,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -2893,7 +2907,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             uint256 snapshot = vm.snapshot();
@@ -2940,13 +2954,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -2981,13 +2995,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -2997,7 +3011,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -3005,8 +3019,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -3027,7 +3041,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
         int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
@@ -3064,7 +3077,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -3084,7 +3097,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -3096,7 +3109,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             uint256 snapshot = vm.snapshot();
@@ -3143,13 +3156,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -3184,13 +3197,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -3200,7 +3213,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -3208,8 +3221,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -3219,8 +3232,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
-        int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
         uint256 swapSizeSeed
@@ -3254,7 +3265,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -3274,7 +3285,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -3286,7 +3297,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             uint256 snapshot = vm.snapshot();
@@ -3333,13 +3344,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 atTick,
                 posBalanceArray,
@@ -3374,13 +3385,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Alice, false, positionIdList1);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Alice,
                 currentTick,
                 posBalanceArray,
@@ -3390,7 +3401,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Alice,
                 currentTick,
@@ -3398,8 +3409,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList1
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -3446,7 +3457,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -3504,13 +3515,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -3545,13 +3556,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -3561,7 +3572,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
                 currentTick,
@@ -3569,8 +3580,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -3612,7 +3623,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -3668,13 +3679,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -3714,13 +3725,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -3730,7 +3741,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Bob,
                 currentTick,
@@ -3738,8 +3749,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -3749,7 +3760,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
         int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
@@ -3786,7 +3796,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -3837,13 +3847,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -3878,13 +3888,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -3894,7 +3904,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Bob,
                 currentTick,
@@ -3902,8 +3912,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -3912,7 +3922,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
         int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
@@ -3949,7 +3958,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -4000,13 +4009,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -4041,13 +4050,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -4057,7 +4066,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
                 currentTick,
@@ -4065,8 +4074,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -4076,7 +4085,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
         int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
@@ -4112,7 +4120,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
@@ -4160,13 +4168,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -4200,13 +4208,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -4216,7 +4224,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Bob,
                 currentTick,
@@ -4224,8 +4232,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -4234,7 +4242,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint256 widthSeed2,
         int256 strikeSeed2,
         uint64 utilizationSeed,
         int24 atTick,
@@ -4270,7 +4277,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
@@ -4317,13 +4324,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -4358,13 +4365,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -4374,7 +4381,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
                 currentTick,
@@ -4382,8 +4389,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList
             );
 
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -4393,7 +4400,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 positionSizeSeed,
         uint256 widthSeed,
         int256 strikeSeed,
-        uint64 utilizationSeed,
         int24 atTick,
         uint24 swapSizeSeed
     ) public {
@@ -4427,7 +4433,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 1
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
 
             /// calculate position size
@@ -4456,13 +4462,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 atTick,
                 posBalanceArray,
@@ -4505,13 +4511,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = panopticPool
                 .calculateAccumulatedFeesBatch(Bob, false, positionIdList);
 
-            uint256 tokenData0 = collateralToken0.getAccountMarginDetails(
+            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
                 premium0
             );
-            uint256 tokenData1 = collateralToken1.getAccountMarginDetails(
+            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
                 Bob,
                 currentTick,
                 posBalanceArray,
@@ -4521,15 +4527,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
 
-            (tokenData0, tokenData1) = panopticHelper.checkCollateral(
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 PanopticPool(address(panopticPool)),
                 Bob,
                 currentTick,
                 0,
                 positionIdList
             );
-            assertEq(tokenData0, calcBalanceCross, "0");
-            assertEq(tokenData1, calcThresholdCross, "1");
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
         }
     }
 
@@ -4548,8 +4554,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int256 strikeSeed,
         int24 atTick
     ) public {
-        uint128 required;
-
         {
             _initWorld(x);
 
@@ -4578,7 +4582,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4597,7 +4601,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -4609,7 +4613,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, width);
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4629,12 +4633,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick < legLowerTick);
 
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4
             );
@@ -4648,7 +4652,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            int256 exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -4669,8 +4673,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int24 atTick,
         uint256 asset
     ) public {
-        uint128 required;
-
         {
             _initWorld(x);
 
@@ -4699,7 +4701,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset % 1,
+                0,
+                1,
+                0,
+                strike,
+                width
+            );
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4718,7 +4729,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -4730,7 +4741,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 1, 1, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset % 1,
+                1,
+                1,
+                0,
+                strike,
+                width
+            );
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4750,12 +4770,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick < legLowerTick);
 
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4
             );
@@ -4769,7 +4789,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            int256 exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -4790,8 +4810,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int24 atTick,
         uint256 asset
     ) public {
-        uint128 required;
-
         {
             _initWorld(x);
 
@@ -4820,7 +4838,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 0, 0, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset % 1,
+                0,
+                0,
+                0,
+                strike,
+                width
+            );
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4839,7 +4866,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -4851,7 +4878,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 1, 0, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset % 1,
+                1,
+                0,
+                0,
+                strike,
+                width
+            );
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4871,12 +4907,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick > legUpperTick);
 
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4
             );
@@ -4890,7 +4926,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            int256 exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -4911,8 +4947,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int24 atTick,
         uint256 asset
     ) public {
-        uint128 required;
-
         {
             _initWorld(x);
 
@@ -4941,7 +4975,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 0
             );
 
-            tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 0, 1, 0, strike, width);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset % 1,
+                0,
+                1,
+                0,
+                strike,
+                width
+            );
             positionIdList.push(tokenId);
 
             // must be minimum at least 2 so there is enough liquidity to buy
@@ -4960,7 +5003,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         {
             // Alice buys
-            changePrank(Alice);
+            vm.startPrank(Alice);
 
             // give Bob the max amount of tokens
             _grantTokens(Alice);
@@ -4972,7 +5015,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // equal deposits for both collateral token pairs for testing purposes
             _mockMaxDeposit(Alice);
 
-            tokenId1 = uint256(0).addPoolId(poolId).addLeg(0, 1, asset % 1, 1, 1, 0, strike, width);
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                asset % 1,
+                1,
+                1,
+                0,
+                strike,
+                width
+            );
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
@@ -4992,12 +5044,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             atTick = (atTick / tickSpacing) * tickSpacing;
 
             (legLowerTick, legUpperTick) = tokenId1.asTicks(0);
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+            (, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             // strike - rangeDown
             vm.assume(atTick > legUpperTick);
 
-            (int256 longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId1,
                 positionSize0 / 4
             );
@@ -5011,7 +5063,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            int256 exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -5146,7 +5198,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.deposit(assets, Bob);
 
         // amount of assets user deposited computed in amount of shares
-        uint256 shares0 = convertToShares(assets, collateralToken0);
+        shares0 = convertToShares(assets, collateralToken0);
         uint256 shares1 = convertToShares(assets, collateralToken1);
 
         // actual value of current shares redeemable
@@ -5268,10 +5320,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 availableAssets0 = convertToShares(
             collateralToken0._availableAssets(),
             collateralToken0
-        );
-        uint256 availableAssets1 = convertToShares(
-            collateralToken1._availableAssets(),
-            collateralToken1
         );
 
         // current share balance of owner
@@ -5604,7 +5652,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // also ensures that this is a valid mintable position in uniswap (i.e liquidity amount too much for pool, then fuzz a new positionSize)
     function _assumePositionValidity(
         address caller,
-        uint256 tokenId,
+        TokenId _tokenId,
         uint128 positionSize
     ) internal {
         // take a snapshot at this storage state
@@ -5614,7 +5662,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
 
             // mock mints and burns from the SFPM
-            changePrank(address(sfpm));
+            vm.startPrank(address(sfpm));
         }
 
         int128 itm0;
@@ -5623,16 +5671,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 amount0;
         uint256 amount1;
 
-        uint256 maxLoop = tokenId.countLegs();
+        uint256 maxLoop = _tokenId.countLegs();
         for (uint256 i; i < maxLoop; i++) {
             // basis
-            uint256 asset = tokenId.asset(i);
+            uint256 asset = _tokenId.asset(i);
 
             // token type we are transacting in
-            tokenType = tokenId.tokenType(i);
+            tokenType = _tokenId.tokenType(i);
 
             // position bounds
-            (legLowerTick, legUpperTick) = tokenId.asTicks(i);
+            (legLowerTick, legUpperTick) = _tokenId.asTicks(i);
 
             // sqrt price of bounds
             sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(legLowerTick);
@@ -5688,9 +5736,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 );
             vm.assume(notional != 0 && notional < type(uint128).max);
 
-            uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, i);
-            amountsMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
-
             /// simulate mint/burn
             // mint in pool if short
             if (tokenId.isLong(i) == 0) {
@@ -5711,17 +5756,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             })
                         )
                     )
-                returns (uint256 amount0, uint256 amount1) {
+                returns (uint256 _amount0, uint256 _amount1) {
                     // assert that it meets the dust threshold requirement
                     vm.assume(
-                        (amount0 > 50 && amount0 < uint128(type(int128).max)) ||
-                            (amount1 > 50 && amount1 < uint128(type(int128).max))
+                        (_amount0 > 50 && _amount0 < uint128(type(int128).max)) ||
+                            (_amount1 > 50 && _amount1 < uint128(type(int128).max))
                     );
 
                     if (tokenType == 1) {
-                        itm0 += int128(uint128(amount0));
+                        itm0 += int128(uint128(_amount0));
                     } else {
-                        itm1 += int128(uint128(amount1));
+                        itm1 += int128(uint128(_amount1));
                     }
                 } catch {
                     vm.assume(false); // invalid position, discard
@@ -5739,14 +5784,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.revertTo(snapshot);
 
         // revert back to original caller
-        changePrank(caller);
+        vm.startPrank(caller);
     }
 
     function _verifyBonusAmounts(
-        uint256 tokenData,
-        uint256 otherTokenData,
+        LeftRightUnsigned tokenData,
+        LeftRightUnsigned otherTokenData,
         uint160 sqrtPriceX96
-    ) internal returns (int256 bonusAmounts) {
+    ) internal pure returns (LeftRightSigned bonusAmounts) {
         uint256 token1TotalValue;
         uint256 tokenValue;
         token1TotalValue = (tokenData.rightSlot() * Constants.FP96) / sqrtPriceX96;
@@ -5788,7 +5833,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     COLLATERAL CHECKER
     //////////////////////////////////////////////////////////////*/
     function _tokensRequired(
-        uint256 _tokenId,
+        TokenId _tokenId,
         uint128 positionSize,
         int24 atTick,
         uint128 poolUtilization,
@@ -5805,25 +5850,29 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         for (; i < maxLoop; ++i) {
-            notionalMoved;
-            utilization;
-            sellCollateralRatio;
-            buyCollateralRatio;
+            uint256 _tokenType = _tokenId.tokenType(i);
+            uint256 _isLong = _tokenId.isLong(i);
+            int24 _strike = _tokenId.strike(i);
+            int24 _width = _tokenId.width(i);
 
-            uint256 tokenType = _tokenId.tokenType(i);
-            uint256 isLong = _tokenId.isLong(i);
-            int24 strike = _tokenId.strike(i);
-            int24 width = _tokenId.width(i);
-
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
-            (legLowerTick, legUpperTick) = (strike - rangeDown, strike + rangeUp);
+            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                _width,
+                tickSpacing
+            );
+            (legLowerTick, legUpperTick) = (_strike - rangeDown, _strike + rangeUp);
 
             {
-                uint256 amountsMoved = PanopticMath.getAmountsMoved(_tokenId, positionSize, i);
+                LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(
+                    _tokenId,
+                    positionSize,
+                    i
+                );
 
-                notionalMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
+                notionalMoved = _tokenType == 0
+                    ? _amountsMoved.rightSlot()
+                    : _amountsMoved.leftSlot();
 
-                utilization = tokenType == 0
+                utilization = _tokenType == 0
                     ? int64(uint64(poolUtilization))
                     : int64(uint64(poolUtilization >> 64));
 
@@ -5835,7 +5884,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 );
             }
 
-            if (isLong == 0) {
+            if (_isLong == 0) {
                 // pos is short
                 // base
                 tokensRequired = uint128(
@@ -5843,33 +5892,30 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 );
                 // OTM
                 if (
-                    ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
-                    ((atTick < (legLowerTick)) && (tokenType == 0))
-                ) {
-                    return tokensRequired;
-                } else {
+                    ((atTick >= (legUpperTick)) && (_tokenType == 1)) ||
+                    ((atTick < (legLowerTick)) && (_tokenType == 0))
+                ) {} else {
                     uint160 ratio;
-                    ratio = tokenType == 1
+                    ratio = _tokenType == 1
                         ? TickMath.getSqrtRatioAtTick(
-                            Math.max24(2 * (atTick - strike), TickMath.MIN_TICK)
+                            Math.max24(2 * (atTick - _strike), TickMath.MIN_TICK)
                         )
                         : TickMath.getSqrtRatioAtTick(
-                            Math.max24(2 * (strike - atTick), TickMath.MIN_TICK)
+                            Math.max24(2 * (_strike - atTick), TickMath.MIN_TICK)
                         );
 
                     // ITM
                     if (
-                        ((atTick < (legLowerTick)) && (tokenType == 1)) ||
-                        ((atTick >= (legUpperTick)) && (tokenType == 0))
+                        ((atTick < (legLowerTick)) && (_tokenType == 1)) ||
+                        ((atTick >= (legUpperTick)) && (_tokenType == 0))
                     ) {
                         uint256 c2 = FixedPoint96.Q96 - ratio;
 
-                        return
-                            tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
+                        tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
-                            (legUpperTick - strike) + (strike - legLowerTick)
+                            (legUpperTick - _strike) + (_strike - legLowerTick)
                         );
 
                         uint256 c3 = FullMath.mulDivRoundingUp(
@@ -5877,22 +5923,21 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
                         );
-                        return tokensRequired += uint128(c3);
+                        tokensRequired += uint128(c3);
                     }
                 }
             } else {
                 // pos is long
                 // base
-                return
-                    tokensRequired = uint128(
-                        FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, 10_000)
-                    );
+                tokensRequired += uint128(
+                    FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, 10_000)
+                );
             }
         }
     }
 
     function _spreadTokensRequired(
-        uint256 _tokenId,
+        TokenId _tokenId,
         uint128 positionSize,
         uint128 poolUtilizations
     ) internal returns (uint128 tokensRequired) {
@@ -6026,7 +6071,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function _strangleTokensRequired(
-        uint256 _tokenId,
+        TokenId _tokenId,
         uint128 positionSize,
         uint128 poolUtilization,
         int24 atTick,
@@ -6051,7 +6096,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             strike = _tokenId.strike(i);
             width = _tokenId.width(i);
 
-            int24 rangeUp0;
             (, rangeUp0) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
             (legLowerTick, legUpperTick) = _tokenId.asTicks(i);

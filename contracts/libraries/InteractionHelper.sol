@@ -16,11 +16,11 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 /// @author Axicon Labs Limited
 library InteractionHelper {
     /// @notice Function that performs approvals on behalf of the PanopticPool for CollateralTracker and SemiFungiblePositionManager.
-    /// @param sfpm the SemiFungiblePositionManager being approved for both token0 and token1
-    /// @param ct0 the CollateralTracker (token0) being approved for token0
-    /// @param ct1 the CollateralTracker (token1) being approved for token1
-    /// @param token0 the token0 (in Uniswap) being approved for
-    /// @param token1 the token1 (in Uniswap) being approved for
+    /// @param sfpm The SemiFungiblePositionManager being approved for both token0 and token1
+    /// @param ct0 The CollateralTracker (token0) being approved for token0
+    /// @param ct1 The CollateralTracker (token1) being approved for token1
+    /// @param token0 The token0 (in Uniswap) being approved for
+    /// @param token1 The token1 (in Uniswap) being approved for
     function doApprovals(
         SemiFungiblePositionManager sfpm,
         CollateralTracker ct0,
@@ -39,12 +39,12 @@ library InteractionHelper {
 
     /// @notice Computes the name of a CollateralTracker based on the token composition and fee of the underlying Uniswap Pool.
     /// @dev Some tokens do not have proper symbols so error handling is required - this logic takes up significant bytecode size, which is why it is in a library.
-    /// @param token0 the token0 in the Uniswap Pool
-    /// @param token1 the token1 in the Uniswap Pool
-    /// @param isToken0 whether the collateral token computing the name is for token0 or token1
-    /// @param fee the fee of the Uniswap pool in basis points
-    /// @param prefix a constant string appended to the start of the token name
-    /// @return the complete name of the collateral token calling this function
+    /// @param token0 The token0 in the Uniswap Pool
+    /// @param token1 The token1 in the Uniswap Pool
+    /// @param isToken0 Whether the collateral token computing the name is for token0 or token1
+    /// @param fee The fee of the Uniswap pool in basis points
+    /// @param prefix A constant string appended to the start of the token name
+    /// @return The complete name of the collateral token calling this function
     function computeName(
         address token0,
         address token1,
@@ -84,14 +84,14 @@ library InteractionHelper {
         }
     }
 
-    /// @notice returns symbol as prefixed symbol of underlying token.
-    /// @param token the address of the underlying token used to compute the symbol
-    /// @param prefix a constant string appended to the symbol of the underlying token to create the final symbol
-    /// @return _symbol the symbol of the token
+    /// @notice Returns symbol as prefixed symbol of underlying token.
+    /// @param token The address of the underlying token used to compute the symbol
+    /// @param prefix A constant string appended to the symbol of the underlying token to create the final symbol
+    /// @return The symbol of the token
     function computeSymbol(
         address token,
         string memory prefix
-    ) external view returns (string memory _symbol) {
+    ) external view returns (string memory) {
         // not guaranteed that token supports metadada extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).symbol() returns (string memory tokenSymbol) {
@@ -101,9 +101,9 @@ library InteractionHelper {
         }
     }
 
-    /// @notice returns decimals of underlying token (0 if not present).
-    /// @param token the address of the underlying token used to compute the decimals
-    /// @return decimals the decimals of the token
+    /// @notice Returns decimals of underlying token (0 if not present).
+    /// @param token The address of the underlying token used to compute the decimals
+    /// @return The decimals of the token
     function computeDecimals(address token) external view returns (uint8) {
         // not guaranteed that token supports metadada extension
         // so we need to let call fail and return placeholder if not

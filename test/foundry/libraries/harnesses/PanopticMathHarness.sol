@@ -5,6 +5,11 @@ pragma solidity ^0.8.0;
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
+// Types
+import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {TokenId} from "@types/TokenId.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+
 import "forge-std/Test.sol";
 
 /// @title PanopticMathHarness: A harness to expose the PanopticMath library for code coverage analysis.
@@ -12,11 +17,15 @@ import "forge-std/Test.sol";
 /// @author Axicon Labs Limited
 contract PanopticMathHarness is Test {
     function getLiquidityChunk(
-        uint256 tokenId,
+        TokenId tokenId,
         uint256 legIndex,
         uint128 positionSize
-    ) public view returns (uint256) {
-        uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, legIndex, positionSize);
+    ) public pure returns (LiquidityChunk) {
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+            tokenId,
+            legIndex,
+            positionSize
+        );
         return liquidityChunk;
     }
 
@@ -41,18 +50,16 @@ contract PanopticMathHarness is Test {
     }
 
     function incrementPoolPattern(uint64 poolId) public pure returns (uint64) {
-        uint64 poolId = PanopticMath.incrementPoolPattern(poolId);
-        return poolId;
+        uint64 _poolId = PanopticMath.incrementPoolPattern(poolId);
+        return _poolId;
     }
 
     function computeExercisedAmounts(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize
-    ) public view returns (int256, int256) {
-        (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize
-        );
+    ) public pure returns (LeftRightSigned, LeftRightSigned) {
+        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+            .computeExercisedAmounts(tokenId, positionSize);
         return (longAmounts, shortAmounts);
     }
 
@@ -63,17 +70,14 @@ contract PanopticMathHarness is Test {
 
     function updatePositionsHash(
         uint256 existingHash,
-        uint256 tokenId,
+        TokenId tokenId,
         bool addFlag
-    ) public pure returns (uint256 newHash) {
+    ) public pure returns (uint256) {
         uint256 newHash = PanopticMath.updatePositionsHash(existingHash, tokenId, addFlag);
         return newHash;
     }
 
-    function twapFilter(
-        IUniswapV3Pool univ3pool,
-        uint32 twapWindow
-    ) public returns (int24 twapTick) {
+    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) public view returns (int24) {
         int24 twapTick = PanopticMath.twapFilter(univ3pool, twapWindow);
         return twapTick;
     }
@@ -84,7 +88,7 @@ contract PanopticMathHarness is Test {
         uint256 observationCardinality,
         uint256 cardinality,
         uint256 period
-    ) public returns (int24) {
+    ) public view returns (int24) {
         int24 lastMedianObservation = PanopticMath.computeMedianObservedPrice(
             univ3pool,
             observationIndex,
@@ -96,8 +100,8 @@ contract PanopticMathHarness is Test {
     }
 
     function convertCollateralData(
-        uint256 tokenData0,
-        uint256 tokenData1,
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
         uint256 tokenType,
         int24 tick
     ) public pure returns (uint256, uint256) {
@@ -107,8 +111,8 @@ contract PanopticMathHarness is Test {
     }
 
     function convertCollateralData(
-        uint256 tokenData0,
-        uint256 tokenData1,
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
         uint256 tokenType,
         uint160 sqrtPriceX96
     ) public pure returns (uint256, uint256) {
@@ -122,7 +126,7 @@ contract PanopticMathHarness is Test {
         int24 tickLower,
         int24 tickUpper,
         uint256 asset
-    ) public view returns (uint128) {
+    ) public pure returns (uint128) {
         uint128 notional = PanopticMath.convertNotional(contractSize, tickLower, tickUpper, asset);
         return notional;
     }
@@ -139,39 +143,45 @@ contract PanopticMathHarness is Test {
             return notional;
         } catch {
             vm.assume(2 + 2 == 5);
+            return 0;
         }
     }
 
     function _getAmountsMoved(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) public view returns (uint256) {
-        uint256 amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, legIndex);
+    ) public pure returns (LeftRightUnsigned) {
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            legIndex
+        );
         return amountsMoved;
     }
 
     // skip if notional value is invalid (tested elsewhere)
     function getAmountsMoved(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) public view returns (uint256) {
+    ) public view returns (LeftRightUnsigned) {
         try this._getAmountsMoved(tokenId, positionSize, legIndex) returns (
-            uint256 contractsNotional
+            LeftRightUnsigned contractsNotional
         ) {
             return contractsNotional;
         } catch {
             vm.assume(2 + 2 == 5);
+            return LeftRightUnsigned.wrap(0);
         }
     }
 
     function _calculateIOAmounts(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) public view returns (int256, int256) {
-        (int256 longs, int256 shorts) = PanopticMath._calculateIOAmounts(
+    ) public pure returns (LeftRightSigned, LeftRightSigned) {
+        (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
             tokenId,
             positionSize,
             legIndex
@@ -180,17 +190,18 @@ contract PanopticMathHarness is Test {
     }
 
     function calculateIOAmounts(
-        uint256 tokenId,
+        TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) public view returns (int256, int256) {
+    ) public view returns (LeftRightSigned, LeftRightSigned) {
         try this._calculateIOAmounts(tokenId, positionSize, legIndex) returns (
-            int256 longs,
-            int256 shorts
+            LeftRightSigned longs,
+            LeftRightSigned shorts
         ) {
             return (longs, shorts);
         } catch {
             vm.assume(2 + 2 == 5);
+            return (LeftRightSigned.wrap(0), LeftRightSigned.wrap(0));
         }
     }
 
