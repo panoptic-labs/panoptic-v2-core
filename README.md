@@ -103,7 +103,6 @@ contracts/
 │   └── interfaces
 │       └── IERC20Partial — "An incomplete ERC20 interface containing functions used in Panoptic with some return values omitted to support noncompliant tokens such as USDT"
 ├── types
-│   ├── TickStateCallContext — "Implementation for a custom data type that can hold a current and a median Uniswap pool tick, as well as a caller"
 │   ├── LeftRight — "Implementation for a set of custom data types that can hold two 128-bit numbers"
 │   ├── LiquidityChunk — "Implementation for a custom data type that can represent a liquidity chunk of a given size in Uniswap - containing a tickLower, tickUpper, and liquidity"
 │   └── TokenId — "Implemenation for the custom data type used in the SFPM and Panoptic to encode position data in 256-bit ERC1155 tokenIds - holds a pool identifier and up to four full position legs"

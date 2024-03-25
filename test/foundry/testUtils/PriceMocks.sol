@@ -59,3 +59,33 @@ contract UniPoolPriceMock {
 
     function increaseObservationCardinalityNext(uint16 observationCardinalityNext) public {}
 }
+
+contract UniPoolObservationMock {
+    struct Observation {
+        // the block timestamp of the observation
+        uint32 blockTimestamp;
+        // the tick accumulator, i.e. tick * time elapsed since the pool was first initialized
+        int56 tickCumulative;
+        // the seconds per liquidity, i.e. seconds elapsed / max(1, liquidity) since the pool was first initialized
+        uint160 secondsPerLiquidityCumulativeX128;
+        // whether or not the observation is initialized
+        bool initialized;
+    }
+
+    Observation[] public observations;
+
+    constructor(uint256 cardinality) {
+        for (uint256 i = 0; i < cardinality; i++) {
+            observations.push(Observation(0, 0, 0, true));
+        }
+    }
+
+    function setObservation(uint256 idx, uint32 blockTimestamp, int56 tickCumulative) public {
+        observations[idx] = Observation({
+            blockTimestamp: blockTimestamp,
+            tickCumulative: tickCumulative,
+            secondsPerLiquidityCumulativeX128: 0,
+            initialized: true
+        });
+    }
+}

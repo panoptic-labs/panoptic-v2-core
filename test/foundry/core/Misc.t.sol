@@ -154,7 +154,9 @@ contract Misctest is Test, PositionUtils {
     address Seller = address(0x12345678912);
     address[] Buyers;
     address[] Buyer;
+    SwapperC swapperc;
 
+    uint256[] $setupIdList;
     uint256[] $posIdList;
     uint256[][] $posIdLists;
     uint256[] $tempIdList;
@@ -181,9 +183,33 @@ contract Misctest is Test, PositionUtils {
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
+        swapperc = new SwapperC();
+        changePrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
         // This price causes exactly one unit of liquidity to be minted
         // above here reverts b/c 0 liquidity cannot be minted
-        IUniswapV3Pool(uniPool).initialize(10 ** 17 * 2 ** 96);
+        IUniswapV3Pool(uniPool).initialize(2 ** 96);
+
+        IUniswapV3Pool(uniPool).increaseObservationCardinalityNext(100);
+
+        // move back to price=1 while generating 100 observations (min required for pool to function)
+        for (uint256 i = 0; i < 100; ++i) {
+            vm.warp(block.timestamp + 1);
+            vm.roll(block.number + 1);
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -887270, 887270, 10 ** 18);
+
+        swapperc.swapTo(uniPool, 10 ** 17 * 2 ** 96);
+
+        swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
+
+        changePrank(Deployer);
 
         factory = new PanopticFactory(
             address(token1),
@@ -201,6 +227,9 @@ contract Misctest is Test, PositionUtils {
         pp = PanopticPool(
             address(factory.deployNewPool(address(token0), address(token1), 500, 1337))
         );
+
+        changePrank(Swapper);
+        swapperc.swapTo(uniPool, 2 ** 96);
 
         changePrank(Alice);
 
@@ -264,6 +293,13 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(type(uint104).max / 1_000_000, Buyers[i]);
         }
 
+        // // setup mini-median price array
+        // for (uint256 i = 0; i < 8; ++i) {
+        //     vm.warp(block.timestamp + 120);
+        //     vm.roll(block.number + 1);
+        //     pp.pokeMedian();
+        // }
+
         for (uint256 i = 0; i < 20; ++i) {
             $posIdLists.push(new uint256[](0));
         }
@@ -278,9 +314,6 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-
-        // move back to price=1
-        swapperc.swapTo(uniPool, 2 ** 96);
 
         // mint OTM position
         $posIdList.push(
@@ -352,9 +385,6 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        // move back to price=1
-        swapperc.swapTo(uniPool, 2 ** 96);
-
         // mint OTM position
         $posIdList.push(
             uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
@@ -412,9 +442,6 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-
-        // move back to price=1
-        swapperc.swapTo(uniPool, 2 ** 96);
 
         // sell primary chunk
         $posIdLists[0].push(
@@ -991,9 +1018,6 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        // move back to price=1
-        swapperc.swapTo(uniPool, 2 ** 96);
-
         // mint OTM position
         $posIdList.push(
             uint256(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
@@ -1139,16 +1163,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_success_PremiumRollover() public {
-        SwapperC swapperc = new SwapperC();
         changePrank(Swapper);
-        token0.mint(Swapper, type(uint128).max);
-        token1.mint(Swapper, type(uint128).max);
-        token0.approve(address(swapperc), type(uint128).max);
-        token1.approve(address(swapperc), type(uint128).max);
-
-        // move back to price=1
-        swapperc.swapTo(uniPool, 2 ** 96);
-
         // JIT a bunch of liquidity so swaps at mint can happen normally
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 

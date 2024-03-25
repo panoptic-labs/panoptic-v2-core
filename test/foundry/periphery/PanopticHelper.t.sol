@@ -118,7 +118,6 @@ contract PanopticHelperTest is PositionUtils {
 
     int24 medianTick;
     int24 TWAPtick;
-    int24[] priceArray;
 
     PanopticFactory factory;
     PanopticPoolHarness pp;

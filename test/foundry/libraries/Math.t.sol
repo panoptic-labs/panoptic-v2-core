@@ -89,7 +89,7 @@ contract MathTest is Test {
         harness.toInt128(toCast);
     }
 
-    function test_Success_sort(int24[] memory data) public {
+    function test_Success_sort(int256[] memory data) public {
         vm.assume(data.length != 0);
         // Compare against an alternative sorting implementation
         // Bubble sort
@@ -97,7 +97,7 @@ contract MathTest is Test {
         for (uint256 i = 0; i < l; i++) {
             for (uint256 j = i + 1; j < l; j++) {
                 if (data[i] > data[j]) {
-                    int24 temp = data[i];
+                    int256 temp = data[i];
                     data[i] = data[j];
                     data[j] = temp;
                 }

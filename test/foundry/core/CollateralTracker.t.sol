@@ -16,7 +16,6 @@ import {Errors} from "@libraries/Errors.sol";
 import {LeftRight} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {TickStateCallContext} from "@types/TickStateCallContext.sol";
 import {Constants} from "@libraries/Constants.sol";
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -121,23 +120,32 @@ contract PanopticPoolHarness is PanopticPool {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(uniswapPool);
 
-        unchecked {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-            s_miniMedian =
-                (uint256(block.number) << 216) +
-                // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
-                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                (uint256(uint24(currentTick))); // add to slot 3
-        }
-
         // store token0 and token1
         address s_token0 = uniswapPool.token0();
         address s_token1 = uniswapPool.token1();
 
         // Start and store the collateral token0/1
         _initalizeCollateralPair(token0, token1, uniswapPool);
+
+        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = uniswapPool.slot0();
+
+        int24 slowOracleTick = PanopticMath.computeMedianObservedPrice(
+            uniswapPool,
+            observationIndex,
+            observationCardinality,
+            SLOW_ORACLE_CARDINALITY,
+            SLOW_ORACLE_PERIOD
+        );
+
+        unchecked {
+            s_miniMedian =
+                (uint256(block.number) << 216) +
+                // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
+                // see comment on s_miniMedian initialization for format of this magic number
+                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
+                (uint256(uint24(slowOracleTick)) << 24) + // add to slot 4
+                (uint256(uint24(slowOracleTick))); // add to slot 3
+        }
 
         // Approve transfers of Panoptic Pool funds by SFPM
         IERC20Partial(s_token0).approve(address(SFPM), type(uint256).max);
@@ -233,10 +241,6 @@ contract PanopticPoolHarness is PanopticPool {
     ) external returns (uint256 balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
     }
-
-    function getMedianHook() external returns (int24 medianTick) {
-        return getMedian();
-    }
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
@@ -331,7 +335,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
     using LeftRight for int256;
     using TokenId for uint256;
     using LiquidityChunk for uint256;
-    using TickStateCallContext for uint256;
 
     // users who will send/receive deposits, transfers, and withdrawals
     address Alice = makeAddr("Alice");
@@ -1693,7 +1696,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.refund(address(0), address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.takeCommissionAddData(0, 0, 0, 0);
+        collateralToken0.takeCommissionAddData(address(0), 0, 0, 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
         collateralToken0.exercise(address(0), 0, 0, 0, 0);

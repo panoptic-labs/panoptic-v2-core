@@ -52,6 +52,10 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
+    function miniMedian() external view returns (uint256) {
+        return s_miniMedian;
+    }
+
     /**
      * @notice compute the TWAP price from the last 600s = 10mins
      * @return twapTick the TWAP price in ticks
@@ -93,7 +97,7 @@ contract PanopticPoolHarness is PanopticPool {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) external returns (int256[4][] memory, int256) {
-        (, , int256 netExchanged, int256[4][] memory premiasByLeg) = _burnAllOptionsFrom(
+        (int256 netExchanged, int256[4][] memory premiasByLeg) = _burnAllOptionsFrom(
             msg.sender,
             tickLimitLow,
             tickLimitHigh,
@@ -171,10 +175,13 @@ contract PanopticPoolTest is PositionUtils {
 
     uint256[] emptyList;
 
-    int24 medianTick;
+    uint16 observationIndex;
+    uint16 observationCardinality;
+    int24 fastOracleTick;
+
+    int24 slowOracleTick;
     uint160 medianSqrtPriceX96;
     int24 TWAPtick;
-    int24[] priceArray;
 
     int256 rangesFromStrike;
     int256[2] exerciseFeeAmounts;
@@ -324,21 +331,25 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function _initWorldAtTick(uint256 seed, int24 tick) internal {
+        _initWorldAtPrice(seed, tick, TickMath.getSqrtRatioAtTick(tick));
+    }
+
+    function _initWorldAtPrice(uint256 seed, int24 tick, uint160 sqrtPriceX96) internal {
         // Pick a pool from the seed and cache initial state
         _cacheWorldState(pools[bound(seed, 0, pools.length - 1)]);
+
+        _deployPanopticPool();
 
         // replace pool with a mock and set the tick
         vm.etch(address(pool), address(new UniPoolPriceMock()).code);
 
         UniPoolPriceMock(address(pool)).construct(
-            UniPoolPriceMock.Slot0(TickMath.getSqrtRatioAtTick(tick), tick, 0, 0, 0, 0, true),
+            UniPoolPriceMock.Slot0(sqrtPriceX96, tick, 0, 0, 0, 0, true),
             address(token0),
             address(token1),
             fee,
             tickSpacing
         );
-
-        _deployPanopticPool();
 
         _initAccounts();
     }
@@ -1444,7 +1455,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, currentTick, token0, token1, ct0, ct1);
+        pp.startPool(pool, token0, token1, ct0, ct1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1526,6 +1537,48 @@ contract PanopticPoolTest is PositionUtils {
     /*//////////////////////////////////////////////////////////////
                              STATIC QUERIES
     //////////////////////////////////////////////////////////////*/
+
+    function test_Success_assertPriceWithinBounds(
+        uint256 x,
+        uint256 sqrtPriceX96,
+        uint256 sqrtPriceX96Lower,
+        uint256 sqrtPriceX96Upper
+    ) public {
+        sqrtPriceX96 = bound(
+            sqrtPriceX96,
+            TickMath.MIN_SQRT_RATIO + 1,
+            TickMath.MAX_SQRT_RATIO - 1
+        );
+        sqrtPriceX96Lower = bound(sqrtPriceX96Lower, TickMath.MIN_SQRT_RATIO, sqrtPriceX96 - 1);
+        sqrtPriceX96Upper = bound(sqrtPriceX96Upper, sqrtPriceX96 + 1, TickMath.MAX_SQRT_RATIO);
+
+        _initWorldAtPrice(x, 0, uint160(sqrtPriceX96));
+        pp.assertPriceWithinBounds(uint160(sqrtPriceX96Lower), uint160(sqrtPriceX96Upper));
+    }
+
+    function test_Fail_assertPriceWithinBounds(
+        uint256 x,
+        uint256 sqrtPriceX96,
+        uint256 sqrtPriceX96Lower,
+        uint256 sqrtPriceX96Upper
+    ) public {
+        sqrtPriceX96 = bound(sqrtPriceX96, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO);
+        sqrtPriceX96Lower = bound(
+            sqrtPriceX96Lower,
+            TickMath.MIN_SQRT_RATIO,
+            TickMath.MAX_SQRT_RATIO
+        );
+        sqrtPriceX96Upper = bound(
+            sqrtPriceX96Upper,
+            TickMath.MIN_SQRT_RATIO,
+            TickMath.MAX_SQRT_RATIO
+        );
+
+        vm.assume(sqrtPriceX96 <= sqrtPriceX96Lower || sqrtPriceX96 >= sqrtPriceX96Upper);
+        _initWorldAtPrice(x, 0, uint160(sqrtPriceX96));
+        vm.expectRevert(Errors.PriceBoundFail.selector);
+        pp.assertPriceWithinBounds(uint160(sqrtPriceX96Lower), uint160(sqrtPriceX96Upper));
+    }
 
     /// forge-config: default.fuzz.runs = 10
     function test_Success_calculateAccumulatedFeesBatch_2xOTMShortCall(
@@ -2439,8 +2492,23 @@ contract PanopticPoolTest is PositionUtils {
 
             pp.mintOptions(posIdList, positionSize, 0, 0, 0);
         }
-        (priceArray, medianTick) = pp.getPriceArray();
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+
+        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            pool,
+            observationIndex,
+            observationCardinality,
+            3,
+            1
+        );
+
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            60,
+            pp.miniMedian(),
+            pool
+        );
 
         assertEq(sfpm.balanceOf(address(pp), tokenId), positionSize);
 
@@ -2468,13 +2536,13 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(balance, positionSize);
             assertEq(
                 poolUtilization0,
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
                     : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) / ct0.totalSupply()
             );
             assertEq(
                 poolUtilization1,
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
                     : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) / ct1.totalSupply()
             );
@@ -2578,8 +2646,25 @@ contract PanopticPoolTest is PositionUtils {
         tokenId = tokenId.addLeg(1, 1, isWETH, 1, 0, 1, strike1, width1);
 
         // price changes afters swap at mint so we need to update the price
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        (priceArray, medianTick) = pp.getPriceArray();
+        (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
+            .slot0();
+
+        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            pool,
+            observationIndex,
+            observationCardinality,
+            3,
+            1
+        );
+
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            60,
+            pp.miniMedian(),
+            pool
+        );
+
         updatePositionDataLong();
 
         int256 netSurplus0 = $amount0Moveds[1] -
@@ -2678,14 +2763,14 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(balance, positionSizes[1]);
             assertEq(
                 int64(poolUtilization0),
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? int64(10_001)
                     : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
                         int256(ct0.totalSupply())
             );
             assertEq(
                 int64(poolUtilization1),
-                Math.abs(currentTick - medianTick) > int24(2230)
+                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? int64(10_001)
                     : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
                         int256(ct1.totalSupply())
@@ -3581,7 +3666,6 @@ contract PanopticPoolTest is PositionUtils {
         uint256[4] memory widthSeeds,
         int256[4] memory strikeSeeds,
         uint256 positionSizeSeed,
-        uint256 swapSizeSeed,
         uint256 collateralBalanceSeed,
         uint256 collateralRatioSeed
     ) public {
@@ -3687,10 +3771,17 @@ contract PanopticPoolTest is PositionUtils {
                 int256(lastCollateralBalance0[Alice]);
             int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
                 int256(lastCollateralBalance1[Alice]);
-            (, int24 _medianTick) = pp.getPriceArray();
+            (, , observationIndex, observationCardinality, , , ) = pool.slot0();
+            int24 _fastOracleTick = PanopticMath.computeMedianObservedPrice(
+                pool,
+                observationIndex,
+                observationCardinality,
+                3,
+                1
+            );
             vm.revertTo(snap);
 
-            medianTick = _medianTick;
+            fastOracleTick = _fastOracleTick;
             $balanceDelta0 = balanceDelta0;
             $balanceDelta1 = balanceDelta1;
         }
@@ -3700,7 +3791,7 @@ contract PanopticPoolTest is PositionUtils {
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            medianTick,
+            fastOracleTick,
             0,
             $posIdLists[2]
         );
@@ -3728,7 +3819,7 @@ contract PanopticPoolTest is PositionUtils {
                             PanopticMath.convert0to1(
                                 (totalCollateralB0 *
                                     (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) / 10_000,
-                                Math.getSqrtRatioAtTick(medianTick)
+                                Math.getSqrtRatioAtTick(fastOracleTick)
                             )
                         )
                     )
@@ -3761,7 +3852,7 @@ contract PanopticPoolTest is PositionUtils {
                                     (totalCollateralB0 *
                                         (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) /
                                         10_000,
-                                    Math.getSqrtRatioAtTick(medianTick)
+                                    Math.getSqrtRatioAtTick(fastOracleTick)
                                 )
                             )
                         )
@@ -3942,224 +4033,6 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_forceExerciseNoDelta(
-        uint256 x,
-        uint256 numLegs,
-        uint256[4] memory isLongs,
-        uint256[4] memory tokenTypes,
-        uint256[4] memory widthSeeds,
-        int256[4] memory strikeSeeds,
-        uint256 positionSizeSeed
-    ) public {
-        _initPool(x);
-
-        numLegs = bound(numLegs, 1, 4);
-
-        int24[4] memory widths;
-        int24[4] memory strikes;
-
-        for (uint256 i = 0; i < numLegs; ++i) {
-            tokenTypes[i] = bound(tokenTypes[i], 0, 1);
-            isLongs[i] = bound(isLongs[i], 0, 1);
-            (widths[i], strikes[i]) = getOTMOutOfRangeSW(
-                widthSeeds[i],
-                strikeSeeds[i],
-                uint24(tickSpacing),
-                // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
-                currentTick,
-                tokenTypes[i]
-            );
-        }
-
-        for (uint256 i = 0; i < numLegs; ++i) {
-            // make sure there are no double-touched chunks
-            for (uint256 j = 0; j < i; ++j) {
-                vm.assume(
-                    widths[i] != widths[j] ||
-                        strikes[i] != strikes[j] ||
-                        tokenTypes[i] != tokenTypes[j]
-                );
-            }
-        }
-
-        if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
-        if (numLegs == 2)
-            populatePositionData(
-                [widths[0], widths[1]],
-                [strikes[0], strikes[1]],
-                positionSizeSeed
-            );
-        if (numLegs == 3)
-            populatePositionData(
-                [widths[0], widths[1], widths[2]],
-                [strikes[0], strikes[1], strikes[2]],
-                positionSizeSeed
-            );
-        if (numLegs == 4) populatePositionData(widths, strikes, positionSizeSeed);
-        {
-            uint256 exerciseableCount;
-            // make sure position is exercisable - the uniswap twap is used to determine exercisability
-            // so it could potentially be both OTM and non-exercisable (in-range)
-            TWAPtick = pp.getUniV3TWAP_();
-            for (uint256 i = 0; i < numLegs; ++i) {
-                if (
-                    (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
-                        TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) && isLongs[i] == 1
-                ) exerciseableCount++;
-            }
-            vm.assume(exerciseableCount > 0);
-        }
-
-        // this is a long option; so need to sell before it can be bought (let's say 2x position size for now)
-        changePrank(Seller);
-
-        uint256 tokenId = uint256(0).addPoolId(poolId);
-
-        for (uint256 i = 0; i < numLegs; ++i) {
-            tokenId = tokenId.addLeg(i, 1, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]);
-            if (isLongs[i] == 0) continue;
-
-            int256 legRanges;
-            {
-                int24 rangeDown;
-                int24 rangeUp;
-                (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(
-                    widths[i],
-                    int24(tickSpacing)
-                );
-
-                legRanges = currentTick < strikes[i] - rangeUp
-                    ? ((strikes[i] - rangeUp - currentTick)) / rangeUp
-                    : ((currentTick - strikes[i] - rangeUp)) / rangeUp;
-            }
-            rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
-        }
-
-        uint256[] memory posIdList = new uint256[](1);
-        posIdList[0] = tokenId;
-
-        pp.mintOptions(posIdList, positionSize * 2, 0, 0, 0);
-
-        // now we can mint the long option we are force exercising
-        changePrank(Alice);
-
-        // reset tokenId so we can fill for what we're actually testing (the bought option)
-        tokenId = uint256(0).addPoolId(poolId);
-
-        for (uint256 i = 0; i < numLegs; ++i) {
-            tokenId = tokenId.addLeg(
-                i,
-                1,
-                isWETH,
-                isLongs[i],
-                tokenTypes[i],
-                i,
-                strikes[i],
-                widths[i]
-            );
-        }
-
-        posIdList[0] = tokenId;
-
-        (int256 longAmounts, int256 shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize
-        );
-
-        uint256[2] memory commissionFeeAmounts = [
-            ct0.convertToShares(
-                uint256((int256(longAmounts.rightSlot() + shortAmounts.rightSlot()) * 10) / 10_000)
-            ),
-            ct1.convertToShares(
-                uint256((int256(longAmounts.leftSlot() + shortAmounts.leftSlot()) * 10) / 10_000)
-            )
-        ];
-
-        pp.mintOptions(posIdList, positionSize, type(uint64).max, 0, 0);
-
-        changePrank(Bob);
-
-        // since the position is sufficiently OTM, the spread between value at current tick and median tick is 0
-        // given that it is OTM at both points. Therefore, that spread is not charged as a fee and we just have the proximity fee
-        // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
-        // the result is rounded DOWN and NOT toward zero
-        // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-        int256 exerciseFee = int256(-1024) >> uint256(rangesFromStrike);
-
-        exerciseFeeAmounts = [
-            int256(
-                ct0.convertToShares(uint256((longAmounts.rightSlot() * (-exerciseFee)) / 10_000))
-            ),
-            int256(ct1.convertToShares(uint256((longAmounts.leftSlot() * (-exerciseFee)) / 10_000)))
-        ];
-
-        pp.forceExercise(Alice, posIdList, new uint256[](0), new uint256[](0));
-
-        assertApproxEqAbs(
-            ct0.balanceOf(Bob),
-            type(uint104).max - uint256(exerciseFeeAmounts[0]),
-            10
-        );
-        assertApproxEqAbs(
-            ct1.balanceOf(Bob),
-            type(uint104).max - uint256(exerciseFeeAmounts[1]),
-            10
-        );
-
-        assertEq(sfpm.balanceOf(address(pp), tokenId), 0);
-
-        {
-            (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(longAmounts.rightSlot() + shortAmounts.rightSlot()) * 2,
-                10
-            );
-        }
-
-        {
-            (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(longAmounts.leftSlot() + shortAmounts.leftSlot()) * 2,
-                10
-            );
-        }
-        {
-            assertEq(pp.positionsHash(Alice), 0);
-
-            assertEq(pp.numberOfPositions(Alice), 0);
-
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
-
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
-        }
-
-        {
-            assertApproxEqAbs(
-                ct0.balanceOf(Alice),
-                (uint256(type(uint104).max) +
-                    uint256(exerciseFeeAmounts[0]) -
-                    commissionFeeAmounts[0]),
-                uint256(
-                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_000_000 + 10)
-                )
-            );
-
-            assertApproxEqAbs(
-                ct1.balanceOf(Alice),
-                (uint256(type(uint104).max) +
-                    uint256(exerciseFeeAmounts[1]) -
-                    commissionFeeAmounts[1]),
-                uint256(int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10))
-            );
-        }
-    }
-
-    // more general test - may end up "no delta" for certain fuzz inputs
     function test_Success_forceExerciseDelta(
         uint256 x,
         uint256 numLegs,
@@ -4185,7 +4058,6 @@ contract PanopticPoolTest is PositionUtils {
                 widthSeeds[i],
                 strikeSeeds[i],
                 uint24(tickSpacing),
-                // distancing tickSpacing ensures this position stays OTM throughout this test case. ITM is tested elsewhere.
                 currentTick
             );
         }
@@ -4308,10 +4180,8 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         changePrank(Bob);
-
-        (priceArray, medianTick) = pp.getPriceArray();
-
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
+            .slot0();
 
         for (uint256 i = 0; i < numLegs; ++i) {
             if (isLongs[i] == 0) continue;
@@ -4332,7 +4202,7 @@ contract PanopticPoolTest is PositionUtils {
 
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
 
-            medianSqrtPriceX96 = TickMath.getSqrtRatioAtTick(medianTick);
+            medianSqrtPriceX96 = TickMath.getSqrtRatioAtTick(TWAPtick);
 
             uint256 liquidityChunk = PanopticMath.getLiquidityChunk(tokenId, i, positionSize);
 
@@ -5117,114 +4987,27 @@ contract PanopticPoolTest is PositionUtils {
 
     function test_Fail_forceExercise_PositionNotExercisable(uint256 x) public {
         _initPool(x);
-
-        uint256 tokenId;
-
-        tokenId = uint256(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            isWETH,
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
             0,
             0,
-            0,
-            PanopticMath.twapFilter(pool, 600) - tickSpacing * 2,
-            1
+            uint24(tickSpacing),
+            currentTick,
+            0
         );
 
-        vm.expectRevert(Errors.NoLegsExercisable.selector);
+        populatePositionData(width, strike, 0);
 
+        uint256 tokenId = uint256(0).addPoolId(poolId).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
         uint256[] memory touchedIds = new uint256[](1);
         touchedIds[0] = tokenId;
-        pp.forceExercise(Alice, touchedIds, new uint256[](0), new uint256[](0));
-    }
 
-    /*//////////////////////////////////////////////////////////////
-                                  TWAP
-    //////////////////////////////////////////////////////////////*/
+        changePrank(Alice);
+        pp.mintOptions(touchedIds, positionSize, 0, 0, 0);
 
-    function test_Success_getPriceArray_Initialization(uint256 x, int256 initTick) public {
-        initTick = bound(initTick, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        _initWorldAtTick(x, int24(initTick));
+        changePrank(Bob);
 
-        (priceArray, medianTick) = pp.getPriceArray();
-
-        int24[8] memory expectedArray = [
-            // padding
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            // initial tick
-            int24(initTick),
-            int24(initTick)
-        ];
-
-        assertEq(medianTick, int24(initTick));
-
-        for (uint256 i = 0; i < 8; ++i) {
-            assertEq(priceArray[i], expectedArray[i]);
-        }
-    }
-
-    function test_Success_getPriceArray_Poking(
-        uint256 x,
-        int256[50] memory pokeTicks,
-        uint256[50] memory blockTimes
-    ) public {
-        for (uint256 i = 0; i < 50; ++i) {
-            pokeTicks[i] = bound(pokeTicks[i], TickMath.MIN_TICK, TickMath.MAX_TICK);
-            blockTimes[i] = bound(blockTimes[i], 0, 21990232555);
-        }
-
-        _initWorldAtTick(x, int24(pokeTicks[0]));
-
-        int24[9] memory expectedArray = [
-            // padding
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            TickMath.MIN_TICK - 1,
-            TickMath.MAX_TICK + 1,
-            // initial tick
-            int24(pokeTicks[0]),
-            int24(pokeTicks[0]),
-            0
-        ];
-
-        uint256 lastTimestamp = block.timestamp;
-
-        for (uint256 i = 1; i < 10; ++i) {
-            vm.warp(block.timestamp + blockTimes[i]);
-
-            UniPoolPriceMock(address(pool)).updatePrice(int24(pokeTicks[i]));
-
-            pp.pokeMedian();
-
-            // put new tick into array to be shifted down into main 8 slots
-            expectedArray[8] = int24(pokeTicks[i]);
-            (priceArray, medianTick) = pp.getPriceArray();
-            for (uint256 j = 0; j < 8; ++j) {
-                // only shift array if an update occured, i.e more than 60 seconds passed since the last update
-                expectedArray[j] = block.timestamp >= lastTimestamp + 60
-                    ? expectedArray[j + 1]
-                    : expectedArray[j];
-                assertEq(priceArray[j], expectedArray[j]);
-                if (priceArray[j] != expectedArray[j]) revert();
-            }
-
-            // sort the array using quicksort and verify correctness of the median
-            int24[] memory sortedPriceArray = Math.sort(priceArray);
-
-            assertEq(medianTick, (sortedPriceArray[3] + sortedPriceArray[4]) / 2);
-
-            // bump last updated block number if an update occured
-            if (block.timestamp >= lastTimestamp + 60) {
-                lastTimestamp = block.timestamp;
-            }
-        }
+        vm.expectRevert(Errors.NoLegsExercisable.selector);
+        pp.forceExercise(Alice, touchedIds, touchedIds, new uint256[](0));
     }
 
     /*//////////////////////////////////////////////////////////////
