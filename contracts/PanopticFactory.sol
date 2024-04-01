@@ -96,7 +96,7 @@ contract PanopticFactory is Multicall {
     address internal s_owner;
 
     /// @notice Whether this contract's state has been initialized
-    bool s_initialized;
+    bool internal s_initialized;
 
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools
     mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
@@ -155,7 +155,7 @@ contract PanopticFactory is Multicall {
     }
 
     /// @notice Get the address of the owner of this Panoptic Factory.
-    /// @return The address which owns this Panoptic Factory.
+    /// @return The address which owns this Panoptic Factory
     function owner() external view returns (address) {
         return s_owner;
     }
@@ -415,8 +415,8 @@ contract PanopticFactory is Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the address of the Panoptic Pool associated with 'univ3pool'.
-    /// @param univ3pool the Uniswap V3 pool address that 'panopticPool' is associated with.
-    /// @return address of the Panoptic Pool associated with 'univ3pool'.
+    /// @param univ3pool The Uniswap V3 pool address to query
+    /// @return Address of the Panoptic Pool associated with 'univ3pool'.
     function getPanopticPool(IUniswapV3Pool univ3pool) external view returns (PanopticPool) {
         return s_getPanopticPool[univ3pool];
     }
