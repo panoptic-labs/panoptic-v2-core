@@ -7,6 +7,8 @@ import "forge-std/Script.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 // Internal
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
+import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
@@ -36,13 +38,18 @@ contract DeployProtocol is Script {
             new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
         );
 
+        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
         PanopticFactory factory = new PanopticFactory(
             WETH9,
             SFPM,
             UNISWAP_V3_FACTORY,
+            dNFT,
             poolReference,
             collateralReference
         );
+
+        factory.initialize(vm.addr(DEPLOYER_PRIVATE_KEY));
+        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         vm.stopBroadcast();
     }
