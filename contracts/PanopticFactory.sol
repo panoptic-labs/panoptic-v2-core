@@ -226,6 +226,9 @@ contract PanopticFactory is Multicall {
         IUniswapV3Pool v3Pool = IUniswapV3Pool(UNIV3_FACTORY.getPool(token0, token1, fee));
         if (address(v3Pool) == address(0)) revert Errors.UniswapPoolNotInitialized();
 
+        if (address(s_getPanopticPool[v3Pool]) != address(0))
+            revert Errors.PoolAlreadyInitialized();
+
         // initialize pool in SFPM if it has not already been initialized
         SFPM.initializeAMMPool(token0, token1, fee);
 
@@ -246,9 +249,6 @@ contract PanopticFactory is Multicall {
         collateralTracker1.startToken(false, token0, token1, fee, newPoolContract);
 
         newPoolContract.startPool(v3Pool, token0, token1, collateralTracker0, collateralTracker1);
-
-        if (address(s_getPanopticPool[v3Pool]) != address(0))
-            revert Errors.PoolAlreadyInitialized();
 
         s_getPanopticPool[v3Pool] = newPoolContract;
 
