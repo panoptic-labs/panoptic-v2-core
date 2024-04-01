@@ -40,7 +40,12 @@ contract DeployTestPool is Script {
         //initialize at tick 0
         IUniswapV3Pool(unipool).initialize(0x1000000000000000000000000);
 
-        PANOPTIC_FACTORY.deployNewPool(address(token0), address(token1), 500, 1337);
+        PANOPTIC_FACTORY.deployNewPool(
+            address(token0),
+            address(token1),
+            500,
+            bytes32(uint256(uint160(vm.addr(DEPLOYER_PRIVATE_KEY))) << 96)
+        );
 
         vm.stopBroadcast();
     }
