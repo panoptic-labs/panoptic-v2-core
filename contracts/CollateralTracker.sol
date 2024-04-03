@@ -127,9 +127,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev Amount of ticks that correspond to a move of -SELLER_COLLATERAL_RATIO/DECIMALS.
-    uint256 immutable TICK_DEVIATION;
-
     /// @notice when creating an option, collect a commission for the Panoptic LPs.
     /// In Panoptic, options never expire, commissions are only paid when a new position is minted.
     /// We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
@@ -191,23 +188,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
         ITM_SPREAD_MULTIPLIER = _ITMSpreadMultiplier;
-
-        // calculate amount of ticks required for upwards and downwards moves, used to check if current and mini-median tick
-        // are out of sync (then apply a 100% collateral requirement)
-        unchecked {
-            // taylor expand log(1-sellCollateralRatio)/log(1.0001) around sellCollateralRatio=2000 up to 3rd order
-            /// since we're dropping the higher order terms, which are all negative, this will underestimate the number of ticks for a 20% move
-            int256 ratioTick = (int256(_sellerCollateralRatio) - 2000);
-            TICK_DEVIATION = uint256(
-                2230 +
-                    (12500 * ratioTick) /
-                    10_000 +
-                    (7812 * ratioTick ** 2) /
-                    10_000 ** 2 +
-                    (6510 * ratioTick ** 3) /
-                    10_000 ** 3
-            );
-        }
     }
 
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
