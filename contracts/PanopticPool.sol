@@ -127,9 +127,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// May be configurable on a pool-by-pool basis in the future, but hardcoded for now
     uint32 internal constant TWAP_WINDOW = 600;
 
-    // If false, an 7-slot internal median array is used to compute the "slow" oracle price
+    // If false, an 8-slot internal median array is used to compute the "slow" oracle price
     // This oracle is updated with the last Uniswap observation during `mintOptions` if MEDIAN_PERIOD has elapsed past the last observation
-    // If true, the "slow" oracle price is instead computed on-the-fly from 7 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls
+    // If true, the "slow" oracle price is instead computed on-the-fly from 8 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls
     bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
 
     // The minimum amount of time, in seconds, permitted between internal TWAP updates.
@@ -145,10 +145,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     uint256 internal constant FAST_ORACLE_PERIOD = 1;
 
     /// @dev Amount of Uniswap observations to take in computing the "slow" oracle price (in Uniswap mode)
-    uint256 internal constant SLOW_ORACLE_CARDINALITY = 7;
+    uint256 internal constant SLOW_ORACLE_CARDINALITY = 8;
 
     /// @dev Amount of observation indices to skip in between each observation for the "slow" oracle price
-    /// @dev Structured such that the minimum total observation time is 7 minutes on Ethereum (similar to internal median mode)
+    /// @dev Structured such that the minimum total observation time is 8 minutes on Ethereum (similar to internal median mode)
     uint256 internal constant SLOW_ORACLE_PERIOD = 5;
 
     // The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up)
