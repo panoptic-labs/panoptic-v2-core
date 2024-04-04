@@ -96,10 +96,12 @@ contract FuzzDeployments {
     }
 
     function deal_USDC(address to, uint256 amt) public {
+        // Balances in slot 9 (verify with "slither --print variable-order 0x43506849D7C04F9138D1A2050bbF3A0c054402dd")
         hevm.store(address(USDC), keccak256(abi.encode(address(to), uint256(9))), bytes32(amt));
     }
 
     function deal_WETH(address to, uint256 amt) public {
+        // Balances in slot 3 (verify with "slither --print variable-order 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
         hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
     }
 
@@ -113,11 +115,11 @@ contract FuzzDeployments {
         assert(pool.token1() == address(WETH));
 
         // give test contract a sufficient amount of tokens to deploy a new pool
-        deal_USDC(address(this), type(uint240).max);
-        deal_WETH(address(this), type(uint256).max);
+        deal_USDC(address(this), 100 ether);
+        deal_WETH(address(this), 100 ether);
 
-        assert(USDC.balanceOf(address(this)) == type(uint256).max);
-        assert(WETH.balanceOf(address(this)) == type(uint256).max);
+        assert(USDC.balanceOf(address(this)) == 100 ether);
+        assert(WETH.balanceOf(address(this)) == 100 ether);
 
         // approve factory to move tokens, on behalf of the test contract
         USDC.approve(address(factory), type(uint256).max);
