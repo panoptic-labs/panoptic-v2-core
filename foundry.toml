@@ -4,7 +4,6 @@ test = 'test/foundry'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"
-solc_version = '0.8.25'
 optimizer = true
 optimizer_runs = 1
 viaIR = false

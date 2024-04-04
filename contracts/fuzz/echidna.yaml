@@ -1,0 +1,4 @@
+deployContracts:
+  [["0x11b001", "FeesCalc"], ["0x11b002", "InteractionHelper"], ["0x11b003", "PanopticMath"]]
+cryticArgs:
+  ["--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)"]
