@@ -347,7 +347,7 @@ contract Misctest is Test, PositionUtils {
         return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
     }
 
- // "virtual" deposit or withdrawal from an account without changing the share price
+    // "virtual" deposit or withdrawal from an account without changing the share price
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
@@ -2144,12 +2144,12 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
+
         /// @dev strangles, liquidation through decrease in collateral, with cross collateral (token0)
 
         for (uint256 i; i < 4; ++i) {
             uint256 asset = i % 2;
-            uint256 tokenType = (i/ 2);
+            uint256 tokenType = (i / 2);
             TokenId tokenId;
             {
                 tokenId = TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool)));
@@ -2204,7 +2204,7 @@ contract Misctest is Test, PositionUtils {
                 );
             }
             vm.startPrank(Swapper);
-            
+
             editCollateral(ct0, Bob, ct0.convertToShares(250));
 
             (, currentTick, , , , , ) = uniPool.slot0();
@@ -2232,7 +2232,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
+
         /// @dev strangles, liquidation through decrease in collateral, with cross collateral (token1)
 
         for (uint256 i; i < 4; ++i) {
@@ -2320,8 +2320,6 @@ contract Misctest is Test, PositionUtils {
             vm.revertTo(snapshot);
         }
 
-
-
         /// @dev spreads, liquidation through decrease in collateral, no-cross collateral
 
         for (uint256 i; i < 8; ++i) {
@@ -2346,7 +2344,7 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
                 TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
-                
+
                 pp.mintOptions(posIdList, 1_000_000, 0, 0, 0);
 
                 // create spread tokenId
@@ -2389,7 +2387,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(posIdList, 10_000, 2**30, 0, 0);
+            pp.mintOptions(posIdList, 10_000, 2 ** 30, 0, 0);
 
             (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -2432,7 +2430,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
+
         /// @dev spreads, liquidation through decrease in collateral, with cross collateral (token0)
 
         for (uint256 i; i < 8; ++i) {
@@ -2457,7 +2455,7 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
                 TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
-                
+
                 pp.mintOptions(posIdList, 1_000_000, 0, 0, 0);
 
                 // create spread tokenId
@@ -2500,7 +2498,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(150, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(posIdList, 10_000, 2**30, 0, 0);
+            pp.mintOptions(posIdList, 10_000, 2 ** 30, 0, 0);
 
             (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -2542,8 +2540,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
- 
+
         /// @dev spreads, liquidation through decrease in collateral, with cross collateral (token1)
 
         for (uint256 i; i < 8; ++i) {
@@ -2568,7 +2565,7 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
                 TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
-                
+
                 pp.mintOptions(posIdList, 1_000_000, 0, 0, 0);
 
                 // create spread tokenId
@@ -2611,7 +2608,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(2500, Bob);
             // mint 1 liquidity unit of wideish centered position
 
-            pp.mintOptions(posIdList, 10_000, 2**30, 0, 0);
+            pp.mintOptions(posIdList, 10_000, 2 ** 30, 0, 0);
 
             (, currentTick, , , , , ) = uniPool.slot0();
 
@@ -2653,7 +2650,5 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
- 
     }
 }
