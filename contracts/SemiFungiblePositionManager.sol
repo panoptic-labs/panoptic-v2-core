@@ -686,14 +686,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ) internal returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved) {
         // Reverts if positionSize is 0 and user did not own the position before minting/burning
         if (positionSize == 0) revert Errors.OptionsBalanceZero();
+        
+        // Validate tokenId
+        tokenId.validate();
 
         /// @dev the flipToBurnToken() function flips the isLong bits
         if (isBurn) {
             tokenId = tokenId.flipToBurnToken();
         }
-
-        // Validate tokenId
-        tokenId.validate();
 
         // Extract univ3pool from the poolId map to Uniswap Pool
         IUniswapV3Pool univ3pool = s_poolContext[tokenId.poolId()].pool;
