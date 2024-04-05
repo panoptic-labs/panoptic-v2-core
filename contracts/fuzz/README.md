@@ -1,6 +1,6 @@
 # Setup Instructions
 
-Throughout this engagement, it is pretty normal to find bugs in our tools (including Echidna, Medusa, and cloudexec) – so we will be keeping track of known workarounds and issues in this readme, and updating this content as releases are pushed. 
+Throughout this engagement, it is pretty normal to find bugs in our tools (including Echidna, Medusa, and cloudexec) – so we will be keeping track of known workarounds and issues in this readme, and updating this content as releases are pushed.
 
 ## Cloudexec
 
