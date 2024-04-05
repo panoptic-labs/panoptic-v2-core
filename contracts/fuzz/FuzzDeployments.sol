@@ -458,21 +458,22 @@ contract FuzzDeployments is FuzzHelpers {
         );
 
         TokenId[] memory posIdList = new TokenId[](1);
-        emit LogUint256(
-            "pre balance",
-            sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId))
+        uint256 preMintOptionsSFPMBalance = sfpm.balanceOf(
+            address(panopticPool),
+            TokenId.unwrap(tokenId)
         );
+        (, uint256 previousInAmm, ) = collToken0.getPoolData();
+
         posIdList[0] = tokenId;
 
         hevm.prank(msg.sender);
         panopticPool.mintOptions(posIdList, positionSize, 0, 0, 0);
 
-        emit LogUint256(
-            "after mint options spfm",
-            sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId))
+        assert(
+            sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId)) -
+                preMintOptionsSFPMBalance ==
+                positionSize
         );
-        emit LogUint256("position size", positionSize);
-        assert(sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId)) == positionSize);
 
         uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
             sqrtLower,
@@ -482,7 +483,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         {
             (, uint256 inAMM, ) = collToken0.getPoolData();
-            assert(abs(int256(inAMM) - int256(amount0)) < 10);
+            assert(inAMM - previousInAmm == amount0);
         }
 
         {

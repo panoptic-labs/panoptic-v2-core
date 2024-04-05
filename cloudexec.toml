@@ -2,7 +2,8 @@
 # Set the directory to upload to the server.
 [input]
 directory = "."
-timeout = "48h"
+timeout = "120h"
+name = "echidna assertion" 
 
 [commands]
 setup = '''
