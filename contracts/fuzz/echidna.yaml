@@ -2,3 +2,10 @@ deployContracts:
   [["0x11b001", "FeesCalc"], ["0x11b002", "InteractionHelper"], ["0x11b003", "PanopticMath"]]
 cryticArgs:
   ["--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)"]
+
+sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
+testMode: assertion
+testLimit: 1000
+shrinkLimit: 1000
+workers: 12
+corpusDir: contracts/fuzz/corpus
