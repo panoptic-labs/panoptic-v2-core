@@ -156,15 +156,15 @@ library PanopticMath {
         }
     }
 
-    /// @notice Takes a packed structure representing a sorted 8-slot ring buffer of ticks and returns the median of those values.
+    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
     /// @param observationIndex The index of the last observation in the Uniswap pool
     /// @param observationCardinality The number of observations in the Uniswap pool
     /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
-    /// @param medianData The packed structure representing the sorted 8-slot ring buffer of ticks
+    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
-    /// @return medianTick The median of the provided 8-slot ring buffer of ticks in `medianData`
-    /// @return updatedMedianData The updated 8-slot ring buffer of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
+    /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
+    /// @return updatedMedianData The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
         uint256 observationIndex,
         uint256 observationCardinality,
