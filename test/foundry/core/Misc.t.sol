@@ -1298,7 +1298,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         uint256 snapshot = vm.snapshot();
-        
+
         /// @dev single leg, liquidation through price move making options ITM, no-cross collateral
 
         for (uint256 i; i < 4; ++i) {
@@ -1546,7 +1546,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
+
         /// @dev strangles, liquidation through price move making on leg of the option ITM, with cross-collateral (token0)
 
         for (uint256 i; i < 8; ++i) {
@@ -1638,7 +1638,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
+
         /// @dev strangles, liquidation through price move making on leg of the option ITM, with cross-collateral (token1)
 
         for (uint256 i; i < 8; ++i) {
@@ -1730,9 +1730,8 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
     }
-    
+
     function test_success_liquidation_LowCollateral_scenarios() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
@@ -1742,7 +1741,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         uint256 snapshot = vm.snapshot();
-        
+
         /// @dev single leg, liquidation through decrease in collateral, no-cross collateral
 
         for (uint256 i; i < 4; ++i) {
@@ -1990,7 +1989,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
+
         /// @dev strangles, liquidation through price move making on leg of the option ITM, with cross-collateral (token0)
 
         for (uint256 i; i < 8; ++i) {
@@ -2082,7 +2081,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
+
         /// @dev strangles, liquidation through price move making on leg of the option ITM, with cross-collateral (token1)
 
         for (uint256 i; i < 8; ++i) {
@@ -2174,6 +2173,5 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
     }
 }
