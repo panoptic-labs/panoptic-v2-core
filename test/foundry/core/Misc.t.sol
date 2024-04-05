@@ -373,6 +373,132 @@ contract Misctest is Test, PositionUtils {
         deal(address(ct), owner, newShares, true);
     }
 
+    // Test that risk-partnered positions can be minted/burned succesfully
+    function test_success_MintBurnStraddle() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+                .addLeg(0, 1, 1, 0, 0, 1, 15, 1)
+                .addLeg(1, 1, 1, 0, 1, 0, 15, 1)
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+    }
+
+    function test_success_MintBurnStrangle() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+                .addLeg(0, 1, 1, 0, 0, 1, 15, 1)
+                .addLeg(1, 1, 1, 0, 1, 0, -15, 1)
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+    }
+
+    function test_success_MintBurnCallSpread() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                35,
+                1
+            )
+        );
+
+        pp.mintOptions($posIdList, 2_000_000, 0, 0, 0);
+
+        // mint OTM position
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, 1, 0, 0, 1, 15, 1)
+            .addLeg(1, 1, 1, 1, 0, 0, 35, 1);
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, type(uint64).max, 0, 0);
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+    }
+
+    function test_success_MintBurnPutSpread() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -35,
+                1
+            )
+        );
+
+        pp.mintOptions($posIdList, 2_000_000, 0, 0, 0);
+
+        // mint OTM position
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, 1, 0, 1, 1, -15, 1)
+            .addLeg(1, 1, 1, 1, 1, 0, -35, 1);
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, type(uint64).max, 0, 0);
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+    }
 
     // these tests are PoCs for rounding issues in the premium distribution
     // to demonstrate the issue log the settled, gross, and owed premia at burn
@@ -1331,7 +1457,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         uint256 snapshot = vm.snapshot();
-        
+
         /// @dev single leg, liquidation through price move making options ITM, no-cross collateral
 
         for (uint256 i; i < 4; ++i) {
@@ -1579,7 +1705,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
-        
+
         /// @dev strangles, liquidation through price move making on leg of the option ITM, with cross-collateral (token0)
 
         for (uint256 i; i < 8; ++i) {
@@ -1671,7 +1797,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
+
         /// @dev strangles, liquidation through price move making on leg of the option ITM, with cross-collateral (token1)
 
         for (uint256 i; i < 8; ++i) {
@@ -1763,9 +1889,8 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
- 
     }
-    
+
     function test_success_liquidation_LowCollateral_scenarios() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
@@ -1775,7 +1900,7 @@ contract Misctest is Test, PositionUtils {
         uniPool.liquidity();
 
         uint256 snapshot = vm.snapshot();
-        
+
         /// @dev single leg, liquidation through decrease in collateral, no-cross collateral
 
         for (uint256 i; i < 4; ++i) {
