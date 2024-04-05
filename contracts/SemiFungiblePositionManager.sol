@@ -686,7 +686,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ) internal returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved) {
         // Reverts if positionSize is 0 and user did not own the position before minting/burning
         if (positionSize == 0) revert Errors.OptionsBalanceZero();
-        
+
         // Validate tokenId
         tokenId.validate();
 
