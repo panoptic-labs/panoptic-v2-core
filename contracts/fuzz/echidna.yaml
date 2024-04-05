@@ -9,3 +9,6 @@ testLimit: 1000
 shrinkLimit: 1000
 workers: 12
 corpusDir: contracts/fuzz/corpus
+rpcBlock: 19582800
+coverageFormats: ["html"]
+format: text

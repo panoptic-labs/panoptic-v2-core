@@ -38,6 +38,7 @@ contract Loggers {
     event LogAddr(string, address);
     event LogUint256(string, uint256);
     event LogUint128(string, uint128);
+    event LogBool(string, bool);
 }
 
 contract FuzzHelpers is Loggers {

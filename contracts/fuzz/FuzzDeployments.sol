@@ -286,25 +286,25 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function getContractsForAmountAtTick(
-        int24 tick,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 token,
-        uint256 amountToken
+        int24 _tick,
+        int24 _tickLower,
+        int24 _tickUpper,
+        uint256 _token,
+        uint256 _amountToken
     ) internal pure returns (uint256 contractAmount) {
-        uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(tick);
-        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(tickLower);
-        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(tickUpper);
+        uint160 sqrtRatioX96 = TickMath.getSqrtRatioAtTick(_tick);
+        uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(_tickLower);
+        uint160 sqrtRatioBX96 = TickMath.getSqrtRatioAtTick(_tickUpper);
 
         uint128 liquidity = getLiquidityForAmountAtRatio(
             sqrtRatioX96,
             sqrtRatioAX96,
             sqrtRatioBX96,
-            token,
-            amountToken
+            _token,
+            _amountToken
         );
 
-        contractAmount = token == 0
+        contractAmount = _token == 0
             ? LiquidityAmounts.getAmount0ForLiquidity(sqrtRatioAX96, sqrtRatioBX96, liquidity)
             : LiquidityAmounts.getAmount1ForLiquidity(sqrtRatioAX96, sqrtRatioBX96, liquidity);
     }
@@ -361,42 +361,42 @@ contract FuzzDeployments is FuzzHelpers {
 
     function getContext(
         uint256 ts_,
-        int24 currentTick,
-        int24 width
+        int24 _currentTick,
+        int24 _width
     ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
-        strikeOffset = int24(width % 2 == 0 ? int256(0) : ts / 2);
+        strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
 
-        minTick = int24(((currentTick - 4096 * 10) / ts) * ts);
-        maxTick = int24(((currentTick + 4096 * 10) / ts) * ts);
+        minTick = int24(((_currentTick - 4096 * 10) / ts) * ts);
+        maxTick = int24(((_currentTick + 4096 * 10) / ts) * ts);
     }
 
     function getContextFull(
         uint256 ts_,
-        int24 currentTick,
-        int24 width
+        int24 _currentTick,
+        int24 _width
     ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
-        strikeOffset = int24(width % 2 == 0 ? int256(0) : ts / 2);
+        strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
 
-        minTick = int24(((currentTick - 4096 * ts) / ts) * ts);
-        maxTick = int24(((currentTick + 4096 * ts) / ts) * ts);
+        minTick = int24(((_currentTick - 4096 * ts) / ts) * ts);
+        maxTick = int24(((_currentTick + 4096 * ts) / ts) * ts);
     }
 
     function getOTMSW(
-        uint256 widthSeed,
-        int256 strikeSeed,
+        uint256 _widthSeed,
+        int256 _strikeSeed,
         uint256 ts_,
-        int24 currentTick,
-        uint256 tokenType
+        int24 _currentTick,
+        uint256 _tokenType
     ) internal view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
-            ? width = int24(int256(bound(widthSeed, 1, 2048)))
-            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
+            ? width = int24(int256(bound(_widthSeed, 1, 2048)))
+            : int24(int256(bound(_widthSeed, 1, (2048 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         int24 rangeDown;
@@ -404,40 +404,36 @@ contract FuzzDeployments is FuzzHelpers {
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
         (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
-            ? getContextFull(ts_, currentTick, width)
-            : getContext(ts_, currentTick, width);
+            ? getContextFull(ts_, _currentTick, width)
+            : getContext(ts_, _currentTick, width);
 
-        int24 lowerBound = tokenType == 0
-            ? int24(currentTick + ts + oneSidedRange - strikeOffset)
+        int24 lowerBound = _tokenType == 0
+            ? int24(_currentTick + ts + oneSidedRange - strikeOffset)
             : int24(minTick + oneSidedRange - strikeOffset);
-        int24 upperBound = tokenType == 0
+        int24 upperBound = _tokenType == 0
             ? int24(maxTick - oneSidedRange - strikeOffset)
-            : int24(currentTick - oneSidedRange - strikeOffset);
+            : int24(_currentTick - oneSidedRange - strikeOffset);
 
         if (ts == 1) {
-            lowerBound = tokenType == 0
-                ? int24(currentTick + ts + rangeDown - strikeOffset)
+            lowerBound = _tokenType == 0
+                ? int24(_currentTick + ts + rangeDown - strikeOffset)
                 : int24(minTick + rangeDown - strikeOffset);
-            upperBound = tokenType == 0
+            upperBound = _tokenType == 0
                 ? int24(maxTick - rangeUp - strikeOffset)
-                : int24(currentTick - rangeUp - strikeOffset);
+                : int24(_currentTick - rangeUp - strikeOffset);
         }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(int256(bound(strikeSeed, lowerBound / ts, upperBound / ts)));
+        strike = int24(int256(bound(_strikeSeed, lowerBound / ts, upperBound / ts)));
 
         strike = int24(strike * ts + strikeOffset);
     }
 
-    function mint_option_OTM_short(
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 positionSizeSeed
-    ) public {
-        /*uint256 widthSeed = 1;
+    function mint_option_OTM_short() public {
+        uint256 widthSeed = 1;
         int256 strikeSeed = 15;
-        uint256 positionSizeSeed = 500000;*/
+        uint256 positionSizeSeed = 500000;
 
         (int24 width, int24 strike) = getOTMSW(
             widthSeed,
@@ -449,6 +445,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         populatePositionData(width, strike, positionSizeSeed);
 
+        uint256 preCallBalance = collToken1.balanceOf(msg.sender);
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1,
@@ -461,11 +458,20 @@ contract FuzzDeployments is FuzzHelpers {
         );
 
         TokenId[] memory posIdList = new TokenId[](1);
+        emit LogUint256(
+            "pre balance",
+            sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId))
+        );
         posIdList[0] = tokenId;
 
         hevm.prank(msg.sender);
         panopticPool.mintOptions(posIdList, positionSize, 0, 0, 0);
 
+        emit LogUint256(
+            "after mint options spfm",
+            sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId))
+        );
+        emit LogUint256("position size", positionSize);
         assert(sfpm.balanceOf(address(panopticPool), TokenId.unwrap(tokenId)) == positionSize);
 
         uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
@@ -506,8 +512,7 @@ contract FuzzDeployments is FuzzHelpers {
                 uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
                 "alice balance 0"
             );*/
-
-            assert(collToken1.balanceOf(msg.sender) == uint256(type(uint104).max));
+            assert(collToken1.balanceOf(msg.sender) == preCallBalance);
         }
     }
 }
