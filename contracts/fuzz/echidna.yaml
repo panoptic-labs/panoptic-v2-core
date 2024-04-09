@@ -11,4 +11,4 @@ workers: 12
 corpusDir: contracts/fuzz/corpus
 rpcBlock: 19582800
 coverageFormats: ["html"]
-format: text
+# format: text

@@ -77,4 +77,8 @@ contract FuzzHelpers is Loggers {
         // Balances in slot 3 (verify with "slither --print variable-order 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
         hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
     }
+
+    function deal_Generic(address token, uint256 slot, address to, uint256 amt) internal {
+        hevm.store(token, keccak256(abi.encode(address(to), uint256(slot))), bytes32(amt));
+    }
 }
