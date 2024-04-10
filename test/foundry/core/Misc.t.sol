@@ -353,37 +353,6 @@ contract Misctest is Test, PositionUtils {
         }
     }
 
-    // convert signed int to assets
-    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
-        return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
-    }
-
-    // "virtual" deposit or withdrawal from an account without changing the share price
-    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
-        int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
-        int256 assetDelta = convertToAssets(ct, shareDelta);
-        vm.store(
-            address(ct),
-            bytes32(uint256(7)),
-            bytes32(
-                uint256(
-                    LeftRightSigned.unwrap(
-                        LeftRightSigned
-                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
-                            .add(LeftRightSigned.wrap(assetDelta))
-                    )
-                )
-            )
-        );
-        deal(
-            ct.asset(),
-            address(ct),
-            uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
-        );
-
-        deal(address(ct), owner, newShares, true);
-    }
-
     // Test that risk-partnered positions can be minted/burned succesfully
     function test_success_MintBurnStraddle() public {
         swapperc = new SwapperC();
@@ -2437,7 +2406,7 @@ contract Misctest is Test, PositionUtils {
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
             // update twaps
-            for (uint256 i = 0; i < 100; ++i) {
+            for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -2460,6 +2429,8 @@ contract Misctest is Test, PositionUtils {
             uint256 asset = i % 2;
             uint256 tokenType = ((i % 4) / 2);
             TokenId tokenId;
+            TokenId[] memory posIdList = new TokenId[](1);
+
             {
                 // sell long leg
                 vm.startPrank(Charlie);
@@ -2476,7 +2447,6 @@ contract Misctest is Test, PositionUtils {
                     2
                 );
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
-                TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
 
                 pp.mintOptions(posIdList, 1_000_000, 0, 0, 0);
@@ -2506,7 +2476,6 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
             }
 
-            TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
             (, int24 currentTick, , , , , ) = uniPool.slot0();
@@ -2547,7 +2516,7 @@ contract Misctest is Test, PositionUtils {
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
             // update twaps
-            for (uint256 i = 0; i < 100; ++i) {
+            for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -2571,6 +2540,8 @@ contract Misctest is Test, PositionUtils {
             uint256 asset = i % 2;
             uint256 tokenType = ((i % 4) / 2);
             TokenId tokenId;
+            TokenId[] memory posIdList = new TokenId[](1);
+
             {
                 // sell long leg
                 vm.startPrank(Charlie);
@@ -2587,7 +2558,6 @@ contract Misctest is Test, PositionUtils {
                     2
                 );
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
-                TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
 
                 pp.mintOptions(posIdList, 1_000_000, 0, 0, 0);
@@ -2617,7 +2587,6 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
             }
 
-            TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
             (, int24 currentTick, , , , , ) = uniPool.slot0();
@@ -2657,7 +2626,7 @@ contract Misctest is Test, PositionUtils {
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
             // update twaps
-            for (uint256 i = 0; i < 100; ++i) {
+            for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
                 swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -2681,6 +2650,8 @@ contract Misctest is Test, PositionUtils {
             uint256 asset = i % 2;
             uint256 tokenType = ((i % 4) / 2);
             TokenId tokenId;
+            TokenId[] memory posIdList = new TokenId[](1);
+
             {
                 // sell long leg
                 vm.startPrank(Charlie);
@@ -2697,7 +2668,6 @@ contract Misctest is Test, PositionUtils {
                     2
                 );
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
-                TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
 
                 pp.mintOptions(posIdList, 1_000_000, 0, 0, 0);
@@ -2727,7 +2697,6 @@ contract Misctest is Test, PositionUtils {
                 //.addLeg(legIndex, optionRatio, asset, isLong, tokenType, riskPartner, strike, width);
             }
 
-            TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
             (, int24 currentTick, , , , , ) = uniPool.slot0();
