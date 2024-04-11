@@ -1430,8 +1430,6 @@ contract PositionUtils is Test {
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
-        console2.log("assetDelta", assetDelta);
-        console2.log("assetsBefore", ct.totalAssets());
         vm.store(
             address(ct),
             bytes32(uint256(7)),
@@ -1445,15 +1443,13 @@ contract PositionUtils is Test {
                 )
             )
         );
-        console2.log("assetAfter", ct.totalAssets());
 
         deal(
             ct.asset(),
             address(ct),
             uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
         );
-        console2.log("balBefore", ct.balanceOf(owner));
+
         deal(address(ct), owner, newShares, true);
-        console2.log("balAfter", ct.balanceOf(owner));
     }
 }

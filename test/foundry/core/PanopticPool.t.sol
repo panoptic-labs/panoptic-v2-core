@@ -5762,9 +5762,6 @@ contract PanopticPoolTest is PositionUtils {
             "incorrect amount of premium was haircut"
         );
 
-        console2.log("longPremium0", longPremium0);
-        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
-        console2.log("$protocolLoss0BaseExpected", $protocolLoss0BaseExpected);
         assertApproxEqAbs(
             $protocolLoss0Actual,
             $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
