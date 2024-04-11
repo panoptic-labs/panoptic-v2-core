@@ -1473,37 +1473,6 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    // convert signed int to assets
-    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
-        return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
-    }
-
-    // "virtual" deposit or withdrawal from an account without changing the share price
-    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
-        int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
-        int256 assetDelta = convertToAssets(ct, shareDelta);
-        vm.store(
-            address(ct),
-            bytes32(uint256(7)),
-            bytes32(
-                uint256(
-                    LeftRightSigned.unwrap(
-                        LeftRightSigned
-                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
-                            .add(LeftRightSigned.wrap(assetDelta))
-                    )
-                )
-            )
-        );
-        deal(
-            ct.asset(),
-            address(ct),
-            uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
-        );
-
-        deal(address(ct), owner, newShares, true);
-    }
-
     /*//////////////////////////////////////////////////////////////
                          POOL INITIALIZATION: -
     //////////////////////////////////////////////////////////////*/
