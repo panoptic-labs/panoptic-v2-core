@@ -18,6 +18,8 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
+import "forge-std/Test.sol";
+
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
 //
@@ -935,6 +937,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // if requested amount is larger than user balance, transfer shares back,
         // then issue new shares
         if (shares > delegateeBalance) {
+            uint256 nonshares = totalSupply - delegateeBalance;
+            uint256 nonassets = convertToAssets(nonshares);
+            console2.log("underlyingIsToken0", s_underlyingIsToken0);
+            console2.log("totalAssets", totalAssets());
+            console2.log("totalSupply", totalSupply);
+            console2.log("totalSupply-D", totalSupply - delegateeBalance);
+            console2.log("SHARESZZZ", shares);
+            console2.log("delegateeBalance", delegateeBalance);
+            console2.log("protocolLossReal", assets - convertToAssets(delegateeBalance));
             // transfer delegatee balance to delegator
             _transferFrom(delegatee, delegator, delegateeBalance);
 
@@ -959,6 +970,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
                 ) - delegateeBalance
             );
+            console2.log("loss", nonassets - convertToAssets(nonshares));
         }
         // if requested amount < delegatee balance, then just transfer shares back
         else {

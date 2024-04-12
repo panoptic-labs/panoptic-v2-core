@@ -272,6 +272,9 @@ contract PanopticPoolTest is PositionUtils {
     int256 $shareDelta0Bob;
     int256 $shareDelta1Bob;
 
+    uint256 $liquidateeBalancePost0;
+    uint256 $liquidateeBalancePost1;
+
     LeftRightUnsigned $tokenData0;
     LeftRightUnsigned $tokenData1;
 
@@ -5474,32 +5477,41 @@ contract PanopticPoolTest is PositionUtils {
                     ];
                 }
             }
+            {
+                uint256 totalSupply0 = ct0.totalSupply();
+                uint256 totalSupply1 = ct1.totalSupply();
+                uint256 totalAssets0 = ct0.totalAssets();
+                uint256 totalAssets1 = ct1.totalAssets();
 
-            uint256 totalSupply0 = ct0.totalSupply();
-            uint256 totalSupply1 = ct1.totalSupply();
-            uint256 totalAssets0 = ct0.totalAssets();
-            uint256 totalAssets1 = ct1.totalAssets();
+                int256 burnDelta0C = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
+                    PanopticMath.convert1to0(
+                        convertToAssets(ct1, shareDeltasLiquidatee[1]),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    );
+                int256 burnDelta0 = convertToAssets(ct0, shareDeltasLiquidatee[0]);
+                int256 burnDelta1 = convertToAssets(ct1, shareDeltasLiquidatee[1]);
 
-            int256 burnDelta0C = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
-                PanopticMath.convert1to0(
-                    convertToAssets(ct1, shareDeltasLiquidatee[1]),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
-                );
-            int256 burnDelta0 = convertToAssets(ct0, shareDeltasLiquidatee[0]);
-            int256 burnDelta1 = convertToAssets(ct1, shareDeltasLiquidatee[1]);
+                uint256 _snapshot = snapshot;
 
-            vm.revertTo(snapshot);
+                uint256 bal0postl = ct0.balanceOf(Alice);
+                uint256 bal1postl = ct1.balanceOf(Alice);
 
-            $totalSupply0 = totalSupply0;
-            $totalSupply1 = totalSupply1;
-            $totalAssets0 = totalAssets0;
-            $totalAssets1 = totalAssets1;
+                vm.revertTo(_snapshot);
 
-            $burnDelta0Combined = burnDelta0C;
-            $burnDelta0 = burnDelta0;
-            $burnDelta1 = burnDelta1;
+                $totalSupply0 = totalSupply0;
+                $totalSupply1 = totalSupply1;
+                $totalAssets0 = totalAssets0;
+                $totalAssets1 = totalAssets1;
 
-            $netExchanged = netExchanged;
+                $burnDelta0Combined = burnDelta0C;
+                $burnDelta0 = burnDelta0;
+                $burnDelta1 = burnDelta1;
+
+                $liquidateeBalancePost0 = bal0postl;
+                $liquidateeBalancePost1 = bal1postl;
+
+                $netExchanged = netExchanged;
+            }
 
             for (uint256 i = 0; i < $posIdLists[1].length; ++i) {
                 for (uint256 j = 0; j < $posIdLists[1][i].countLegs(); ++j) {
@@ -5610,22 +5622,42 @@ contract PanopticPoolTest is PositionUtils {
 
         // The protocol loss is the value of shares added to the supply multiplied by the portion of NON-DELEGATED collateral
         // (losses in collateral that was returned to the liquidator post-delegation are compensated, so they are not included)
-        $protocolLoss0Actual = int256(
+        $protocolLoss0Actual =
+            int256((($totalSupply0 - $liquidateeBalancePost0) * $totalAssets0) / $totalSupply0) -
+            int256(ct0.convertToAssets($totalSupply0 - $liquidateeBalancePost0)) +
+            PanopticMath.convert1to0(
+                int256(
+                    (($totalSupply1 - $liquidateeBalancePost1) * $totalAssets1) / $totalSupply1
+                ) - int256(ct1.convertToAssets($totalSupply1 - $liquidateeBalancePost1)),
+                TickMath.getSqrtRatioAtTick(currentTickFinal)
+            );
+
+        console2.log("$delegated0", $delegated0);
+        console2.log("$totalAssets0", $totalAssets0);
+        console2.log("$totalSupply0", $totalSupply0);
+        console2.log(
+            "tryingtomatchprotocollossbruh",
+            ((40485591044815288290793898272546) * $totalAssets0) /
+                $totalSupply0 -
+                ct0.convertToAssets(40485591044815288290793898272546)
+        );
+        console2.log(
+            "protocollossActual0term",
             (ct0.convertToAssets(
                 (ct0.totalSupply() - $totalSupply0) -
                     ((ct0.totalAssets() - $totalAssets0) * $totalSupply0) /
                     $totalAssets0
             ) * ($totalSupply0 - $delegated0)) /
-                ($totalSupply0 - (ct0.totalSupply() - $totalSupply0)) +
-                PanopticMath.convert1to0(
-                    (ct1.convertToAssets(
-                        (ct1.totalSupply() - $totalSupply1) -
-                            ((ct1.totalAssets() - $totalAssets1) * $totalSupply1) /
-                            $totalAssets1
-                    ) * ($totalSupply1 - $delegated1)) /
-                        ($totalSupply1 - (ct1.totalSupply() - $totalSupply1)),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
-                )
+                ($totalSupply0 - (ct0.totalSupply() - $totalSupply0))
+        );
+        console2.log(
+            "protocollossActual1term",
+            (ct1.convertToAssets(
+                (ct1.totalSupply() - $totalSupply1) -
+                    ((ct1.totalAssets() - $totalAssets1) * $totalSupply1) /
+                    $totalAssets1
+            ) * ($totalSupply1 - $delegated1)) /
+                ($totalSupply1 - (ct1.totalSupply() - $totalSupply1))
         );
 
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
@@ -5754,6 +5786,18 @@ contract PanopticPoolTest is PositionUtils {
                 )),
             0
         );
+        console2.log("liquidateeBalancePost0", $liquidateeBalancePost0);
+        console2.log(
+            "prot loss",
+            int256((($totalSupply0 - $liquidateeBalancePost0) * $totalAssets0) / $totalSupply0) -
+                int256(ct0.convertToAssets($totalSupply0 - $liquidateeBalancePost0))
+        );
+
+        console2.log(
+            "haircut0Calc",
+            ((int256(settledTokens0[0]) - int256(settledTokens0[1])) * int256($totalSupply0)) /
+                int256($totalAssets0)
+        );
 
         assertApproxEqAbs(
             int256(settledTokens0[0]) - int256(settledTokens0[1]),
@@ -5762,6 +5806,9 @@ contract PanopticPoolTest is PositionUtils {
             "incorrect amount of premium was haircut"
         );
 
+        console2.log("longPremium0", longPremium0);
+        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
+        console2.log("$protocolLoss0BaseExpected", $protocolLoss0BaseExpected);
         assertApproxEqAbs(
             $protocolLoss0Actual,
             $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
