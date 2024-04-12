@@ -19,7 +19,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1134,8 +1133,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 liquidationBonus1 += deltaBonus1;
             }
         }
-        console2.log("liquidationBonus0", liquidationBonus0);
-        console2.log("liquidationBonus1", liquidationBonus1);
 
         LeftRightUnsigned _delegations = delegations;
         // revoke the delegated amount plus the bonus amount.

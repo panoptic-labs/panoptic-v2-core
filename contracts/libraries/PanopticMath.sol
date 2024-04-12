@@ -13,8 +13,6 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
-import "forge-std/Test.sol";
-
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
 library PanopticMath {
@@ -669,10 +667,7 @@ library PanopticMath {
                 );
                 uint256 required1 = tokenData1.leftSlot();
 
-                console2.log("required0", required0);
-                console2.log("required1", required1);
                 uint256 requiredRatioX128 = Math.mulDiv(required0, 2 ** 128, required0 + required1);
-                console2.log("requiredRatioX128", requiredRatioX128);
 
                 (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.convertCollateralData(
                     tokenData0,
@@ -682,7 +677,6 @@ library PanopticMath {
                 );
 
                 uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
-                console2.log("bonusCross", bonusCross);
 
                 // convert that bonus to tokens 0 and 1
                 bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
@@ -693,8 +687,6 @@ library PanopticMath {
                         sqrtPriceX96Final
                     )
                 );
-                console2.log("bonus0", bonus0);
-                console2.log("bonus1", bonus1);
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
@@ -703,9 +695,6 @@ library PanopticMath {
                 Math.max(premia.rightSlot(), 0);
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
                 Math.max(premia.leftSlot(), 0);
-
-            console2.log("balance0", balance0);
-            console2.log("balance1", balance1);
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
@@ -805,10 +794,6 @@ library PanopticMath {
             int256 haircut0;
             int256 haircut1;
 
-            console2.log("collateralDelta0", collateralDelta0);
-            console2.log("collateralDelta1", collateralDelta1);
-            console2.log("sqrtFinal", sqrtPriceX96Final);
-
             // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
             // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
             if (
@@ -871,9 +856,7 @@ library PanopticMath {
             {
                 address _liquidatee = liquidatee;
                 if (haircut0 != 0) collateral0.exercise(_liquidatee, 0, 0, 0, int128(haircut0));
-                console2.log("haircut0", haircut0);
                 if (haircut1 != 0) collateral1.exercise(_liquidatee, 0, 0, 0, int128(haircut1));
-                console2.log("haircut1", haircut1);
             }
 
             for (uint256 i = 0; i < positionIdList.length; i++) {

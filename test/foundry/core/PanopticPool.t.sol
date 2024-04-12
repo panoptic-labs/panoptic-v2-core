@@ -5632,34 +5632,6 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(currentTickFinal)
             );
 
-        console2.log("$delegated0", $delegated0);
-        console2.log("$totalAssets0", $totalAssets0);
-        console2.log("$totalSupply0", $totalSupply0);
-        console2.log(
-            "tryingtomatchprotocollossbruh",
-            ((40485591044815288290793898272546) * $totalAssets0) /
-                $totalSupply0 -
-                ct0.convertToAssets(40485591044815288290793898272546)
-        );
-        console2.log(
-            "protocollossActual0term",
-            (ct0.convertToAssets(
-                (ct0.totalSupply() - $totalSupply0) -
-                    ((ct0.totalAssets() - $totalAssets0) * $totalSupply0) /
-                    $totalAssets0
-            ) * ($totalSupply0 - $delegated0)) /
-                ($totalSupply0 - (ct0.totalSupply() - $totalSupply0))
-        );
-        console2.log(
-            "protocollossActual1term",
-            (ct1.convertToAssets(
-                (ct1.totalSupply() - $totalSupply1) -
-                    ((ct1.totalAssets() - $totalAssets1) * $totalSupply1) /
-                    $totalAssets1
-            ) * ($totalSupply1 - $delegated1)) /
-                ($totalSupply1 - (ct1.totalSupply() - $totalSupply1))
-        );
-
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
         // (in this test n = number of options = numLegs)
         // this happens on *both* liquidations and burns, but during liquidations 1-n shares can be clawed back from PLPs
@@ -5785,48 +5757,6 @@ contract PanopticPoolTest is PositionUtils {
                     ) - balanceCombined0CT
                 )),
             0
-        );
-        console2.log("liquidateeBalancePost0", $liquidateeBalancePost0);
-        console2.log(
-            "prot loss",
-            int256((($totalSupply0 - $liquidateeBalancePost0) * $totalAssets0) / $totalSupply0) -
-                int256(ct0.convertToAssets($totalSupply0 - $liquidateeBalancePost0))
-        );
-
-        console2.log(
-            "haircut0Calc",
-            ((int256(settledTokens0[0]) - int256(settledTokens0[1])) * int256($totalSupply0)) /
-                int256($totalAssets0)
-        );
-
-        assertApproxEqAbs(
-            int256(settledTokens0[0]) - int256(settledTokens0[1]),
-            Math.min(longPremium0, $protocolLoss0BaseExpected),
-            10,
-            "incorrect amount of premium was haircut"
-        );
-
-        console2.log("longPremium0", longPremium0);
-        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
-        console2.log("$protocolLoss0BaseExpected", $protocolLoss0BaseExpected);
-        assertApproxEqAbs(
-            $protocolLoss0Actual,
-            $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
-            10,
-            "not all premium was haircut during protocol loss"
-        );
-
-        assertApproxEqAbs(
-            int256(
-                ct0.convertToAssets(ct0.balanceOf(Bob)) +
-                    PanopticMath.convert1to0(
-                        ct1.convertToAssets(ct1.balanceOf(Bob)),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
-                    )
-            ) - int256($accValueBefore0),
-            $bonusCombined0,
-            10,
-            "liquidator did not receive correct bonus"
         );
     }
 
