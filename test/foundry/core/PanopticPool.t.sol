@@ -5758,6 +5758,32 @@ contract PanopticPoolTest is PositionUtils {
                 )),
             0
         );
+        assertApproxEqAbs(
+            int256(settledTokens0[0]) - int256(settledTokens0[1]),
+            Math.min(longPremium0, $protocolLoss0BaseExpected),
+            10,
+            "incorrect amount of premium was haircut"
+        );
+
+        assertApproxEqAbs(
+            $protocolLoss0Actual,
+            $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
+            10,
+            "not all premium was haircut during protocol loss"
+        );
+
+        assertApproxEqAbs(
+            int256(
+                ct0.convertToAssets(ct0.balanceOf(Bob)) +
+                    PanopticMath.convert1to0(
+                        ct1.convertToAssets(ct1.balanceOf(Bob)),
+                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    )
+            ) - int256($accValueBefore0),
+            $bonusCombined0,
+            10,
+            "liquidator did not receive correct bonus"
+        );
     }
 
     function test_Fail_liquidate_validatePositionListLiquidatee(
