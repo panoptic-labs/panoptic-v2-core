@@ -99,10 +99,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     // specifies what the MIN/MAX slippage ticks are:
-    /// @dev has to be one above MIN because of univ3pool.swap's strict "<" check
-    int24 internal constant MIN_SWAP_TICK = Constants.MIN_V3POOL_TICK + 1;
-    /// @dev has to be one below MAX because of univ3pool.swap's strict "<" check
-    int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK - 1;
+    int24 internal constant MIN_SWAP_TICK = Constants.MIN_V3POOL_TICK - 1;
+    int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK + 1;
 
     // Flags used as arguments to premia caluculation functions
     /// @dev 'COMPUTE_ALL_PREMIA' calculates premia for all legs of a position
@@ -1085,8 +1083,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // Note: tick limits are not applied here since it is not the liquidator's position being liquidated
             (netExchanged, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
-                Constants.MIN_V3POOL_TICK,
-                Constants.MAX_V3POOL_TICK,
+                0,
+                0,
                 DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );

@@ -1515,8 +1515,8 @@ contract Misctest is Test, PositionUtils {
                 uint160(
                     bound(
                         prices[i],
-                        tokenType == 0 ? sqrtPriceTargetX96 : TickMath.getSqrtRatioAtTick(-750_000),
-                        tokenType == 0 ? TickMath.getSqrtRatioAtTick(750_000) : sqrtPriceTargetX96
+                        tokenType == 0 ? sqrtPriceTargetX96 : Constants.MIN_V3POOL_SQRT_RATIO + 2,
+                        tokenType == 0 ? Constants.MAX_V3POOL_SQRT_RATIO - 2 : sqrtPriceTargetX96
                     )
                 )
             );

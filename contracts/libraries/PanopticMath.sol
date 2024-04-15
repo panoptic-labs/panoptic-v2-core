@@ -666,7 +666,8 @@ library PanopticMath {
                     sqrtPriceX96Twap
                 );
                 uint256 required1 = tokenData1.leftSlot();
-                uint256 requiredRatioX128 = (required0 << 128) / (required0 + required1);
+
+                uint256 requiredRatioX128 = Math.mulDiv(required0, 2 ** 128, required0 + required1);
 
                 (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.convertCollateralData(
                     tokenData0,
@@ -792,6 +793,7 @@ library PanopticMath {
             int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
             int256 haircut0;
             int256 haircut1;
+
             // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
             // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
             if (
