@@ -199,22 +199,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev [7] [5] [3] [1] [0] [2] [4] [6]
     /// 111 101 011 001 000 010 100 110
     //
-    // [Constants.MIN_V3POOL_TICK] [7]
+    // [Constants.MIN_V3POOL_TICK-1] [7]
     // 111100100111011000010111
     //
-    // [Constants.MAX_V3POOL_TICK] [0]
+    // [Constants.MAX_V3POOL_TICK+1] [0]
     // 000011011000100111101001
     //
-    // [Constants.MIN_V3POOL_TICK] [6]
+    // [Constants.MIN_V3POOL_TICK-1] [6]
     // 111100100111011000010111
     //
-    // [Constants.MAX_V3POOL_TICK] [1]
+    // [Constants.MAX_V3POOL_TICK+1] [1]
     // 000011011000100111101001
     //
-    // [Constants.MIN_V3POOL_TICK] [5]
+    // [Constants.MIN_V3POOL_TICK-1] [5]
     // 111100100111011000010111
     //
-    // [Constants.MAX_V3POOL_TICK] [2]
+    // [Constants.MAX_V3POOL_TICK+1] [2]
     // 000011011000100111101001
     //
     ///  @dev [CURRENT TICK] [4]
