@@ -4,6 +4,7 @@ pragma solidity ^0.8.12;
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {PropertiesAsserts} from "./PropertiesHelper.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -34,14 +35,8 @@ interface IHevm {
     function label(address addr, string calldata label) external;
 }
 
-contract Loggers {
-    event LogAddr(string, address);
-    event LogUint256(string, uint256);
-    event LogUint128(string, uint128);
-    event LogBool(string, bool);
-}
 
-contract FuzzHelpers is Loggers {
+contract FuzzHelpers is PropertiesAsserts {
     IHevm hevm = IHevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
     ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
@@ -60,17 +55,28 @@ contract FuzzHelpers is Loggers {
 
     function bound(uint256 value, uint256 min, uint256 max) internal pure returns (uint256) {
         uint256 range = max - min + 1;
-        return value % range;
+        return min + (value % range);
     }
 
     function bound(int256 value, int256 min, int256 max) internal pure returns (int256) {
         int256 range = max - min + 1;
-        return value % range;
+        return min + (value % range);
     }
 
-    function deal_USDC(address to, uint256 amt) internal {
+    function deal_USDC(address to, uint256 amt, bool alter_supply) internal {
         // Balances in slot 9 (verify with "slither --print variable-order 0x43506849D7C04F9138D1A2050bbF3A0c054402dd")
-        hevm.store(address(USDC), keccak256(abi.encode(address(to), uint256(9))), bytes32(amt));
+        uint256 slot_balances = uint256(9);
+        uint256 original_balance = uint256(hevm.load(address(USDC), keccak256(abi.encode(address(to), slot_balances))));
+        int256 delta = int256(amt) - int256(original_balance);
+        hevm.store(address(USDC), keccak256(abi.encode(address(to), slot_balances)), bytes32(amt));
+
+        if(alter_supply) {
+            // Total supply in slot 11
+            bytes32 slot_supply = bytes32(uint256(11));
+            uint256 orig_supply = uint256(hevm.load(address(USDC), slot_supply));
+            uint256 new_supply  = uint256(int256(orig_supply) + delta);
+            hevm.store(address(USDC), slot_supply, bytes32(new_supply));
+        }
     }
 
     function deal_WETH(address to, uint256 amt) internal {
@@ -78,7 +84,17 @@ contract FuzzHelpers is Loggers {
         hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
     }
 
-    function deal_Generic(address token, uint256 slot, address to, uint256 amt) internal {
-        hevm.store(token, keccak256(abi.encode(address(to), uint256(slot))), bytes32(amt));
+    function deal_Generic(address token, uint256 slot, address to, uint256 amt, bool alter_supply, uint256 supply_slot) internal {
+        uint256 slot_balances = slot;
+        uint256 original_balance = uint256(hevm.load(token, keccak256(abi.encode(address(to), slot_balances))));
+        int256 delta = int256(amt) - int256(original_balance);
+        hevm.store(token, keccak256(abi.encode(address(to), slot_balances)), bytes32(amt));
+
+        if(alter_supply) {
+            bytes32 slot_supply = bytes32(supply_slot);
+            uint256 orig_supply = uint256(hevm.load(token, slot_supply));
+            uint256 new_supply  = uint256(int256(orig_supply) + delta);
+            hevm.store(token, slot_supply, bytes32(new_supply));
+        }
     }
 }
