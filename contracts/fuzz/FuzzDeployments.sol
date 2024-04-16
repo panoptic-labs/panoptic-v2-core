@@ -28,6 +28,8 @@ import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 
 contract SwapperC {
+    event LogUint256(string, uint256);
+
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
@@ -103,7 +105,10 @@ contract SwapperC {
 
         if (sqrtPriceX96Before == sqrtPriceX96) return;
 
-        try pool.swap(
+        emit LogUint256("price before", sqrtPriceX96Before);
+        emit LogUint256("price target", sqrtPriceX96);
+
+        pool.swap(
             msg.sender,
             sqrtPriceX96Before > sqrtPriceX96 ? true : false,
             sqrtPriceX96Before > sqrtPriceX96 ? int256(IERC20(pool.token0()).balanceOf(msg.sender)) : int256(IERC20(pool.token1()).balanceOf(msg.sender)),
@@ -118,8 +123,7 @@ contract SwapperC {
                     payer: msg.sender
                 })
             )
-        ) {}
-        catch {assert(false);}
+        );
     }
 }
 
@@ -220,8 +224,8 @@ contract FuzzDeployments is FuzzHelpers {
         initialize();
 
         // Actor 5 is the pool manipulator
-        deal_USDC(actors[5], 100000000 ether, true);
-        deal_WETH(actors[5], 100000 ether);
+        deal_USDC(actors[5], 1000000000 ether, true);
+        deal_WETH(actors[5], 1000000 ether);
         hevm.prank(actors[5]);
         IERC20(USDC).approve(address(pool), type(uint256).max);
         hevm.prank(actors[5]);
@@ -641,7 +645,45 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogString("Minted a new option");
     }
 
-    function liquidate_option_via_swap(uint256 i_liquidated) public {
+    function perform_swap(uint160 target_sqrt_price) public {
+
+        // bound the price between 1000 and 5000 
+        target_sqrt_price = uint160(bound(target_sqrt_price, 1120444674276726262247898545651712, 2505352955026066883383046797524992));
+
+        uint160 price;
+
+        (price, , , , , , ) = pool.slot0();
+
+        emit LogUint256("price before swap", uint256(price));
+
+        hevm.prank(actors[5]);
+        swapperc.swapTo(pool, target_sqrt_price);
+
+        (price, , , , , , ) = pool.slot0();
+        emit LogUint256("price after swap", uint256(price));
+        
+    }
+
+    function update_twap() public {
+
+        int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick before", TWAPtick_before);
+
+        // update twaps
+        for (uint256 i = 0; i < 20; ++i) {
+            hevm.warp(block.timestamp + 120);
+            hevm.roll(block.number + 10);
+            hevm.prank(actors[5]);
+            swapperc.mint(pool, -10, 10, 10 ** 18);
+            hevm.prank(actors[5]);
+            swapperc.burn(pool, -10, 10, 10 ** 18);
+        }
+
+        int24 TWAPtick_after = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick after", TWAPtick_after);
+    }
+
+    function try_liquidate_option(uint256 i_liquidated) public {
         i_liquidated = bound(i_liquidated, 0, 4);
         if(userPositions[actors[i_liquidated]].length < 1) {
             emit LogString("No current positions");
@@ -652,38 +694,6 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory liquidated_positions = userPositions[actors[i_liquidated]];
         TokenId[] memory liquidator_positions = userPositions[msg.sender];
 
-        // get parameters from last
-        TokenId position = liquidated_positions[liquidated_positions.length - 1];
-        uint160 price;
-
-        (price, currentTick, , , , , ) = pool.slot0();
-
-        {
-            (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = panopticHelper.checkCollateral(panopticPool, actors[i_liquidated], currentTick, position.tokenType(0), liquidated_positions);
-            assertWithMsg(totalCollateralBalance0 >= totalCollateralRequired0, "not liquidatable");
-
-            emit LogUint256("price before swaps", uint256(price));
-
-            // swap to 1.21 or 0.82, depending on tokenType
-            hevm.prank(actors[5]);
-            swapperc.swapTo(pool, position.tokenType(0) == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976);
-
-            (price, , , , , , ) = pool.slot0();
-            emit LogUint256("price after swaps", uint256(price));
-
-            (totalCollateralBalance0, totalCollateralRequired0) = panopticHelper.checkCollateral(panopticPool, actors[i_liquidated], currentTick, position.tokenType(0), liquidated_positions);
-            require(totalCollateralBalance0 < totalCollateralRequired0);
-        }
-
-        // update twaps
-        for (uint256 i = 0; i < 100; ++i) {
-            hevm.warp(block.timestamp + 120);
-            hevm.roll(block.number + 10);
-            hevm.prank(actors[5]);
-            swapperc.mint(pool, -10, 10, 10 ** 18);
-            hevm.prank(actors[5]);
-            swapperc.burn(pool, -10, 10, 10 ** 18);
-        }
 
         emit LogUint256("liquidator positions length", liquidator_positions.length);
         emit LogUint256("liquidated positions length", liquidated_positions.length);
@@ -699,7 +709,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     }
 
-    function liquidate_option_via_edit(uint256 i_liquidated) public {
+    function liquidate_option_via_edit(uint256 i_liquidated) internal {
         i_liquidated = bound(i_liquidated, 0, 4);
         if(userPositions[actors[i_liquidated]].length < 1) {
             emit LogString("No current positions");
@@ -734,10 +744,6 @@ contract FuzzDeployments is FuzzHelpers {
         LeftRightUnsigned lru = LeftRightUnsigned.wrap(uint96(IERC20(USDC).balanceOf(msg.sender))).toLeftSlot(uint96(IERC20(WETH).balanceOf(msg.sender)));
         hevm.prank(msg.sender);
         panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions);
-        
-        /*try  {}
-        catch{ assert(false); }*/
-        assertWithMsg(false, "liquidated");
 
     }
 

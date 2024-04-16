@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 abstract contract PropertiesAsserts {
     event LogUint256(string, uint256);
+    event LogInt256(string, int256);
     event LogAddress(string, address);
     event LogString(string);
 
