@@ -1,5 +1,5 @@
 deployContracts:
-  [["0x11b001", "FeesCalc"], ["0x11b002", "InteractionHelper"], ["0x11b003", "PanopticMath"]]
+  [["0x11b001", "FeesCalc"], ["0x11b002", "InteractionHelper"], ["0x11b003", "PanopticMath"], ["0xde0001", "UniDeployer"], ["0xde0002", "UniSwapRouterDeployer"]]
 cryticArgs:
   ["--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)"]
 
@@ -9,6 +9,6 @@ testLimit: 500000000
 shrinkLimit: 1000
 workers: 12
 corpusDir: contracts/fuzz/corpus
-rpcBlock: 19582800
+#rpcBlock: 19582800
 coverageFormats: ["html"]
 # format: text

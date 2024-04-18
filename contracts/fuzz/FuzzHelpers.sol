@@ -5,6 +5,8 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PropertiesAsserts} from "./PropertiesHelper.sol";
+import {IUniDeployer} from "./fuzz-mocks/IUniDeployer.sol";
+import {IUniSwapRouterDeployer} from "./fuzz-mocks/IUniSwapRouterDeployer.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -39,11 +41,18 @@ interface IHevm {
 contract FuzzHelpers is PropertiesAsserts {
     IHevm hevm = IHevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
-    ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-    IUniswapV3Pool constant USDC_WETH_5 =
+    //Testing uni deployment
+    IUniDeployer deployer = IUniDeployer(address(0xde0001));
+
+    IUniswapV3Pool USDC_WETH_5 = IUniswapV3Pool(deployer.pool());
+    IERC20 USDC = IERC20(deployer.token0());
+    IERC20 WETH = IERC20(deployer.token1());
+
+    ISwapRouter router = ISwapRouter(IUniSwapRouterDeployer(address(0xde0002)).sr());
+    /*IUniswapV3Pool constant USDC_WETH_5 =
         IUniswapV3Pool(0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640);
     IERC20 constant USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-    IERC20 constant WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    IERC20 constant WETH = IERC20(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);*/
 
     function abs(int256 x) internal pure returns (uint256) {
         if (x >= 0) {
@@ -64,8 +73,9 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function deal_USDC(address to, uint256 amt, bool alter_supply) internal {
+        deployer.mintToken(false, to, amt);
         // Balances in slot 9 (verify with "slither --print variable-order 0x43506849D7C04F9138D1A2050bbF3A0c054402dd")
-        uint256 slot_balances = uint256(9);
+        /*uint256 slot_balances = uint256(9);
         uint256 original_balance = uint256(hevm.load(address(USDC), keccak256(abi.encode(address(to), slot_balances))));
         int256 delta = int256(amt) - int256(original_balance);
         hevm.store(address(USDC), keccak256(abi.encode(address(to), slot_balances)), bytes32(amt));
@@ -76,12 +86,13 @@ contract FuzzHelpers is PropertiesAsserts {
             uint256 orig_supply = uint256(hevm.load(address(USDC), slot_supply));
             uint256 new_supply  = uint256(int256(orig_supply) + delta);
             hevm.store(address(USDC), slot_supply, bytes32(new_supply));
-        }
+        }*/
     }
 
     function deal_WETH(address to, uint256 amt) internal {
+        deployer.mintToken(true, to, amt);
         // Balances in slot 3 (verify with "slither --print variable-order 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
-        hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
+        //hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
     }
 
     function deal_Generic(address token, uint256 slot, address to, uint256 amt, bool alter_supply, uint256 supply_slot) internal {

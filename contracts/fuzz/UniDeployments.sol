@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.12;
+pragma solidity ^0.8.0;
 
 import "./fuzz-mocks/MockERC20.sol";
 import {UniswapV3Pool} from "univ3-core/UniswapV3Pool.sol";
 import {UniswapV3Factory} from "univ3-core/UniswapV3Factory.sol";
 
+
 contract SetupToken {
     MockERC20 public token;
 
-    constructor() public {
+    constructor() {
         // this contract will receive the total supply of 100 tokens
         token = new MockERC20(1e12 ether);
     }
@@ -25,7 +26,7 @@ contract SetupTokens {
     MockERC20 public token0;
     MockERC20 public token1;
 
-    constructor() public {
+    constructor() {
         // create the token wrappers
         tokenSetup0 = new SetupToken();
         tokenSetup1 = new SetupToken();
@@ -54,13 +55,9 @@ contract SetupUniswap {
     MockERC20 token0;
     MockERC20 token1;
 
-    // will create the following enabled fees and corresponding tickSpacing
-    // fee 500   + tickSpacing 10
-    // fee 3000  + tickSpacing 60
-    // fee 10000 + tickSpacing 200
-    UniswapV3Factory factory;
+    UniswapV3Factory public factory;
 
-    constructor(MockERC20 _token0, MockERC20 _token1) public {
+    constructor(MockERC20 _token0, MockERC20 _token1) {
         factory = new UniswapV3Factory();
         token0 = _token0;
         token1 = _token1;
@@ -73,6 +70,9 @@ contract SetupUniswap {
 }
 
 contract UniswapMinter {
+    event LogStr(string);
+    event LogUint(string, uint256);
+
     UniswapV3Pool pool;
     MockERC20 token0;
     MockERC20 token1;
@@ -85,7 +85,7 @@ contract UniswapMinter {
         int128 tU_liqNet;
     }
 
-    constructor(MockERC20 _token0, MockERC20 _token1) public {
+    constructor(MockERC20 _token0, MockERC20 _token1) {
         token0 = _token0;
         token1 = _token1;
     }
@@ -107,15 +107,15 @@ contract UniswapMinter {
         int24 _tickLower,
         int24 _tickUpper
     ) internal view returns (uint128, int128, uint128, int128) {
-        (uint128 tL_liqGross, int128 tL_liqNet, , ) = pool.ticks(_tickLower);
-        (uint128 tU_liqGross, int128 tU_liqNet, , ) = pool.ticks(_tickUpper);
+        (uint128 tL_liqGross, int128 tL_liqNet, , , , , ,) = pool.ticks(_tickLower);
+        (uint128 tU_liqGross, int128 tU_liqNet, , , , , ,) = pool.ticks(_tickUpper);
         return (tL_liqGross, tL_liqNet, tU_liqGross, tU_liqNet);
     }
 
     function getStats(
         int24 _tickLower,
         int24 _tickUpper
-    ) internal view returns (MinterStats memory stats) {
+    ) internal returns (MinterStats memory stats) {
         (uint128 tL_lg, int128 tL_ln, uint128 tU_lg, int128 tU_ln) = getTickLiquidityVars(
             _tickLower,
             _tickUpper
@@ -198,4 +198,45 @@ contract UniswapSwapper {
         pool.swap(address(this), _zeroForOne, _amountSpecified, _sqrtPriceLimitX96, new bytes(0));
         aftr = getStats();
     }
+}
+
+contract UniDeployer {
+
+    event LogStr(string);
+
+    MockERC20 public token0;
+    MockERC20 public token1;
+    UniswapV3Pool public pool;
+    UniswapV3Factory public factory;
+
+    SetupTokens internal st;
+    SetupUniswap internal su;
+    UniswapMinter internal minter;
+
+    constructor() {
+        st = new SetupTokens();
+        token0 = MockERC20(st.token0());
+        token1 = MockERC20(st.token1());
+
+        su = new SetupUniswap(token0, token1);
+        // Create pool start price at 3000
+        su.createPool(500, 1446468563022924011445331901284352);
+        pool = su.pool();
+        factory = su.factory();
+        
+        minter = new UniswapMinter(token0, token1);
+        minter.setPool(pool);
+        st.mintTo(0, address(minter), 3000000000 ether);
+        st.mintTo(1, address(minter), 1000000 ether);
+        emit LogStr("Minted tokens");
+        minter.doMint(-500000, 500000, 1 ether);
+        emit LogStr("Minted position");
+        
+    }
+
+    function mintToken(bool mintToken1, address recipient, uint256 amt) public {
+        st.mintTo(mintToken1 ? 1 : 0, recipient, amt);
+    }
+
+
 }
