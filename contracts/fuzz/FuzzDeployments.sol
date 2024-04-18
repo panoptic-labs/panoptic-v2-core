@@ -165,7 +165,7 @@ contract FuzzDeployments is FuzzHelpers {
     address[] currentPositionsMinters;
     mapping(address => TokenId[]) userPositions;
 
-    uint256 constant MAX_DEPOSIT = 10 ether;
+    uint256 constant MAX_DEPOSIT = 100 ether;
 
     constructor() {
 
@@ -184,6 +184,7 @@ contract FuzzDeployments is FuzzHelpers {
         
         // See if mock or new deploy
         univ3factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
+        //univ3factory = IUniswapV3Factory(deployer.factory());
         //hevm.label(address(univ3factory), "UniV3Factory");
 
         sfpm = new SemiFungiblePositionManager(univ3factory);
@@ -616,7 +617,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         require(userPositions[msg.sender].length == 0, "Too many positions for user");
 
-        posSize = bound(posSize, 1000, 1000000);
+        posSize = bound(posSize, 10 ether, 100 ether);
 
         if(long_short) {
             TokenId lastPosId = generate_single_leg_tokenid_long(asset, call_put, otm_itm, width, strike);
@@ -647,20 +648,28 @@ contract FuzzDeployments is FuzzHelpers {
 
     function perform_swap(uint160 target_sqrt_price) public {
 
-        // bound the price between 1000 and 5000 
-        target_sqrt_price = uint160(bound(target_sqrt_price, 1120444674276726262247898545651712, 2505352955026066883383046797524992));
+        // bound the price between 10 and 500000
+        target_sqrt_price = uint160(bound(target_sqrt_price, 112028621795169773357271145775104, 25054084147398268684193622782902272));
 
         uint160 price;
 
         (price, , , , , , ) = pool.slot0();
 
+        int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick after", TWAPtick_before);
+
         emit LogUint256("price before swap", uint256(price));
 
         hevm.prank(actors[5]);
         swapperc.swapTo(pool, target_sqrt_price);
+        hevm.warp(block.timestamp + 1000);
+        hevm.roll(block.number + 100);
 
         (price, , , , , , ) = pool.slot0();
         emit LogUint256("price after swap", uint256(price));
+
+        int24 TWAPtick_after = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick after", TWAPtick_after);
         
     }
 
@@ -670,17 +679,47 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("TWAP tick before", TWAPtick_before);
 
         // update twaps
-        for (uint256 i = 0; i < 20; ++i) {
-            hevm.warp(block.timestamp + 120);
-            hevm.roll(block.number + 10);
+        //for (uint256 i = 0; i < 20; ++i) {
+            hevm.warp(block.timestamp + 1000);
+            hevm.roll(block.number + 100);
             hevm.prank(actors[5]);
             swapperc.mint(pool, -10, 10, 10 ** 18);
             hevm.prank(actors[5]);
             swapperc.burn(pool, -10, 10, 10 ** 18);
-        }
+        //}
 
         int24 TWAPtick_after = PanopticMath.twapFilter(pool, 600);
         emit LogInt256("TWAP tick after", TWAPtick_after);
+    }
+
+    function get_account_margin(address to_liquidate) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+        require(userPositions[to_liquidate].length > 0);
+        int128 premium0;
+        int128 premium1; 
+        uint256[2][] memory positions;
+
+        (premium0, premium1, positions) = panopticPool.calculateAccumulatedFeesBatch(to_liquidate, true, userPositions[to_liquidate]);
+        tokenData0 = collToken0.getAccountMarginDetails(to_liquidate, currentTick, positions, premium0);
+        tokenData1 = collToken1.getAccountMarginDetails(to_liquidate, currentTick, positions, premium1);
+    }
+
+    function _getSolvencyBalances(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
+        unchecked {
+            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
+            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
+            balanceCross =
+                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
+            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
+            // overstimate by rounding up
+            thresholdCross =
+                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
+        }
     }
 
     function try_liquidate_option(uint256 i_liquidated) public {
@@ -691,19 +730,39 @@ contract FuzzDeployments is FuzzHelpers {
         }
         require(actors[i_liquidated] != msg.sender);
 
+        TokenId[] memory emptyList;
+
         TokenId[] memory liquidated_positions = userPositions[actors[i_liquidated]];
         TokenId[] memory liquidator_positions = userPositions[msg.sender];
-
 
         emit LogUint256("liquidator positions length", liquidator_positions.length);
         emit LogUint256("liquidated positions length", liquidated_positions.length);
         emit LogAddress("liquidator", msg.sender);
         emit LogAddress("liquidated", actors[i_liquidated]);
 
+        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick", TWAPtick);
 
-        LeftRightUnsigned lru = LeftRightUnsigned.wrap(uint96(IERC20(USDC).balanceOf(msg.sender))).toLeftSlot(uint96(IERC20(WETH).balanceOf(msg.sender)));
+        require(liquidated_positions.length > 0);
+
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = get_account_margin(actors[i_liquidated]);        
+        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(tokenData0, tokenData1, Math.getSqrtRatioAtTick(TWAPtick));
+        emit LogUint256("Balance cross", balanceCross);
+        emit LogUint256("Threshold cross", thresholdCross);
+
+        // If the position is not liquidatable, burn it and try again
+        if (balanceCross >= thresholdCross) {
+            hevm.prank(actors[i_liquidated]);
+            panopticPool.burnOptions(userPositions[actors[i_liquidated]][0], emptyList, 0, 0);
+            userPositions[actors[i_liquidated]].pop();
+            return;
+        }
+
+
+        LeftRightUnsigned lru = LeftRightUnsigned.wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)))).toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))));
         hevm.prank(msg.sender);
-        panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions);
+        try panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions) {}
+        catch {assert(false);}
 
         assertWithMsg(false, "liquidated");
 
