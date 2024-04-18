@@ -1,5 +1,11 @@
 deployContracts:
-  [["0x11b001", "FeesCalc"], ["0x11b002", "InteractionHelper"], ["0x11b003", "PanopticMath"], ["0xde0001", "UniDeployer"], ["0xde0002", "UniSwapRouterDeployer"]]
+  [
+    ["0x11b001", "FeesCalc"],
+    ["0x11b002", "InteractionHelper"],
+    ["0x11b003", "PanopticMath"],
+    ["0xde0001", "UniDeployer"],
+    ["0xde0002", "UniSwapRouterDeployer"],
+  ]
 cryticArgs:
   ["--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)"]
 
