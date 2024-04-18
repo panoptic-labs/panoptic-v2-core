@@ -237,7 +237,7 @@ library PanopticMath {
     /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages.
     /// @param univ3pool The Uniswap pool from which to compute the TWAP.
     /// @param twapWindow The time window to compute the TWAP over.
-    /// @return twapTick The final calculated TWAP tick.
+    /// @return The final calculated TWAP tick.
     function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
