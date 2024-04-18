@@ -73,33 +73,6 @@ contract PanopticHelper {
         return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
     }
 
-    /// @notice Update an existing account's "positions hash" with a new single position `tokenId`.
-    /// @notice The positions hash contains a single fingerprint of all positions created by an account/user as well as a tally of the positions.
-    /// @dev The combined hash is the XOR of all individual position hashes.
-    /// @param existingHash The existing position hash containing all historical N positions created and the count of the positions
-    /// @param tokenId The new position to add to the existing hash: existingHash = uint248(existingHash) ^ hashOf(tokenId)
-    /// @param addFlag Whether to mint (add) the tokenId to the count of positions or burn (subtract) it from the count (existingHash >> 248) +/- 1
-    /// @return newHash The new positionHash with the updated hash
-    function updatePositionsHash(
-        uint256 existingHash,
-        TokenId tokenId,
-        bool addFlag
-    ) internal pure returns (uint256) {
-        // add the XOR`ed hash of the single option position `tokenId` to the `existingHash`
-        // @dev 0 ^ x = x
-
-        unchecked {
-            // update hash by taking the XOR of the new tokenId
-            uint248 updatedHash = uint248(existingHash) ^
-                (uint248(uint256(keccak256(abi.encode(tokenId)))));
-            // increment the top 8 bit if addflag=true, decrement otherwise
-            return
-                addFlag
-                    ? uint256(updatedHash) + (((existingHash >> 248) + 1) << 248)
-                    : uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
-        }
-    }
-
     /*//////////////////////////////////////////////////////////////
                           ORACLE CALCULATIONS
     //////////////////////////////////////////////////////////////*/
