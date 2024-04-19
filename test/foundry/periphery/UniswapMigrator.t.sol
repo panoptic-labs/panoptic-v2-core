@@ -17,7 +17,6 @@ import {INonfungiblePositionManager} from "v3-periphery/interfaces/INonfungibleP
 
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 
-
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     /// TODO I think the vanilla SFPM is actually all this test needs, but if you need, check out the harness in PanopticHelper.t.sol
 }
@@ -30,7 +29,8 @@ contract UniswapMigratorTest {
     SemiFungiblePositionManagerHarness sfpm;
 
     IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
-    INonfungiblePositionManager V3NFPM = INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+    INonfungiblePositionManager V3NFPM =
+        INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
 
     PanopticFactory factory;
 
@@ -162,28 +162,26 @@ contract UniswapMigratorTest {
         IERC20Partial(token0).approve(address(V3NFPM), type(uint104).max);
         IERC20Partial(token1).approve(address(V3NFPM), type(uint104).max);
 
-        (liquidityProvisionTokenId,,,) = V3NFPM.mint(INonfungiblePositionManager.MintParams({
-            token0: token0,
-            token1: token1,
-            // TODO: Do these need to be sensical values, or can I just put 1 for all them?
-            // I see the NonfungiblePositionManager test from Uniswap actually calls a getMinTick / getMaxTick when calling .mint in its tests, but i don't know if that's necessary
-            fee: 1,
-            tickLower: 1,
-            tickUpper: 1,
-            amount0Desired: 1,
-            amount1Desired: 1,
-            amount0Min: 1,
-            amount1Min: 1,
-            recipient: LiquidityProvider,
-            deadline: block.timestamp
-        }));
+        (liquidityProvisionTokenId, , , ) = V3NFPM.mint(
+            INonfungiblePositionManager.MintParams({
+                token0: token0,
+                token1: token1,
+                // TODO: Do these need to be sensical values, or can I just put 1 for all them?
+                // I see the NonfungiblePositionManager test from Uniswap actually calls a getMinTick / getMaxTick when calling .mint in its tests, but i don't know if that's necessary
+                fee: 1,
+                tickLower: 1,
+                tickUpper: 1,
+                amount0Desired: 1,
+                amount1Desired: 1,
+                amount0Min: 1,
+                amount1Min: 1,
+                recipient: LiquidityProvider,
+                deadline: block.timestamp
+            })
+        );
 
         // and finally, deploy the migrator!
-        uniswapMigrator = new UniswapMigrator(
-            factory,
-            V3NFPM,
-            V3FACTORY
-        );
+        uniswapMigrator = new UniswapMigrator(factory, V3NFPM, V3FACTORY);
     }
 
     function test_migrateSuccess() public {

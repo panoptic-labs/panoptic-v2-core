@@ -12,12 +12,15 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title Facilitates the migration from Uniswap LPing to PLPing.
 contract UniswapMigrator {
-
     PanopticFactory public panopticFactory;
     INonfungiblePositionManager public univ3NFPM;
     IUniswapV3Factory public univ3Factory;
 
-    constructor(PanopticFactory panopticFactory_, INonfungiblePositionManager univ3NFPM_, IUniswapV3Factory univ3Factory_) {
+    constructor(
+        PanopticFactory panopticFactory_,
+        INonfungiblePositionManager univ3NFPM_,
+        IUniswapV3Factory univ3Factory_
+    ) {
         panopticFactory = panopticFactory_;
         univ3NFPM = univ3NFPM_;
         univ3Factory = univ3Factory_;
@@ -41,8 +44,8 @@ contract UniswapMigrator {
         uint128 liquidity;
         address token0;
         address token1;
-        for (uint i; i < tokenIds.length;) {
-            (,,token0,token1,,,,liquidity,,,,) = univ3NFPM.positions(tokenIds[i]);
+        for (uint i; i < tokenIds.length; ) {
+            (, , token0, token1, , , , liquidity, , , , ) = univ3NFPM.positions(tokenIds[i]);
             univ3NFPM.decreaseLiquidity(
                 INonfungiblePositionManager.DecreaseLiquidityParams({
                     tokenId: tokenIds[i],
@@ -53,27 +56,28 @@ contract UniswapMigrator {
                 })
             );
 
-            (uint amount0CollectedFromPosition, uint amount1CollectedFromPosition) = univ3NFPM.collect(
-                INonfungiblePositionManager.CollectParams({
-                    tokenId: tokenIds[i],
-                    recipient: address(this),
-                    amount0Max: liquidity,
-                    amount1Max: liquidity
-                })
-            );
+            (uint amount0CollectedFromPosition, uint amount1CollectedFromPosition) = univ3NFPM
+                .collect(
+                    INonfungiblePositionManager.CollectParams({
+                        tokenId: tokenIds[i],
+                        recipient: address(this),
+                        amount0Max: liquidity,
+                        amount1Max: liquidity
+                    })
+                );
 
             amount0Collected += amount0CollectedFromPosition;
             amount1Collected += amount1CollectedFromPosition;
 
             univ3NFPM.burn(tokenIds[i]);
 
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
 
         // TODO: I think the best way to get the collateral tracker for each token is to get the Uniswap pool for the pair of tokens, and then get Panoptic pool for the uniswap pool. Henry mentioned something about naming - is there a more efficient way to get the tracker from the name alone? I did not see one.
-        PanopticPool pool = panopticFactory.getPanopticPool(
-            univ3Factory.getPool(token0, token1)
-        );
+        PanopticPool pool = panopticFactory.getPanopticPool(univ3Factory.getPool(token0, token1));
 
         CollateralTracker ct0 = pool.collateralToken0();
         IERC20(token0).approve(ct0, amount0Collected);
@@ -86,5 +90,5 @@ contract UniswapMigrator {
 
     // TODO: alternative .migrate that takes in an array of pairs of amount0Min and amount1Min so you can ensure the tokens you pull out of uniswap and put into the PLP are at the ratio you desire (IE: slippage protection).
     // same logic as the above .migrate but passes in minimums[i].amount0/1Min in the .decreaseLiquidity call
-    function migrate(uint256 tokenIds, uint256[][] amountMins) external { }
+    function migrate(uint256 tokenIds, uint256[][] amountMins) external {}
 }
