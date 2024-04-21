@@ -5,13 +5,13 @@ pragma solidity ^0.8.18;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IDonorNFT} from "@contracts/tokens/interfaces/IDonorNFT.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {Multicall} from "@multicall/Multicall.sol";
 // OpenZeppelin libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -23,7 +23,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
 /// @notice Facilitates deployment of Panoptic pools.
-contract PanopticFactory is Multicall {
+contract PanopticFactory is Multicall, ERC721 {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -55,6 +55,16 @@ contract PanopticFactory is Multicall {
 
     using Clones for address;
 
+    struct PoolInfo {
+        uint256 tokenId;
+        address uniswapPool;
+        address token0;
+        address token1;
+        uint24 fee;
+        address collateralTracker0;
+        address collateralTracker1;
+    }
+
     /*//////////////////////////////////////////////////////////////
                          CONSTANTS & IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -64,9 +74,6 @@ contract PanopticFactory is Multicall {
 
     /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools
     SemiFungiblePositionManager internal immutable SFPM;
-
-    /// @notice Contract called to issue reward NFT to pool deployers
-    IDonorNFT internal immutable DONOR_NFT;
 
     /// @notice Reference implementation of the `PanopticPool` to clone
     address internal immutable POOL_REFERENCE;
@@ -101,6 +108,12 @@ contract PanopticFactory is Multicall {
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools
     mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
 
+    /// @notice The total number of pools, serves as the tokenId of the Panoptic NFT
+    uint256 public numberOfPools;
+
+    /// @notice Mapping from address(PanopticPool) to PoolInfo that stores information about the Panoptic pool
+    mapping(PanopticPool panopticPool => PoolInfo poolInfo) internal s_poolInfo;
+
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
@@ -109,20 +122,17 @@ contract PanopticFactory is Multicall {
     /// @param _WETH9 Address of the Wrapped Ether (or other numeraire token) contract
     /// @param _SFPM The canonical `SemiFungiblePositionManager` deployment
     /// @param _univ3Factory The canonical Uniswap V3 Factory deployment
-    /// @param _donorNFT The contract called to issue NFT rewards for deploying pools
     /// @param _poolReference The reference implementation of the `PanopticPool` to clone
     /// @param _collateralReference The reference implementation of the `CollateralTracker` to clone
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
         IUniswapV3Factory _univ3Factory,
-        IDonorNFT _donorNFT,
         address _poolReference,
         address _collateralReference
-    ) {
+    ) ERC721("Panoptic Factory Deployer NFTs", "PANOPTIC-NFT") {
         WETH = _WETH9;
         SFPM = _SFPM;
-        DONOR_NFT = _donorNFT;
         // We store the Uniswap Factory contract - later we can use this to verify uniswap pools
         UNIV3_FACTORY = _univ3Factory;
         POOL_REFERENCE = _poolReference;
@@ -263,7 +273,20 @@ contract PanopticFactory is Multicall {
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
         // Issue reward NFT to donor
-        DONOR_NFT.issueNFT(msg.sender, newPoolContract, token0, token1, fee);
+        ++numberOfPools;
+        uint256 tokenId = numberOfPools;
+        _safeMint(msg.sender, tokenId);
+
+        // store the information about the new pool
+        s_poolInfo[newPoolContract] = PoolInfo({
+            tokenId: tokenId,
+            uniswapPool: address(v3Pool),
+            token0: token0,
+            token1: token1,
+            fee: fee,
+            collateralTracker0: address(collateralTracker0),
+            collateralTracker1: address(collateralTracker1)
+        });
 
         emit PoolDeployed(
             newPoolContract,
@@ -273,6 +296,12 @@ contract PanopticFactory is Multicall {
             amount0,
             amount1
         );
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_ownerOf(tokenId) != address(0));
+        string memory URI = "";
+        return URI;
     }
 
     /*//////////////////////////////////////////////////////////////
