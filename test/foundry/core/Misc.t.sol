@@ -6,8 +6,6 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
@@ -226,18 +224,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Deployer);
 
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
         factory = new PanopticFactory(
             address(token1),
             sfpm,
             V3FACTORY,
-            dNFT,
             poolReference,
             collateralReference
         );
         factory.initialize(Deployer);
-
-        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         token0.mint(Deployer, type(uint104).max);
         token1.mint(Deployer, type(uint104).max);

@@ -7,8 +7,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
@@ -268,20 +266,9 @@ contract PanopticHelperTest is PositionUtils {
     function _deployPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
-
-        factory = new PanopticFactory(
-            WETH,
-            sfpm,
-            V3FACTORY,
-            dNFT,
-            poolReference,
-            collateralReference
-        );
+        factory = new PanopticFactory(WETH, sfpm, V3FACTORY, poolReference, collateralReference);
 
         factory.initialize(Deployer);
-
-        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);

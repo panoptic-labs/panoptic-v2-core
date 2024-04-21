@@ -16,8 +16,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
 import {Errors} from "@libraries/Errors.sol";
 // Panoptic Interfaces
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
@@ -32,12 +30,9 @@ contract PanopticFactoryHarness is PanopticFactory {
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
         IUniswapV3Factory _univ3Factory,
-        IDonorNFT _donorNFT,
         address poolReference,
         address collateralReference
-    )
-        PanopticFactory(_WETH9, _SFPM, _univ3Factory, _donorNFT, poolReference, collateralReference)
-    {}
+    ) PanopticFactory(_WETH9, _SFPM, _univ3Factory, poolReference, collateralReference) {}
 
     function getPoolReference() external view returns (address) {
         return POOL_REFERENCE;
@@ -150,21 +145,16 @@ contract PanopticFactoryTest is Test {
     }
 
     function setUp() public {
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
-
         // Deploy factory
         panopticFactory = new PanopticFactoryHarness(
             address(_WETH),
             sfpm,
             V3FACTORY,
-            dNFT,
             address(new PanopticPool(sfpm)),
             address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000))
         );
 
         panopticFactory.initialize(address(this));
-
-        DonorNFT(address(dNFT)).changeFactory(address(panopticFactory));
     }
 
     /*//////////////////////////////////////////////////////////////
