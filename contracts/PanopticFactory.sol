@@ -57,12 +57,7 @@ contract PanopticFactory is Multicall, ERC721 {
 
     struct PoolInfo {
         uint256 tokenId;
-        address uniswapPool;
-        address token0;
-        address token1;
-        uint24 fee;
-        address collateralTracker0;
-        address collateralTracker1;
+        IUniswapV3Pool uniswapPool;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -111,8 +106,8 @@ contract PanopticFactory is Multicall, ERC721 {
     /// @notice The total number of pools, serves as the tokenId of the Panoptic NFT
     uint256 public numberOfPools;
 
-    /// @notice Mapping from address(PanopticPool) to PoolInfo that stores information about the Panoptic pool
-    mapping(PanopticPool panopticPool => PoolInfo poolInfo) internal s_poolInfo;
+    /// @notice Mapping from address(PanopticPool) to the tokenId of that Panoptic pool
+    mapping(uint256 tokenId => PanopticPool panopticPool) internal s_poolTokenId;
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
@@ -278,15 +273,7 @@ contract PanopticFactory is Multicall, ERC721 {
         _safeMint(msg.sender, tokenId);
 
         // store the information about the new pool
-        s_poolInfo[newPoolContract] = PoolInfo({
-            tokenId: tokenId,
-            uniswapPool: address(v3Pool),
-            token0: token0,
-            token1: token1,
-            fee: fee,
-            collateralTracker0: address(collateralTracker0),
-            collateralTracker1: address(collateralTracker1)
-        });
+        s_poolTokenId[tokenId] = newPoolContract;
 
         emit PoolDeployed(
             newPoolContract,
@@ -300,6 +287,7 @@ contract PanopticFactory is Multicall, ERC721 {
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         require(_ownerOf(tokenId) != address(0));
+        PanopticPool panopticPool = s_poolTokenId[tokenId];
         string memory URI = "";
         return URI;
     }
