@@ -205,8 +205,8 @@ contract PanopticFactoryTest is Test {
             poolReference,
             bytes32(
                 abi.encodePacked(
-                    uint80(uint160(address(this)) >> 120),
-                    uint80(uint160(address(pool)) >> 120),
+                    uint80(uint160(address(this)) >> 80),
+                    uint80(uint160(address(pool)) >> 80),
                     salt
                 )
             ),
@@ -264,8 +264,8 @@ contract PanopticFactoryTest is Test {
             poolReference,
             bytes32(
                 abi.encodePacked(
-                    uint80(uint160(address(this)) >> 120),
-                    uint80(uint160(address(pool)) >> 120),
+                    uint80(uint160(address(this)) >> 80),
+                    uint80(uint160(address(pool)) >> 80),
                     salt
                 )
             ),
@@ -416,8 +416,8 @@ contract PanopticFactoryTest is Test {
                     panopticFactory.getPoolReference(),
                     bytes32(
                         abi.encodePacked(
-                            uint40(uint160(randomAddress) >> 120),
-                            uint40(uint160(address(pool)) >> 120),
+                            uint40(uint160(randomAddress) >> 80),
+                            uint40(uint160(address(pool)) >> 80),
                             bestSalt
                         )
                     ),
