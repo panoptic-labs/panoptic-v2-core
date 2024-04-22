@@ -182,26 +182,28 @@ contract FuzzDeployments is FuzzHelpers {
             userPositions[actors[i]] = new TokenId[](0);
         }
         
-        // See if mock or new deploy
-        //univ3factory = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
         univ3factory = IUniswapV3Factory(deployer.factory());
-        //hevm.label(address(univ3factory), "UniV3Factory");
+        emit LogAddress("UniV3 Factory", address(univ3factory));
 
         sfpm = new SemiFungiblePositionManager(univ3factory);
-        //hevm.label(address(sfpm), "SFPM");
+        emit LogAddress("Panoptic SFPM", address(sfpm));
+
         panopticHelper = new PanopticHelper(sfpm);
-        //hevm.label(address(panopticHelper), "PanopticHelper");
+        emit LogAddress("Panoptic Helper", address(panopticHelper));
 
         // Import the Panoptic Pool reference (for cloning)
         poolReference = address(new PanopticPool(sfpm));
-        //hevm.label(address(poolReference), "PanopticPool");
+        emit LogAddress("Panoptic Pool reference", address(poolReference));
 
         // Import the Collateral Tracker reference (for cloning)
         collateralReference = address(
             new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
         );
+        emit LogAddress("Panoptic Collateral reference", address(collateralReference));
 
         dnft = IDonorNFT(address(new DonorNFT()));
+        emit LogAddress("DonorNFT", address(dnft));
+
         panopticFactory = new PanopticFactory(
             address(WETH),
             sfpm,
@@ -210,17 +212,18 @@ contract FuzzDeployments is FuzzHelpers {
             poolReference,
             collateralReference
         );
-        //hevm.label(address(panopticFactory), "PanopticFactory");
+        emit LogAddress("Panoptic Factory", address(panopticFactory));
 
         panopticFactory.initialize(address(this));
         DonorNFT(address(dnft)).changeFactory(address(panopticFactory));
 
         swapperc = new SwapperC();
-        //hevm.label(address(swapperc), "SwapperC");
+        emit LogAddress("Panoptic Swapper", address(swapperc));
 
-        //hevm.label(address(USDC), "USDC");
-        //hevm.label(address(WETH), "WETH");
-        //hevm.label(address(USDC_WETH_5), "USDC_WETH_5");
+        emit LogAddress("USDC Token", address(USDC));
+        emit LogAddress("WETH Token", address(WETH));
+        emit LogAddress("USDC/WETH 5 pool", address(USDC_WETH_5));
+        emit LogAddress("UniV3 router", address(router));
 
         initialize();
 
@@ -295,13 +298,6 @@ contract FuzzDeployments is FuzzHelpers {
         IERC20(collToken0.asset()).approve(address(pool), type(uint256).max);
         hevm.prank(address(collToken1));
         IERC20(collToken1.asset()).approve(address(pool), type(uint256).max);
-
-        emit LogAddress("collToken0", address(collToken0));
-        emit LogAddress("collToken1", address(collToken1));
-        emit LogAddress("panopticPool", address(panopticPool));
-        emit LogAddress("panopticFactory", address(panopticFactory));
-        emit LogAddress("SFPM", address(sfpm));
-        emit LogAddress("echidna contract", address(this));
     }
 
     function getContext(
@@ -457,6 +453,17 @@ contract FuzzDeployments is FuzzHelpers {
 
     ////////////////////////////////////////////////////
 
+    function log_tokenid_leg(TokenId t, uint256 leg) internal {
+        emit LogString("TokenId");
+        emit LogUint256("  Asset", t.asset(leg));
+        emit LogUint256("  Option ratio", t.optionRatio(leg));
+        emit LogUint256("  Is long", t.isLong(leg));
+        emit LogUint256("  Token type", t.tokenType(leg));
+        emit LogUint256("  Risk partner", t.riskPartner(leg));
+        emit LogInt256("  Strike tick", t.strike(leg));
+        emit LogInt256("  Width", t.width(leg));
+    }
+
 
     function fund_and_approve() public {
         deal_USDC(msg.sender, 10000000 ether, true);
@@ -575,12 +582,7 @@ contract FuzzDeployments is FuzzHelpers {
         (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
 
         out = out.addLeg(0, 1, asset, long_short, call_put, 0, strike, width);
-        emit LogUint256("asset", asset);
-        emit LogUint256("long/short", long_short);
-        emit LogUint256("call/put", call_put);
-        emit LogUint256("strike", uint256(int256(strike)));
-        emit LogUint256("width", uint256(int256(width)));
-        emit LogUint256("out", TokenId.unwrap(out));
+        log_tokenid_leg(out, 0);
     }
 
     function generate_single_leg_tokenid_short(bool asset_in, bool call_put_in, bool otm_itm_in, uint24 width_in, int256 strike_in) internal returns (TokenId out) {
@@ -600,12 +602,7 @@ contract FuzzDeployments is FuzzHelpers {
         (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
 
         out = out.addLeg(0, 1, asset, long_short, call_put, 0, strike, width);
-        emit LogUint256("asset", asset);
-        emit LogUint256("long/short", long_short);
-        emit LogUint256("call/put", call_put);
-        emit LogUint256("strike", uint256(int256(strike)));
-        emit LogUint256("width", uint256(int256(width)));
-        emit LogUint256("out", TokenId.unwrap(out));
+        log_tokenid_leg(out, 0);
     }
 
     function mint_option(uint256 seller, bool asset, bool call_put, bool long_short, bool otm_itm, uint24 width, int256 strike, uint256 posSize) public {
@@ -615,9 +612,15 @@ contract FuzzDeployments is FuzzHelpers {
             seller = bound(seller +1, 0, 4);
         }
 
-        require(userPositions[msg.sender].length == 0, "Too many positions for user");
+        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+        emit LogUint256("User collateral 0", userCollateral0);
 
-        posSize = bound(posSize, 10 ether, 100 ether);
+        require(userPositions[msg.sender].length == 0, "Too many positions for user");
+        if(!long_short){
+            require(userPositions[actors[seller]].length == 0, "Too many positions for seller");
+        }
+
+        posSize = bound(posSize, userCollateral0 / 2, 3 * userCollateral0 / 4);
 
         if(long_short) {
             TokenId lastPosId = generate_single_leg_tokenid_long(asset, call_put, otm_itm, width, strike);
@@ -627,6 +630,10 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(msg.sender);
             panopticPool.mintOptions(posIdList, uint128(posSize), 0, 0, 0);
 
+            emit LogString("Minted a new option");
+            emit LogUint256("Position size", posSize);
+            emit LogAddress("Minter", msg.sender);
+
         } else {
             TokenId lastPosId = generate_single_leg_tokenid_long(asset, call_put, otm_itm, width, strike);
             userPositions[actors[seller]].push(lastPosId);
@@ -635,15 +642,22 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(actors[seller]);
             panopticPool.mintOptions(posIdList, uint128(posSize)*2, 0, 0, 0);
 
+            emit LogString("Minted a new option");
+            emit LogUint256("Position size", 2*posSize);
+            emit LogAddress("Minter", actors[seller]);
+
+
             lastPosId = generate_single_leg_tokenid_short(asset, call_put, otm_itm, width, strike);
             userPositions[msg.sender].push(lastPosId);
             posIdList = userPositions[msg.sender];
 
             hevm.prank(msg.sender);
             panopticPool.mintOptions(posIdList, uint128(posSize), type(uint64).max, 0, 0);
+            
+            emit LogString("Minted a new option");
+            emit LogUint256("Position size", posSize);
+            emit LogAddress("Minter", msg.sender);
         }
-
-        emit LogString("Minted a new option");
     }
 
     function perform_swap(uint160 target_sqrt_price) public {
@@ -722,6 +736,38 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    function burn_option() public {
+        if(userPositions[msg.sender].length < 1) {
+            emit LogString("No current positions");
+            revert();
+        }
+
+        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+        emit LogAddress("Caller", msg.sender);
+        emit LogUint256("Positions opened for user", numOfPositions);
+
+        TokenId[] memory emptyList;
+
+        (uint128 bal, uint64 pool0, uint64 pool1) = panopticPool.optionPositionBalance(msg.sender, userPositions[msg.sender][0]);
+        emit LogUint256("Pool balance for user", bal);
+        emit LogUint256("Pool utilization of t0", pool0);
+        emit LogUint256("Pool utilization of t1", pool1);
+
+        uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+        uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
+        emit LogUint256("Balance in token0", bal0);
+        emit LogUint256("Balance in token1", bal1);
+
+        // Burn the position
+        hevm.prank(msg.sender);
+        try panopticPool.burnOptions(userPositions[msg.sender][0], emptyList, 0, 0) {}
+        catch {
+            assertWithMsg(false, "Burning failed");
+        }
+        userPositions[msg.sender].pop();
+        return;
+    }
+
     function try_liquidate_option(uint256 i_liquidated) public {
         i_liquidated = bound(i_liquidated, 0, 4);
         if(userPositions[actors[i_liquidated]].length < 1) {
@@ -729,8 +775,6 @@ contract FuzzDeployments is FuzzHelpers {
             revert();
         }
         require(actors[i_liquidated] != msg.sender);
-
-        TokenId[] memory emptyList;
 
         TokenId[] memory liquidated_positions = userPositions[actors[i_liquidated]];
         TokenId[] memory liquidator_positions = userPositions[msg.sender];
@@ -750,22 +794,18 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("Balance cross", balanceCross);
         emit LogUint256("Threshold cross", thresholdCross);
 
-        // If the position is not liquidatable, burn it and try again
+        LeftRightUnsigned lru = LeftRightUnsigned.wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)))).toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))));
+
+        // If the position is not liquidatable, liquidation call must revert
         if (balanceCross >= thresholdCross) {
-            hevm.prank(actors[i_liquidated]);
-            panopticPool.burnOptions(userPositions[actors[i_liquidated]][0], emptyList, 0, 0);
-            userPositions[actors[i_liquidated]].pop();
-            return;
+            hevm.prank(msg.sender);
+            try panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions) {
+                assertWithMsg(false, "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated");
+            } catch {}
         }
 
-
-        LeftRightUnsigned lru = LeftRightUnsigned.wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)))).toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))));
         hevm.prank(msg.sender);
-        try panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions) {}
-        catch {assert(false);}
-
-        assertWithMsg(false, "liquidated");
-
+        panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions);
     }
 
     function liquidate_option_via_edit(uint256 i_liquidated) internal {
@@ -804,6 +844,54 @@ contract FuzzDeployments is FuzzHelpers {
         hevm.prank(msg.sender);
         panopticPool.liquidate(liquidator_positions, actors[i_liquidated], lru, liquidated_positions);
 
+    }
+
+    /////////////////////////////////////////////////////////////
+    // System Invariants
+    /////////////////////////////////////////////////////////////
+
+    function invariant_collateral_removal() public {
+        // If user has positions open, they cannot remove collateral
+        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+        emit LogAddress("Caller", msg.sender);
+        emit LogUint256("Positions opened for user", numOfPositions);
+
+        if (numOfPositions > 0) {
+            uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+            uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
+            emit LogUint256("Balance in token0", bal0);
+            emit LogUint256("Balance in token1", bal1);
+
+            assertWithMsg(collToken0.maxWithdraw(msg.sender) == 0, "It is possible to withdraw assets when the user has open positions");
+            assertWithMsg(collToken1.maxWithdraw(msg.sender) == 0, "It is possible to withdraw assets when the user has open positions");
+
+            if(bal0 > 0) {
+                try collToken0.withdraw(bal0, msg.sender, msg.sender) {
+                    assertWithMsg(false, "Collateral could be removed with open positions");
+                } catch {}
+            }
+            if(bal1 > 0) {
+                try collToken1.withdraw(bal1, msg.sender, msg.sender) {
+                    assertWithMsg(false, "Collateral could be removed with open positions");
+                } catch {}
+            }
+        }         
+    }
+
+    function invariant_collateral_for_positions() public {
+        // If user has positions open, the collateral must be greater than zero
+        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+        emit LogAddress("Caller", msg.sender);
+        emit LogUint256("Positions opened for user", numOfPositions);
+
+        if (numOfPositions > 0) {
+            uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+            uint256 bal1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
+            emit LogUint256("Balance in token0", bal0);
+            emit LogUint256("Balance in token1", bal1);
+
+            assertWithMsg((bal0 > 0) || (bal1 > 0), "User has open positions but zero collateral");
+        }         
     }
 
 }
