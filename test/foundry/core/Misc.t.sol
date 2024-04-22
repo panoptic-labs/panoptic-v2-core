@@ -244,7 +244,7 @@ contract Misctest is Test, PositionUtils {
                     address(token0),
                     address(token1),
                     500,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    uint96(block.timestamp)
                 )
             )
         );

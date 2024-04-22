@@ -390,7 +390,7 @@ contract PanopticPoolTest is PositionUtils {
                     token0,
                     token1,
                     fee,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    uint96(block.timestamp)
                 )
             )
         );
