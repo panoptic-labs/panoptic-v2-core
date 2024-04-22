@@ -234,8 +234,8 @@ contract PanopticFactory is Multicall, ERC721 {
         // salt format: (first 10 characters of deployer address) + (first 10 characters of UniswapV3Pool) + (uint96 user supplied salt)
         bytes32 salt32 = bytes32(
             abi.encodePacked(
-                uint80(uint160(msg.sender) >> 120),
-                uint80(uint160(address(v3Pool)) >> 120),
+                uint80(uint160(msg.sender) >> 80),
+                uint80(uint160(address(v3Pool)) >> 80),
                 salt
             )
         );
@@ -325,8 +325,8 @@ contract PanopticFactory is Multicall, ERC721 {
         for (; uint256(salt) < maxSalt; ) {
             bytes32 newSalt = bytes32(
                 abi.encodePacked(
-                    uint40(uint160(deployerAddress) >> 120),
-                    uint40(uint160(v3Pool) >> 120),
+                    uint80(uint160(deployerAddress) >> 80),
+                    uint80(uint160(v3Pool) >> 80),
                     salt
                 )
             );
