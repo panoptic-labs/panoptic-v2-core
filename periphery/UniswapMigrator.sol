@@ -9,6 +9,7 @@ import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PeripheryErrors} from "@periphery/PeripheryErrors.sol";
 
 /// @title Facilitates the migration from Uniswap LPing to PLPing.
+/// @author Axicon Labs Limited
 contract UniswapMigrator {
     /// @notice Canonical NonFungiblePositionManager deployment
     INonfungiblePositionManager immutable NFPM;
