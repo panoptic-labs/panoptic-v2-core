@@ -236,8 +236,14 @@ contract PanopticFactory is Multicall, ERC721 {
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
         // salt format: (first 10 characters of deployer address) + (first 10 characters of UniswapV3Pool) + (uint96 user supplied salt)
-        bytes32 salt32 = bytes32(abi.encodePacked(uint40(uint160(msg.sender)>>120), uint40(uint160(address(v3Pool)) >> 120), salt));
-        
+        bytes32 salt32 = bytes32(
+            abi.encodePacked(
+                uint40(uint160(msg.sender) >> 120),
+                uint40(uint160(address(v3Pool)) >> 120),
+                salt
+            )
+        );
+
         // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
         newPoolContract = PanopticPool(POOL_REFERENCE.cloneDeterministic(salt32));
 
@@ -322,7 +328,13 @@ contract PanopticFactory is Multicall, ERC721 {
         }
 
         for (; uint256(salt) < maxSalt; ) {
-            bytes32 newSalt = bytes32(abi.encodePacked(uint40(uint160(deployerAddress) >> 120), uint40(uint160(v3Pool) >> 120), salt));
+            bytes32 newSalt = bytes32(
+                abi.encodePacked(
+                    uint40(uint160(deployerAddress) >> 120),
+                    uint40(uint160(v3Pool) >> 120),
+                    salt
+                )
+            );
 
             uint256 rarity = PanopticMath.numberOfLeadingHexZeros(
                 POOL_REFERENCE.predictDeterministicAddress(newSalt)
