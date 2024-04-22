@@ -88,7 +88,7 @@ contract PanopticFactoryTest is Test {
     ];
 
     // granted token amounts
-    uint256 constant INITIAL_MOCK_TOKENS = type(uint256).max;
+    uint256 constant INITIAL_MOCK_TOKENS = type(uint256).max / 2;
 
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
@@ -128,8 +128,8 @@ contract PanopticFactoryTest is Test {
         // give test contract a sufficient amount of tokens to deploy a new pool
         deal(token0, address(this), INITIAL_MOCK_TOKENS);
         deal(token1, address(this), INITIAL_MOCK_TOKENS);
-        assertEq(IERC20Partial(token0).balanceOf(address(this)), INITIAL_MOCK_TOKENS);
-        assertEq(IERC20Partial(token1).balanceOf(address(this)), INITIAL_MOCK_TOKENS);
+        assertEq(IERC20Partial(token0).balanceOf(address(this)), INITIAL_MOCK_TOKENS, 'token0');
+        assertEq(IERC20Partial(token1).balanceOf(address(this)), INITIAL_MOCK_TOKENS, 'token1');
 
         // approve factory to move tokens, on behalf of the test contract
         IERC20Partial(token0).approve(address(panopticFactory), INITIAL_MOCK_TOKENS);
@@ -203,7 +203,7 @@ contract PanopticFactoryTest is Test {
         address poolReference = panopticFactory.getPoolReference();
         address preComputedPool = predictDeterministicAddress(
             poolReference,
-            bytes32(abi.encodePacked(uint40(uint160(address(msg.sender)) >> 120), uint40(uint160(address(pool)) >> 120), salt)),
+            bytes32(abi.encodePacked(uint40(uint160(Deployer) >> 120), uint40(uint160(address(pool)) >> 120), salt)),
             address(panopticFactory)
         );
 
@@ -251,12 +251,13 @@ contract PanopticFactoryTest is Test {
         _initWorld(x);
 
         panopticFactory.transferOwnership(address(0));
+        
 
         // Compute clone determinsitic Panoptic Factory address
         address poolReference = panopticFactory.getPoolReference();
         address preComputedPool = predictDeterministicAddress(
             poolReference,
-            bytes32(abi.encodePacked(uint40(uint160(address(msg.sender)) >> 120), uint40(uint160(address(pool)) >> 120), salt)),
+            bytes32(abi.encodePacked(uint40(uint160(Deployer) >> 120), uint40(uint160(address(pool)) >> 120), salt)),
             address(panopticFactory)
         );
 
@@ -417,19 +418,20 @@ contract PanopticFactoryTest is Test {
 
         // mine pool address
         (uint96 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
-            address(msg.sender),
+            randomAddress,
             address(pool),
             nonce,
             50_000,
             minTargetRarity
         );
+        
 
         assertEq(
             highestRarity,
             PanopticMath.numberOfLeadingHexZeros(
                 predictDeterministicAddress(
                     panopticFactory.getPoolReference(),
-                    bytes32(abi.encodePacked(uint40(uint160(address(msg.sender)) >> 120), uint40(uint160(address(pool)) >> 120), bestSalt)),
+                    bytes32(abi.encodePacked(uint40(uint160(randomAddress) >> 120), uint40(uint160(address(pool)) >> 120), bestSalt)),
                     address(panopticFactory)
                 )
             )
