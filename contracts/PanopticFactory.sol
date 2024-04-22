@@ -270,7 +270,7 @@ contract PanopticFactory is Multicall, ERC721 {
         // Issue reward NFT to donor
         ++numberOfPools;
         uint256 tokenId = numberOfPools;
-        _safeMint(msg.sender, tokenId);
+        _mint(msg.sender, tokenId);
 
         // store the information about the new pool
         s_poolTokenId[tokenId] = newPoolContract;
