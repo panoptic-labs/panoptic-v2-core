@@ -210,19 +210,16 @@ contract PanopticFactory is Multicall, ERC721 {
     /// @param token0 Address of token0 for the underlying Uniswap v3 pool
     /// @param token1 Address of token1 for the underlying Uniswap v3 pool
     /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
-    /// @param salt User-defined salt used in CREATE2 for the PanopticPool (must contain caller addr as first 20 bytes)
+    /// @param salt User-defined salt used in CREATE2 for the PanopticPool (must be a uint96 number)
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         address token0,
         address token1,
         uint24 fee,
-        bytes32 salt
+        uint96 salt
     ) external returns (PanopticPool newPoolContract) {
         // sort the tokens, if necessary:
         (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
-
-        // frontrunning protection for mined pool addresses
-        if (address(bytes20(salt)) != msg.sender) revert Errors.InvalidSalt();
 
         // restrict pool deployment to owner if contract has not been made permissionless
         address _owner = s_owner;
@@ -237,9 +234,12 @@ contract PanopticFactory is Multicall, ERC721 {
         // initialize pool in SFPM if it has not already been initialized
         SFPM.initializeAMMPool(token0, token1, fee);
 
-        // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
-        newPoolContract = PanopticPool(POOL_REFERENCE.cloneDeterministic(salt));
+        // salt format: (first 10 characters of deployer address) + (first 10 characters of UniswapV3Pool) + (uint96 user supplied salt)
+        bytes32 salt32 = bytes32(abi.encodePacked(uint40(uint160(msg.sender)>>120), uint40(uint160(address(v3Pool)) >> 120), salt));
+        
+        // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
+        newPoolContract = PanopticPool(POOL_REFERENCE.cloneDeterministic(salt32));
 
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
@@ -299,16 +299,20 @@ contract PanopticFactory is Multicall, ERC721 {
     /// @notice Find the salt which would give a Panoptic Pool the highest rarity within the search parameters.
     /// @dev The rarity is defined in terms of how many leading zeros the Panoptic pool address has.
     /// @dev Note that the final salt may overflow if too many loops are given relative to the amount in `salt`.
-    /// @param salt Salt value ([160-bit deployer address][96-bit nonce]) to start from, useful as a checkpoint across multiple calls
+    /// @param deployerAddress address of the account that deploys the new PanopticPool
+    /// @param v3Pool address of the underlying UniswapV3Pool
+    /// @param salt Salt value ([96-bit nonce]) to start from, useful as a checkpoint across multiple calls
     /// @param loops The number of mining operations starting from 'salt' in trying to find the highest rarity
     /// @param minTargetRarity The minimum target rarity to mine for. The internal loop stops when this is reached *or* when no more iterations
     /// @return bestSalt The salt of the rarest pool (potentially at the specified minimum target)
     /// @return highestRarity The rarity of `bestSalt`
     function minePoolAddress(
-        bytes32 salt,
+        address deployerAddress,
+        address v3Pool,
+        uint96 salt,
         uint256 loops,
         uint256 minTargetRarity
-    ) external view returns (bytes32 bestSalt, uint256 highestRarity) {
+    ) external view returns (uint96 bestSalt, uint256 highestRarity) {
         // Start at the given 'salt' value (a checkpoint used to continue mining across multiple calls)
 
         // Runs until 'bestSalt' reaches 'minTargetRarity' or for 'loops', whichever comes first
@@ -318,8 +322,10 @@ contract PanopticFactory is Multicall, ERC721 {
         }
 
         for (; uint256(salt) < maxSalt; ) {
+            bytes32 newSalt = bytes32(abi.encodePacked(uint40(uint160(deployerAddress) >> 120), uint40(uint160(v3Pool) >> 120), salt));
+
             uint256 rarity = PanopticMath.numberOfLeadingHexZeros(
-                POOL_REFERENCE.predictDeterministicAddress(salt)
+                POOL_REFERENCE.predictDeterministicAddress(newSalt)
             );
 
             if (rarity > highestRarity) {
@@ -337,7 +343,7 @@ contract PanopticFactory is Multicall, ERC721 {
 
             unchecked {
                 // increment the nonce of `currentSalt` (lower 96 bits)
-                salt = bytes32(uint256(salt) + 1);
+                salt += 1;
             }
         }
     }
