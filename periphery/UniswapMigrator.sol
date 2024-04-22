@@ -20,7 +20,7 @@ contract UniswapMigrator {
         NFPM = _NFPM;
     }
 
-    /// @notice Removes all liquidity from `tokenIds` in the NFPM and deposits as collateral in `collateralToken0` and `collateralToken1`.
+    /// @notice Removes all liquidity from `tokenIds` in the NFPM and deposits into collateral vaults.
     /// @dev All positions in `tokenIds` SHOULD be on the same pool.
     /// @dev All positions in `tokenIds` MUST have the same token0/token1.
     /// @dev `amountMins` MUST be the same length as `tokenIds`.
