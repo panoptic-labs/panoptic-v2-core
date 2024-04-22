@@ -416,8 +416,8 @@ contract PanopticFactoryTest is Test {
                     panopticFactory.getPoolReference(),
                     bytes32(
                         abi.encodePacked(
-                            uint40(uint160(randomAddress) >> 80),
-                            uint40(uint160(address(pool)) >> 80),
+                            uint80(uint160(randomAddress) >> 80),
+                            uint80(uint160(address(pool)) >> 80),
                             bestSalt
                         )
                     ),
