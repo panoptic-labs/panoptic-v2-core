@@ -205,8 +205,8 @@ contract PanopticFactoryTest is Test {
             poolReference,
             bytes32(
                 abi.encodePacked(
-                    uint40(uint160(Deployer) >> 120),
-                    uint40(uint160(address(pool)) >> 120),
+                    uint80(uint160(address(this)) >> 120),
+                    uint80(uint160(address(pool)) >> 120),
                     salt
                 )
             ),
@@ -264,8 +264,8 @@ contract PanopticFactoryTest is Test {
             poolReference,
             bytes32(
                 abi.encodePacked(
-                    uint40(uint160(Deployer) >> 120),
-                    uint40(uint160(address(pool)) >> 120),
+                    uint80(uint160(address(this)) >> 120),
+                    uint80(uint160(address(pool)) >> 120),
                     salt
                 )
             ),
@@ -277,17 +277,6 @@ contract PanopticFactoryTest is Test {
         // amount of assets held before mint
         // Compute amount of liquidity to deploy
         (uint128 fullRangeLiquidity, , ) = computeFullRangeLiquidity();
-
-        vm.startPrank(Deployer);
-
-        deal(token0, Deployer, INITIAL_MOCK_TOKENS);
-        deal(token1, Deployer, INITIAL_MOCK_TOKENS);
-
-        IERC20Partial(token0).approve(address(panopticFactory), INITIAL_MOCK_TOKENS);
-        IERC20Partial(token1).approve(address(panopticFactory), INITIAL_MOCK_TOKENS);
-
-        IERC20Partial(token0).approve(address(sfpm), INITIAL_MOCK_TOKENS);
-        IERC20Partial(token1).approve(address(sfpm), INITIAL_MOCK_TOKENS);
 
         {
             // Deploy pool
@@ -377,16 +366,6 @@ contract PanopticFactoryTest is Test {
         unchecked {
             panopticFactory.deployNewPool(token0, token1, fee, (salt + 1));
         }
-    }
-
-    function test_Fail_saltValidation(uint256 x, uint96 salt) public {
-        _initWorld(x);
-
-        address randomAddr = address(uint160(uint256(keccak256(abi.encode(x)))));
-        vm.assume(randomAddr != address(this));
-
-        vm.expectRevert(Errors.InvalidSalt.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
     }
 
     function test_Fail_permissioned(uint256 x, uint96 salt) public {

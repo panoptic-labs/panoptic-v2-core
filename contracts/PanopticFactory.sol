@@ -11,7 +11,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Multicall} from "@multicall/Multicall.sol";
 // OpenZeppelin libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721} from "solmate/tokens/ERC721.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -54,11 +54,6 @@ contract PanopticFactory is Multicall, ERC721 {
     //////////////////////////////////////////////////////////////*/
 
     using Clones for address;
-
-    struct PoolInfo {
-        uint256 tokenId;
-        IUniswapV3Pool uniswapPool;
-    }
 
     /*//////////////////////////////////////////////////////////////
                          CONSTANTS & IMMUTABLE
@@ -106,7 +101,7 @@ contract PanopticFactory is Multicall, ERC721 {
     /// @notice The total number of pools, serves as the tokenId of the Panoptic NFT
     uint256 public numberOfPools;
 
-    /// @notice Mapping from address(PanopticPool) to the tokenId of that Panoptic pool
+    /// @notice Mapping from tokenId to the corresponding Panoptic pool
     mapping(uint256 tokenId => PanopticPool panopticPool) internal s_poolTokenId;
 
     /*//////////////////////////////////////////////////////////////
@@ -207,10 +202,11 @@ contract PanopticFactory is Multicall, ERC721 {
     /// @dev Pool deployment is restricted to the factory owner until transferred to the zero address.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
+    /// @dev Salt used in PanopticPool CREATE2 is [leading 20 msg.sender chars][leading 20 pool address chars][salt]
     /// @param token0 Address of token0 for the underlying Uniswap v3 pool
     /// @param token1 Address of token1 for the underlying Uniswap v3 pool
     /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
-    /// @param salt User-defined salt used in CREATE2 for the PanopticPool (must be a uint96 number)
+    /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         address token0,
@@ -238,8 +234,8 @@ contract PanopticFactory is Multicall, ERC721 {
         // salt format: (first 10 characters of deployer address) + (first 10 characters of UniswapV3Pool) + (uint96 user supplied salt)
         bytes32 salt32 = bytes32(
             abi.encodePacked(
-                uint40(uint160(msg.sender) >> 120),
-                uint40(uint160(address(v3Pool)) >> 120),
+                uint80(uint160(msg.sender) >> 120),
+                uint80(uint160(address(v3Pool)) >> 120),
                 salt
             )
         );
@@ -274,8 +270,7 @@ contract PanopticFactory is Multicall, ERC721 {
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
         // Issue reward NFT to donor
-        ++numberOfPools;
-        uint256 tokenId = numberOfPools;
+        uint256 tokenId = numberOfPools++;
         _mint(msg.sender, tokenId);
 
         // store the information about the new pool
@@ -292,7 +287,7 @@ contract PanopticFactory is Multicall, ERC721 {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(_ownerOf(tokenId) != address(0));
+        require(ownerOf(tokenId) != address(0));
         PanopticPool panopticPool = s_poolTokenId[tokenId];
         string memory URI = "";
         return URI;
