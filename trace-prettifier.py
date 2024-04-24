@@ -48,7 +48,7 @@ def write_replaced(where: str, what: str):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    filename = f"{what.splitlines()[0].split("(")[0]}-{int(time.time())}.txt"
+    filename = f"{what.splitlines()[0].split('(')[0]}-{int(time.time())}.txt"
     f = open(f"{out_dir}{filename}", "w")
     f.write(what)
     f.close()
