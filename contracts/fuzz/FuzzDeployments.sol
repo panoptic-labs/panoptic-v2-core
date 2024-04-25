@@ -28,6 +28,7 @@ import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 
+// Copy of test/foundry/core/Misc.t.sol:SwapperC
 contract SwapperC {
     event LogUint256(string, uint256);
 
@@ -172,6 +173,9 @@ contract FuzzDeployments is FuzzHelpers {
 
     constructor() {
         // Actors
+        // We have 5 actors
+        // The addresses need to be the same than in the echidna.yaml
+        // See sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
         actors = new address[](6);
         actors[0] = address(0xa11ce);
         actors[1] = address(0xb0b);
@@ -373,6 +377,10 @@ contract FuzzDeployments is FuzzHelpers {
         strike = int24(strike * ts + strikeOffset);
     }
 
+    /////////////////////////////////////////////////////////////
+    // Imported functions
+    /////////////////////////////////////////////////////////////
+
     function getOTMSW(
         uint256 _widthSeed,
         int256 _strikeSeed,
@@ -449,6 +457,8 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     ////////////////////////////////////////////////////
+    // Collaterals
+    ////////////////////////////////////////////////////
 
     function log_tokenid_leg(TokenId t, uint256 leg) internal {
         emit LogString("TokenId");
@@ -475,6 +485,7 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
+    /// @dev Mint USDC and WETH to the sender and approve all the system contracts
     function fund_and_approve() public {
         deal_USDC(msg.sender, 10000000 ether, true);
         deal_WETH(msg.sender, 10000 ether);
@@ -493,6 +504,7 @@ contract FuzzDeployments is FuzzHelpers {
         IERC20(WETH).approve(address(collToken1), type(uint256).max);
     }
 
+    /// @dev This function does a back to back swap. It is uses the generate premium. It's adapted from test/foundry/core/PanopticPool.t.sol
     function twoWaySwap(uint256 swapSize, uint256 numberOfSwaps, uint256 recipient) public {
         recipient = bound(recipient, 0, 4); // Index to the actors array
         swapSize = bound(swapSize, 10 ** 18, 10 ** 20);
@@ -534,6 +546,11 @@ contract FuzzDeployments is FuzzHelpers {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
     }
 
+    ////////////////////////////////////////////////////
+    // Leg generation
+    ////////////////////////////////////////////////////
+
+    /// @dev Generate a single leg (long)
     function _generate_single_leg_tokenid(
         bool asset_in,
         bool call_put_in,
@@ -1042,6 +1059,9 @@ contract FuzzDeployments is FuzzHelpers {
         pool.swap(recipient, zeroForOne, amountSpecified, sqrtPriceLimitX96, "");
     }
 
+    /// @dev Deposit collateral.
+    /// @param token0 True if the token0 is deposited, otherwise token1
+    /// @param amount Amount to deposit (bounded by balanceOf)
     function deposit_to_ct(bool token0, uint256 amount) public {
         amount = bound(amount, 1, MAX_DEPOSIT);
 
@@ -1088,6 +1108,8 @@ contract FuzzDeployments is FuzzHelpers {
         return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
     }
 
+    /// Adapted from test/foundry/core/PanopticPool.t.sol
+    /// Because Echidna does not handle vm.deal for ERC20
     function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
@@ -1121,6 +1143,8 @@ contract FuzzDeployments is FuzzHelpers {
         deal_Generic(address(ct), 1, owner, newShares, true, 0); // deal(address(ct), owner, newShares, true);
     }
 
+    /// @dev Liquidate by manually editing the storage. This function is not currently used, but we keep it for
+    /// potential future usages
     function liquidate_option_via_edit(uint256 i_liquidated) internal {
         i_liquidated = bound(i_liquidated, 0, 4);
         if (userPositions[actors[i_liquidated]].length < 1) {
