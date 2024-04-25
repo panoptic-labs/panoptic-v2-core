@@ -161,6 +161,7 @@ contract FuzzDeployments is FuzzHelpers {
     CollateralTracker collToken1;
 
     address[] actors;
+    address pool_manipulator;
 
     SwapperC swapperc;
 
@@ -176,17 +177,20 @@ contract FuzzDeployments is FuzzHelpers {
         // We have 5 actors
         // The addresses need to be the same than in the echidna.yaml
         // See sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
-        actors = new address[](6);
+        actors = new address[](5);
         actors[0] = address(0xa11ce);
         actors[1] = address(0xb0b);
         actors[2] = address(0xcafe);
         actors[3] = address(0xda210);
         actors[4] = address(0xedda);
-        actors[5] = address(0xfaded);
 
-        for (uint i = 0; i < 6; i++) {
+        pool_manipulator = address(0xfaded);
+
+        for (uint i = 0; i < actors.length; i++) {
             userPositions[actors[i]] = new TokenId[](0);
         }
+
+        userPositions[pool_manipulator] = new TokenId[](0);
 
         univ3factory = IUniswapV3Factory(deployer.factory());
         emit LogAddress("UniV3 Factory", address(univ3factory));
@@ -233,16 +237,15 @@ contract FuzzDeployments is FuzzHelpers {
 
         initialize();
 
-        // Actor 5 is the pool manipulator
-        deal_USDC(actors[5], 1000000000 ether, true);
-        deal_WETH(actors[5], 1000000 ether);
-        hevm.prank(actors[5]);
+        deal_USDC(pool_manipulator, 1000000000 ether, true);
+        deal_WETH(pool_manipulator, 1000000 ether);
+        hevm.prank(pool_manipulator);
         IERC20(USDC).approve(address(pool), type(uint256).max);
-        hevm.prank(actors[5]);
+        hevm.prank(pool_manipulator);
         IERC20(WETH).approve(address(pool), type(uint256).max);
-        hevm.prank(actors[5]);
+        hevm.prank(pool_manipulator);
         IERC20(USDC).approve(address(swapperc), type(uint256).max);
-        hevm.prank(actors[5]);
+        hevm.prank(pool_manipulator);
         IERC20(WETH).approve(address(swapperc), type(uint256).max);
     }
 
@@ -694,10 +697,15 @@ contract FuzzDeployments is FuzzHelpers {
 
         emit LogUint256("price before swap", uint256(price));
 
-        hevm.prank(actors[5]);
+        hevm.prank(pool_manipulator);
         swapperc.swapTo(pool, target_sqrt_price);
         hevm.warp(block.timestamp + 1000);
         hevm.roll(block.number + 100);
+
+        hevm.prank(pool_manipulator);
+        swapperc.mint(pool, -10, 10, 10 ** 18);
+        hevm.prank(pool_manipulator);
+        swapperc.burn(pool, -10, 10, 10 ** 18);
 
         (price, , , , , , ) = pool.slot0();
         emit LogUint256("price after swap", uint256(price));
@@ -714,9 +722,9 @@ contract FuzzDeployments is FuzzHelpers {
         //for (uint256 i = 0; i < 20; ++i) {
         hevm.warp(block.timestamp + 1000);
         hevm.roll(block.number + 100);
-        hevm.prank(actors[5]);
+        hevm.prank(pool_manipulator);
         swapperc.mint(pool, -10, 10, 10 ** 18);
-        hevm.prank(actors[5]);
+        hevm.prank(pool_manipulator);
         swapperc.burn(pool, -10, 10, 10 ** 18);
         //}
 
