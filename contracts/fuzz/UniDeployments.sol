@@ -5,7 +5,6 @@ import "./fuzz-mocks/MockERC20.sol";
 import {UniswapV3Pool} from "univ3-core/UniswapV3Pool.sol";
 import {UniswapV3Factory} from "univ3-core/UniswapV3Factory.sol";
 
-
 contract SetupToken {
     MockERC20 public token;
 
@@ -107,8 +106,8 @@ contract UniswapMinter {
         int24 _tickLower,
         int24 _tickUpper
     ) internal view returns (uint128, int128, uint128, int128) {
-        (uint128 tL_liqGross, int128 tL_liqNet, , , , , ,) = pool.ticks(_tickLower);
-        (uint128 tU_liqGross, int128 tU_liqNet, , , , , ,) = pool.ticks(_tickUpper);
+        (uint128 tL_liqGross, int128 tL_liqNet, , , , , , ) = pool.ticks(_tickLower);
+        (uint128 tU_liqGross, int128 tU_liqNet, , , , , , ) = pool.ticks(_tickUpper);
         return (tL_liqGross, tL_liqNet, tU_liqGross, tU_liqNet);
     }
 
@@ -201,7 +200,6 @@ contract UniswapSwapper {
 }
 
 contract UniDeployer {
-
     event LogStr(string);
 
     MockERC20 public token0;
@@ -223,7 +221,7 @@ contract UniDeployer {
         su.createPool(500, 1446468563022924011445331901284352);
         pool = su.pool();
         factory = su.factory();
-        
+
         minter = new UniswapMinter(token0, token1);
         minter.setPool(pool);
         st.mintTo(0, address(minter), 3000000000 ether);
@@ -231,12 +229,9 @@ contract UniDeployer {
         emit LogStr("Minted tokens");
         minter.doMint(-500000, 500000, 1 ether);
         emit LogStr("Minted position");
-        
     }
 
     function mintToken(bool mintToken1, address recipient, uint256 amt) public {
         st.mintTo(mintToken1 ? 1 : 0, recipient, amt);
     }
-
-
 }

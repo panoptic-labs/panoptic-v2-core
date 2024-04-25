@@ -37,7 +37,6 @@ interface IHevm {
     function label(address addr, string calldata label) external;
 }
 
-
 contract FuzzHelpers is PropertiesAsserts {
     IHevm hevm = IHevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
@@ -91,16 +90,25 @@ contract FuzzHelpers is PropertiesAsserts {
         //hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
     }
 
-    function deal_Generic(address token, uint256 slot, address to, uint256 amt, bool alter_supply, uint256 supply_slot) internal {
+    function deal_Generic(
+        address token,
+        uint256 slot,
+        address to,
+        uint256 amt,
+        bool alter_supply,
+        uint256 supply_slot
+    ) internal {
         uint256 slot_balances = slot;
-        uint256 original_balance = uint256(hevm.load(token, keccak256(abi.encode(address(to), slot_balances))));
+        uint256 original_balance = uint256(
+            hevm.load(token, keccak256(abi.encode(address(to), slot_balances)))
+        );
         int256 delta = int256(amt) - int256(original_balance);
         hevm.store(token, keccak256(abi.encode(address(to), slot_balances)), bytes32(amt));
 
-        if(alter_supply) {
+        if (alter_supply) {
             bytes32 slot_supply = bytes32(supply_slot);
             uint256 orig_supply = uint256(hevm.load(token, slot_supply));
-            uint256 new_supply  = uint256(int256(orig_supply) + delta);
+            uint256 new_supply = uint256(int256(orig_supply) + delta);
             hevm.store(token, slot_supply, bytes32(new_supply));
         }
     }

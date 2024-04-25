@@ -6,12 +6,10 @@ import "./fuzz-mocks/IUniDeployer.sol";
 import {SwapRouter} from "univ3-periphery/SwapRouter.sol";
 
 contract UniSwapRouterDeployer {
-
     IUniDeployer deployer = IUniDeployer(address(0xde0001));
     SwapRouter public sr;
 
     constructor() {
         sr = new SwapRouter(deployer.factory(), deployer.token1());
     }
-
 }
