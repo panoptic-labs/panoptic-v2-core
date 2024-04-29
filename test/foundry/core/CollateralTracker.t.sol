@@ -5367,7 +5367,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _initWorld(x);
 
         // use a fixed amount for single test
-        uint256 expectedValue = (collateralToken0.convertToShares(type(uint104).max) * 1000) / 1001;
+        uint256 expectedValue = (collateralToken0.convertToShares(type(uint104).max) * 999) / 1000;
 
         // real value
         uint256 actualValue = collateralToken0.maxMint(Bob);
