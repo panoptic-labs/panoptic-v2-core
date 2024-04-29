@@ -480,6 +480,10 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
     }
 
+    function test_parity_maxmint_previewmint() public {
+        assertEq(ct0.previewMint(ct0.maxMint(Alice)), type(uint104).max);
+    }
+
     // these tests are PoCs for rounding issues in the premium distribution
     // to demonstrate the issue log the settled, gross, and owed premia at burn
     function test_settledPremiumDistribution_demoInflatedGross() public {
