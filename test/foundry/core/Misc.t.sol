@@ -854,6 +854,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
 
         // There are some precision issues with this (1B is not exactly 1B) but close enough to see the effects
+        accruePoolFeesInRange(address(uniPool), uniPool.liquidity() - 1, 1_000_000, 1_000_000_000);
         console2.log("liquidity", uniPool.liquidity());
 
         // accumulate lower order of fees on dummy chunk
