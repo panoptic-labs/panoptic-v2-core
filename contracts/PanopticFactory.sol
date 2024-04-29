@@ -98,12 +98,6 @@ contract PanopticFactory is Multicall, ERC721 {
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools
     mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
 
-    /// @notice The total number of pools, serves as the tokenId of the Panoptic NFT
-    uint256 public numberOfPools;
-
-    /// @notice Mapping from tokenId to the corresponding Panoptic pool
-    mapping(uint256 tokenId => PanopticPool panopticPool) internal s_poolTokenId;
-
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
@@ -270,11 +264,8 @@ contract PanopticFactory is Multicall, ERC721 {
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
         // Issue reward NFT to donor
-        uint256 tokenId = numberOfPools++;
+        uint256 tokenId = uint256(uint160(address(newPoolContract)));
         _mint(msg.sender, tokenId);
-
-        // store the information about the new pool
-        s_poolTokenId[tokenId] = newPoolContract;
 
         emit PoolDeployed(
             newPoolContract,
@@ -288,7 +279,6 @@ contract PanopticFactory is Multicall, ERC721 {
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         require(ownerOf(tokenId) != address(0));
-        PanopticPool panopticPool = s_poolTokenId[tokenId];
         string memory URI = "";
         return URI;
     }
