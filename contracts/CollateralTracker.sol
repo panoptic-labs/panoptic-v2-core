@@ -223,12 +223,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // store the Panoptic pool for this collateral token
         s_panopticPool = panopticPool;
 
-        // cache the pool fee in basis points
-        uint24 _poolFee;
-        unchecked {
-            _poolFee = fee / 100;
-        }
-        s_poolFee = _poolFee;
+        // cache the pool fee in hundredths of basis points
+        s_poolFee = fee;
 
         // Stores the addresses of the underlying tracked tokens.
         s_univ3token0 = token0;
@@ -239,7 +235,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // Additional risk premium charged on intrinsic value of ITM positions
         unchecked {
-            s_ITMSpreadFee = uint128((ITM_SPREAD_MULTIPLIER * _poolFee) / DECIMALS);
+            s_ITMSpreadFee = uint128((ITM_SPREAD_MULTIPLIER * fee) / DECIMALS);
         }
     }
 
@@ -1088,7 +1084,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // the swap commission is paid on the intrinsic value, and it is always positive
                 uint256 swapCommission = Math.unsafeDivRoundingUp(
                     s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
-                    DECIMALS
+                    DECIMALS * 100
                 );
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission

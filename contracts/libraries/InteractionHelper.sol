@@ -78,7 +78,14 @@ library InteractionHelper {
                     "/",
                     symbol1,
                     " ",
-                    Strings.toString(fee),
+                    Strings.toString(fee / 100),
+                    fee % 100 == 0
+                        ? ""
+                        : string.concat(
+                            ".",
+                            Strings.toString((fee / 10) % 10),
+                            Strings.toString(fee % 10)
+                        ),
                     "bps"
                 );
         }
