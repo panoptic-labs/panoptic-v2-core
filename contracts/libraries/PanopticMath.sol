@@ -97,15 +97,17 @@ library PanopticMath {
         // add the XOR`ed hash of the single option position `tokenId` to the `existingHash`
         // @dev 0 ^ x = x
 
+        // update hash by taking the XOR of the new tokenId
+        uint256 updatedHash = uint248(existingHash) ^
+            (uint248(uint256(keccak256(abi.encode(tokenId)))));
+
+        // increment the upper 8 bits (position counter) if addflag=true, decrement otherwise
+        uint256 newPositionCount = addFlag
+            ? uint8(existingHash >> 248) + 1
+            : uint8(existingHash >> 248) - 1;
+
         unchecked {
-            // update hash by taking the XOR of the new tokenId
-            uint248 updatedHash = uint248(existingHash) ^
-                (uint248(uint256(keccak256(abi.encode(tokenId)))));
-            // increment the top 8 bit if addflag=true, decrement otherwise
-            return
-                addFlag
-                    ? uint256(updatedHash) + (((existingHash >> 248) + 1) << 248)
-                    : uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
+            return uint256(updatedHash) + (newPositionCount << 248);
         }
     }
 
