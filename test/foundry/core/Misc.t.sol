@@ -167,6 +167,8 @@ contract Misctest is Test, PositionUtils {
     address Swapper = address(0x123456789);
     address Charlie = address(0x1234567891);
     address Seller = address(0x12345678912);
+    address Eve = address(0x123456789123);
+
     address[] Buyers;
     address[] Buyer;
     SwapperC swapperc;
@@ -478,6 +480,39 @@ contract Misctest is Test, PositionUtils {
         pp.mintOptions($posIdList, 1_000_000, type(uint64).max, 0, 0);
 
         pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+    }
+
+    // ensure all large mint/deposit amounts revert (instead of overflowing)
+    function test_fail_mintmax() public {
+        vm.startPrank(Eve);
+        token0.mint(Eve, type(uint256).max / 10);
+        token1.mint(Eve, type(uint256).max / 10);
+        token0.approve(address(ct0), type(uint256).max / 10);
+        token1.approve(address(ct0), type(uint256).max / 10);
+
+        vm.expectRevert();
+        ct0.mint(type(uint256).max / 10_000 + 1, Eve);
+
+        for (uint256 i = 160; i < 256; ++i) {
+            vm.expectRevert();
+            ct0.mint(2 ** i - 1, Eve);
+        }
+    }
+
+    function test_fail_depositmax() public {
+        vm.startPrank(Eve);
+        token0.mint(Eve, type(uint256).max / 10);
+        token1.mint(Eve, type(uint256).max / 10);
+        token0.approve(address(ct0), type(uint256).max / 10);
+        token1.approve(address(ct0), type(uint256).max / 10);
+
+        vm.expectRevert();
+        ct0.deposit(type(uint256).max / 10_000 + 1, Eve);
+
+        for (uint256 i = 105; i < 256; ++i) {
+            vm.expectRevert();
+            ct0.deposit(2 ** i - 1, Eve);
+        }
     }
 
     // these tests are PoCs for rounding issues in the premium distribution
