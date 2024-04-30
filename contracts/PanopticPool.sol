@@ -1478,7 +1478,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 netLiquidity = accountLiquidities.rightSlot();
         uint128 removedLiquidity = accountLiquidities.leftSlot();
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
-        if (netLiquidity == 0) return;
+        if (netLiquidity == 0 && removedLiquidity == 0) return;
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
