@@ -489,6 +489,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         uint248 updatedHash = uint248(existingHash) ^
             (uint248(uint256(keccak256(abi.encode(tokenId)))));
+        vm.assume((existingHash >> 248) < 255);
         uint256 expectedHash = uint256(updatedHash) + (((existingHash >> 248) + 1) << 248);
 
         uint256 returnedHash = harness.updatePositionsHash(existingHash, tokenId, true);
@@ -550,6 +551,8 @@ contract PanopticMathTest is Test, PositionUtils {
         unchecked {
             uint248 updatedHash = uint248(existingHash) ^
                 (uint248(uint256(keccak256(abi.encode(tokenId)))));
+            vm.assume((existingHash >> 248) > 0);
+
             expectedHash = uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
 
             returnedHash = harness.updatePositionsHash(existingHash, tokenId, false);
