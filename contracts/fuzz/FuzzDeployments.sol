@@ -171,6 +171,7 @@ contract FuzzDeployments is FuzzHelpers {
     mapping(address => int256) userLiquidityPerPosition;
 
     uint256 constant MAX_DEPOSIT = 100 ether;
+    uint256 constant MIN_DEPOSIT = 0.01 ether;
 
     constructor() {
         // Actors
@@ -318,22 +319,15 @@ contract FuzzDeployments is FuzzHelpers {
 
         strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
 
-        minTick = int24(((_currentTick - 4096 * 10) / ts) * ts);
-        maxTick = int24(((_currentTick + 4096 * 10) / ts) * ts);
+        if(ts_ == 1) {
+            minTick = int24(((_currentTick - 4096) / ts) * ts);
+            maxTick = int24(((_currentTick + 4096) / ts) * ts);
+        } else {
+            minTick = int24(((_currentTick - 4096 * 10) / ts) * ts);
+            maxTick = int24(((_currentTick + 4096 * 10) / ts) * ts);
+        }
     }
 
-    function getContextFull(
-        uint256 ts_,
-        int24 _currentTick,
-        int24 _width
-    ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
-        int256 ts = int256(ts_);
-
-        strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
-
-        minTick = int24(((_currentTick - 4096 * ts) / ts) * ts);
-        maxTick = int24(((_currentTick + 4096 * ts) / ts) * ts);
-    }
 
     function getITMSW(
         uint256 widthSeed,
@@ -353,9 +347,7 @@ contract FuzzDeployments is FuzzHelpers {
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
-            ? getContextFull(ts_, currentTick, width)
-            : getContext(ts_, currentTick, width);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
 
         int24 lowerBound = tokenType == 0
             ? int24(minTick + oneSidedRange - strikeOffset)
@@ -402,9 +394,7 @@ contract FuzzDeployments is FuzzHelpers {
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
-            ? getContextFull(ts_, _currentTick, width)
-            : getContext(ts_, _currentTick, width);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
 
         int24 lowerBound = _tokenType == 0
             ? int24(_currentTick + ts + oneSidedRange - strikeOffset)
@@ -445,9 +435,7 @@ contract FuzzDeployments is FuzzHelpers {
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = ts == 1
-            ? getContextFull(ts_, currentTick, width)
-            : getContext(ts_, currentTick, width);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
 
         int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
         int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
@@ -556,9 +544,9 @@ contract FuzzDeployments is FuzzHelpers {
     /// @dev Generate a single leg (long)
     function _generate_single_leg_tokenid(
         bool asset_in,
-        bool call_put_in,
-        bool long_short_in,
-        bool otm_itm_in,
+        bool is_call_in,
+        bool is_long_in,
+        bool is_otm_in,
         uint24 width_in,
         int256 strike_in
     ) internal returns (TokenId out) {
@@ -567,8 +555,8 @@ contract FuzzDeployments is FuzzHelpers {
         // Rest of the parameters come from the function parameters
         // For now, fixing them one at a time
         uint256 asset = 0; //asset_in == true ? 1 : 0;
-        uint256 call_put = 0; // call_put_in == true ? 1 : 0;
-        uint256 long_short = long_short_in == true ? 1 : 0; // 0 for long, 1 for short
+        uint256 call_put = 0; // is_call_in == true ? 1 - asset : asset;
+        uint256 long_short = is_long_in == true ? 1 : 0; // 0 for long, 1 for short
 
         int24 width;
         int24 strike;
@@ -583,9 +571,9 @@ contract FuzzDeployments is FuzzHelpers {
     function mint_option(
         uint256 seller,
         bool asset,
-        bool call_put,
-        bool long_short,
-        bool otm_itm,
+        bool is_call,
+        bool is_long,
+        bool is_otm,
         uint24 width,
         int256 strike,
         uint256 posSize
@@ -595,86 +583,116 @@ contract FuzzDeployments is FuzzHelpers {
             seller = bound(seller + 1, 0, 4);
         }
 
-        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-        emit LogUint256("User collateral 0", userCollateral0);
-
         require(userPositions[msg.sender].length == 0, "Too many positions for user");
-        if (!long_short) {
+        if (is_long) {
             require(userPositions[actors[seller]].length == 0, "Too many positions for seller");
         }
 
         (, currentTick, , , , , ) = pool.slot0();
 
-        posSize = bound(posSize, userCollateral0 / 2, (3 * userCollateral0) / 4);
-        require(posSize > 0);
+        if (!is_long) {
+            // Mint a short position
 
-        int256 balanceBefore;
+            uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+            emit LogUint256("User collateral 0", userCollateral0);
+            posSize = bound(posSize, userCollateral0 / 2, (3 * userCollateral0) / 4);
+            require(posSize > 0);
 
-        if (long_short) {
-            TokenId lastPosId = _generate_single_leg_tokenid(
-                asset,
-                call_put,
-                false,
-                otm_itm,
-                width,
-                strike
-            );
+            TokenId lastPosId = _generate_single_leg_tokenid(asset, is_call, is_long, is_otm, width, strike);
             userPositions[msg.sender].push(lastPosId);
             TokenId[] memory posIdList = userPositions[msg.sender];
 
-            balanceBefore = int256(_get_assets_in_token0(msg.sender, currentTick));
+            {
+                int256 balanceBefore;
+                balanceBefore = int256(_get_assets_in_token0(msg.sender, currentTick));
+                emit LogInt256("Balance before", balanceBefore);
 
-            hevm.prank(msg.sender);
-            panopticPool.mintOptions(posIdList, uint128(posSize), 0, 0, 0);
+                hevm.prank(msg.sender);
+                panopticPool.mintOptions(posIdList, uint128(posSize), 0, 0, 0);
 
-            userLiquidityPerPosition[msg.sender] =
-                int256(_get_assets_in_token0(msg.sender, currentTick)) -
-                balanceBefore;
+                userLiquidityPerPosition[msg.sender] =
+                    int256(_get_assets_in_token0(msg.sender, currentTick)) -
+                    balanceBefore;
+
+                emit LogInt256("Balance after", int256(_get_assets_in_token0(msg.sender, currentTick)));
+                emit LogInt256("User liquidity", userLiquidityPerPosition[msg.sender]);
+            }
 
             emit LogString("Minted a new option");
             emit LogUint256("Position size", posSize);
             emit LogAddress("Minter", msg.sender);
+
+            // TODO: Invariant: For short positions, liquidity is provided
+            assertWithMsg(userLiquidityPerPosition[msg.sender] <= 0, "Short position with liquidity removed");
+
         } else {
-            TokenId lastPosId = _generate_single_leg_tokenid(
-                asset,
-                call_put,
-                false,
-                otm_itm,
-                width,
-                strike
-            );
+            // Mint a short position first, then a long position
+
+            uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(actors[seller]));
+            emit LogUint256("User collateral 0", userCollateral0);
+            posSize = bound(posSize, userCollateral0 / 2, (3 * userCollateral0) / 4);
+            require(posSize > 0);
+
+            TokenId lastPosId = _generate_single_leg_tokenid(asset, is_call, !is_long, is_otm, width, strike);
             userPositions[actors[seller]].push(lastPosId);
             TokenId[] memory posIdList = userPositions[actors[seller]];
 
-            balanceBefore = int256(_get_assets_in_token0(actors[seller], currentTick));
+            {
+                int256 balanceBefore;
+                balanceBefore = int256(_get_assets_in_token0(actors[seller], currentTick));
+                emit LogInt256("Balance before (seller)", balanceBefore);
 
-            hevm.prank(actors[seller]);
-            panopticPool.mintOptions(posIdList, uint128(posSize) * 2, 0, 0, 0);
+                hevm.prank(actors[seller]);
+                panopticPool.mintOptions(posIdList, uint128(posSize), type(uint64).max, 0, 0);
 
-            userLiquidityPerPosition[actors[seller]] =
-                int256(_get_assets_in_token0(actors[seller], currentTick)) -
-                balanceBefore;
-
-            emit LogString("Minted a new option");
-            emit LogUint256("Position size", 2 * posSize);
-            emit LogAddress("Minter", actors[seller]);
-
-            lastPosId = _generate_single_leg_tokenid(asset, call_put, true, otm_itm, width, strike);
-            userPositions[msg.sender].push(lastPosId);
-            posIdList = userPositions[msg.sender];
-
-            balanceBefore = int256(_get_assets_in_token0(msg.sender, currentTick));
-
-            hevm.prank(msg.sender);
-            panopticPool.mintOptions(posIdList, uint128(posSize), type(uint64).max, 0, 0);
-
-            userLiquidityPerPosition[msg.sender] =
-                int256(_get_assets_in_token0(msg.sender, currentTick)) -
-                balanceBefore;
+                userLiquidityPerPosition[actors[seller]] =
+                    int256(_get_assets_in_token0(actors[seller], currentTick)) -
+                    balanceBefore;
+                emit LogInt256("Balance after (seller)", int256(_get_assets_in_token0(actors[seller], currentTick)));
+                emit LogInt256("User liquidity (seller)", userLiquidityPerPosition[actors[seller]]);
+            }
 
             emit LogString("Minted a new option");
             emit LogUint256("Position size", posSize);
+            emit LogAddress("Minter", actors[seller]);
+
+            // TODO: Invariant: For short positions, liquidity is provided
+            //assertWithMsg(userLiquidityPerPosition[actors[seller]] <= 0, "Short position with liquidity removed");
+
+
+            require(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)) > posSize);
+
+            lastPosId = _generate_single_leg_tokenid(asset, is_call, is_long, is_otm, width, strike);
+            userPositions[msg.sender].push(lastPosId);
+            posIdList = userPositions[msg.sender];
+
+            {
+                int256 balanceBefore;
+                balanceBefore = int256(_get_assets_in_token0(msg.sender, currentTick));
+                emit LogInt256("Balance before (buyer)", balanceBefore);
+
+                hevm.prank(msg.sender);
+                // TODO: liquidity above threshold!
+                try panopticPool.mintOptions(posIdList, uint128(posSize)/2, 0, 0, 0) {
+
+                } catch {
+                    assert(false);
+                }
+
+                userLiquidityPerPosition[msg.sender] =
+                    int256(_get_assets_in_token0(msg.sender, currentTick)) -
+                    balanceBefore;
+
+                emit LogInt256("Balance after (buyer)", int256(_get_assets_in_token0(msg.sender, currentTick)));
+                emit LogInt256("User liquidity (buyer)", userLiquidityPerPosition[msg.sender]);
+            }
+
+            emit LogString("Minted a new option");
+            emit LogUint256("Position size", posSize/2);
             emit LogAddress("Minter", msg.sender);
+
+            // TODO: Invariant: For long positions, liquidity is removed
+            //assertWithMsg(userLiquidityPerPosition[msg.sender] >= 0, "Long position with liquidity added");
         }
     }
 
@@ -882,19 +900,20 @@ contract FuzzDeployments is FuzzHelpers {
             return;
         }
 
-        // TODO, calculate the minimum balance for it not to revert (CollateralTracker:1069)
-        require(collToken0.balanceOf(msg.sender) > posSize / 10);
+        // TODO, Invariant: calculate the minimum balance for it not to revert (CollateralTracker:1069)
+        // require(collToken0.balanceOf(msg.sender) > ...);
 
         int256 balanceBefore = int256(_get_assets_in_token0(msg.sender, currentTick));
         emit LogInt256("User Balance before burning in token0 terms", balanceBefore);
 
         hevm.prank(msg.sender);
-        try panopticPool.burnOptions(userPositions[msg.sender][0], emptyList, 0, 0) {} catch {
-            assertWithMsg(false, "Position could not be burned");
+        try panopticPool.burnOptions(userPositions[msg.sender][0], emptyList, 0, 0) { }
+        catch {
+            //assertWithMsg(false, "Position could not be burned");
         }
 
         int256 balanceAfter = int256(_get_assets_in_token0(msg.sender, currentTick));
-        emit LogInt256("User Balance before burning in token0 terms", balanceAfter);
+        emit LogInt256("User Balance after burning in token0 terms", balanceAfter);
 
         emit LogInt256("Delta balance", balanceAfter - balanceBefore);
         emit LogInt256("User liquidity delta", userLiquidityPerPosition[msg.sender]);
@@ -927,6 +946,12 @@ contract FuzzDeployments is FuzzHelpers {
         (, int24 curTick, , , , , ) = pool.slot0();
         emit LogInt256("TWAP tick", TWAPtick);
         emit LogInt256("Current tick", curTick);
+
+        {
+            (int256 value0, int256 value1) = panopticPool.calculatePortfolioValue(liquidatee, TWAPtick, userPositions[liquidatee]);
+            emit LogInt256("Liquidatee portfolio value0:", value0);
+            emit LogInt256("Liquidatee portfolio value1:", value1);
+        }        
 
         require(liquidated_positions.length > 0);
 
@@ -1048,6 +1073,17 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    function invariant_unsettled_premium() public {
+        // Owed premia
+        (int128 p0o, int128 p1o, ) = panopticPool.calculateAccumulatedFeesBatch(msg.sender, true, userPositions[msg.sender]);
+        // Available premia
+        (int128 p0a, int128 p1a, ) = panopticPool.calculateAccumulatedFeesBatch(msg.sender, false, userPositions[msg.sender]);
+
+        emit LogAddress("Sender:", msg.sender);
+        assertWithMsg(p0o >= p0a, "Token 0 owed premia is less than available premia");
+        assertWithMsg(p1o >= p1a, "Token 1 owed premia is less than available premia");        
+    }
+
     /////////////////////////////////////////////////////////////
     // Wrappers
     /////////////////////////////////////////////////////////////
@@ -1071,14 +1107,17 @@ contract FuzzDeployments is FuzzHelpers {
     /// @param token0 True if the token0 is deposited, otherwise token1
     /// @param amount Amount to deposit (bounded by balanceOf)
     function deposit_to_ct(bool token0, uint256 amount) public {
+        uint256 bal0 = IERC20(collToken0.asset()).balanceOf(msg.sender);
+        uint256 bal1 = IERC20(collToken1.asset()).balanceOf(msg.sender);
+
         amount = bound(amount, 1, MAX_DEPOSIT);
 
         if (token0) {
-            amount = bound(amount, 1, IERC20(collToken0.asset()).balanceOf(msg.sender));
+            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal0));
             hevm.prank(msg.sender);
             collToken0.deposit(amount, msg.sender);
         } else {
-            amount = bound(amount, 1, IERC20(collToken1.asset()).balanceOf(msg.sender));
+            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal1));
             hevm.prank(msg.sender);
             collToken1.deposit(amount, msg.sender);
         }

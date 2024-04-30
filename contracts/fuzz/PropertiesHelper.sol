@@ -6,6 +6,7 @@ abstract contract PropertiesAsserts {
     event LogInt256(string, int256);
     event LogAddress(string, address);
     event LogString(string);
+    event LogBool(string, bool);
 
     event AssertFail(string);
     event AssertEqFail(string);

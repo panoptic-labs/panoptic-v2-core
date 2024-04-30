@@ -67,6 +67,14 @@ contract FuzzHelpers is PropertiesAsserts {
         return min + (value % range);
     }
 
+    function max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return ( (a >= b) ? a :  b);
+    }
+
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return ( (a <= b) ? a :  b);
+    }
+
     function deal_USDC(address to, uint256 amt, bool alter_supply) internal {
         deployer.mintToken(false, to, amt);
         // Balances in slot 9 (verify with "slither --print variable-order 0x43506849D7C04F9138D1A2050bbF3A0c054402dd")
