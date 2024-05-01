@@ -269,7 +269,7 @@ contract PanopticFactory is Multicall {
         // The SFPM will `safeTransferFrom` tokens from the donor during the mint callback
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
-        if (amount0 >= amount0Max || amount1 >= amount1Max) revert Errors.PriceBoundFail();
+        if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();
 
         emit PoolDeployed(
             newPoolContract,
