@@ -115,7 +115,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     uint128 internal s_inAMM;
 
     /// @notice additional risk premium charged on intrinsic value of ITM positions,
-    /// defined in basis points as a multiple of the pool fee / 10_000.
+    /// defined in hundredths of basis points.
     /// @dev The result of the calculation is stored instead of the multiple to save gas during usage.
     /// When the fee is set, the multiple is calculated and stored
     uint128 internal s_ITMSpreadFee;
