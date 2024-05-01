@@ -228,7 +228,14 @@ contract PanopticFactoryTest is Test {
         {
             // Deploy pool
             // links the uni v3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+            PanopticPool deployedPool = panopticFactory.deployNewPool(
+                token0,
+                token1,
+                fee,
+                salt,
+                type(uint256).max,
+                type(uint256).max
+            );
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -292,7 +299,14 @@ contract PanopticFactoryTest is Test {
         {
             // Deploy pool
             // links the uni v3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+            PanopticPool deployedPool = panopticFactory.deployNewPool(
+                token0,
+                token1,
+                fee,
+                salt,
+                type(uint256).max,
+                type(uint256).max
+            );
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -333,7 +347,14 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt));
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            bytes32(salt),
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     // deploy a pool with token1 as WETH
@@ -347,7 +368,57 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt));
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            bytes32(salt),
+            type(uint256).max,
+            type(uint256).max
+        );
+    }
+
+    function test_Success_deployNewPool_SlippagePass() public {
+        _initWorld(0);
+
+        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+
+        (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
+
+        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0, amount1);
+    }
+
+    function test_Fail_deployNewPool_Slippage0() public {
+        _initWorld(0);
+
+        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+
+        (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
+
+        vm.expectRevert(Errors.PriceBoundFail.selector);
+        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0 - 1, amount1);
+    }
+
+    function test_Fail_deployNewPool_Slippage1() public {
+        _initWorld(0);
+
+        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+
+        (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
+
+        vm.expectRevert(Errors.PriceBoundFail.selector);
+        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0, amount1 - 1);
+    }
+
+    function test_Fail_deployNewPool_Slippage0Both() public {
+        _initWorld(0);
+
+        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+
+        (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
+
+        vm.expectRevert(Errors.PriceBoundFail.selector);
+        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0 - 1, amount1 - 1);
     }
 
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool
@@ -357,7 +428,14 @@ contract PanopticFactoryTest is Test {
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt));
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            bytes32(salt),
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -370,12 +448,26 @@ contract PanopticFactoryTest is Test {
         uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
 
         // Deploy pool
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt));
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            bytes32(salt),
+            type(uint256).max,
+            type(uint256).max
+        );
 
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt + 1));
+            panopticFactory.deployNewPool(
+                token0,
+                token1,
+                fee,
+                bytes32(salt + 1),
+                type(uint256).max,
+                type(uint256).max
+            );
         }
     }
 
@@ -390,7 +482,9 @@ contract PanopticFactoryTest is Test {
             token0,
             token1,
             fee,
-            bytes32(nonce + (uint256(uint160(randomAddr)) << 96))
+            bytes32(nonce + (uint256(uint160(randomAddr)) << 96)),
+            type(uint256).max,
+            type(uint256).max
         );
     }
 
@@ -402,7 +496,14 @@ contract PanopticFactoryTest is Test {
         uint256 salt = uint256(nonce) + (uint256(uint160(Deployer)) << 96);
 
         vm.expectRevert(Errors.NotOwner.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt));
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            bytes32(salt),
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     /*//////////////////////////////////////////////////////////////

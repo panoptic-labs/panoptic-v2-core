@@ -403,7 +403,9 @@ contract PanopticPoolTest is PositionUtils {
                     token0,
                     token1,
                     fee,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    bytes32(uint256(uint160(Deployer)) << 96),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );

@@ -250,7 +250,9 @@ contract Misctest is Test, PositionUtils {
                     address(token0),
                     address(token1),
                     500,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    bytes32(uint256(uint160(Deployer)) << 96),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );

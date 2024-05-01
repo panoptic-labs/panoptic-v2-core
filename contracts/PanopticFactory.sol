@@ -206,12 +206,16 @@ contract PanopticFactory is Multicall {
     /// @param token1 Address of token1 for the underlying Uniswap v3 pool
     /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
     /// @param salt User-defined salt used in CREATE2 for the PanopticPool (must contain caller addr as first 20 bytes)
+    /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment, which serves as a slippage check
+    /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment, which serves as a slippage check
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         address token0,
         address token1,
         uint24 fee,
-        bytes32 salt
+        bytes32 salt,
+        uint256 amount0Max,
+        uint256 amount1Max
     ) external returns (PanopticPool newPoolContract) {
         // sort the tokens, if necessary:
         (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
@@ -257,13 +261,15 @@ contract PanopticFactory is Multicall {
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
         v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
+        // Issue reward NFT to donor
+        DONOR_NFT.issueNFT(msg.sender, newPoolContract, token0, token1, fee);
+
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
         // The SFPM will `safeTransferFrom` tokens from the donor during the mint callback
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
-        // Issue reward NFT to donor
-        DONOR_NFT.issueNFT(msg.sender, newPoolContract, token0, token1, fee);
+        if (amount0 >= amount0Max || amount1 >= amount1Max) revert Errors.PriceBoundFail();
 
         emit PoolDeployed(
             newPoolContract,
