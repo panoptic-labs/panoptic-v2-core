@@ -12,7 +12,6 @@ import {Math} from "@libraries/Math.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -896,9 +895,6 @@ library PanopticMath {
                             0,
                             uint128(-_premiasByLeg[i][leg].leftSlot()) - settled1
                         );
-
-                        console2.log("settled0", settled0);
-                        console2.log("settled1", settled1);
 
                         _settledTokens[chunkKey] = _settledTokens[chunkKey].add(
                             LeftRightUnsigned.wrap(0).toRightSlot(uint128(settled0)).toLeftSlot(

@@ -19,7 +19,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -1861,8 +1860,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             if (LeftRightSigned.unwrap(legPremia) != 0) {
                 // (will be) paid by long legs
                 if (tokenId.isLong(leg) == 1) {
-                    console2.log("settled0 (Theoryburn)", legPremia.rightSlot());
-                    console2.log("settled1 (Theoryburn)", legPremia.leftSlot());
                     if (commitLongSettled)
                         settledTokens = LeftRightUnsigned.wrap(
                             uint256(
@@ -1973,7 +1970,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // update settled tokens in storage with all local deltas
             s_settledTokens[chunkKey] = settledTokens;
-            console2.log("finalsettle", LeftRightUnsigned.unwrap(settledTokens));
 
             unchecked {
                 ++leg;

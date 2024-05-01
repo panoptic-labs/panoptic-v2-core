@@ -5827,7 +5827,6 @@ contract PanopticPoolTest is PositionUtils {
                 );
             }
         }
-        // vm.assume(medianValue0 > 1);
         if (numLegs == 1) populatePositionData(widths[0], strikes[0], positionSizeSeed);
         if (numLegs == 2)
             populatePositionData(
@@ -6152,11 +6151,6 @@ contract PanopticPoolTest is PositionUtils {
         // this happens on *both* liquidations and burns, but during liquidations 1-n shares can be clawed back from PLPs
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had]
-        // vm.assume(numLegs > 1);
-        // vm.assume(
-        //     (ct0.totalSupply() - $totalSupply0 <= numLegs) &&
-        //     (ct1.totalSupply() - $totalSupply1 <= numLegs)
-        // );
         if (
             (ct0.totalSupply() - $totalSupply0 <= numLegs) &&
             (ct1.totalSupply() - $totalSupply1 <= numLegs)
@@ -6191,9 +6185,6 @@ contract PanopticPoolTest is PositionUtils {
                         )
                     );
 
-                    // vm.assume(LeftRightUnsigned.unwrap($settledTokens[chunk]) > 0);
-                    console2.log("settledpp", LeftRightUnsigned.unwrap(pp.settledTokens(chunk)));
-                    console2.log("setteldactual", LeftRightUnsigned.unwrap($settledTokens[chunk]));
                     assertEq(
                         LeftRightUnsigned.unwrap(pp.settledTokens(chunk)),
                         LeftRightUnsigned.unwrap($settledTokens[chunk]),
