@@ -8,6 +8,42 @@ import {LibZip} from "solady/utils/LibZip.sol";
 library Labels {
     using LibString for string;
 
+    function strategy(uint256 index) internal pure returns (string memory) {
+        if (index == 0) {
+            return "Naked Position";
+        } else if (index == 1) {
+            return "Spread";
+        } else if (index == 2) {
+            return "Straddle";
+        } else if (index == 3) {
+            return "Butterfly";
+        } else if (index == 4) {
+            return "Iron Condor";
+        } else if (index == 5) {
+            return "Jade Lizard";
+        } else if (index == 6) {
+            return "Super Bull";
+        } else if (index == 7) {
+            return "Calendar";
+        } else if (index == 8) {
+            return "Covered Position";
+        } else if (index == 9) {
+            return "ZEBRA";
+        } else if (index == 10) {
+            return "Super Bear";
+        } else if (index == 11) {
+            return "BATS";
+        } else if (index == 12) {
+            return "Strangle";
+        } else if (index == 13) {
+            return "Big Lizard";
+        } else if (index == 14) {
+            return "Ratio Spread";
+        } else if (index == 15) {
+            return "ZEEHBS";
+        }
+    }
+
     function getLabel(uint256 index) internal pure returns (string memory) {
         if (index == 0) {
             return string(LibZip.flzDecompress(L0));
