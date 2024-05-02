@@ -388,8 +388,6 @@ contract PanopticPoolTest is PositionUtils {
             collateralReference
         );
 
-        factory.initialize(Deployer);
-
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         deal(token0, Deployer, type(uint104).max);

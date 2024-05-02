@@ -235,7 +235,6 @@ contract Misctest is Test, PositionUtils {
             poolReference,
             collateralReference
         );
-        factory.initialize(Deployer);
 
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
