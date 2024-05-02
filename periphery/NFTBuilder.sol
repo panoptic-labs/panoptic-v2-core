@@ -9,11 +9,10 @@ import {LibZip} from "solady/src/utils/LibZip.sol";
 import {Base64} from "solady/src/utils/Base64.sol";
 import {ERC20} from "solady/src/tokens/ERC20.sol";
 
-import {Art} from "src/SVGs/Art.sol";
-import {Backs} from "src/SVGs/Backs.sol";
-import {Frames} from "src/SVGs/Frames.sol";
-import {Filters} from "src/SVGs/Filters.sol";
-import {Labels} from "src/SVGs/Labels.sol";
+import {Art} from "@periphery/SVGs/Art.sol";
+import {Frames} from "@periphery/SVGs/Frames.sol";
+import {Filters} from "@periphery/SVGs/Filters.sol";
+import {Labels} from "@periphery/SVGs/Labels.sol";
 
 contract NFTBuilder {
     /// @notice The Uniswap V3 factory contract to use
