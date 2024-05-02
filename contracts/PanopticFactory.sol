@@ -279,6 +279,10 @@ contract PanopticFactory is Multicall, ERC721 {
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         require(ownerOf(tokenId) != address(0));
+        PanopticPool panopticPool = PanopticPool(address(uint160(tokenId)));
+        address token0 = address(panopticPool.univ3pool().token0());
+        address token1 = address(panopticPool.univ3pool().token1());
+        uint24 fee = panopticPool.univ3pool().fee();
         string memory URI = "";
         return URI;
     }
