@@ -575,12 +575,11 @@ contract FuzzDeployments is FuzzHelpers {
         if(tokenid.tokenType(0) == 0) {
             userCollateral = collToken0.convertToAssets(collToken0.balanceOf(minter));
             emit LogUint256("User collateral 0", userCollateral);
-            posSize = bound(posSize, userCollateral / 2, (3 * userCollateral) / 4);
         } else {
             userCollateral = collToken1.convertToAssets(collToken1.balanceOf(minter));
-            emit LogUint256("User collateral 1", userCollateral);
-            posSize = bound(posSize, userCollateral / 2, (3 * userCollateral) / 4);      
+            emit LogUint256("User collateral 1", userCollateral);                 
         }
+        posSize = bound(posSize, userCollateral * 70 / 100,  userCollateral * 85 / 100); 
         require(posSize > 0);
 
         userPositions[minter].push(tokenid);
@@ -601,7 +600,7 @@ contract FuzzDeployments is FuzzHelpers {
                     assertWithMsg(false, "A long position with liquidity factor greater than the liquidity limit was minted");
                 }
             } catch {
-
+                revert();
             }
         } else {
             hevm.prank(minter);
@@ -618,8 +617,9 @@ contract FuzzDeployments is FuzzHelpers {
 
     }
 
+    uint count;
     function mint_option(
-        uint256 seller,
+        uint256 seller_index,
         bool asset,
         bool is_call,
         bool is_long,
@@ -629,26 +629,23 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint256 posSize
     ) public {
-        seller = bound(seller, 0, 4);
-        if (actors[seller] == msg.sender) {
-            seller = bound(seller + 1, 0, 4);
+        seller_index = bound(seller_index, 0, 4);
+        if (actors[seller_index] == msg.sender) {
+            seller_index = bound(seller_index + 1, 0, 4);
         }
 
-        require(userPositions[msg.sender].length == 0, "Too many positions for user");
-        if (is_long) {
-            require(userPositions[actors[seller]].length == 0, "Too many positions for seller");
-        }
+        address minter = msg.sender;
+        address seller = actors[seller_index];
 
         (, currentTick, , , , , ) = pool.slot0();
 
         if (!is_long) {
             // Mint a short position
-            _mint_option(msg.sender, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), posSize, 0);
-
+            _mint_option(minter, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), posSize, 0);
         } else {
             // Mint a short position first, then a long position
-            _mint_option(actors[seller], _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), 2* posSize, 0);
-            _mint_option(msg.sender, _generate_single_leg_tokenid(asset, is_call, true, is_otm, width, strike), posSize, effLiqLimit);
+            _mint_option(seller, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), 2* posSize, 0);
+            _mint_option(minter, _generate_single_leg_tokenid(asset, is_call, true, is_otm, width, strike), posSize, effLiqLimit);
         }
     }
 
@@ -778,45 +775,38 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    function _get_list_without_tokenid(TokenId[] memory list, TokenId target) internal pure returns (TokenId[] memory out) {
+        // Assumes target is in list
+
+        uint256 l = list.length;
+        out = new TokenId[](l - 1);
+        uint256 out_idx = 0;
+
+        for (uint i = 0; i < l; i++) {
+            if (keccak256(abi.encode(list[i])) != keccak256(abi.encode(target))) {
+                out[out_idx] = list[i];
+                out_idx ++;
+            }
+        }
+    }
+
     /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
     /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
     /// @custom:precondition The user has a position open
-    function burn_option() public {
-        if (userPositions[msg.sender].length < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
+    function burn_one_option(uint256 pos_idx) public {
+        address caller = msg.sender;
+        require(panopticPool.numberOfPositions(caller) > 0);
+        pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
 
-        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
-        emit LogAddress("Caller", msg.sender);
-        emit LogUint256("Positions opened for user", numOfPositions);
+        emit LogString("Burning one option");
+        emit LogAddress("Caller", caller);
+        emit LogUint256("Positions opened for user", panopticPool.numberOfPositions(caller));
+        emit LogUint256("Positions to be burned", pos_idx);
 
-        TokenId[] memory emptyList;
+        TokenId position = userPositions[caller][pos_idx];
+        TokenId[] memory positions_new = _get_list_without_tokenid(userPositions[caller], position);
 
-        (uint128 bal, uint64 pool0, uint64 pool1) = panopticPool.optionPositionBalance(
-            msg.sender,
-            userPositions[msg.sender][0]
-        );
-        emit LogUint256("Pool balance for user", bal);
-        emit LogUint256("Pool utilization of t0", pool0);
-        emit LogUint256("Pool utilization of t1", pool1);
-
-        uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-        uint256 bal1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
-        emit LogUint256("Balance in token0", bal0);
-        emit LogUint256("Balance in token1", bal1);
-
-        // Burn the position
-
-        // Preconditions
-        // panopticPool.optionPositionBalance balance > 0
-        // if leg is short, it is reversed, so:
-        //    current liquidity (s_accountLiquidity[positionKey].rightSlot()) > liquidity chunk for the position (tokenid + leg)
-        // current tick must be between tick limits in burnOptions call
-
-        TokenId position = userPositions[msg.sender][0];
-
-        (uint128 posSize, , ) = panopticPool.optionPositionBalance(msg.sender, position);
+        (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, position);
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(position, 0, posSize);
         LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
             address(pool),
@@ -834,16 +824,16 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("LiqChunk tickLower", liquidityChunk.tickLower());
 
         if (posSize == 0) {
-            hevm.prank(msg.sender);
-            try panopticPool.burnOptions(userPositions[msg.sender][0], emptyList, 0, 0) {
+            hevm.prank(caller);
+            try panopticPool.burnOptions(position, positions_new, 0, 0) {
                 assertWithMsg(false, "A zero-sized position was burned.");
             } catch {}
             return;
         }
 
         if (position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()) {
-            hevm.prank(msg.sender);
-            try panopticPool.burnOptions(userPositions[msg.sender][0], emptyList, 0, 0) {
+            hevm.prank(caller);
+            try panopticPool.burnOptions(position, positions_new, 0, 0) {
                 assertWithMsg(false, "A short position with not enough liquidity was burned.");
             } catch {}
             return;
@@ -852,41 +842,64 @@ contract FuzzDeployments is FuzzHelpers {
         // TODO, Invariant: calculate the minimum balance for it not to revert (CollateralTracker:1069)
         // require(collToken0.balanceOf(msg.sender) > ...);
 
-        int256 balanceBefore = int256(_get_assets_in_token0(msg.sender, currentTick));
+        int256 balanceBefore = int256(_get_assets_in_token0(caller, currentTick));
         emit LogInt256("User Balance before burning in token0 terms", balanceBefore);
 
-        hevm.prank(msg.sender);
-        panopticPool.burnOptions(userPositions[msg.sender][0], emptyList, 0, 0);
+        hevm.prank(caller);
+        panopticPool.burnOptions(position, positions_new, 0, 0);
 
-        int256 balanceAfter = int256(_get_assets_in_token0(msg.sender, currentTick));
+        int256 balanceAfter = int256(_get_assets_in_token0(caller, currentTick));
         emit LogInt256("User Balance after burning in token0 terms", balanceAfter);
 
         emit LogInt256("Delta balance", balanceAfter - balanceBefore);
-        emit LogInt256("User liquidity delta", userLiquidityPerPosition[msg.sender]);
+        emit LogInt256("User liquidity delta", userLiquidityPerPosition[caller]);
 
-        userPositions[msg.sender].pop();
-        userLiquidityPerPosition[msg.sender] = 0;
+        userPositions[caller] = positions_new;
+        userLiquidityPerPosition[caller] = 0;
+
+    }
+
+    /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
+    /// @custom:precondition The user has at least one position open
+    function burn_all_options() public {
+        address caller = msg.sender;
+        TokenId[] memory emptyList;
+
+        if (userPositions[caller].length < 1) {
+            emit LogString("No current positions");
+            revert();
+        }
+
+        hevm.prank(caller);
+        try panopticPool.burnOptions(userPositions[caller], emptyList, type(int24).min, type(int24).max) {
+            delete userPositions[caller];
+            assertWithMsg(panopticPool.numberOfPositions(caller) == 0, "Not all positions were burned");
+        } catch {
+        
+        }
     }
 
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
+    /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
     function try_liquidate_option(uint256 i_liquidated) public {
         i_liquidated = bound(i_liquidated, 0, 4);
         address liquidatee = actors[i_liquidated];
+        address liquidator = msg.sender;
 
         if (userPositions[liquidatee].length < 1) {
             emit LogString("No current positions");
             revert();
         }
 
-        require(liquidatee != msg.sender);
+        require(liquidatee != liquidator);
 
         TokenId[] memory liquidated_positions = userPositions[liquidatee];
-        TokenId[] memory liquidator_positions = userPositions[msg.sender];
+        TokenId[] memory liquidator_positions = userPositions[liquidator];
 
         emit LogUint256("liquidator positions length", liquidator_positions.length);
         emit LogUint256("liquidated positions length", liquidated_positions.length);
-        emit LogAddress("liquidator", msg.sender);
+        emit LogAddress("liquidator", liquidator);
         emit LogAddress("liquidated", liquidatee);
 
         int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
@@ -907,8 +920,8 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("Threshold cross", thresholdCross);
 
         LeftRightUnsigned lru = LeftRightUnsigned
-            .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(msg.sender))))
-            .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))));
+            .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
+            .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
 
         (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
             liquidatee,
@@ -918,11 +931,11 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("Premium in token 0", p0);
         emit LogInt256("Premium in token 1", p1);
 
-        uint256 liq_assets_before = _get_assets_in_token0(msg.sender, TWAPtick);
+        uint256 liq_assets_before = _get_assets_in_token0(liquidator, TWAPtick);
 
         // If the position is not liquidatable, liquidation call must revert
         if (balanceCross >= thresholdCross) {
-            hevm.prank(msg.sender);
+            hevm.prank(liquidator);
             try
                 panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions)
             {
@@ -934,17 +947,17 @@ contract FuzzDeployments is FuzzHelpers {
             return;
         }
 
-        hevm.prank(msg.sender);
+        hevm.prank(liquidator);
         panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions);
 
-        userPositions[msg.sender].pop();
+        delete userPositions[liquidatee];
 
-        uint256 liq_assets_after = _get_assets_in_token0(msg.sender, TWAPtick);
+        assertWithMsg(panopticPool.numberOfPositions(liquidatee) == 0, "Liquidation did not close all positions");
+
+        uint256 liq_assets_after = _get_assets_in_token0(liquidator, TWAPtick);
 
         emit LogUint256("Liquidator assets before", liq_assets_before);
         emit LogUint256("Liquidator assets after", liq_assets_after);
-        assert(false);
-
     }
 
     /////////////////////////////////////////////////////////////

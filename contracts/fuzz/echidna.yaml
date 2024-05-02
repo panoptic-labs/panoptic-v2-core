@@ -5,9 +5,10 @@ cryticArgs:
 
 sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
 testMode: assertion
-testLimit: 1000000
-shrinkLimit: 1000
-workers: 15
+seqLen: 500
+testLimit: 2000000
+shrinkLimit: 10000
+workers: 8
 corpusDir: contracts/fuzz/corpus
 #rpcBlock: 19582800
 coverageFormats: ["html"]
