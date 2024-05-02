@@ -378,6 +378,28 @@ contract PanopticFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
+                    TOKEN URI
+    //////////////////////////////////////////////////////////////*/
+
+    // deploy a pool with token0 as WETH
+    function test_Success_getTokenURI() public {
+        // No need to fuzz as we are testing for a specific condition
+        // use pool[7] -> ETH_USDT_5
+        _initalizeWorldState(pools[5]);
+
+        // generate a not so random salt
+        uint96 salt = uint96(10);
+
+        // Deploy pool
+        // links the uni v3 pool to the Panoptic pool
+        PanopticPool pp = panopticFactory.deployNewPool(token0, token1, fee, salt);
+
+        console2.log(address(pp), panopticFactory.tokenURI(uint160(address(pp))));
+
+        assertTrue(false);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                     MINE POOL ADDRESS TESTS
     //////////////////////////////////////////////////////////////*/
 

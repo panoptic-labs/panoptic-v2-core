@@ -4,20 +4,19 @@ pragma solidity =0.8.25;
 
 import {console2} from "forge-std/Test.sol";
 
-import {LibString} from "solady/src/utils/LibString.sol";
-import {LibZip} from "solady/src/utils/LibZip.sol";
-import {Base64} from "solady/src/utils/Base64.sol";
-import {ERC20} from "solady/src/tokens/ERC20.sol";
+import {LibString} from "solady//utils/LibString.sol";
+import {LibZip} from "solady/utils/LibZip.sol";
+import {Base64} from "solady/utils/Base64.sol";
+import {ERC20} from "solady/tokens/ERC20.sol";
 
 import {Art} from "@periphery/SVGs/Art.sol";
 import {Frames} from "@periphery/SVGs/Frames.sol";
 import {Filters} from "@periphery/SVGs/Filters.sol";
 import {Labels} from "@periphery/SVGs/Labels.sol";
 
-contract NFTBuilder {
+library NFTBuilder {
     /// @notice The Uniswap V3 factory contract to use
 
-    using Backs for string;
     using Labels for string;
     using Filters for string;
     using Frames for string;

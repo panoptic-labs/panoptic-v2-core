@@ -284,7 +284,12 @@ contract PanopticFactory is Multicall, ERC721 {
         address token0 = address(panopticPool.univ3pool().token0());
         address token1 = address(panopticPool.univ3pool().token1());
         uint24 fee = panopticPool.univ3pool().fee();
-        string memory URI = "";
+        string memory URI = NFTBuilder.constructTokenURI(
+            address(uint160(tokenId)),
+            token0,
+            token1,
+            fee
+        );
         return URI;
     }
 

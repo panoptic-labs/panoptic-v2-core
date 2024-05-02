@@ -2,8 +2,8 @@
 
 pragma solidity =0.8.25;
 import {console2} from "forge-std/Test.sol";
-import {LibString} from "solady/src/utils/LibString.sol";
-import {LibZip} from "solady/src/utils/LibZip.sol";
+import {LibString} from "solady/utils/LibString.sol";
+import {LibZip} from "solady/utils/LibZip.sol";
 
 library Frames {
     using LibString for string;

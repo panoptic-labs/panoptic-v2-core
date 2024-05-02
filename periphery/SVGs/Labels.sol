@@ -2,8 +2,8 @@
 
 pragma solidity =0.8.25;
 
-import {LibString} from "solady/src/utils/LibString.sol";
-import {LibZip} from "solady/src/utils/LibZip.sol";
+import {LibString} from "solady/utils/LibString.sol";
+import {LibZip} from "solady/utils/LibZip.sol";
 
 library Labels {
     using LibString for string;

@@ -2,7 +2,7 @@
 
 pragma solidity =0.8.25;
 import {Test, console2} from "forge-std/Test.sol";
-import {LibString} from "solady/src/utils/LibString.sol";
+import {LibString} from "solady/utils/LibString.sol";
 
 library Filters {
     using LibString for string;
