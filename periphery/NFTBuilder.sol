@@ -13,12 +13,14 @@ import {Art} from "@periphery/SVGs/Art.sol";
 import {Frames} from "@periphery/SVGs/Frames.sol";
 import {Filters} from "@periphery/SVGs/Filters.sol";
 import {Labels} from "@periphery/SVGs/Labels.sol";
+import {Letters} from "@periphery/SVGs/Letters.sol";
 
 library NFTBuilder {
     /// @notice The Uniswap V3 factory contract to use
 
     using Labels for string;
     using Filters for string;
+    using Letters for string;
     using Frames for string;
     using Art for string;
     using LibString for string;
