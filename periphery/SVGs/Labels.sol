@@ -44,7 +44,7 @@ library Labels {
         }
     }
 
-    function getDescription(uint256 index) internal pure returns (string memory) {
+    function getDescription(uint256 index, uint256 rarity) internal pure returns (string memory) {
         if (index == 0) {
             // Naked Position
             return
@@ -150,13 +150,28 @@ library Labels {
 
     function addDescription(
         string memory contents,
-        uint256 index
+        uint256 index,
+        uint256 rarity
     ) public pure returns (string memory) {
-        return contents.replace("<!-- TEXT -->", getDescription(index));
+        return contents.replace("<!-- TEXT -->", getDescription(index, rarity));
     }
 
     function addLabel(string memory contents, uint256 index) public pure returns (string memory) {
         return contents.replace("<!-- LABEL -->", getLabel(index));
+    }
+
+    function addAddress(
+        string memory contents,
+        string memory hexAddress
+    ) public pure returns (string memory) {
+        return contents.replace("<!-- POOLADDRESS -->", hexAddress);
+    }
+
+    function addChainId(
+        string memory contents,
+        string memory chainid
+    ) public pure returns (string memory) {
+        return contents.replace("<!-- CHAINID -->", chainid);
     }
 
     bytes public constant L0 =
