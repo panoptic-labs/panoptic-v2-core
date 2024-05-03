@@ -41,7 +41,7 @@ library NFTBuilder {
         string memory name1 = ERC20(token1).name();
         string memory chainid = LibString.toString(block.chainid);
 
-        string memory svgOut = generateSVG(deployedAddress);
+        string memory svgOut = generateSVG(deployedAddress, chainid);
 
         return
             string(
@@ -89,7 +89,10 @@ library NFTBuilder {
             );
     }
 
-    function generateSVG(address deployedAddress) public view returns (string memory) {
+    function generateSVG(
+        address deployedAddress,
+        string memory chainid
+    ) public view returns (string memory) {
         uint256 lastCharVal = uint160(deployedAddress) & 0xF;
         uint256 rarity = numberOfLeadingHexZeros(deployedAddress);
         string memory svgIn;
@@ -107,15 +110,12 @@ library NFTBuilder {
             svgIn = Frames.frame20();
         }
 
-        string memory svgFinal = svgIn.addLabel(lastCharVal).addArt(lastCharVal).addFilter(rarity);
+        string memory svgFinal = svgIn
+            .addLabel(lastCharVal)
+            .addDescription(lastCharVal)
+            .addArt(lastCharVal)
+            .addFilter(rarity);
         return svgFinal;
-    }
-
-    function generateBase64EncodedSVG(address input) public view returns (string memory) {
-        string memory svg = generateSVG(input);
-        bytes memory svgBytes = bytes(svg);
-        string memory base64EncodedSVG = Base64.encode(svgBytes);
-        return base64EncodedSVG;
     }
 
     /// @notice Converts a `uint256` to its ASCII `string` hexadecimal representation with fixed length.
