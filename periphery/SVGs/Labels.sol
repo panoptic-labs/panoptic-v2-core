@@ -6,7 +6,6 @@ import {LibString} from "solady/utils/LibString.sol";
 import {LibZip} from "solady/utils/LibZip.sol";
 import {Letters} from "@periphery/SVGs/Letters.sol";
 
-
 library Labels {
     using LibString for string;
 
@@ -139,5 +138,4 @@ library Labels {
     ) public pure returns (string memory) {
         return contents.replace("<!-- CHAINID -->", chainid);
     }
-
 }
