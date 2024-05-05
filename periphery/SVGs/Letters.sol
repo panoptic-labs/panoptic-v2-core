@@ -13,11 +13,15 @@ library Letters {
     function write(string memory input) internal pure returns (string memory) {
         bytes memory b = bytes(input);
 
+        uint256 offset;
         string memory d;
         for (uint256 i=0; i<b.length; ++i) {
             string[] memory c = m(string(abi.encodePacked(b[i])));
             d = string.concat('<g transform="translate(-', c[0],', 0)">', d, c[1], '</g>');
+            offset += stringToUint(c[0]);
         }
+        string memory factor = '34';
+        d = string.concat('<g transform="scale(0.0',factor,') translate(', LibString.toString(offset / 2), ', 0)">', d, '</g>');
         return d;
     }
 
@@ -315,5 +319,17 @@ library Letters {
         }
 
         return output;
+    }
+
+    function stringToUint(string memory s) public pure returns (uint) {
+        bytes memory b = bytes(s);
+        uint result = 0;
+        for (uint256 i = 0; i < b.length; i++) {
+            uint256 c = uint256(uint8(b[i]));
+            if (c >= 48 && c <= 57) {
+                result = result * 10 + (c - 48);
+            }
+        }
+        return result;
     }
 }
