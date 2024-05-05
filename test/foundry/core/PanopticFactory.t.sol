@@ -385,7 +385,7 @@ contract PanopticFactoryTest is Test {
     function test_Success_getTokenURI() public {
         // No need to fuzz as we are testing for a specific condition
         // use pool[7] -> ETH_USDT_5
-        _initalizeWorldState(pools[5]);
+        _initalizeWorldState(pools[4]);
 
         // generate a not so random salt
         uint96 salt = uint96(10);
