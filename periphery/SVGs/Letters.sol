@@ -32,11 +32,17 @@ library Letters {
         return d;
     }
 
-    function addSymbol0(string memory contents, string memory symbol0) public pure returns (string memory) {
+    function addSymbol0(
+        string memory contents,
+        string memory symbol0
+    ) public pure returns (string memory) {
         return contents.replace("<!-- SYMBOL0 -->", write(symbol0));
     }
 
-    function addSymbol1(string memory contents, string memory symbol1) public pure returns (string memory) {
+    function addSymbol1(
+        string memory contents,
+        string memory symbol1
+    ) public pure returns (string memory) {
         return contents.replace("<!-- SYMBOL1 -->", write(symbol1));
     }
 
