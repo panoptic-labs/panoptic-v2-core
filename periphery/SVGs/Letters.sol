@@ -9,14 +9,13 @@ import {LibZip} from "solady/utils/LibZip.sol";
 library Letters {
     using LibString for string;
 
-
     function write(string memory input) internal pure returns (string memory) {
         bytes memory b = bytes(input);
 
         string memory d;
-        for (uint256 i=0; i<b.length; ++i) {
+        for (uint256 i = 0; i < b.length; ++i) {
             string[] memory c = m(string(abi.encodePacked(b[i])));
-            d = string.concat('<g transform="translate(-', c[0],', 0)">', d, c[1], '</g>');
+            d = string.concat('<g transform="translate(-', c[0], ', 0)">', d, c[1], "</g>");
         }
         return d;
     }
@@ -37,7 +36,7 @@ library Letters {
             output[0] = "421";
             output[
                 1
-            ]= '    <path d="M400 254h-62V63q-109 11-183.5 93.5T80 350q0 119 85 204t204 85v61q-95 0-175.5-47T66 525.5 19 350q0-71 28-136t74.5-111.5T233 28 369 0h31v254z"/>';
+            ] = '    <path d="M400 254h-62V63q-109 11-183.5 93.5T80 350q0 119 85 204t204 85v61q-95 0-175.5-47T66 525.5 19 350q0-71 28-136t74.5-111.5T233 28 369 0h31v254z"/>';
         } else if (keccak256(bytes(char)) == keccak256(bytes("D"))) {
             output[0] = "451";
             output[
@@ -98,7 +97,7 @@ library Letters {
             output[0] = "353";
             output[
                 1
-            ] = '    <path d="M102 0q64 0 119 32t87 87 32 119q0 60-27.5 111.5t-75 84.5T132 474v226H71V476H20v-61h51V0h31zm30 412q42-7 75-31.5t52.5-62T279 238q0-65-42-114T132 64v348z"/>'; 
+            ] = '    <path d="M102 0q64 0 119 32t87 87 32 119q0 60-27.5 111.5t-75 84.5T132 474v226H71V476H20v-61h51V0h31zm30 412q42-7 75-31.5t52.5-62T279 238q0-65-42-114T132 64v348z"/>';
         } else if (keccak256(bytes(char)) == keccak256(bytes("Q"))) {
             output[0] = "509";
             output[
@@ -262,7 +261,7 @@ library Letters {
             ] = '    <path d="M216 318V0h62v318q0 47-26 86.5T184 463v237h-61V463q-43-19-68.5-58.5T29 318V0h61v318q0 30 17.5 55t45.5 36q29-11 46-36t17-55z"/>';
         } else if (keccak256(bytes(char)) == keccak256(bytes("z"))) {
             output[0] = "286";
-            output[1] =  '<path d="M49 0h228L90 639h146v61H8L195 61H49V0z"/>';
+            output[1] = '<path d="M49 0h228L90 639h146v61H8L195 61H49V0z"/>';
         } else if (keccak256(bytes(char)) == keccak256(bytes("0"))) {
             output[0] = "541";
             output[
