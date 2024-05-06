@@ -46,8 +46,8 @@ library NFTBuilder {
         string memory svgOut = generateSVG(deployedAddress, rarity, lastCharVal);
 
         svgOut = svgOut.addChainId(chainid);
-        svgOut = svgOut.addSymbol0(symbol0);
-        svgOut = svgOut.addSymbol1(symbol1);
+        svgOut = svgOut.addSymbol0(symbol0, rarity);
+        svgOut = svgOut.addSymbol1(symbol1, rarity);
         return
             string(
                 abi.encodePacked(
