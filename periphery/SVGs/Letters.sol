@@ -70,6 +70,16 @@ library Letters {
     function maxWidth(uint256 rarity) internal pure returns (uint256 width) {
         if (rarity < 4) {
             width = 1600;
+        } else if (rarity < 8) {
+            width = 1350;
+        } else if (rarity < 12) {
+            width = 1350;
+        } else if (rarity < 16) {
+            width = 1450;
+        } else if (rarity < 20) {
+            width = 1350;
+        } else if (rarity < 24) {
+            width = 1250;
         }
     }
 

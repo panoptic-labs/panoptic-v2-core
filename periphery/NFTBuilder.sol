@@ -37,6 +37,8 @@ library NFTBuilder {
         uint256 lastCharVal = uint160(deployedAddress) & 0xF;
         uint256 rarity = numberOfLeadingHexZeros(deployedAddress);
 
+        rarity = 20;
+        lastCharVal = 14;
         string memory symbol0 = ERC20(token0).symbol();
         string memory name0 = ERC20(token0).name();
         string memory symbol1 = ERC20(token1).symbol();
@@ -122,7 +124,7 @@ library NFTBuilder {
         }
 
         string memory svgFinal = svgIn
-            .addLabel(lastCharVal)
+            .addLabel(lastCharVal, rarity)
             .addDescription(lastCharVal, rarity)
             .addArt(lastCharVal)
             .addFilter(rarity)

@@ -176,16 +176,50 @@ library Labels {
     }
 
     function addRarity(string memory contents, uint256 rarity) public pure returns (string memory) {
+        uint256 maxWidth;
+        if (rarity < 4) {
+            maxWidth = 175;
+        } else if (rarity < 8) {
+            maxWidth = 164;
+        } else if (rarity < 12) {
+            maxWidth = 145;
+        } else if (rarity < 16) {
+            maxWidth = 145;
+        } else if (rarity < 20) {
+            maxWidth = 145;
+        } else if (rarity < 24) {
+            maxWidth = 140;
+        }
+
         string memory svgOut = contents.replace(
             "<!-- RARITY_NAME -->",
-            Letters.write(rarityName(rarity), 175)
+            Letters.write(rarityName(rarity), maxWidth)
         );
         svgOut = svgOut.replace("<!-- RARITY -->", Letters.write(LibString.toString(rarity)));
         return svgOut;
     }
 
-    function addLabel(string memory contents, uint256 index) public pure returns (string memory) {
-        return contents.replace("<!-- LABEL -->", Letters.write(strategy(index)));
+    function addLabel(
+        string memory contents,
+        uint256 index,
+        uint256 rarity
+    ) public pure returns (string memory) {
+        uint256 maxWidth;
+        if (rarity < 4) {
+            maxWidth = 9000;
+        } else if (rarity < 8) {
+            maxWidth = 9000;
+        } else if (rarity < 12) {
+            maxWidth = 3900;
+        } else if (rarity < 16) {
+            maxWidth = 3900;
+        } else if (rarity < 20) {
+            maxWidth = 3900;
+        } else if (rarity < 24) {
+            maxWidth = 3900;
+        }
+
+        return contents.replace("<!-- LABEL -->", Letters.write(strategy(index), maxWidth));
     }
 
     function addAddress(
