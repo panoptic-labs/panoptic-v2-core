@@ -77,8 +77,14 @@ library NFTBuilder {
                                     "bps market"
                                 ),
                                 '", "attributes": [{',
+                                //'"trait_type": "Rarity", "value": "',
+                                //LibString.toString(rarity),
                                 '"trait_type": "Rarity", "value": "',
-                                LibString.toString(rarity),
+                                string.concat(
+                                    LibString.toString(rarity),
+                                    " - ",
+                                    Labels.rarityName(rarity)
+                                ),
                                 '"}, {"trait_type": "Strategy", "value": "',
                                 Labels.strategy(lastCharVal),
                                 '"}, {"trait_type": "ChainId", "value": "',
