@@ -28,11 +28,6 @@ contract PanopticFactory is Multicall {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Emitted when the ownership of the factory is transferred.
-    /// @param oldOwner The previous owner of the factory
-    /// @param newOwner The new owner of the factory
-    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
-
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
     /// @param uniswapPool Address of the underlying Uniswap V3 pool
