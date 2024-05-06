@@ -30,7 +30,7 @@ library Letters {
         console2.log(input, offset);
         string memory factor;
         if (offset > maxWidth) {
-            uint256 _scale = (34 * maxWidth) / offset;
+            uint256 _scale = (3400 * maxWidth) / offset;
             factor = LibString.toString(_scale);
             console2.log("_scale", _scale);
         } else {

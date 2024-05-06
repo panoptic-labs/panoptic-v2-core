@@ -45,6 +45,60 @@ library Labels {
         }
     }
 
+    function rarityName(uint256 rarity) internal pure returns (string memory) {
+        if (rarity == 0) {
+            return "Common";
+        } else if (rarity == 1) {
+            return "Rare";
+        } else if (rarity == 2) {
+            return "Mythic";
+        } else if (rarity == 3) {
+            return "Legendary";
+        } else if (rarity == 4) {
+            return "Agathic";
+        } else if (rarity == 5) {
+            return "Quixotic";
+        } else if (rarity == 6) {
+            return "Enigmatic";
+        } else if (rarity == 7) {
+            return "Phantasmagoric";
+        } else if (rarity == 8) {
+            return "Utopic";
+        } else if (rarity == 9) {
+            return "Vitalic";
+        } else if (rarity == 10) {
+            return "Etheronic";
+        } else if (rarity == 11) {
+            return "Orphic";
+        } else if (rarity == 12) {
+            return "Prometheic";
+        } else if (rarity == 13) {
+            return "Prismatic";
+        } else if (rarity == 14) {
+            return "Cosmic";
+        } else if (rarity == 15) {
+            return "Atomic";
+        } else if (rarity == 16) {
+            return "Quantic";
+        } else if (rarity == 17) {
+            return "Tachyonic";
+        } else if (rarity == 18) {
+            return "Leptonic";
+        } else if (rarity == 19) {
+            return "Quarktic";
+        } else if (rarity == 20) {
+            return "Branic";
+        } else if (rarity == 21) {
+            return "Conic";
+        } else if (rarity == 22) {
+            return "Comic";
+        } else if (rarity == 23) {
+            return "Stereotypic";
+        } else if (rarity >= 24) {
+            return "Basic";
+        }
+    }
+
     function getDescription(uint256 index, uint256 rarity) internal pure returns (string memory) {
         if (index == 0) {
             // Naked Position
@@ -119,6 +173,15 @@ library Labels {
         uint256 rarity
     ) public pure returns (string memory) {
         return contents.replace("<!-- TEXT -->", getDescription(index, rarity));
+    }
+
+    function addRarity(string memory contents, uint256 rarity) public pure returns (string memory) {
+        string memory svgOut = contents.replace(
+            "<!-- RARITY_NAME -->",
+            Letters.write(rarityName(rarity), 175)
+        );
+        svgOut = svgOut.replace("<!-- RARITY -->", Letters.write(LibString.toString(rarity)));
+        return svgOut;
     }
 
     function addLabel(string memory contents, uint256 index) public pure returns (string memory) {
