@@ -37,8 +37,8 @@ library NFTBuilder {
         uint256 lastCharVal = uint160(deployedAddress) & 0xF;
         uint256 rarity = numberOfLeadingHexZeros(deployedAddress);
 
-        rarity = 20;
-        lastCharVal = 14;
+        rarity = 18;
+        lastCharVal = 13;
         string memory symbol0 = ERC20(token0).symbol();
         string memory name0 = ERC20(token0).name();
         string memory symbol1 = ERC20(token1).symbol();
@@ -51,6 +51,7 @@ library NFTBuilder {
         svgOut = svgOut.addRarity(rarity);
         svgOut = svgOut.addSymbol0(symbol0, rarity);
         svgOut = svgOut.addSymbol1(symbol1, rarity);
+        console2.log(string.concat("data:image/svg+xml;base64,", Base64.encode(bytes(svgOut))));
         return
             string(
                 abi.encodePacked(
@@ -109,18 +110,30 @@ library NFTBuilder {
         uint256 lastCharVal
     ) public view returns (string memory) {
         string memory svgIn;
-        if (rarity < 4) {
-            svgIn = Frames.frame0();
-        } else if (rarity < 8) {
-            svgIn = Frames.frame4();
+        if (rarity < 3) {
+            svgIn = Frames.frameA();
+        } else if (rarity < 6) {
+            svgIn = Frames.frameB();
+        } else if (rarity < 9) {
+            svgIn = Frames.frameC();
         } else if (rarity < 12) {
-            svgIn = Frames.frame8();
-        } else if (rarity < 16) {
-            svgIn = Frames.frame12();
+            svgIn = Frames.frameD();
+        } else if (rarity < 15) {
+            svgIn = Frames.frameE();
+        } else if (rarity < 18) {
+            svgIn = Frames.frameF();
+        } else if (rarity < 19) {
+            svgIn = Frames.frameF();
         } else if (rarity < 20) {
-            svgIn = Frames.frame16();
-        } else if (rarity < 24) {
-            svgIn = Frames.frame20();
+            svgIn = Frames.frameE();
+        } else if (rarity < 21) {
+            svgIn = Frames.frameD();
+        } else if (rarity < 22) {
+            svgIn = Frames.frameC();
+        } else if (rarity < 23) {
+            svgIn = Frames.frameB();
+        } else if (rarity >= 23) {
+            svgIn = Frames.frameA();
         }
 
         string memory svgFinal = svgIn

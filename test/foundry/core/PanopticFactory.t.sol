@@ -394,7 +394,7 @@ contract PanopticFactoryTest is Test {
         // links the uni v3 pool to the Panoptic pool
         PanopticPool pp = panopticFactory.deployNewPool(token0, token1, fee, salt);
 
-        console2.log(address(pp), panopticFactory.tokenURI(uint160(address(pp))));
+        panopticFactory.tokenURI(uint160(address(pp)));
 
         assertTrue(false);
     }
