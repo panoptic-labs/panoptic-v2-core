@@ -27,12 +27,10 @@ library Letters {
             offset += stringToUint(c[0]);
         }
 
-        console2.log(input, offset);
         string memory factor;
         if (offset > maxWidth) {
             uint256 _scale = (3400 * maxWidth) / offset;
             factor = LibString.toString(_scale);
-            console2.log("_scale", _scale);
         } else {
             factor = "34";
         }
@@ -68,18 +66,30 @@ library Letters {
     }
 
     function maxWidth(uint256 rarity) internal pure returns (uint256 width) {
-        if (rarity < 4) {
+        if (rarity < 3) {
             width = 1600;
-        } else if (rarity < 8) {
+        } else if (rarity < 6) {
+            width = 1350;
+        } else if (rarity < 9) {
             width = 1350;
         } else if (rarity < 12) {
-            width = 1350;
-        } else if (rarity < 16) {
             width = 1450;
+        } else if (rarity < 15) {
+            width = 1350;
+        } else if (rarity < 18) {
+            width = 1250;
+        } else if (rarity < 19) {
+            width = 1250;
         } else if (rarity < 20) {
             width = 1350;
-        } else if (rarity < 24) {
-            width = 1250;
+        } else if (rarity < 21) {
+            width = 1450;
+        } else if (rarity < 22) {
+            width = 1350;
+        } else if (rarity < 23) {
+            width = 1350;
+        } else if (rarity >= 23) {
+            width = 1600;
         }
     }
 
