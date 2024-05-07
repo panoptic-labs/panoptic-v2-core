@@ -182,7 +182,7 @@ library Labels {
         } else if (rarity < 6) {
             maxWidth = 164;
         } else if (rarity < 9) {
-            maxWidth = 145;
+            maxWidth = 148;
         } else if (rarity < 12) {
             maxWidth = 145;
         } else if (rarity < 15) {
