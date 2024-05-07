@@ -177,18 +177,30 @@ library Labels {
 
     function addRarity(string memory contents, uint256 rarity) public pure returns (string memory) {
         uint256 maxWidth;
-        if (rarity < 4) {
+        if (rarity < 3) {
             maxWidth = 175;
-        } else if (rarity < 8) {
+        } else if (rarity < 6) {
             maxWidth = 164;
+        } else if (rarity < 9) {
+            maxWidth = 145;
         } else if (rarity < 12) {
             maxWidth = 145;
-        } else if (rarity < 16) {
+        } else if (rarity < 15) {
             maxWidth = 145;
+        } else if (rarity < 18) {
+            maxWidth = 140;
+        } else if (rarity < 19) {
+            maxWidth = 140;
         } else if (rarity < 20) {
             maxWidth = 145;
-        } else if (rarity < 24) {
-            maxWidth = 140;
+        } else if (rarity < 21) {
+            maxWidth = 145;
+        } else if (rarity < 22) {
+            maxWidth = 145;
+        } else if (rarity < 23) {
+            maxWidth = 164;
+        } else if (rarity >= 23) {
+            maxWidth = 175;
         }
 
         string memory svgOut = contents.replace(
@@ -205,18 +217,30 @@ library Labels {
         uint256 rarity
     ) public pure returns (string memory) {
         uint256 maxWidth;
-        if (rarity < 4) {
+        if (rarity < 3) {
             maxWidth = 9000;
-        } else if (rarity < 8) {
+        } else if (rarity < 6) {
             maxWidth = 9000;
+        } else if (rarity < 9) {
+            maxWidth = 3900;
         } else if (rarity < 12) {
             maxWidth = 3900;
-        } else if (rarity < 16) {
+        } else if (rarity < 15) {
+            maxWidth = 3900;
+        } else if (rarity < 18) {
+            maxWidth = 3900;
+        } else if (rarity < 19) {
             maxWidth = 3900;
         } else if (rarity < 20) {
             maxWidth = 3900;
-        } else if (rarity < 24) {
+        } else if (rarity < 21) {
             maxWidth = 3900;
+        } else if (rarity < 22) {
+            maxWidth = 3900;
+        } else if (rarity < 23) {
+            maxWidth = 9000;
+        } else if (rarity >= 23) {
+            maxWidth = 9000;
         }
 
         return contents.replace("<!-- LABEL -->", Letters.write(strategy(index), maxWidth));
