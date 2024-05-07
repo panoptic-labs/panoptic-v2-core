@@ -25,6 +25,7 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
+import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 
@@ -145,7 +146,6 @@ contract FuzzDeployments is FuzzHelpers {
     IUniswapV3Pool pool;
     uint24 poolFee;
     int24 poolTickSpacing;
-    uint256 isWETH;
     uint160 currentSqrtPriceX96;
     int24 currentTick;
     uint256 feeGrowthGlobal0X128;
@@ -169,6 +169,8 @@ contract FuzzDeployments is FuzzHelpers {
     address[] currentPositionsMinters;
     mapping(address => TokenId[]) userPositions;
     mapping(address => int256) userLiquidityPerPosition;
+
+    mapping(address => mapping(TokenId => LeftRightUnsigned)) userBalance;
 
     uint256 constant MAX_DEPOSIT = 100 ether;
     uint256 constant MIN_DEPOSIT = 0.01 ether;
@@ -256,7 +258,6 @@ contract FuzzDeployments is FuzzHelpers {
         poolFee = pool.fee();
         poolTickSpacing = pool.tickSpacing();
         poolId = PanopticMath.getPoolId(address(pool));
-        isWETH = pool.token0() == address(WETH) ? 0 : 1;
         poolBalance0 = IERC20(pool.token0()).balanceOf(address(pool));
         poolBalance1 = IERC20(pool.token1()).balanceOf(address(pool));
 
@@ -508,8 +509,8 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(msg.sender);
             router.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams(
-                    isWETH == 0 ? token0 : token1,
-                    isWETH == 1 ? token0 : token1,
+                    token0,
+                    token1,
                     poolFee,
                     actors[recipient],
                     block.timestamp,
@@ -522,8 +523,8 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(msg.sender);
             router.exactOutputSingle(
                 ISwapRouter.ExactOutputSingleParams(
-                    isWETH == 1 ? token0 : token1,
-                    isWETH == 0 ? token0 : token1,
+                    token1,
+                    token0,
                     poolFee,
                     actors[recipient],
                     block.timestamp,
@@ -568,6 +569,11 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @custom:property PANO-MINT-001 A long position liquidity factor is not greater than the liquidity limit 
+    /// @custom:property PANO-MINT-002 The position size must match the position balance
+    /// @custom:property PANO-MINT-003 For long positions, the effective liquidity factor must be lower than or equal to the liquidity limit
+    /// @custom:property PANO-MINT-004 Users cannot have more than 32 simultaneous positions opened
+    /// @custom:property PANO-MINT-005 The position counter must increase after a successful mint
+    /// @custom:property PANO-MINT-006 The position balance for the minted position must equal the position size
     function _mint_option(address minter, TokenId tokenid, uint256 posSize, uint64 effLiqLim) internal {
         // Mint a position according to tokenid and posSize
         uint256 userCollateral;
@@ -579,26 +585,28 @@ contract FuzzDeployments is FuzzHelpers {
             userCollateral = collToken1.convertToAssets(collToken1.balanceOf(minter));
             emit LogUint256("User collateral 1", userCollateral);                 
         }
-        posSize = bound(posSize, userCollateral * 70 / 100,  userCollateral * 85 / 100); 
+        posSize = bound(posSize, userCollateral * 60 / 100,  userCollateral * 80 / 100); 
         require(posSize > 0);
+
+        uint256 positionsOpened = panopticPool.numberOfPositions(minter);
+        emit LogUint256("Positions opened for user", positionsOpened);
 
         userPositions[minter].push(tokenid);
         TokenId[] memory posIdList = userPositions[minter];
-
-        int256 balanceBefore;
-        balanceBefore = int256(_get_assets_in_token0(minter, currentTick));
-        emit LogInt256("Balance before", balanceBefore);
+        TokenId[] memory lastPos = new TokenId[](1);
+        lastPos[0] = tokenid;
 
         if(tokenid.isLong(0) == 1) {
             (int24 tickLower, int24 tickUpper) = tokenid.asTicks(0);
             uint64 effLiqFactor = _get_effective_liq_factor(tokenid.tokenType(0), tickLower, tickUpper);
 
+            emit LogUint256("Effective liquidity limit", effLiqLim);
+            emit LogUint256("Effective liquidity factor", effLiqFactor);
+
             hevm.prank(minter);
             try panopticPool.mintOptions(posIdList, uint128(posSize), effLiqLim, 0, 0) {
                 // Option was minted
-                if(effLiqFactor > effLiqLim) {
-                    assertWithMsg(false, "A long position with liquidity factor greater than the liquidity limit was minted");
-                }
+                assertWithMsg(effLiqFactor <= effLiqLim, "A long position with liquidity factor greater than the liquidity limit was minted");               
             } catch {
                 revert();
             }
@@ -607,14 +615,30 @@ contract FuzzDeployments is FuzzHelpers {
             panopticPool.mintOptions(posIdList, uint128(posSize), 0, 0, 0);
         }
 
-        userLiquidityPerPosition[minter] = int256(_get_assets_in_token0(minter, currentTick)) - balanceBefore;
+        assertWithMsg(positionsOpened < 32, "More than 32 positions are minted for user");
+        assertWithMsg(panopticPool.numberOfPositions(minter) == positionsOpened + 1, "Position counter did not increase after minting"); 
+
+        
+        userBalance[minter][tokenid] = LeftRightUnsigned.wrap(0).toRightSlot(uint128(posSize));
+
+        /*(int256 value0, int256 value1) = FeesCalc.getPortfolioValue(currentTick, userBalance[minter], lastPos);
+        (int256 calcValue0, int256 calcValue1) = panopticPool.calculatePortfolioValue(minter, currentTick, lastPos);
+
+        emit LogInt256("token0 Portfolio value", value0);
+        emit LogInt256("token1 Portfolio value", value1);
+        emit LogInt256("Calculated token0 Portfolio value", calcValue0);
+        emit LogInt256("Calculated token1 Portfolio value", calcValue1);
+
+        assertWithMsg(value0 == calcValue0, "Real and calculated token0 portfolio values for the minted position do not match");
+        assertWithMsg(value1 == calcValue1, "Real and calculated token1 portfolio values for the minted position do not match");*/
+
+        (uint128 balance, , ) = panopticPool.optionPositionBalance(minter, tokenid);
+        assertWithMsg(balance == posSize, "Position size and balance do not match");
 
         emit LogInt256("Balance after", int256(_get_assets_in_token0(minter, currentTick)));
-        emit LogInt256("User liquidity", userLiquidityPerPosition[minter]);
         emit LogString("Minted a new option");
         emit LogUint256("Position size", posSize);
         emit LogAddress("Minter", minter);
-
     }
 
     uint count;
@@ -793,7 +817,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
     /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
     /// @custom:precondition The user has a position open
-    function burn_one_option(uint256 pos_idx) public {
+    function burn_one_option(uint256 pos_idx) internal {
         address caller = msg.sender;
         require(panopticPool.numberOfPositions(caller) > 0);
         pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
@@ -861,7 +885,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:precondition The user has at least one position open
-    function burn_all_options() public {
+    function burn_all_options() internal {
         address caller = msg.sender;
         TokenId[] memory emptyList;
 
@@ -879,6 +903,7 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    uint liqcount;
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
@@ -903,9 +928,9 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("liquidated", liquidatee);
 
         int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
-        (, int24 curTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = pool.slot0();
         emit LogInt256("TWAP tick", TWAPtick);
-        emit LogInt256("Current tick", curTick);
+        emit LogInt256("Current tick", currentTick);
 
         {
             (int256 value0, int256 value1) = panopticPool.calculatePortfolioValue(liquidatee, TWAPtick, userPositions[liquidatee]);
@@ -934,21 +959,12 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 liq_assets_before = _get_assets_in_token0(liquidator, TWAPtick);
 
         // If the position is not liquidatable, liquidation call must revert
-        if (balanceCross >= thresholdCross) {
-            hevm.prank(liquidator);
-            try
-                panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions)
-            {
-                assertWithMsg(
-                    false,
-                    "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated"
-                );
-            } catch {}
-            return;
-        }
-
         hevm.prank(liquidator);
-        panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions);
+        try panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions) {
+            assertWithMsg(balanceCross < thresholdCross, "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated");
+        } catch {
+            revert();
+        }
 
         delete userPositions[liquidatee];
 
@@ -964,7 +980,7 @@ contract FuzzDeployments is FuzzHelpers {
     // System Invariants
     /////////////////////////////////////////////////////////////
 
-    /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open position is zero
+    /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open positions is zero
     /// @custom:property PANO-SYS-002 Users can't withdraw collateral with open positions
     /// @custom:precondition The user has a position open
     function invariant_collateral_removal() public {
@@ -1088,35 +1104,77 @@ contract FuzzDeployments is FuzzHelpers {
         pool.swap(recipient, zeroForOne, amountSpecified, sqrtPriceLimitX96, abi.encode(msg.sender));
     }
 
-    /// @dev Deposit collateral.
-    /// @param token0 True if the token0 is deposited, otherwise token1
-    /// @param amount Amount to deposit (bounded by balanceOf)
+    /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
+    /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made
     function deposit_to_ct(bool token0, uint256 amount) public {
-        uint256 bal0 = IERC20(collToken0.asset()).balanceOf(msg.sender);
-        uint256 bal1 = IERC20(collToken1.asset()).balanceOf(msg.sender);
+        address depositor = msg.sender;
+
+        uint256 bal0 = IERC20(collToken0.asset()).balanceOf(depositor);
+        uint256 bal1 = IERC20(collToken1.asset()).balanceOf(depositor);
+
+        uint256 pool_bal0 = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
+        uint256 pool_bal1 = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
 
         amount = bound(amount, 1, MAX_DEPOSIT);
 
         if (token0) {
-            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal0));
-            hevm.prank(msg.sender);
-            collToken0.deposit(amount, msg.sender);
+            // Limit the maximum amount of collateral to deposit
+            if(collToken0.convertToAssets(collToken0.balanceOf(depositor)) > 10* MAX_DEPOSIT) {
+                return;
+            }
+            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal0/10));
+            hevm.prank(depositor);
+            collToken0.deposit(amount, depositor);
+
+            uint256 pool_bal0_after = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
+            assertWithMsg(pool_bal0_after - pool_bal0 == amount, "Pool token0 balance incorrect after deposit");
+            uint256 bal0_after = IERC20(collToken0.asset()).balanceOf(depositor);
+            assertWithMsg(bal0 - bal0_after == amount, "User token0 balance incorrect after deposit");
         } else {
-            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal1));
-            hevm.prank(msg.sender);
-            collToken1.deposit(amount, msg.sender);
+            // Limit the maximum amount of collateral to deposit
+            if(collToken1.convertToAssets(collToken1.balanceOf(depositor)) > 10* MAX_DEPOSIT) {
+                return;
+            }
+            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal1/10));
+            hevm.prank(depositor);
+            collToken1.deposit(amount, depositor);
+
+            uint256 pool_bal1_after = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
+            assertWithMsg(pool_bal1_after - pool_bal1 == amount, "Pool token1 balance incorrect after deposit");
+            uint256 bal1_after = IERC20(collToken1.asset()).balanceOf(depositor);
+            assertWithMsg(bal1 - bal1_after == amount, "User token0 balance incorrect after deposit");
         }
     }
 
+    /// @custom:property PANO-WIT-001 The Panoptic pool balance must decrease by the withdrawn amount when a withdrawal is made
+    /// @custom:property PANO-WIT-002 The user balance must increase by the withdrawn amount when a withdrawal is made
     function withdraw_from_ct(bool token0, uint256 amount) public {
+        address withdrawer = msg.sender;
+
+        uint256 bal0 = IERC20(collToken0.asset()).balanceOf(withdrawer);
+        uint256 bal1 = IERC20(collToken1.asset()).balanceOf(withdrawer);
+
+        uint256 pool_bal0 = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
+        uint256 pool_bal1 = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
+
         if (token0) {
-            amount = bound(amount, 1, collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
-            hevm.prank(msg.sender);
-            collToken0.withdraw(amount, msg.sender, msg.sender);
+            amount = bound(amount, 1, collToken0.convertToAssets(collToken0.balanceOf(withdrawer)));
+            hevm.prank(withdrawer);
+            collToken0.withdraw(amount, withdrawer, withdrawer);
+
+            uint256 pool_bal0_after = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
+            assertWithMsg(pool_bal0 - pool_bal0_after == amount, "Pool token0 balance incorrect after withdrawal");
+            uint256 bal0_after = IERC20(collToken0.asset()).balanceOf(withdrawer);
+            assertWithMsg(bal0_after - bal0 == amount, "User token0 balance incorrect after deposit");
         } else {
-            amount = bound(amount, 1, collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
-            hevm.prank(msg.sender);
-            collToken1.withdraw(amount, msg.sender, msg.sender);
+            amount = bound(amount, 1, collToken1.convertToAssets(collToken1.balanceOf(withdrawer)));
+            hevm.prank(withdrawer);
+            collToken1.withdraw(amount, withdrawer, withdrawer);
+
+            uint256 pool_bal1_after = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
+            assertWithMsg(pool_bal1 - pool_bal1_after == amount, "Pool token1 balance incorrect after withdrawal");
+            uint256 bal1_after = IERC20(collToken1.asset()).balanceOf(withdrawer);
+            assertWithMsg(bal1_after - bal1 == amount, "User token0 balance incorrect after deposit");
         }
     }
 
@@ -1160,13 +1218,12 @@ contract FuzzDeployments is FuzzHelpers {
         );
 
         if (ct.asset() == address(USDC)) {
-            deal_USDC(
+            alter_USDC(
                 address(ct),
-                uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta),
-                true
+                uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta)
             );
         } else {
-            deal_WETH(
+            alter_WETH(
                 address(ct),
                 uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta)
             );
@@ -1183,55 +1240,55 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogString("No current positions");
             revert();
         }
-        require(actors[i_liquidated] != msg.sender);
+        address liquidatee = actors[i_liquidated];
+        address liquidator = msg.sender;
 
-        TokenId[] memory liquidated_positions = userPositions[actors[i_liquidated]];
-        TokenId[] memory liquidator_positions = userPositions[msg.sender];
+        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+        (, int24 curTick, , , , , ) = pool.slot0();
+        emit LogInt256("TWAP tick", TWAPtick);
+        emit LogInt256("Current tick", curTick);
 
-        // get parameters from last
-        TokenId position = liquidated_positions[liquidated_positions.length - 1];
+        require(liquidatee != msg.sender);
+
+        TokenId[] memory liquidated_positions = userPositions[liquidatee];
+        TokenId[] memory liquidator_positions = userPositions[liquidator];
+
+        require(liquidated_positions.length > 0);
 
         (, currentTick, , , , , ) = pool.slot0();
+        LeftRightUnsigned lru = LeftRightUnsigned
+            .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
+            .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
 
-        {
-            (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = panopticHelper
-                .checkCollateral(
-                    panopticPool,
-                    actors[i_liquidated],
-                    currentTick,
-                    position.tokenType(0),
-                    liquidated_positions
+        editCollateral(collToken0, liquidatee, 0);
+        editCollateral(collToken1, liquidatee, 0);
+
+        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(liquidatee, TWAPtick);
+        emit LogUint256("Balance cross after edit", balanceCross);
+        emit LogUint256("Threshold cross after edit", thresholdCross);
+
+        if (balanceCross >= thresholdCross) {
+            hevm.prank(liquidator);
+            try
+                panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions)
+            {
+                assertWithMsg(
+                    false,
+                    "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated"
                 );
-            assertWithMsg(totalCollateralBalance0 >= totalCollateralRequired0, "not liquidatable");
-
-            editCollateral(
-                collToken0,
-                actors[i_liquidated],
-                collToken0.convertToShares(totalCollateralRequired0) - 1
-            );
-
-            (totalCollateralBalance0, totalCollateralRequired0) = panopticHelper.checkCollateral(
-                panopticPool,
-                actors[i_liquidated],
-                currentTick,
-                position.tokenType(0),
-                liquidated_positions
-            );
-            require(totalCollateralBalance0 < totalCollateralRequired0);
+            } catch {}
+            return;
         }
 
         emit LogUint256("liquidator positions length", liquidator_positions.length);
         emit LogUint256("liquidated positions length", liquidated_positions.length);
-        emit LogAddress("liquidator", msg.sender);
-        emit LogAddress("liquidated", actors[i_liquidated]);
+        emit LogAddress("liquidator", liquidator);
+        emit LogAddress("liquidated", liquidatee);
 
-        LeftRightUnsigned lru = LeftRightUnsigned
-            .wrap(uint96(IERC20(USDC).balanceOf(msg.sender)))
-            .toLeftSlot(uint96(IERC20(WETH).balanceOf(msg.sender)));
-        hevm.prank(msg.sender);
+        hevm.prank(liquidator);
         panopticPool.liquidate(
             liquidator_positions,
-            actors[i_liquidated],
+            liquidatee,
             lru,
             liquidated_positions
         );

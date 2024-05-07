@@ -77,25 +77,22 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function deal_USDC(address to, uint256 amt, bool alter_supply) internal {
         deployer.mintToken(false, to, amt);
-        // Balances in slot 9 (verify with "slither --print variable-order 0x43506849D7C04F9138D1A2050bbF3A0c054402dd")
-        /*uint256 slot_balances = uint256(9);
-        uint256 original_balance = uint256(hevm.load(address(USDC), keccak256(abi.encode(address(to), slot_balances))));
-        int256 delta = int256(amt) - int256(original_balance);
-        hevm.store(address(USDC), keccak256(abi.encode(address(to), slot_balances)), bytes32(amt));
-
-        if(alter_supply) {
-            // Total supply in slot 11
-            bytes32 slot_supply = bytes32(uint256(11));
-            uint256 orig_supply = uint256(hevm.load(address(USDC), slot_supply));
-            uint256 new_supply  = uint256(int256(orig_supply) + delta);
-            hevm.store(address(USDC), slot_supply, bytes32(new_supply));
-        }*/
     }
 
     function deal_WETH(address to, uint256 amt) internal {
         deployer.mintToken(true, to, amt);
+    }
+
+    function alter_USDC(address to, uint256 bal) internal {
+        // Balances in slot 0
+        uint256 slot_balances = uint256(0);
+        hevm.store(address(USDC), keccak256(abi.encode(address(to), slot_balances)), bytes32(bal));
+
+    }
+
+    function alter_WETH(address to, uint256 bal) internal {
         // Balances in slot 3 (verify with "slither --print variable-order 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
-        //hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(3))), bytes32(amt));
+        hevm.store(address(WETH), keccak256(abi.encode(address(to), uint256(0))), bytes32(bal));
     }
 
     function deal_Generic(
