@@ -2910,9 +2910,6 @@ contract PanopticPoolTest is PositionUtils {
         // call leg
         tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
 
-        int256 netSurplus0 = $amount0Moveds[0] -
-            PanopticMath.convert1to0($amount1Moveds[1], currentSqrtPriceX96);
-
         (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
             tokenId,
             positionSize
@@ -3325,9 +3322,6 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         updatePositionDataLong();
-
-        int256 netSurplus0 = $amount0Moveds[1] -
-            PanopticMath.convert1to0($amount1Moveds[2], currentSqrtPriceX96);
 
         vm.startPrank(Alice);
 
