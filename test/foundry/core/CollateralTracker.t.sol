@@ -1002,7 +1002,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
         _assumePositionValidity(Bob, tokenId, positionSize0);
 
-        panopticPool.mintOptions(positionIdList, positionSize0, 0, 0, 0);
+        panopticPool.mintOptions(
+            positionIdList,
+            positionSize0,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
 
         // Attempt a transfer to Alice from Bob
         vm.expectRevert(Errors.PositionCountNotZero.selector);
@@ -1088,7 +1094,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(positionIdList, positionSize0, 0, 0, 0);
+            panopticPool.mintOptions(
+                positionIdList,
+                positionSize0,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
         }
 
         // approve Alice to move shares on Bob's behalf
@@ -1678,10 +1690,21 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.refund(address(0), address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.takeCommissionAddData(address(0), 0, 0, 0);
+        collateralToken0.takeCommissionAddData(
+            address(0),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.exercise(address(0), 0, 0, 0, 0);
+        collateralToken0.exercise(
+            address(0),
+            0,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
