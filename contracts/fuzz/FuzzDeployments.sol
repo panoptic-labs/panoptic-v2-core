@@ -585,7 +585,7 @@ contract FuzzDeployments is FuzzHelpers {
             userCollateral = collToken1.convertToAssets(collToken1.balanceOf(minter));
             emit LogUint256("User collateral 1", userCollateral);                 
         }
-        posSize = bound(posSize, userCollateral * 60 / 100,  userCollateral * 80 / 100); 
+        posSize = bound(posSize, userCollateral * 60 / 100,  userCollateral * 350 / 100); 
         require(posSize > 0);
 
         uint256 positionsOpened = panopticPool.numberOfPositions(minter);
@@ -668,7 +668,7 @@ contract FuzzDeployments is FuzzHelpers {
             _mint_option(minter, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), posSize, 0);
         } else {
             // Mint a short position first, then a long position
-            _mint_option(seller, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), 2* posSize, 0);
+            _mint_option(seller, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), 12* posSize/10, 0);
             _mint_option(minter, _generate_single_leg_tokenid(asset, is_call, true, is_otm, width, strike), posSize, effLiqLimit);
         }
     }
@@ -738,7 +738,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         (premium0, premium1, positions) = panopticPool.calculateAccumulatedFeesBatch(
             to_liquidate,
-            true,
+            false,
             userPositions[to_liquidate]
         );
         tokenData0 = collToken0.getAccountMarginDetails(to_liquidate, tick, positions, premium0);
@@ -817,7 +817,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
     /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
     /// @custom:precondition The user has a position open
-    function burn_one_option(uint256 pos_idx) internal {
+    function burn_one_option(uint256 pos_idx) public {
         address caller = msg.sender;
         require(panopticPool.numberOfPositions(caller) > 0);
         pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
@@ -885,7 +885,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:precondition The user has at least one position open
-    function burn_all_options() internal {
+    function burn_all_options() public {
         address caller = msg.sender;
         TokenId[] memory emptyList;
 
