@@ -61,17 +61,17 @@ library Labels {
         } else if (rarity == 6) {
             return "Enigmatic";
         } else if (rarity == 7) {
-            return "Phantasmagoric";
-        } else if (rarity == 8) {
             return "Utopic";
-        } else if (rarity == 9) {
+        } else if (rarity == 8) {
             return "Vitalic";
-        } else if (rarity == 10) {
+        } else if (rarity == 9) {
             return "Etheronic";
-        } else if (rarity == 11) {
+        } else if (rarity == 10) {
             return "Orphic";
-        } else if (rarity == 12) {
+        } else if (rarity == 11) {
             return "Prometheic";
+        } else if (rarity == 12) {
+            return "Phantasmagoric";
         } else if (rarity == 13) {
             return "Prismatic";
         } else if (rarity == 14) {

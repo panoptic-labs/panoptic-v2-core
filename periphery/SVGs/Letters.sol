@@ -30,7 +30,11 @@ library Letters {
         string memory factor;
         if (offset > maxWidth) {
             uint256 _scale = (3400 * maxWidth) / offset;
-            factor = LibString.toString(_scale);
+            if (_scale > 99) {
+                factor = LibString.toString(_scale);
+            } else {
+                factor = string.concat("0", LibString.toString(_scale));
+            }
         } else {
             factor = "34";
         }
