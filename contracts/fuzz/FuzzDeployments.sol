@@ -1,179 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.12;
 
-//import {SetupTokens, SetupUniswap} from "./UniDeployments.sol";
-import {WETH9} from "./fuzz-mocks/WETH9.sol";
 import "./FuzzHelpers.sol";
 
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
-
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
-import {TokenId} from "@types/TokenId.sol";
-import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
-import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
-import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {TickMath} from "v3-core/libraries/TickMath.sol";
-import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
-import {FullMath} from "v3-core/libraries/FullMath.sol";
-import {CallbackLib} from "@libraries/CallbackLib.sol";
-import {FeesCalc} from "@libraries/FeesCalc.sol";
-import {Math} from "@libraries/Math.sol";
-import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
-
-// Copy of test/foundry/core/Misc.t.sol:SwapperC
-contract SwapperC {
-    event LogUint256(string, uint256);
-
-    function uniswapV3SwapCallback(
-        int256 amount0Delta,
-        int256 amount1Delta,
-        bytes calldata data
-    ) external {
-        // Decode the swap callback data, checks that the UniswapV3Pool has the correct address.
-        CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
-
-        // Extract the address of the token to be sent (amount0 -> token0, amount1 -> token1)
-        address token = amount0Delta > 0
-            ? address(decoded.poolFeatures.token0)
-            : address(decoded.poolFeatures.token1);
-
-        // Transform the amount to pay to uint256 (take positive one from amount0 and amount1)
-        // the pool will always pass one delta with a positive sign and one with a negative sign or zero,
-        // so this logic always picks the correct delta to pay
-        uint256 amountToPay = amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta);
-
-        // Pay the required token from the payer to the caller of this contract
-        SafeTransferLib.safeTransferFrom(token, decoded.payer, msg.sender, amountToPay);
-    }
-
-    function uniswapV3MintCallback(
-        uint256 amount0Owed,
-        uint256 amount1Owed,
-        bytes calldata data
-    ) external {
-        // Decode the mint callback data
-        CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
-
-        // Sends the amount0Owed and amount1Owed quantities provided
-        if (amount0Owed > 0)
-            SafeTransferLib.safeTransferFrom(
-                decoded.poolFeatures.token0,
-                decoded.payer,
-                msg.sender,
-                amount0Owed
-            );
-        if (amount1Owed > 0)
-            SafeTransferLib.safeTransferFrom(
-                decoded.poolFeatures.token1,
-                decoded.payer,
-                msg.sender,
-                amount1Owed
-            );
-    }
-
-    function mint(IUniswapV3Pool pool, int24 tickLower, int24 tickUpper, uint128 liquidity) public {
-        pool.mint(
-            address(this),
-            tickLower,
-            tickUpper,
-            liquidity,
-            abi.encode(
-                CallbackLib.CallbackData({
-                    poolFeatures: CallbackLib.PoolFeatures({
-                        token0: pool.token0(),
-                        token1: pool.token1(),
-                        fee: pool.fee()
-                    }),
-                    payer: msg.sender
-                })
-            )
-        );
-    }
-
-    function burn(IUniswapV3Pool pool, int24 tickLower, int24 tickUpper, uint128 liquidity) public {
-        pool.burn(tickLower, tickUpper, liquidity);
-    }
-
-    function swapTo(IUniswapV3Pool pool, uint160 sqrtPriceX96) public {
-        (uint160 sqrtPriceX96Before, , , , , , ) = pool.slot0();
-
-        if (sqrtPriceX96Before == sqrtPriceX96) return;
-
-        emit LogUint256("price before", sqrtPriceX96Before);
-        emit LogUint256("price target", sqrtPriceX96);
-
-        pool.swap(
-            msg.sender,
-            sqrtPriceX96Before > sqrtPriceX96 ? true : false,
-            sqrtPriceX96Before > sqrtPriceX96
-                ? int256(IERC20(pool.token0()).balanceOf(msg.sender))
-                : int256(IERC20(pool.token1()).balanceOf(msg.sender)),
-            sqrtPriceX96,
-            abi.encode(
-                CallbackLib.CallbackData({
-                    poolFeatures: CallbackLib.PoolFeatures({
-                        token0: pool.token0(),
-                        token1: pool.token1(),
-                        fee: pool.fee()
-                    }),
-                    payer: msg.sender
-                })
-            )
-        );
-    }
-}
 
 contract FuzzDeployments is FuzzHelpers {
-    PanopticHelper panopticHelper;
-    SemiFungiblePositionManager sfpm;
-    IUniswapV3Factory univ3factory;
-    address poolReference;
-    address collateralReference;
-    IDonorNFT dnft;
-    PanopticFactory panopticFactory;
-    PanopticPool panopticPool;
-    uint64 poolId;
 
-    IUniswapV3Pool pool;
-    uint24 poolFee;
-    int24 poolTickSpacing;
-    uint160 currentSqrtPriceX96;
-    int24 currentTick;
-    uint256 feeGrowthGlobal0X128;
-    uint256 feeGrowthGlobal1X128;
-    uint256 poolBalance0;
-    uint256 poolBalance1;
-
-    uint128 positionSize;
-    uint128 expectedLiq;
-    uint128[] expectedLiqs;
-
-    CollateralTracker collToken0;
-    CollateralTracker collToken1;
-
-    address[] actors;
-    address pool_manipulator;
-
-    SwapperC swapperc;
-
-    TokenId[] currentPositionsIds;
-    address[] currentPositionsMinters;
-    mapping(address => TokenId[]) userPositions;
-    mapping(address => int256) userLiquidityPerPosition;
-
-    mapping(address => mapping(TokenId => LeftRightUnsigned)) userBalance;
-
-    uint256 constant MAX_DEPOSIT = 100 ether;
-    uint256 constant MIN_DEPOSIT = 0.01 ether;
+    error SimulationResults(LeftRightUnsigned, LeftRightUnsigned, int256, LeftRightSigned, LeftRightSigned);
 
     constructor() {
         // Actors
@@ -257,9 +90,6 @@ contract FuzzDeployments is FuzzHelpers {
         pool = USDC_WETH_5;
         poolFee = pool.fee();
         poolTickSpacing = pool.tickSpacing();
-        poolId = PanopticMath.getPoolId(address(pool));
-        poolBalance0 = IERC20(pool.token0()).balanceOf(address(pool));
-        poolBalance1 = IERC20(pool.token1()).balanceOf(address(pool));
 
         assert(pool.token0() == address(USDC));
         assert(pool.token1() == address(WETH));
@@ -285,17 +115,17 @@ contract FuzzDeployments is FuzzHelpers {
         WETH.approve(address(this), type(uint256).max);
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        feeGrowthGlobal0X128 = pool.feeGrowthGlobal0X128();
-        feeGrowthGlobal1X128 = pool.feeGrowthGlobal1X128();
 
         sfpm.initializeAMMPool(pool.token0(), pool.token1(), poolFee);
+        poolId = sfpm.getPoolId(address(pool));
 
-        panopticPool = panopticFactory.deployNewPool(
+        panopticPool = PanopticPoolWrapper(
+            address(panopticFactory.deployNewPool(
             pool.token0(),
             pool.token1(),
             poolFee,
             bytes32(uint256(uint160(address(this))) << 96)
-        );
+        )));
 
         collToken0 = panopticPool.collateralToken0();
         collToken1 = panopticPool.collateralToken1();
@@ -311,171 +141,9 @@ contract FuzzDeployments is FuzzHelpers {
         IERC20(collToken1.asset()).approve(address(pool), type(uint256).max);
     }
 
-    function getContext(
-        uint256 ts_,
-        int24 _currentTick,
-        int24 _width
-    ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
-        int256 ts = int256(ts_);
-
-        strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
-
-        if(ts_ == 1) {
-            minTick = int24(((_currentTick - 4096) / ts) * ts);
-            maxTick = int24(((_currentTick + 4096) / ts) * ts);
-        } else {
-            minTick = int24(((_currentTick - 4096 * 10) / ts) * ts);
-            maxTick = int24(((_currentTick + 4096 * 10) / ts) * ts);
-        }
-    }
-
-
-    function getITMSW(
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 ts_,
-        int24 currentTick,
-        uint256 tokenType
-    ) internal view returns (int24 width, int24 strike) {
-        int256 ts = int256(ts_);
-
-        width = ts == 1
-            ? width = int24(int256(bound(widthSeed, 1, 2048)))
-            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
-
-        int24 lowerBound = tokenType == 0
-            ? int24(minTick + oneSidedRange - strikeOffset)
-            : int24(currentTick + oneSidedRange - strikeOffset);
-        int24 upperBound = tokenType == 0
-            ? int24(currentTick + ts - oneSidedRange - strikeOffset)
-            : int24(maxTick - oneSidedRange - strikeOffset);
-
-        if (ts == 1) {
-            lowerBound = tokenType == 0
-                ? int24(minTick + rangeDown - strikeOffset)
-                : int24(currentTick + rangeDown - strikeOffset);
-            upperBound = tokenType == 0
-                ? int24(currentTick + ts - rangeUp - strikeOffset)
-                : int24(maxTick - rangeUp - strikeOffset);
-        }
-
-        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(bound(strikeSeed, lowerBound / ts, upperBound / ts));
-
-        strike = int24(strike * ts + strikeOffset);
-    }
-
-    /////////////////////////////////////////////////////////////
-    // Imported functions
-    /////////////////////////////////////////////////////////////
-
-    function getOTMSW(
-        uint256 _widthSeed,
-        int256 _strikeSeed,
-        uint256 ts_,
-        int24 _currentTick,
-        uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
-        int256 ts = int256(ts_);
-
-        width = ts == 1
-            ? width = int24(int256(bound(_widthSeed, 1, 2048)))
-            : int24(int256(bound(_widthSeed, 1, (2048 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-        int24 lowerBound = _tokenType == 0
-            ? int24(_currentTick + ts + oneSidedRange - strikeOffset)
-            : int24(minTick + oneSidedRange - strikeOffset);
-        int24 upperBound = _tokenType == 0
-            ? int24(maxTick - oneSidedRange - strikeOffset)
-            : int24(_currentTick - oneSidedRange - strikeOffset);
-
-        if (ts == 1) {
-            lowerBound = _tokenType == 0
-                ? int24(_currentTick + ts + rangeDown - strikeOffset)
-                : int24(minTick + rangeDown - strikeOffset);
-            upperBound = _tokenType == 0
-                ? int24(maxTick - rangeUp - strikeOffset)
-                : int24(_currentTick - rangeUp - strikeOffset);
-        }
-
-        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(int256(bound(_strikeSeed, lowerBound / ts, upperBound / ts)));
-
-        strike = int24(strike * ts + strikeOffset);
-    }
-
-    function getValidSW(
-        uint256 widthSeed,
-        int256 strikeSeed,
-        uint256 ts_,
-        int24 currentTick
-    ) internal view returns (int24 width, int24 strike) {
-        int256 ts = int256(ts_);
-
-        width = ts == 1
-            ? width = int24(int256(bound(widthSeed, 1, 2048)))
-            : int24(int256(bound(widthSeed, 1, 2048)));
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
-
-        int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
-        int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
-
-        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(bound(strikeSeed, lowerBound / ts, upperBound / ts));
-
-        strike = int24(strike * ts + strikeOffset);
-    }
-
     ////////////////////////////////////////////////////
-    // Collaterals
+    // Funds and pool manipulation
     ////////////////////////////////////////////////////
-
-    function log_tokenid_leg(TokenId t, uint256 leg) internal {
-        emit LogString("TokenId");
-        emit LogUint256("  Asset", t.asset(leg));
-        emit LogUint256("  Option ratio", t.optionRatio(leg));
-        emit LogUint256("  Is long", t.isLong(leg));
-        emit LogUint256("  Token type", t.tokenType(leg));
-        emit LogUint256("  Risk partner", t.riskPartner(leg));
-        emit LogInt256("  Strike tick", t.strike(leg));
-        emit LogInt256("  Width", t.width(leg));
-    }
-
-    function log_account_collaterals(address account) internal {
-        emit LogAddress("Collaterals for address", account);
-        emit LogUint256("  Token0", collToken0.balanceOf(account));
-        emit LogUint256("  Token1", collToken1.balanceOf(account));
-        emit LogUint256(
-            "  Token0 (assets)",
-            collToken0.convertToAssets(collToken0.balanceOf(account))
-        );
-        emit LogUint256(
-            "  Token1 (assets)",
-            collToken1.convertToAssets(collToken1.balanceOf(account))
-        );
-    }
 
     /// @dev Mint USDC and WETH to the sender and approve all the system contracts
     function fund_and_approve() public {
@@ -568,6 +236,57 @@ contract FuzzDeployments is FuzzHelpers {
         log_tokenid_leg(out, 0);
     }
 
+    function _generate_straddle_tokenid(
+        bool asset_in,
+        bool is_long_in,
+        uint24 width_in,
+        int256 strike_in
+    ) internal returns (TokenId out) {
+        out = TokenId.wrap(poolId);
+
+        uint256 asset = asset_in == true ? 1 : 0;
+        uint256 long_short = is_long_in == true ? 1 : 0; 
+
+        int24 width;
+        int24 strike;
+
+        // Lets just generate OTM for now
+        (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
+
+        out = out.addLeg(0, 1, asset, long_short, 0, 1, strike, width);
+        out = out.addLeg(1, 1, asset, long_short, 1, 0, strike, width);
+        log_tokenid_leg(out, 0);
+        log_tokenid_leg(out, 1);
+    }
+
+    function _generate_strangle_tokenid(
+        bool asset_in,
+        bool is_long_in,
+        uint24 width_in,
+        int256 strike_in,
+        int24 strike_delta
+    ) internal returns (TokenId out) {
+        out = TokenId.wrap(poolId);
+
+        uint256 asset = asset_in == true ? 1 : 0;
+        uint256 long_short = is_long_in == true ? 1 : 0; 
+
+        int24 width;
+        int24 strike;
+
+        // Lets just generate OTM for now
+        (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
+
+        out = out.addLeg(0, 1, asset, long_short, 0, 1, strike + strike_delta, width);
+        out = out.addLeg(1, 1, asset, long_short, 1, 0, strike - strike_delta, width);
+        log_tokenid_leg(out, 0);
+        log_tokenid_leg(out, 1);
+    }
+
+    ////////////////////////////////////////////////////
+    // Minting
+    ////////////////////////////////////////////////////
+
     /// @custom:property PANO-MINT-001 A long position liquidity factor is not greater than the liquidity limit 
     /// @custom:property PANO-MINT-002 The position size must match the position balance
     /// @custom:property PANO-MINT-003 For long positions, the effective liquidity factor must be lower than or equal to the liquidity limit
@@ -585,7 +304,7 @@ contract FuzzDeployments is FuzzHelpers {
             userCollateral = collToken1.convertToAssets(collToken1.balanceOf(minter));
             emit LogUint256("User collateral 1", userCollateral);                 
         }
-        posSize = bound(posSize, userCollateral * 60 / 100,  userCollateral * 350 / 100); 
+        posSize = bound(posSize, userCollateral * 60 / 100,  userCollateral * 400 / 100); 
         require(posSize > 0);
 
         uint256 positionsOpened = panopticPool.numberOfPositions(minter);
@@ -641,7 +360,6 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("Minter", minter);
     }
 
-    uint count;
     function mint_option(
         uint256 seller_index,
         bool asset,
@@ -670,6 +388,32 @@ contract FuzzDeployments is FuzzHelpers {
             // Mint a short position first, then a long position
             _mint_option(seller, _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike), 12* posSize/10, 0);
             _mint_option(minter, _generate_single_leg_tokenid(asset, is_call, true, is_otm, width, strike), posSize, effLiqLimit);
+        }
+    }
+
+    function mint_strategy(
+        bool asset,
+        bool is_long,
+        uint256 strategy,
+        uint24 width,
+        int256 strike,
+        uint256 posSize
+    ) public {
+        // We have two strategies now, this can be expanded later
+        strategy = bound(strategy, 0, 1);
+
+        address minter = msg.sender;
+
+        (, currentTick, , , , , ) = pool.slot0();
+
+        if (strategy == 0) {
+            // Mint a strangle
+            TokenId strangle = _generate_strangle_tokenid(asset, is_long, width, strike, 10); // Fixed delta of 10, can be changed/fuzzed
+            _mint_option(minter, strangle, posSize, 0);
+        } else if (strategy == 1) {
+            // Mint a straddle
+            TokenId straddle = _generate_straddle_tokenid(asset, is_long, width, strike);
+            _mint_option(minter, straddle, posSize, 0);
         }
     }
 
@@ -727,97 +471,15 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("TWAP tick after", TWAPtick_after);
     }
 
-    function _get_account_margin(
-        address to_liquidate,
-        int24 tick
-    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
-        require(userPositions[to_liquidate].length > 0);
-        int128 premium0;
-        int128 premium1;
-        uint256[2][] memory positions;
 
-        (premium0, premium1, positions) = panopticPool.calculateAccumulatedFeesBatch(
-            to_liquidate,
-            false,
-            userPositions[to_liquidate]
-        );
-        tokenData0 = collToken0.getAccountMarginDetails(to_liquidate, tick, positions, premium0);
-        tokenData1 = collToken1.getAccountMarginDetails(to_liquidate, tick, positions, premium1);
-    }
-    
-    function _get_effective_liq_factor(
-        uint256 legTokenType,
-        int24 tickLower,
-        int24 tickUpper
-    ) internal view returns (uint64 effectiveLiquidityFactorX32) {
-        LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
-            address(panopticPool),
-            legTokenType,
-            tickLower,
-            tickUpper
-        );
-
-        uint128 netLiquidity = accountLiquidities.rightSlot();
-        uint128 totalLiquidity = accountLiquidities.leftSlot();
-        // compute and return effective liquidity. Return if short=net=0, which is closing short position
-        if (netLiquidity == 0) return 0;
-
-        effectiveLiquidityFactorX32 = uint64((uint256(totalLiquidity) * 2 ** 32) / netLiquidity);
-    }
-    
-
-    function _get_assets_in_token0(address who, int24 tick) internal view returns (uint256 assets) {
-        assets =
-            collToken0.convertToAssets(collToken0.balanceOf(who)) +
-            PanopticMath.convert1to0(
-                collToken1.convertToAssets(collToken1.balanceOf(who)),
-                TickMath.getSqrtRatioAtTick(tick)
-            );
-    }
-
-    function _getSolvencyBalances(
-        address who,
-        int24 tick
-    ) internal view returns (uint256 balanceCross, uint256 thresholdCross) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _get_account_margin(
-            who,
-            tick
-        );
-        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(tick);
-        unchecked {
-            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
-            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
-            balanceCross =
-                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
-            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overstimate by rounding up
-            thresholdCross =
-                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
-        }
-    }
-
-    function _get_list_without_tokenid(TokenId[] memory list, TokenId target) internal pure returns (TokenId[] memory out) {
-        // Assumes target is in list
-
-        uint256 l = list.length;
-        out = new TokenId[](l - 1);
-        uint256 out_idx = 0;
-
-        for (uint i = 0; i < l; i++) {
-            if (keccak256(abi.encode(list[i])) != keccak256(abi.encode(target))) {
-                out[out_idx] = list[i];
-                out_idx ++;
-            }
-        }
-    }
+    ////////////////////////////////////////////////////
+    // Burning
+    ////////////////////////////////////////////////////
 
     /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
     /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
     /// @custom:precondition The user has a position open
-    function burn_one_option(uint256 pos_idx) public {
+    function burn_one_option(uint256 pos_idx) internal {
         address caller = msg.sender;
         require(panopticPool.numberOfPositions(caller) > 0);
         pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
@@ -876,16 +538,14 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("User Balance after burning in token0 terms", balanceAfter);
 
         emit LogInt256("Delta balance", balanceAfter - balanceBefore);
-        emit LogInt256("User liquidity delta", userLiquidityPerPosition[caller]);
 
         userPositions[caller] = positions_new;
-        userLiquidityPerPosition[caller] = 0;
 
     }
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:precondition The user has at least one position open
-    function burn_all_options() public {
+    function burn_all_options() internal {
         address caller = msg.sender;
         TokenId[] memory emptyList;
 
@@ -901,6 +561,56 @@ contract FuzzDeployments is FuzzHelpers {
         } catch {
         
         }
+    }
+
+
+    ////////////////////////////////////////////////////
+    // Liquidation
+    ////////////////////////////////////////////////////
+
+    function simulate_burning(address who) external {
+        TokenId[] memory emptyList;
+
+        int256[2] memory shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)), int256(collToken1.balanceOf(who))];
+
+        hevm.prank(who);
+        (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
+
+        shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0], int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]];
+
+        uint256[2][4][] memory settledTokensTemp = new uint256[2][4][](userPositions[who].length);
+        for (uint256 i = 0; i < userPositions[who].length; ++i) {
+            for (uint256 j = 0; j < userPositions[who][i].countLegs(); ++j) {
+                bytes32 chunk = keccak256(
+                    abi.encodePacked(
+                        userPositions[who][i].strike(j),
+                        userPositions[who][i].width(j),
+                        userPositions[who][i].tokenType(j)
+                    )
+                );
+                settledTokensTemp[i][j] = [
+                    uint256(chunk),
+                    LeftRightUnsigned.unwrap(panopticPool.settledTokens(chunk))
+                ];
+            }
+        }
+
+        uint256 totalSupply0 = collToken0.totalSupply();
+        uint256 totalSupply1 = collToken1.totalSupply();
+        uint256 totalAssets0 = collToken0.totalAssets();
+        uint256 totalAssets1 = collToken1.totalAssets();
+
+        LeftRightUnsigned supply = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(totalSupply0)).toRightSlot(uint128(totalSupply1));
+        LeftRightUnsigned assets = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(totalAssets0)).toRightSlot(uint128(totalAssets1));
+
+        int256 burnDelta0C = convertToAssets(collToken0, shareDeltasLiquidatee[0]) +
+            PanopticMath.convert1to0( convertToAssets(collToken1, shareDeltasLiquidatee[1]), TickMath.getSqrtRatioAtTick(currentTick) );
+        int256 burnDelta0 = convertToAssets(collToken0, shareDeltasLiquidatee[0]);
+        int256 burnDelta1 = convertToAssets(collToken1, shareDeltasLiquidatee[1]);
+
+        LeftRightSigned burnDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(burnDelta0)).toRightSlot(int128(burnDelta1));
+        
+        revert SimulationResults(supply, assets, burnDelta0C, burnDelta, netExchanged);
     }
 
     uint liqcount;
@@ -932,35 +642,64 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("TWAP tick", TWAPtick);
         emit LogInt256("Current tick", currentTick);
 
-        {
-            (int256 value0, int256 value1) = panopticPool.calculatePortfolioValue(liquidatee, TWAPtick, userPositions[liquidatee]);
-            emit LogInt256("Liquidatee portfolio value0:", value0);
-            emit LogInt256("Liquidatee portfolio value1:", value1);
-        }        
+        log_account_collaterals(liquidator);
+        log_account_collaterals(liquidatee);
+        log_trackers_status();
 
         require(liquidated_positions.length > 0);
 
-        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(liquidatee, TWAPtick);
+        (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(liquidatee, TWAPtick);
         emit LogUint256("Balance cross", balanceCross);
         emit LogUint256("Threshold cross", thresholdCross);
 
-        LeftRightUnsigned lru = LeftRightUnsigned
+        LeftRightUnsigned delegations = LeftRightUnsigned
             .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
             .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
 
-        (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
-            liquidatee,
-            true,
-            liquidated_positions
-        );
-        emit LogInt256("Premium in token 0", p0);
-        emit LogInt256("Premium in token 1", p1);
+        {
+            (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
+                liquidatee,
+                false,
+                liquidated_positions
+            );
+            emit LogInt256("Premium in token 0", p0);
+            emit LogInt256("Premium in token 1", p1);
+        }
 
-        uint256 liq_assets_before = _get_assets_in_token0(liquidator, TWAPtick);
+        uint256 liquidatorValue0before = _get_assets_in_token0(liquidator, currentTick);
+        emit LogUint256("Liquidator value before", liquidatorValue0before);
+
+
+
+        try this.simulate_burning(liquidatee) {
+
+        } catch (bytes memory results) {
+            LeftRightUnsigned totalSupply;
+            LeftRightUnsigned totalAssets;
+            int256 burnDelta0C;
+            LeftRightSigned burnDelta;
+            LeftRightSigned netExchanged;
+
+            assembly ("memory-safe") {
+                totalSupply := mload(add(results, 0x24))
+                totalAssets := mload(add(results, 0x44))
+                burnDelta0C := mload(add(results, 0x64))
+                burnDelta := mload(add(results, 0x84))
+                netExchanged := mload(add(results, 0xA4))
+            }
+            
+            emit LogUint256("a", totalSupply.leftSlot());
+            emit LogInt256("b", netExchanged.leftSlot());
+        }
+
+        emit LogUint256("numpos", panopticPool.numberOfPositions(liquidatee));
+
+        assert(false);
+
 
         // If the position is not liquidatable, liquidation call must revert
         hevm.prank(liquidator);
-        try panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions) {
+        try panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions) {
             assertWithMsg(balanceCross < thresholdCross, "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated");
         } catch {
             revert();
@@ -970,10 +709,22 @@ contract FuzzDeployments is FuzzHelpers {
 
         assertWithMsg(panopticPool.numberOfPositions(liquidatee) == 0, "Liquidation did not close all positions");
 
-        uint256 liq_assets_after = _get_assets_in_token0(liquidator, TWAPtick);
+        {
+            uint256 liquidatorValue0after = _get_assets_in_token0(liquidator, currentTick);
+            emit LogUint256("Liquidator value after", liquidatorValue0after);
+            emit LogInt256("Delta liquidator value", int256(liquidatorValue0after)-int256(liquidatorValue0before));
+        }
 
-        emit LogUint256("Liquidator assets before", liq_assets_before);
-        emit LogUint256("Liquidator assets after", liq_assets_after);
+        log_account_collaterals(liquidator);
+        log_account_collaterals(liquidatee);
+        log_trackers_status();
+
+        
+        
+
+        assert(false);
+
+
     }
 
     /////////////////////////////////////////////////////////////
@@ -1068,7 +819,7 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /////////////////////////////////////////////////////////////
-    // Wrappers
+    // External function wrappers
     /////////////////////////////////////////////////////////////
 
     function uniswapV3SwapCallback(
@@ -1103,6 +854,10 @@ contract FuzzDeployments is FuzzHelpers {
         hevm.prank(msg.sender);
         pool.swap(recipient, zeroForOne, amountSpecified, sqrtPriceLimitX96, abi.encode(msg.sender));
     }
+
+    ////////////////////////////////////////////////////
+    // Interaction with collateral trackers
+    ////////////////////////////////////////////////////
 
     /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
     /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made
@@ -1263,7 +1018,7 @@ contract FuzzDeployments is FuzzHelpers {
         editCollateral(collToken0, liquidatee, 0);
         editCollateral(collToken1, liquidatee, 0);
 
-        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(liquidatee, TWAPtick);
+        (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(liquidatee, TWAPtick);
         emit LogUint256("Balance cross after edit", balanceCross);
         emit LogUint256("Threshold cross after edit", thresholdCross);
 
