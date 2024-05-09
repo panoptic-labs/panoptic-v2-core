@@ -65,7 +65,7 @@ library Labels {
         } else if (rarity == 8) {
             return "Vitalic";
         } else if (rarity == 9) {
-            return "Etheronic";
+            return "Ethereonic";
         } else if (rarity == 10) {
             return "Prometheic";
         } else if (rarity == 11) {
