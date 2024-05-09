@@ -14,7 +14,7 @@ library Filters {
 
     function rarity1() internal pure returns (string memory) {
         return
-            '<feColorMatrix type="matrix" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0" in="SourceGraphic" result="colormatrix"/><feComponentTransfer in="colormatrix" result="componentTransfer"><feFuncR type="table" tableValues="0 0 0.15 0.96"/><feFuncG type="table" tableValues="0 0 0 0.96"/><feFuncB type="table" tableValues="0 0 0 0.96"/><feFuncA type="table" tableValues="0 1"/></feComponentTransfer><feBlend mode="screen" in="componentTransfer" in2="SourceGraphic" result="blend"/>';
+            '<feColorMatrix type="matrix" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0" in="SourceGraphic" result="colormatrix"/><feComponentTransfer in="colormatrix" result="componentTransfer"><feFuncR type="table" tableValues="0 0 0.2 0.96"/><feFuncG type="table" tableValues="0 0 0 0.96"/><feFuncB type="table" tableValues="0 0 0 0.96"/><feFuncA type="table" tableValues="0 1"/></feComponentTransfer><feBlend mode="screen" in="componentTransfer" in2="SourceGraphic" result="blend"/>';
     }
 
     function rarity2() internal pure returns (string memory) {
@@ -24,12 +24,12 @@ library Filters {
 
     function rarity3() internal pure returns (string memory) {
         return
-            '<feColorMatrix type="matrix" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0" in="SourceGraphic" result="colormatrix"/><feComponentTransfer in="colormatrix" result="componentTransfer"><feFuncR type="table" tableValues="0 0.24 0.58 0.96"/><feFuncG type="table" tableValues="0 0.28 0.67 0.96"/><feFuncB type="table" tableValues="0 0.33 0.75 0.96"/><feFuncA type="table" tableValues="0 1"/></feComponentTransfer><feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>';
+            '<feColorMatrix type="matrix" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0" in="SourceGraphic" result="colormatrix"/><feComponentTransfer in="colormatrix" result="componentTransfer"><feFuncR type="table" tableValues="0 0.28 0.75 0.96"/><feFuncG type="table" tableValues="0 0.28 0.75 0.96"/><feFuncB type="table" tableValues="0 0.23 0.55 0.96"/><feFuncA type="table" tableValues="0 1"/></feComponentTransfer><feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>';
     }
 
     function rarity4() internal pure returns (string memory) {
         return
-            '<feColorMatrix type="matrix" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0" in="SourceGraphic" result="colormatrix"/><feComponentTransfer in="colormatrix" result="componentTransfer"><feFuncR type="table" tableValues="0 0.25 0.65 1"/><feFuncG type="table" tableValues="0 0.29 0.7 1"/><feFuncB type="table" tableValues="0 0.48 0.84 1"/><feFuncA type="table" tableValues="0 1"/></feComponentTransfer><feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>';
+            '<feColorMatrix type="matrix" values=".33 .33 .33 0 0 .33 .33 .33 0 0 .33 .33 .33 0 0 0 0 0 1 0" in="SourceGraphic" result="colormatrix"/><feComponentTransfer in="colormatrix" result="componentTransfer"><feFuncR type="table" tableValues="0 0.14 0.58 0.96"/><feFuncG type="table" tableValues="0 0.28 0.65 0.96"/><feFuncB type="table" tableValues="0 0.28 0.68 0.96"/><feFuncA type="table" tableValues="0 1"/></feComponentTransfer><feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>';
     }
 
     function rarity5() internal pure returns (string memory) {
