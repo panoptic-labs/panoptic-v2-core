@@ -67,13 +67,13 @@ library Labels {
         } else if (rarity == 9) {
             return "Etheronic";
         } else if (rarity == 10) {
-            return "Orphic";
-        } else if (rarity == 11) {
             return "Prometheic";
+        } else if (rarity == 11) {
+            return "Orphic";
         } else if (rarity == 12) {
-            return "Phantasmagoric";
-        } else if (rarity == 13) {
             return "Prismatic";
+        } else if (rarity == 13) {
+            return "Phantasmagoric";
         } else if (rarity == 14) {
             return "Cosmic";
         } else if (rarity == 15) {
@@ -107,7 +107,7 @@ library Labels {
         } else if (index == 1) {
             // Spread
             return
-                "A Spread is an options strategy that involves buying and selling an equal number of options of the same type (calls or puts) with different strike prices but the same expiration date. Bull and bear spreads can be created using either calls or puts, depending on the investor's market outlook.";
+                "A Spread is an options strategy that involves buying and selling an equal number of options of the same type (calls or puts) with different strike prices but the same width. Bull and bear spreads can be created using either calls or puts, depending on the investor's market outlook.";
         } else if (index == 2) {
             // Straddle
             return
@@ -151,7 +151,7 @@ library Labels {
         } else if (index == 12) {
             // Strangle
             return
-                "The Strangle involves buying or selling a call and a put option with the same expiration date and different strike prices. The call strike is above, and the put strike is below the current market price. Selling a strangle profits if the underlying asset's price remains relatively stable until expiration.";
+                "The Strangle involves buying or selling a call and a put option with the same width and different strike prices. The call strike is above, and the put strike is below the current market price. Selling a strangle profits if the underlying asset's price remains relatively stable over time.";
         } else if (index == 13) {
             // Big Lizard
             return
@@ -184,7 +184,7 @@ library Labels {
         } else if (rarity < 9) {
             maxWidth = 148;
         } else if (rarity < 12) {
-            maxWidth = 145;
+            maxWidth = 140;
         } else if (rarity < 15) {
             maxWidth = 145;
         } else if (rarity < 18) {
@@ -194,9 +194,9 @@ library Labels {
         } else if (rarity < 20) {
             maxWidth = 145;
         } else if (rarity < 21) {
-            maxWidth = 145;
+            maxWidth = 140;
         } else if (rarity < 22) {
-            maxWidth = 145;
+            maxWidth = 148;
         } else if (rarity < 23) {
             maxWidth = 164;
         } else if (rarity >= 23) {
@@ -258,5 +258,27 @@ library Labels {
         string memory chainid
     ) public pure returns (string memory) {
         return contents.replace("<!-- CHAINID -->", chainid);
+    }
+
+    function getChainId(uint256 chainid) public pure returns (string memory) {
+        if (chainid == 1) {
+            return "Ethereum Mainnet";
+        } else if (chainid == 56) {
+            return "BNB Smart Chain Mainnet";
+        } else if (chainid == 42161) {
+            return "Arbitrum One";
+        } else if (chainid == 8453) {
+            return "Base";
+        } else if (chainid == 43114) {
+            return "Avalanche C-Chain";
+        } else if (chainid == 137) {
+            return "Polygon Mainnet";
+        } else if (chainid == 10) {
+            return "OP Mainnet";
+        } else if (chainid == 42220) {
+            return "Celo Mainnet";
+        } else if (chainid == 238) {
+            return "Blast Mainnet";
+        }
     }
 }
