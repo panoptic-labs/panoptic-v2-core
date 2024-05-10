@@ -49,9 +49,9 @@ library Labels {
         if (rarity == 0) {
             return "Common";
         } else if (rarity == 1) {
-            return "Rare";
+            return "  Rare  ";
         } else if (rarity == 2) {
-            return "Mythic";
+            return " Mythic ";
         } else if (rarity == 3) {
             return "Legendary";
         } else if (rarity == 4) {
@@ -61,21 +61,21 @@ library Labels {
         } else if (rarity == 6) {
             return "Enigmatic";
         } else if (rarity == 7) {
-            return "Utopic";
+            return "  Utopic  ";
         } else if (rarity == 8) {
-            return "Vitalic";
+            return " Vitalic ";
         } else if (rarity == 9) {
             return "Ethereonic";
         } else if (rarity == 10) {
             return "Prometheic";
         } else if (rarity == 11) {
-            return "Orphic";
+            return "  Orphic  ";
         } else if (rarity == 12) {
-            return "Prismatic";
+            return " Prismatic ";
         } else if (rarity == 13) {
             return "Phantasmagoric";
         } else if (rarity == 14) {
-            return "Cosmic";
+            return " Cosmic ";
         } else if (rarity == 15) {
             return "Atomic";
         } else if (rarity == 16) {
@@ -85,17 +85,17 @@ library Labels {
         } else if (rarity == 18) {
             return "Leptonic";
         } else if (rarity == 19) {
-            return "Quarktic";
+            return " Quarktic ";
         } else if (rarity == 20) {
-            return "Branic";
+            return " Branic ";
         } else if (rarity == 21) {
-            return "Conic";
+            return "  Conic  ";
         } else if (rarity == 22) {
-            return "Comic";
+            return " Comic ";
         } else if (rarity == 23) {
             return "Stereotypic";
         } else if (rarity >= 24) {
-            return "Basic";
+            return "  Basic  ";
         }
     }
 
@@ -178,29 +178,29 @@ library Labels {
     function addRarity(string memory contents, uint256 rarity) public pure returns (string memory) {
         uint256 maxWidth;
         if (rarity < 3) {
-            maxWidth = 175;
+            maxWidth = 210;
         } else if (rarity < 6) {
-            maxWidth = 164;
+            maxWidth = 220;
         } else if (rarity < 9) {
-            maxWidth = 148;
+            maxWidth = 210;
         } else if (rarity < 12) {
-            maxWidth = 140;
+            maxWidth = 220;
         } else if (rarity < 15) {
-            maxWidth = 145;
+            maxWidth = 260;
         } else if (rarity < 18) {
-            maxWidth = 140;
+            maxWidth = 225;
         } else if (rarity < 19) {
-            maxWidth = 140;
+            maxWidth = 225;
         } else if (rarity < 20) {
-            maxWidth = 145;
+            maxWidth = 260;
         } else if (rarity < 21) {
-            maxWidth = 140;
+            maxWidth = 220;
         } else if (rarity < 22) {
-            maxWidth = 148;
+            maxWidth = 210;
         } else if (rarity < 23) {
-            maxWidth = 164;
+            maxWidth = 220;
         } else if (rarity >= 23) {
-            maxWidth = 175;
+            maxWidth = 210;
         }
 
         string memory svgOut = contents.replace(
