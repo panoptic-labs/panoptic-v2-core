@@ -6,7 +6,7 @@ cryticArgs:
 sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
 testMode: assertion
 seqLen: 500
-testLimit: 2000000
+testLimit: 3000000
 shrinkLimit: 10000
 workers: 8
 corpusDir: contracts/fuzz/corpus

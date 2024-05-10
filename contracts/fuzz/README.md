@@ -26,3 +26,30 @@ We are currently also testing an in-progress [PR#1228](https://github.com/crytic
 Medusa is our beta smart contract fuzzer, built off of go-ethereum. Medusa's value generation, state exploration, and mainnet forking are limited, however it can be a fantastic asset for stateless fuzzing.
 
 You can find [installation instructions for Medusa here.](https://github.com/crytic/medusa)
+
+
+# Running the tests
+
+To execute the test harness using the provided Makefile, run:
+
+```bash
+make echidna
+```
+
+Alternatively, you can invoke echidna directly from the command line, specifying the configuration file to be used and the contract to be fuzzed:
+
+```bash
+echidna . --contract ContractName --config path/to/config.yaml
+```
+
+This allows you to have different configuration files for different tests, for example, you could fuzz the whole FuzzDeployments contract:
+
+```bash
+echidna . --contract FuzzDeployments --config contracts/fuzz/echidna.yaml
+```
+
+and have a separate configuration file for just fuzzing the minting operations, as provided in the example FuzzMint.sol file:
+
+```bash
+echidna . --contract FuzzMint --config contracts/fuzz/evaluate_minting.yaml
+```

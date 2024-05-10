@@ -227,7 +227,7 @@ contract PanopticPoolWrapper is PanopticPool {
 }
 
 contract FuzzHelpers is PropertiesAsserts {
-    error SimulationResults(LeftRightUnsigned, LeftRightUnsigned, LeftRightUnsigned, LeftRightSigned, int256, LeftRightSigned, LeftRightSigned, uint256, int256);
+    error SimulationResults(LeftRightUnsigned, LeftRightUnsigned, LeftRightUnsigned, LeftRightSigned, int256, LeftRightSigned, LeftRightSigned, uint256, int256, bytes);
 
     struct BurnSimulationResults {
         uint256 delegated0;
@@ -557,12 +557,6 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 settledTokens0;
 
         uint256[2][4][32] memory settledTokens;
-        for (uint256 i = 0; i < 32; ++i) {
-            for (uint256 j = 0; j < 4; ++j) {
-                settledTokens[i][j] = [uint256(0), uint256(0)];
-            }
-        }
-
         for (uint256 i = 0; i < positions.length; ++i) {
             for (uint256 j = 0; j < positions[i].countLegs(); ++j) {
                 bytes32 chunk = keccak256(
@@ -631,7 +625,7 @@ contract FuzzHelpers is PropertiesAsserts {
             PanopticMath.convert1to0( convertToAssets(collToken1, shareDeltasLiquidatee[1]), TickMath.getSqrtRatioAtTick(currentTick) );
         LeftRightSigned burnDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(convertToAssets(collToken0, shareDeltasLiquidatee[0]))).toRightSlot(int128(convertToAssets(collToken1, shareDeltasLiquidatee[1])));
         
-        revert SimulationResults(supply, assets, delegated, shareDelta, burnDelta0C, burnDelta, netExchanged, settledTokens0, longPremium0);//, settledTokens);
+        revert SimulationResults(supply, assets, delegated, shareDelta, burnDelta0C, burnDelta, netExchanged, settledTokens0, longPremium0, settledTokens);
     }
 
     function _execute_burn_simulation(address liquidatee, address liquidator) internal {
@@ -640,6 +634,7 @@ contract FuzzHelpers is PropertiesAsserts {
         } catch (bytes memory results) {
             bytes4 selector = bytes4(results);
             require(selector == SimulationResults.selector);
+            emit LogBytes("r", results);
             
             LeftRightUnsigned totalSupply;
             LeftRightUnsigned totalAssets;
@@ -656,12 +651,12 @@ contract FuzzHelpers is PropertiesAsserts {
                 totalAssets := mload(add(results, 0x44))
                 delegated := mload(add(results, 0x64))
                 shareDelta := mload(add(results, 0x84))
-                burnDelta0C := mload(add(results, 0xA4))
-                burnDelta := mload(add(results, 0xC4))
-                netExchanged := mload(add(results, 0xE4))
+                burnDelta0C := mload(add(results, 0xa4))
+                burnDelta := mload(add(results, 0xc4))
+                netExchanged := mload(add(results, 0xe4))
                 settledTokens0 := mload(add(results, 0x104))
                 longPremium0 := mload(add(results, 0x124))
-                results := add(results, 0x144)
+                results := mload(add(results, 0x144))
             }
             
             burnSimResults.totalSupply0 = totalSupply.leftSlot();
@@ -678,6 +673,7 @@ contract FuzzHelpers is PropertiesAsserts {
             burnSimResults.burnDelta0 = burnDelta.leftSlot();
             burnSimResults.burnDelta1 = burnDelta.rightSlot();
             burnSimResults.netExchanged = netExchanged;
+            burnSimResults.settledTokens = abi.decode(results, (uint256[2][4][32]));
         }
     }
 
@@ -912,6 +908,7 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogInt256("    burnDelta1", burnSimResults.burnDelta1);
         emit LogInt256("    netExchanged L", burnSimResults.netExchanged.leftSlot());
         emit LogInt256("    netExchanged R", burnSimResults.netExchanged.rightSlot());
+        emit LogUint256("    chunk", burnSimResults.settledTokens[0][0][0]);
     }
 
     function log_liquidation_results() internal {

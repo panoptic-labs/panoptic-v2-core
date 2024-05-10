@@ -249,7 +249,7 @@ contract FuzzDeployments is FuzzHelpers {
         out = TokenId.wrap(poolId);
         numLegs = bound(numLegs, 1, 4);
 
-        // Rest of the parameters come from the function parameters
+        // The parameters come from the function parameters
         for(uint256 i = 0; i < numLegs; i++) {
             uint256 asset = asset_in[i] == true ? 1 : 0;
             uint256 call_put = is_call_in[i] == true ? 1 - asset : asset;
@@ -322,12 +322,10 @@ contract FuzzDeployments is FuzzHelpers {
     // Minting
     ////////////////////////////////////////////////////
 
-    /// @custom:property PANO-MINT-001 A long position liquidity factor is not greater than the liquidity limit 
-    /// @custom:property PANO-MINT-002 The position size must match the position balance
-    /// @custom:property PANO-MINT-003 For long positions, the effective liquidity factor must be lower than or equal to the liquidity limit
-    /// @custom:property PANO-MINT-004 Users cannot have more than 32 simultaneous positions opened
-    /// @custom:property PANO-MINT-005 The position counter must increase after a successful mint
-    /// @custom:property PANO-MINT-006 The position balance for the minted position must equal the position size
+    /// @custom:property PANO-MINT-001 For long positions, the effective liquidity factor must be lower than or equal to the liquidity limit
+    /// @custom:property PANO-MINT-002 The position balance for the minted position must equal the position size
+    /// @custom:property PANO-MINT-003 Users cannot have more than 32 simultaneous positions opened
+    /// @custom:property PANO-MINT-004 The position counter must increase after a successful mint
     function _mint_option(address minter, TokenId tokenid, uint256 posSize, uint64 effLiqLim) internal {
         // Mint a position according to tokenid and posSize
         uint256 userCollateral;
@@ -374,17 +372,6 @@ contract FuzzDeployments is FuzzHelpers {
 
         
         userBalance[minter][tokenid] = LeftRightUnsigned.wrap(0).toRightSlot(uint128(posSize));
-
-        /*(int256 value0, int256 value1) = FeesCalc.getPortfolioValue(currentTick, userBalance[minter], lastPos);
-        (int256 calcValue0, int256 calcValue1) = panopticPool.calculatePortfolioValue(minter, currentTick, lastPos);
-
-        emit LogInt256("token0 Portfolio value", value0);
-        emit LogInt256("token1 Portfolio value", value1);
-        emit LogInt256("Calculated token0 Portfolio value", calcValue0);
-        emit LogInt256("Calculated token1 Portfolio value", calcValue1);
-
-        assertWithMsg(value0 == calcValue0, "Real and calculated token0 portfolio values for the minted position do not match");
-        assertWithMsg(value1 == calcValue1, "Real and calculated token1 portfolio values for the minted position do not match");*/
 
         (uint128 balance, , ) = panopticPool.optionPositionBalance(minter, tokenid);
         assertWithMsg(balance == posSize, "Position size and balance do not match");
@@ -513,10 +500,12 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
     /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
+    /// @custom:property PANO-BURN-002 Position opened counter must decrease when a position is burned
     /// @custom:precondition The user has a position open
     function burn_one_option(uint256 pos_idx) public {
         address caller = msg.sender;
-        require(panopticPool.numberOfPositions(caller) > 0);
+        uint256 positions_opened = panopticPool.numberOfPositions(caller);
+        require(positions_opened > 0);
         pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
 
         emit LogString("Burning one option");
@@ -560,14 +549,13 @@ contract FuzzDeployments is FuzzHelpers {
             return;
         }
 
-        // TODO, Invariant: calculate the minimum balance for it not to revert (CollateralTracker:1069)
-        // require(collToken0.balanceOf(msg.sender) > ...);
-
         int256 balanceBefore = int256(_get_assets_in_token0(caller, currentTick));
         emit LogInt256("User Balance before burning in token0 terms", balanceBefore);
 
         hevm.prank(caller);
         panopticPool.burnOptions(position, positions_new, 0, 0);
+
+        assertWithMsg(panopticPool.numberOfPositions(caller) == positions_opened - 1, "Burning a position did not decrease the position counter");
 
         int256 balanceAfter = int256(_get_assets_in_token0(caller, currentTick));
         emit LogInt256("User Balance after burning in token0 terms", balanceAfter);
@@ -698,59 +686,65 @@ contract FuzzDeployments is FuzzHelpers {
         hevm.prank(liquidator);
         panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
 
+        log_burn_simulation_results();
+        log_liquidation_results();
+
         liqResults.sharesD0 = burnSimResults.shareDelta0 - (int256(collToken0.balanceOf(liquidatee)) - liqResults.sharesD0);
         liqResults.sharesD1 = burnSimResults.shareDelta1 - (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
         liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
 
-
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(currentTick);
         _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
-        (liqResults.settledTokens0, ) = _calculate_settled_tokens(userPositions[liquidatee], currentTick);
+
+        bytes memory settledLiq;
+        (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(userPositions[liquidatee], currentTick);
+        liqResults.settledTokens = abi.decode(settledLiq, (uint256[2][4][32]));
 
         delete userPositions[liquidatee];
 
         log_burn_simulation_results();
         log_liquidation_results();
 
+
         emit LogUint256("Number of positions", panopticPool.numberOfPositions(liquidatee));
         assertWithMsg(panopticPool.numberOfPositions(liquidatee) == 0, "Liquidation did not close all positions");
         
 
-        /*if ( (collToken0.totalSupply() - burnSimResults.totalSupply0 <= 1) && (collToken1.totalSupply() - burnSimResults.totalSupply1 <= 1)) {
+        if ( (collToken0.totalSupply() - burnSimResults.totalSupply0 <= 1) && (collToken1.totalSupply() - burnSimResults.totalSupply1 <= 1)) {
             int256 assets = convertToAssets(collToken0, liqResults.sharesD0) + PanopticMath.convert1to0( convertToAssets(collToken1, liqResults.sharesD1), TickMath.getSqrtRatioAtTick(currentTick));
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
-            assertWithMsg(assets == liqResults.bonusCombined0, "Liquidatee was debited incorrect bonus value (funds leftover)");
+            assertLt(abs(int256(assets) - int256(liqResults.bonusCombined0)), 10, "Liquidatee was debited incorrect bonus value (funds leftover)");
         } else {
             int256 assets = convertToAssets(collToken0, liqResults.sharesD0) + PanopticMath.convert1to0(convertToAssets(collToken1, liqResults.sharesD1), TickMath.getSqrtRatioAtTick(currentTick));
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
             assertWithMsg(assets <= liqResults.bonusCombined0, "Liquidatee was debited incorrectly high bonus value (no funds leftover)" );
-        }*/
+        }
 
-        /*emit LogInt256("Delta liquidator value", int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0));
+        emit LogInt256("Delta liquidator value", int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0));
         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
-        assertWithMsg(
-            int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0) == liqResults.bonusCombined0,
-            "Liquidator did not receive correct bonus"
-        );*/
+        assertLt(
+            abs((int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0)) - liqResults.bonusCombined0),
+            10, "Liquidator did not receive correct bonus"
+        );
 
-        /*emit LogInt256("Delta settled tokens", int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0));
+        emit LogInt256("Delta settled tokens", int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0));
         emit LogInt256("Expected value", Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected));
         assertWithMsg(
             int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0) == Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
             "Incorrect amount of premium was haircut"
-        );*/
+        );
 
-        /*emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
+        emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
         emit LogInt256("Expected value", liqResults.protocolLoss0Expected - Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected));
         assertWithMsg(
             liqResults.protocolLoss0Actual == liqResults.protocolLoss0Expected - Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
             "Not all premium was haircut during protocol loss"
-        );*/
+        );
         
 
         log_account_collaterals(liquidator);
