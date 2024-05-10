@@ -7,7 +7,7 @@ abstract contract PropertiesAsserts {
     event LogAddress(string, address);
     event LogString(string);
     event LogBool(string, bool);
-    event LogBytes4(string, bytes4);
+    event LogBytes(string, bytes);
 
     event AssertFail(string);
     event AssertEqFail(string);

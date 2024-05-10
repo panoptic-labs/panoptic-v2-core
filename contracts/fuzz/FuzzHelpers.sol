@@ -227,6 +227,42 @@ contract PanopticPoolWrapper is PanopticPool {
 }
 
 contract FuzzHelpers is PropertiesAsserts {
+    error SimulationResults(LeftRightUnsigned, LeftRightUnsigned, LeftRightUnsigned, LeftRightSigned, int256, LeftRightSigned, LeftRightSigned, uint256, int256);
+
+    struct BurnSimulationResults {
+        uint256 delegated0;
+        uint256 delegated1;
+        uint256 totalSupply0;
+        uint256 totalSupply1;
+        uint256 totalAssets0;
+        uint256 totalAssets1;
+        uint256 settledTokens0;
+        int256 shareDelta0;
+        int256 shareDelta1;
+        int256 longPremium0;
+        int256 burnDelta0C;
+        int256 burnDelta0;
+        int256 burnDelta1;
+        LeftRightSigned netExchanged;
+        uint256[2][4][32] settledTokens;
+    } 
+
+    struct LiquidationResults {
+        LeftRightUnsigned margin0;
+        LeftRightUnsigned margin1;
+        int256 bonus0;
+        int256 bonus1;
+        int256 sharesD0;
+        int256 sharesD1;
+        uint256 liquidatorValueBefore0;
+        uint256 liquidatorValueAfter0;
+        uint256 settledTokens0;
+        LeftRightSigned premia;
+        int256 bonusCombined0;
+        int256 protocolLoss0Actual;
+        int256 protocolLoss0Expected;
+        uint256[2][4][32] settledTokens;
+    }
 
     PanopticHelper panopticHelper;
     SemiFungiblePositionManager sfpm;
@@ -258,7 +294,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256 constant MAX_DEPOSIT = 100 ether;
     uint256 constant MIN_DEPOSIT = 0.01 ether;
-
+    
+    BurnSimulationResults burnSimResults;
+    LiquidationResults liqResults;
 
     IHevm hevm = IHevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
@@ -442,6 +480,246 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
+        return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
+    }
+
+    /////////////////////////////////////////////////////////////
+    // Liquidation calculation helpers
+    /////////////////////////////////////////////////////////////
+
+    function _calculate_protocol_loss_0(int24 tick) internal {
+        uint256 delegated0 = burnSimResults.delegated0;
+        uint256 delegated1 = burnSimResults.delegated1;
+        uint256 totalSupply0 = burnSimResults.totalSupply0;
+        uint256 totalSupply1 = burnSimResults.totalSupply1;
+        uint256 totalAssets0 = burnSimResults.totalAssets0;
+        uint256 totalAssets1 = burnSimResults.totalAssets1;
+
+        liqResults.protocolLoss0Actual = int256(
+            (collToken0.convertToAssets(
+                (collToken0.totalSupply() - totalSupply0) -
+                    ((collToken0.totalAssets() - totalAssets0) * totalSupply0) /
+                    totalAssets0
+            ) * (totalSupply0 - delegated0)) /
+                (totalSupply0 - (collToken0.totalSupply() - totalSupply0)) +
+                PanopticMath.convert1to0(
+                    (collToken1.convertToAssets(
+                        (collToken1.totalSupply() - totalSupply1) -
+                            ((collToken1.totalAssets() - totalAssets1) * totalSupply1) /
+                            totalAssets1
+                    ) * (totalSupply1 - delegated1)) /
+                        (totalSupply1 - (collToken1.totalSupply() - totalSupply1)),
+                    TickMath.getSqrtRatioAtTick(tick)
+                )
+        );
+    }
+
+    function _calculate_protocol_loss_expected_0(int24 twaptick, int24 curtick) internal {
+        int256 balanceCombined0CT = int256(
+            liqResults.margin0.rightSlot() +
+                PanopticMath.convert1to0(
+                    liqResults.margin1.rightSlot(),
+                    TickMath.getSqrtRatioAtTick(twaptick)
+                )
+        );
+
+        int256 balance0CombinedPostBurn =
+            int256(uint256(liqResults.margin0.rightSlot())) -
+            Math.max(liqResults.premia.rightSlot(), 0) +
+            burnSimResults.burnDelta0 +
+            int256(
+                PanopticMath.convert1to0(
+                    int256(uint256(liqResults.margin1.rightSlot())) -
+                        Math.max(liqResults.premia.leftSlot(), 0) +
+                        burnSimResults.burnDelta1,
+                    TickMath.getSqrtRatioAtTick(curtick)
+                )
+            );
+
+        liqResults.protocolLoss0Expected = Math.max(
+            -(balance0CombinedPostBurn -
+                Math.min(
+                    balanceCombined0CT / 2,
+                    int256(
+                        liqResults.margin0.leftSlot() +
+                            PanopticMath.convert1to0(
+                                liqResults.margin1.leftSlot(),
+                                TickMath.getSqrtRatioAtTick(twaptick)
+                            )
+                    ) - balanceCombined0CT
+                )),
+            0
+        );
+    }
+
+    function _calculate_settled_tokens(TokenId[] memory positions, int24 tick) internal returns (uint256, bytes memory) {
+        uint256 settledTokens0;
+
+        uint256[2][4][32] memory settledTokens;
+        for (uint256 i = 0; i < 32; ++i) {
+            for (uint256 j = 0; j < 4; ++j) {
+                settledTokens[i][j] = [uint256(0), uint256(0)];
+            }
+        }
+
+        for (uint256 i = 0; i < positions.length; ++i) {
+            for (uint256 j = 0; j < positions[i].countLegs(); ++j) {
+                bytes32 chunk = keccak256(
+                    abi.encodePacked(
+                        positions[i].strike(j),
+                        positions[i].width(j),
+                        positions[i].tokenType(j)
+                    )
+                );
+                settledTokens[i][j] = [ uint256(chunk), LeftRightUnsigned.unwrap(panopticPool.settledTokens(chunk)) ];
+                settledTokens0 += panopticPool.settledTokens(chunk).rightSlot();
+                settledTokens0 += PanopticMath.convert1to0(
+                    panopticPool.settledTokens(chunk).leftSlot(),
+                    TickMath.getSqrtRatioAtTick(tick)
+                );
+            }
+        }
+
+        return (settledTokens0, abi.encode(settledTokens));
+    }
+
+    function simulate_burning(address who, address liquidator) external {
+        require(msg.sender == address(this));
+        
+        uint128 delegated0 = uint128(collToken0.convertToAssets(collToken0.balanceOf(liquidator)));
+        uint128 delegated1 = uint128(collToken1.convertToAssets(collToken1.balanceOf(liquidator)));
+        LeftRightUnsigned delegated = LeftRightUnsigned.wrap(0).toLeftSlot(delegated0).toRightSlot(delegated1);
+
+        hevm.prank(address(panopticPool));
+        collToken0.delegate(liquidator, who, delegated0);
+        hevm.prank(address(panopticPool));
+        collToken1.delegate(liquidator, who, delegated1);
+
+        int256[2] memory shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)), int256(collToken1.balanceOf(who))];
+
+        LeftRightSigned[4][] memory premiasByLeg;
+        LeftRightSigned netExchanged;
+
+        hevm.prank(who);
+        (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
+
+        shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0], int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]];
+
+        (uint256 settledTokens0, bytes memory settledTokens) = _calculate_settled_tokens(userPositions[who], currentTick);
+
+        int256 longPremium0;
+        for (uint256 i = 0; i < userPositions[who].length; ++i) {
+            for (uint256 j = 0; j < userPositions[who][i].countLegs(); ++j) {
+                longPremium0 += premiasByLeg[i][j].rightSlot() < 0
+                    ? -premiasByLeg[i][j].rightSlot()
+                    : int128(0);
+                longPremium0 += PanopticMath.convert1to0(
+                    premiasByLeg[i][j].leftSlot() < 0
+                        ? -premiasByLeg[i][j].leftSlot()
+                        : int128(0),
+                    TickMath.getSqrtRatioAtTick(currentTick)
+                );
+            }
+        }
+
+        LeftRightUnsigned supply = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(collToken0.totalSupply())).toRightSlot(uint128(collToken1.totalSupply()));
+        LeftRightUnsigned assets = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(collToken0.totalAssets())).toRightSlot(uint128(collToken1.totalAssets()));
+        LeftRightSigned shareDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(shareDeltasLiquidatee[0])).toRightSlot(int128(shareDeltasLiquidatee[1]));
+
+        int256 burnDelta0C = convertToAssets(collToken0, shareDeltasLiquidatee[0]) +
+            PanopticMath.convert1to0( convertToAssets(collToken1, shareDeltasLiquidatee[1]), TickMath.getSqrtRatioAtTick(currentTick) );
+        LeftRightSigned burnDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(convertToAssets(collToken0, shareDeltasLiquidatee[0]))).toRightSlot(int128(convertToAssets(collToken1, shareDeltasLiquidatee[1])));
+        
+        revert SimulationResults(supply, assets, delegated, shareDelta, burnDelta0C, burnDelta, netExchanged, settledTokens0, longPremium0);//, settledTokens);
+    }
+
+    function _execute_burn_simulation(address liquidatee, address liquidator) internal {
+        try this.simulate_burning(liquidatee, liquidator) {
+
+        } catch (bytes memory results) {
+            bytes4 selector = bytes4(results);
+            require(selector == SimulationResults.selector);
+            
+            LeftRightUnsigned totalSupply;
+            LeftRightUnsigned totalAssets;
+            LeftRightUnsigned delegated;
+            LeftRightSigned shareDelta;
+            int256 burnDelta0C;
+            LeftRightSigned burnDelta;
+            LeftRightSigned netExchanged;
+            uint256 settledTokens0;
+            int256 longPremium0;
+            
+            assembly ("memory-safe") {
+                totalSupply := mload(add(results, 0x24))
+                totalAssets := mload(add(results, 0x44))
+                delegated := mload(add(results, 0x64))
+                shareDelta := mload(add(results, 0x84))
+                burnDelta0C := mload(add(results, 0xA4))
+                burnDelta := mload(add(results, 0xC4))
+                netExchanged := mload(add(results, 0xE4))
+                settledTokens0 := mload(add(results, 0x104))
+                longPremium0 := mload(add(results, 0x124))
+                results := add(results, 0x144)
+            }
+            
+            burnSimResults.totalSupply0 = totalSupply.leftSlot();
+            burnSimResults.totalSupply1 = totalSupply.rightSlot();
+            burnSimResults.totalAssets0 = totalAssets.leftSlot();
+            burnSimResults.totalAssets1 = totalAssets.rightSlot();
+            burnSimResults.delegated0 = delegated.leftSlot();
+            burnSimResults.delegated1 = delegated.rightSlot();
+            burnSimResults.shareDelta0 = shareDelta.leftSlot();
+            burnSimResults.shareDelta1 = shareDelta.rightSlot();
+            burnSimResults.settledTokens0 = settledTokens0;
+            burnSimResults.longPremium0 = longPremium0;
+            burnSimResults.burnDelta0C = burnDelta0C;
+            burnSimResults.burnDelta0 = burnDelta.leftSlot();
+            burnSimResults.burnDelta1 = burnDelta.rightSlot();
+            burnSimResults.netExchanged = netExchanged;
+        }
+    }
+
+    function _calculate_margins_and_premia(address who, int24 tick) internal {
+        (int128 expectedP0, int128 expectedP1, uint256[2][] memory posBal) = panopticPool.calculateAccumulatedFeesBatch(who, false, userPositions[who]);
+
+        liqResults.margin0 = collToken0.getAccountMarginDetails(who, tick, posBal, expectedP0);
+        liqResults.margin1 = collToken1.getAccountMarginDetails(who, tick, posBal, expectedP1);
+        liqResults.premia = LeftRightSigned.wrap(0).toRightSlot(expectedP0).toLeftSlot(expectedP1);
+    }
+
+    function _calculate_liquidation_bonus(int24 twaptick, int24 curtick) internal {
+        (liqResults.bonus0, liqResults.bonus1, ) = PanopticMath.getLiquidationBonus(
+            liqResults.margin0,
+            liqResults.margin1,
+            Math.getSqrtRatioAtTick(twaptick),
+            Math.getSqrtRatioAtTick(curtick),
+            burnSimResults.netExchanged,
+            liqResults.premia
+        );
+    }
+
+    function _calculate_bonus(int24 tick) internal {
+        int256 combinedBalance0Premium = int256(
+            (liqResults.margin0.rightSlot()) +
+                PanopticMath.convert1to0(
+                    liqResults.margin1.rightSlot(),
+                    TickMath.getSqrtRatioAtTick(tick)
+                )
+        );
+        liqResults.bonusCombined0 = Math.min(
+            combinedBalance0Premium / 2,
+            int256(
+                liqResults.margin0.leftSlot() +
+                    PanopticMath.convert1to0(
+                        liqResults.margin1.leftSlot(),
+                        TickMath.getSqrtRatioAtTick(tick)
+                    )
+            ) - combinedBalance0Premium
+        );
+    }
+
     /////////////////////////////////////////////////////////////
     // Imported functions
     /////////////////////////////////////////////////////////////
@@ -474,8 +752,8 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 ts = int256(ts_);
 
         width = ts == 1
-            ? width = int24(int256(bound(_widthSeed, 1, 2048)))
-            : int24(int256(bound(_widthSeed, 1, (2048 * 10) / uint256(ts))));
+            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+            : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         int24 rangeDown;
@@ -508,72 +786,72 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function getITMSW(
-        uint256 widthSeed,
-        int256 strikeSeed,
+        uint256 _widthSeed,
+        int256 _strikeSeed,
         uint256 ts_,
-        int24 currentTick,
-        uint256 tokenType
+        int24 _currentTick,
+        uint256 _tokenType
     ) internal view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
-            ? width = int24(int256(bound(widthSeed, 1, 2048)))
-            : int24(int256(bound(widthSeed, 1, (2048 * 10) / uint256(ts))));
+            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+            : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
         int24 oneSidedRange = int24((width * ts) / 2);
 
         int24 rangeDown;
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
 
-        int24 lowerBound = tokenType == 0
+        int24 lowerBound = _tokenType == 0
             ? int24(minTick + oneSidedRange - strikeOffset)
-            : int24(currentTick + oneSidedRange - strikeOffset);
-        int24 upperBound = tokenType == 0
-            ? int24(currentTick + ts - oneSidedRange - strikeOffset)
+            : int24(_currentTick + oneSidedRange - strikeOffset);
+        int24 upperBound = _tokenType == 0
+            ? int24(_currentTick + ts - oneSidedRange - strikeOffset)
             : int24(maxTick - oneSidedRange - strikeOffset);
 
         if (ts == 1) {
-            lowerBound = tokenType == 0
+            lowerBound = _tokenType == 0
                 ? int24(minTick + rangeDown - strikeOffset)
-                : int24(currentTick + rangeDown - strikeOffset);
-            upperBound = tokenType == 0
-                ? int24(currentTick + ts - rangeUp - strikeOffset)
+                : int24(_currentTick + rangeDown - strikeOffset);
+            upperBound = _tokenType == 0
+                ? int24(_currentTick + ts - rangeUp - strikeOffset)
                 : int24(maxTick - rangeUp - strikeOffset);
         }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(bound(strikeSeed, lowerBound / ts, upperBound / ts));
+        strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
 
         strike = int24(strike * ts + strikeOffset);
     }
 
     function getValidSW(
-        uint256 widthSeed,
-        int256 strikeSeed,
+        uint256 _widthSeed,
+        int256 _strikeSeed,
         uint256 ts_,
-        int24 currentTick
+        int24 _currentTick
     ) internal view returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
-            ? width = int24(int256(bound(widthSeed, 1, 2048)))
-            : int24(int256(bound(widthSeed, 1, 2048)));
+            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+            : int24(int256(bound(_widthSeed, 1, 1000)));
 
         int24 rangeDown;
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, currentTick, width);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
 
         int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
         int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(bound(strikeSeed, lowerBound / ts, upperBound / ts));
+        strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
 
         strike = int24(strike * ts + strikeOffset);
     }
@@ -615,6 +893,45 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("Total assets collateral 0:", ta0);
         emit LogUint256("Total shares collateral 1:", ts1);
         emit LogUint256("Total assets collateral 1:", ta1);
+    }
+
+    function log_burn_simulation_results() internal {
+        emit LogString("Burn simulation results");
+        emit LogUint256("    delegated0", burnSimResults.delegated0);
+        emit LogUint256("    delegated1", burnSimResults.delegated1);
+        emit LogUint256("    totalSupply0", burnSimResults.totalSupply0);
+        emit LogUint256("    totalSupply1", burnSimResults.totalSupply1);
+        emit LogUint256("    totalAssets0", burnSimResults.totalAssets0);
+        emit LogUint256("    totalAssets1", burnSimResults.totalAssets1);
+        emit LogUint256("    settledTokens0", burnSimResults.settledTokens0);
+        emit LogInt256("    shareDelta0", burnSimResults.shareDelta0);
+        emit LogInt256("    shareDelta1", burnSimResults.shareDelta1);
+        emit LogInt256("    longPremium0", burnSimResults.longPremium0);
+        emit LogInt256("    burnDelta0C", burnSimResults.burnDelta0C);
+        emit LogInt256("    burnDelta0", burnSimResults.burnDelta0);
+        emit LogInt256("    burnDelta1", burnSimResults.burnDelta1);
+        emit LogInt256("    netExchanged L", burnSimResults.netExchanged.leftSlot());
+        emit LogInt256("    netExchanged R", burnSimResults.netExchanged.rightSlot());
+    }
+
+    function log_liquidation_results() internal {
+        emit LogString("Liquidation results");
+        emit LogUint256("    margin0 L", liqResults.margin0.leftSlot());
+        emit LogUint256("    margin0 R", liqResults.margin0.rightSlot());
+        emit LogUint256("    margin1 L", liqResults.margin1.leftSlot());
+        emit LogUint256("    margin1 R", liqResults.margin1.rightSlot());
+        emit LogInt256("    bonus0", liqResults.bonus0);
+        emit LogInt256("    bonus1", liqResults.bonus1);
+        emit LogInt256("    sharesD0", liqResults.sharesD0);
+        emit LogInt256("    sharesD1", liqResults.sharesD1);
+        emit LogUint256("    liquidatorValueBefore0", liqResults.liquidatorValueBefore0);
+        emit LogUint256("    liquidatorValueAfter0", liqResults.liquidatorValueAfter0);
+        emit LogUint256("    settledTokens0", liqResults.settledTokens0);
+        emit LogInt256("    premia L", liqResults.premia.leftSlot());
+        emit LogInt256("    premia R", liqResults.premia.rightSlot());
+        emit LogInt256("    bonusCombined0", liqResults.bonusCombined0);
+        emit LogInt256("    protocolLoss0Actual", liqResults.protocolLoss0Actual);
+        emit LogInt256("    protocolLoss0Expected", liqResults.protocolLoss0Expected);
     }
 
 }

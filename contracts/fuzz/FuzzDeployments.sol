@@ -6,8 +6,6 @@ import "./FuzzHelpers.sol";
 
 contract FuzzDeployments is FuzzHelpers {
 
-    error SimulationResults(LeftRightUnsigned, LeftRightUnsigned, int256, LeftRightSigned, LeftRightSigned);
-
     constructor() {
         // Actors
         // We have 5 actors
@@ -38,7 +36,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("Panoptic Helper", address(panopticHelper));
 
         // Import the Panoptic Pool reference (for cloning)
-        poolReference = address(new PanopticPool(sfpm));
+        poolReference = address(new PanopticPoolWrapper(sfpm));
         emit LogAddress("Panoptic Pool reference", address(poolReference));
 
         // Import the Collateral Tracker reference (for cloning)
@@ -229,11 +227,46 @@ contract FuzzDeployments is FuzzHelpers {
         int24 width;
         int24 strike;
 
-        // Lets just generate OTM for now
-        (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, call_put);
+        if(is_otm_in) {
+            (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, call_put);
+        } else {
+            (width, strike) = getITMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, call_put);
+        }
 
         out = out.addLeg(0, 1, asset, long_short, call_put, 0, strike, width);
         log_tokenid_leg(out, 0);
+    }
+
+    function _generate_multiple_leg_tokenid(
+        uint256 numLegs,
+        bool[4] memory asset_in,
+        bool[4] memory is_call_in,
+        bool[4] memory is_long_in,
+        bool[4] memory is_otm_in,
+        uint24[4] memory width_in,
+        int256[4] memory strike_in
+    ) internal returns (TokenId out) {
+        out = TokenId.wrap(poolId);
+        numLegs = bound(numLegs, 1, 4);
+
+        // Rest of the parameters come from the function parameters
+        for(uint256 i = 0; i < numLegs; i++) {
+            uint256 asset = asset_in[i] == true ? 1 : 0;
+            uint256 call_put = is_call_in[i] == true ? 1 - asset : asset;
+            uint256 long_short = is_long_in[i] == true ? 1 : 0; 
+
+            int24 width;
+            int24 strike;
+
+            if(is_otm_in[i]) {
+                (width, strike) = getOTMSW(width_in[i], strike_in[i], uint24(poolTickSpacing), currentTick, call_put);
+            } else {
+                (width, strike) = getITMSW(width_in[i], strike_in[i], uint24(poolTickSpacing), currentTick, call_put);
+            }
+
+            out = out.addLeg(i, 1, asset, long_short, call_put, 0, strike, width);
+            log_tokenid_leg(out, i);
+        }
     }
 
     function _generate_straddle_tokenid(
@@ -250,11 +283,13 @@ contract FuzzDeployments is FuzzHelpers {
         int24 width;
         int24 strike;
 
-        // Lets just generate OTM for now
         (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
 
-        out = out.addLeg(0, 1, asset, long_short, 0, 1, strike, width);
-        out = out.addLeg(1, 1, asset, long_short, 1, 0, strike, width);
+        // Create call
+        out = out.addLeg(0, 1, asset, long_short, 1-asset, 1, strike, width);
+        // Create put
+        out = out.addLeg(1, 1, asset, long_short, asset, 0, strike, width);
+
         log_tokenid_leg(out, 0);
         log_tokenid_leg(out, 1);
     }
@@ -271,14 +306,14 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 asset = asset_in == true ? 1 : 0;
         uint256 long_short = is_long_in == true ? 1 : 0; 
 
-        int24 width;
-        int24 strike;
+        (int24 width_sc, int24 strike_sc) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, asset);
+        (, int24 strike_sp) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 1-asset);
 
-        // Lets just generate OTM for now
-        (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
+        // Create call
+        out = out.addLeg(0, 1, asset, long_short, 1 - asset, 1, strike_sc + strike_delta, width_sc);
+        // Create put
+        out = out.addLeg(1, 1, asset, long_short, asset, 0, strike_sp - strike_delta, width_sc);
 
-        out = out.addLeg(0, 1, asset, long_short, 0, 1, strike + strike_delta, width);
-        out = out.addLeg(1, 1, asset, long_short, 1, 0, strike - strike_delta, width);
         log_tokenid_leg(out, 0);
         log_tokenid_leg(out, 1);
     }
@@ -479,7 +514,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
     /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
     /// @custom:precondition The user has a position open
-    function burn_one_option(uint256 pos_idx) internal {
+    function burn_one_option(uint256 pos_idx) public {
         address caller = msg.sender;
         require(panopticPool.numberOfPositions(caller) > 0);
         pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
@@ -545,7 +580,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:precondition The user has at least one position open
-    function burn_all_options() internal {
+    function burn_all_options() public {
         address caller = msg.sender;
         TokenId[] memory emptyList;
 
@@ -568,52 +603,6 @@ contract FuzzDeployments is FuzzHelpers {
     // Liquidation
     ////////////////////////////////////////////////////
 
-    function simulate_burning(address who) external {
-        TokenId[] memory emptyList;
-
-        int256[2] memory shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)), int256(collToken1.balanceOf(who))];
-
-        hevm.prank(who);
-        (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
-
-        shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0], int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]];
-
-        uint256[2][4][] memory settledTokensTemp = new uint256[2][4][](userPositions[who].length);
-        for (uint256 i = 0; i < userPositions[who].length; ++i) {
-            for (uint256 j = 0; j < userPositions[who][i].countLegs(); ++j) {
-                bytes32 chunk = keccak256(
-                    abi.encodePacked(
-                        userPositions[who][i].strike(j),
-                        userPositions[who][i].width(j),
-                        userPositions[who][i].tokenType(j)
-                    )
-                );
-                settledTokensTemp[i][j] = [
-                    uint256(chunk),
-                    LeftRightUnsigned.unwrap(panopticPool.settledTokens(chunk))
-                ];
-            }
-        }
-
-        uint256 totalSupply0 = collToken0.totalSupply();
-        uint256 totalSupply1 = collToken1.totalSupply();
-        uint256 totalAssets0 = collToken0.totalAssets();
-        uint256 totalAssets1 = collToken1.totalAssets();
-
-        LeftRightUnsigned supply = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(totalSupply0)).toRightSlot(uint128(totalSupply1));
-        LeftRightUnsigned assets = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(totalAssets0)).toRightSlot(uint128(totalAssets1));
-
-        int256 burnDelta0C = convertToAssets(collToken0, shareDeltasLiquidatee[0]) +
-            PanopticMath.convert1to0( convertToAssets(collToken1, shareDeltasLiquidatee[1]), TickMath.getSqrtRatioAtTick(currentTick) );
-        int256 burnDelta0 = convertToAssets(collToken0, shareDeltasLiquidatee[0]);
-        int256 burnDelta1 = convertToAssets(collToken1, shareDeltasLiquidatee[1]);
-
-        LeftRightSigned burnDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(burnDelta0)).toRightSlot(int128(burnDelta1));
-        
-        revert SimulationResults(supply, assets, burnDelta0C, burnDelta, netExchanged);
-    }
-
-    uint liqcount;
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
@@ -625,6 +614,19 @@ contract FuzzDeployments is FuzzHelpers {
         if (userPositions[liquidatee].length < 1) {
             emit LogString("No current positions");
             revert();
+        }
+
+        // Make sure the liquidator has tokens to delegate
+        { 
+            hevm.prank(liquidator);
+            fund_and_approve();
+
+            uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
+            uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
+            hevm.prank(liquidator);
+            deposit_to_ct(true, lb0);
+            hevm.prank(liquidator);
+            deposit_to_ct(false, lb1);
         }
 
         require(liquidatee != liquidator);
@@ -656,74 +658,104 @@ contract FuzzDeployments is FuzzHelpers {
             .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
             .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
 
+        // If the position is not liquidatable, liquidation call must revert
+        if(balanceCross > thresholdCross) {
+            try panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions) {
+                assertWithMsg(false, "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated");
+            } catch {
+                revert();
+            }
+        }
+
+        _calculate_margins_and_premia(liquidatee, TWAPtick);
+
+        liqResults.sharesD0 = int256(collToken0.balanceOf(liquidatee));
+        liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
+        
+        _execute_burn_simulation(liquidatee, liquidator); 
+        
+        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTick);
         {
             (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
                 liquidatee,
                 false,
                 liquidated_positions
             );
+            liqResults.premia = LeftRightSigned.wrap(0).toRightSlot(p0).toLeftSlot(p1);
             emit LogInt256("Premium in token 0", p0);
             emit LogInt256("Premium in token 1", p1);
         }
+        
+        _calculate_liquidation_bonus(TWAPtick, currentTick);
 
-        uint256 liquidatorValue0before = _get_assets_in_token0(liquidator, currentTick);
-        emit LogUint256("Liquidator value before", liquidatorValue0before);
+        burnSimResults.delegated0 = uint256(
+            int256(collToken0.convertToShares(uint256(int256(uint256(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))) + liqResults.bonus0)))
+        );
+        burnSimResults.delegated1 = uint256(
+            int256(collToken1.convertToShares(uint256(int256(uint256(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))))) + liqResults.bonus1)))
+        );
 
-
-
-        try this.simulate_burning(liquidatee) {
-
-        } catch (bytes memory results) {
-            LeftRightUnsigned totalSupply;
-            LeftRightUnsigned totalAssets;
-            int256 burnDelta0C;
-            LeftRightSigned burnDelta;
-            LeftRightSigned netExchanged;
-
-            assembly ("memory-safe") {
-                totalSupply := mload(add(results, 0x24))
-                totalAssets := mload(add(results, 0x44))
-                burnDelta0C := mload(add(results, 0x64))
-                burnDelta := mload(add(results, 0x84))
-                netExchanged := mload(add(results, 0xA4))
-            }
-            
-            emit LogUint256("a", totalSupply.leftSlot());
-            emit LogInt256("b", netExchanged.leftSlot());
-        }
-
-        emit LogUint256("numpos", panopticPool.numberOfPositions(liquidatee));
-
-        assert(false);
-
-
-        // If the position is not liquidatable, liquidation call must revert
         hevm.prank(liquidator);
-        try panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions) {
-            assertWithMsg(balanceCross < thresholdCross, "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated");
-        } catch {
-            revert();
-        }
+        panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
+
+        liqResults.sharesD0 = burnSimResults.shareDelta0 - (int256(collToken0.balanceOf(liquidatee)) - liqResults.sharesD0);
+        liqResults.sharesD1 = burnSimResults.shareDelta1 - (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
+        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
+
+
+        _calculate_bonus(TWAPtick);
+        _calculate_protocol_loss_0(currentTick);
+        _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
+        (liqResults.settledTokens0, ) = _calculate_settled_tokens(userPositions[liquidatee], currentTick);
 
         delete userPositions[liquidatee];
 
-        assertWithMsg(panopticPool.numberOfPositions(liquidatee) == 0, "Liquidation did not close all positions");
+        log_burn_simulation_results();
+        log_liquidation_results();
 
-        {
-            uint256 liquidatorValue0after = _get_assets_in_token0(liquidator, currentTick);
-            emit LogUint256("Liquidator value after", liquidatorValue0after);
-            emit LogInt256("Delta liquidator value", int256(liquidatorValue0after)-int256(liquidatorValue0before));
-        }
+        emit LogUint256("Number of positions", panopticPool.numberOfPositions(liquidatee));
+        assertWithMsg(panopticPool.numberOfPositions(liquidatee) == 0, "Liquidation did not close all positions");
+        
+
+        /*if ( (collToken0.totalSupply() - burnSimResults.totalSupply0 <= 1) && (collToken1.totalSupply() - burnSimResults.totalSupply1 <= 1)) {
+            int256 assets = convertToAssets(collToken0, liqResults.sharesD0) + PanopticMath.convert1to0( convertToAssets(collToken1, liqResults.sharesD1), TickMath.getSqrtRatioAtTick(currentTick));
+            emit LogInt256("Assets", assets);
+            emit LogInt256("Bonus combined", liqResults.bonusCombined0);
+
+            assertWithMsg(assets == liqResults.bonusCombined0, "Liquidatee was debited incorrect bonus value (funds leftover)");
+        } else {
+            int256 assets = convertToAssets(collToken0, liqResults.sharesD0) + PanopticMath.convert1to0(convertToAssets(collToken1, liqResults.sharesD1), TickMath.getSqrtRatioAtTick(currentTick));
+            emit LogInt256("Assets", assets);
+            emit LogInt256("Bonus combined", liqResults.bonusCombined0);
+
+            assertWithMsg(assets <= liqResults.bonusCombined0, "Liquidatee was debited incorrectly high bonus value (no funds leftover)" );
+        }*/
+
+        /*emit LogInt256("Delta liquidator value", int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0));
+        emit LogInt256("Bonus combined", liqResults.bonusCombined0);
+        assertWithMsg(
+            int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0) == liqResults.bonusCombined0,
+            "Liquidator did not receive correct bonus"
+        );*/
+
+        /*emit LogInt256("Delta settled tokens", int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0));
+        emit LogInt256("Expected value", Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected));
+        assertWithMsg(
+            int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0) == Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+            "Incorrect amount of premium was haircut"
+        );*/
+
+        /*emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
+        emit LogInt256("Expected value", liqResults.protocolLoss0Expected - Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected));
+        assertWithMsg(
+            liqResults.protocolLoss0Actual == liqResults.protocolLoss0Expected - Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+            "Not all premium was haircut during protocol loss"
+        );*/
+        
 
         log_account_collaterals(liquidator);
         log_account_collaterals(liquidatee);
         log_trackers_status();
-
-        
-        
-
-        assert(false);
-
 
     }
 
@@ -948,10 +980,6 @@ contract FuzzDeployments is FuzzHelpers {
     /////////////////////////////////////////////////////////////
     // Legacy functions (deactivated)
     /////////////////////////////////////////////////////////////
-
-    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
-        return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
-    }
 
     /// Adapted from test/foundry/core/PanopticPool.t.sol
     /// Because Echidna does not handle vm.deal for ERC20
