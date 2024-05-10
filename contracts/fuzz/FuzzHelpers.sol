@@ -227,7 +227,18 @@ contract PanopticPoolWrapper is PanopticPool {
 }
 
 contract FuzzHelpers is PropertiesAsserts {
-    error SimulationResults(LeftRightUnsigned, LeftRightUnsigned, LeftRightUnsigned, LeftRightSigned, int256, LeftRightSigned, LeftRightSigned, uint256, int256, bytes);
+    error SimulationResults(
+        LeftRightUnsigned,
+        LeftRightUnsigned,
+        LeftRightUnsigned,
+        LeftRightSigned,
+        int256,
+        LeftRightSigned,
+        LeftRightSigned,
+        uint256,
+        int256,
+        bytes
+    );
 
     struct BurnSimulationResults {
         uint256 delegated0;
@@ -245,7 +256,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 burnDelta1;
         LeftRightSigned netExchanged;
         uint256[2][4][32] settledTokens;
-    } 
+    }
 
     struct LiquidationResults {
         LeftRightUnsigned margin0;
@@ -294,7 +305,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256 constant MAX_DEPOSIT = 100 ether;
     uint256 constant MIN_DEPOSIT = 0.01 ether;
-    
+
     BurnSimulationResults burnSimResults;
     LiquidationResults liqResults;
 
@@ -328,11 +339,11 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
-        return ( (a >= b) ? a :  b);
+        return ((a >= b) ? a : b);
     }
 
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return ( (a <= b) ? a :  b);
+        return ((a <= b) ? a : b);
     }
 
     function deal_USDC(address to, uint256 amt, bool alter_supply) internal {
@@ -347,7 +358,6 @@ contract FuzzHelpers is PropertiesAsserts {
         // Balances in slot 0
         uint256 slot_balances = uint256(0);
         hevm.store(address(USDC), keccak256(abi.encode(address(to), slot_balances)), bytes32(bal));
-
     }
 
     function alter_WETH(address to, uint256 bal) internal {
@@ -396,12 +406,10 @@ contract FuzzHelpers is PropertiesAsserts {
         tokenData1 = collToken1.getAccountMarginDetails(to_liquidate, tick, positions, premium1);
     }
 
-
     /////////////////////////////////////////////////////////////
     // Calculation helpers
     /////////////////////////////////////////////////////////////
 
-    
     function _get_effective_liq_factor(
         uint256 legTokenType,
         int24 tickLower,
@@ -422,7 +430,6 @@ contract FuzzHelpers is PropertiesAsserts {
 
         effectiveLiquidityFactorX32 = uint64((uint256(totalLiquidity) * 2 ** 32) / netLiquidity);
     }
-    
 
     function _get_assets_in_token0(address who, int24 tick) internal view returns (uint256 assets) {
         assets =
@@ -465,7 +472,10 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function _get_list_without_tokenid(TokenId[] memory list, TokenId target) internal pure returns (TokenId[] memory out) {
+    function _get_list_without_tokenid(
+        TokenId[] memory list,
+        TokenId target
+    ) internal pure returns (TokenId[] memory out) {
         // Assumes target is in list
 
         uint256 l = list.length;
@@ -475,7 +485,7 @@ contract FuzzHelpers is PropertiesAsserts {
         for (uint i = 0; i < l; i++) {
             if (keccak256(abi.encode(list[i])) != keccak256(abi.encode(target))) {
                 out[out_idx] = list[i];
-                out_idx ++;
+                out_idx++;
             }
         }
     }
@@ -524,8 +534,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 )
         );
 
-        int256 balance0CombinedPostBurn =
-            int256(uint256(liqResults.margin0.rightSlot())) -
+        int256 balance0CombinedPostBurn = int256(uint256(liqResults.margin0.rightSlot())) -
             Math.max(liqResults.premia.rightSlot(), 0) +
             burnSimResults.burnDelta0 +
             int256(
@@ -553,7 +562,10 @@ contract FuzzHelpers is PropertiesAsserts {
         );
     }
 
-    function _calculate_settled_tokens(TokenId[] memory positions, int24 tick) internal returns (uint256, bytes memory) {
+    function _calculate_settled_tokens(
+        TokenId[] memory positions,
+        int24 tick
+    ) internal returns (uint256, bytes memory) {
         uint256 settledTokens0;
 
         uint256[2][4][32] memory settledTokens;
@@ -566,7 +578,10 @@ contract FuzzHelpers is PropertiesAsserts {
                         positions[i].tokenType(j)
                     )
                 );
-                settledTokens[i][j] = [ uint256(chunk), LeftRightUnsigned.unwrap(panopticPool.settledTokens(chunk)) ];
+                settledTokens[i][j] = [
+                    uint256(chunk),
+                    LeftRightUnsigned.unwrap(panopticPool.settledTokens(chunk))
+                ];
                 settledTokens0 += panopticPool.settledTokens(chunk).rightSlot();
                 settledTokens0 += PanopticMath.convert1to0(
                     panopticPool.settledTokens(chunk).leftSlot(),
@@ -580,17 +595,22 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function simulate_burning(address who, address liquidator) external {
         require(msg.sender == address(this));
-        
+
         uint128 delegated0 = uint128(collToken0.convertToAssets(collToken0.balanceOf(liquidator)));
         uint128 delegated1 = uint128(collToken1.convertToAssets(collToken1.balanceOf(liquidator)));
-        LeftRightUnsigned delegated = LeftRightUnsigned.wrap(0).toLeftSlot(delegated0).toRightSlot(delegated1);
+        LeftRightUnsigned delegated = LeftRightUnsigned.wrap(0).toLeftSlot(delegated0).toRightSlot(
+            delegated1
+        );
 
         hevm.prank(address(panopticPool));
         collToken0.delegate(liquidator, who, delegated0);
         hevm.prank(address(panopticPool));
         collToken1.delegate(liquidator, who, delegated1);
 
-        int256[2] memory shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)), int256(collToken1.balanceOf(who))];
+        int256[2] memory shareDeltasLiquidatee = [
+            int256(collToken0.balanceOf(who)),
+            int256(collToken1.balanceOf(who))
+        ];
 
         LeftRightSigned[4][] memory premiasByLeg;
         LeftRightSigned netExchanged;
@@ -598,9 +618,15 @@ contract FuzzHelpers is PropertiesAsserts {
         hevm.prank(who);
         (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
 
-        shareDeltasLiquidatee = [int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0], int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]];
+        shareDeltasLiquidatee = [
+            int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0],
+            int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]
+        ];
 
-        (uint256 settledTokens0, bytes memory settledTokens) = _calculate_settled_tokens(userPositions[who], currentTick);
+        (uint256 settledTokens0, bytes memory settledTokens) = _calculate_settled_tokens(
+            userPositions[who],
+            currentTick
+        );
 
         int256 longPremium0;
         for (uint256 i = 0; i < userPositions[who].length; ++i) {
@@ -609,33 +635,55 @@ contract FuzzHelpers is PropertiesAsserts {
                     ? -premiasByLeg[i][j].rightSlot()
                     : int128(0);
                 longPremium0 += PanopticMath.convert1to0(
-                    premiasByLeg[i][j].leftSlot() < 0
-                        ? -premiasByLeg[i][j].leftSlot()
-                        : int128(0),
+                    premiasByLeg[i][j].leftSlot() < 0 ? -premiasByLeg[i][j].leftSlot() : int128(0),
                     TickMath.getSqrtRatioAtTick(currentTick)
                 );
             }
         }
 
-        LeftRightUnsigned supply = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(collToken0.totalSupply())).toRightSlot(uint128(collToken1.totalSupply()));
-        LeftRightUnsigned assets = LeftRightUnsigned.wrap(0).toLeftSlot(uint128(collToken0.totalAssets())).toRightSlot(uint128(collToken1.totalAssets()));
-        LeftRightSigned shareDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(shareDeltasLiquidatee[0])).toRightSlot(int128(shareDeltasLiquidatee[1]));
+        LeftRightUnsigned supply = LeftRightUnsigned
+            .wrap(0)
+            .toLeftSlot(uint128(collToken0.totalSupply()))
+            .toRightSlot(uint128(collToken1.totalSupply()));
+        LeftRightUnsigned assets = LeftRightUnsigned
+            .wrap(0)
+            .toLeftSlot(uint128(collToken0.totalAssets()))
+            .toRightSlot(uint128(collToken1.totalAssets()));
+        LeftRightSigned shareDelta = LeftRightSigned
+            .wrap(0)
+            .toLeftSlot(int128(shareDeltasLiquidatee[0]))
+            .toRightSlot(int128(shareDeltasLiquidatee[1]));
 
         int256 burnDelta0C = convertToAssets(collToken0, shareDeltasLiquidatee[0]) +
-            PanopticMath.convert1to0( convertToAssets(collToken1, shareDeltasLiquidatee[1]), TickMath.getSqrtRatioAtTick(currentTick) );
-        LeftRightSigned burnDelta = LeftRightSigned.wrap(0).toLeftSlot(int128(convertToAssets(collToken0, shareDeltasLiquidatee[0]))).toRightSlot(int128(convertToAssets(collToken1, shareDeltasLiquidatee[1])));
-        
-        revert SimulationResults(supply, assets, delegated, shareDelta, burnDelta0C, burnDelta, netExchanged, settledTokens0, longPremium0, settledTokens);
+            PanopticMath.convert1to0(
+                convertToAssets(collToken1, shareDeltasLiquidatee[1]),
+                TickMath.getSqrtRatioAtTick(currentTick)
+            );
+        LeftRightSigned burnDelta = LeftRightSigned
+            .wrap(0)
+            .toLeftSlot(int128(convertToAssets(collToken0, shareDeltasLiquidatee[0])))
+            .toRightSlot(int128(convertToAssets(collToken1, shareDeltasLiquidatee[1])));
+
+        revert SimulationResults(
+            supply,
+            assets,
+            delegated,
+            shareDelta,
+            burnDelta0C,
+            burnDelta,
+            netExchanged,
+            settledTokens0,
+            longPremium0,
+            settledTokens
+        );
     }
 
     function _execute_burn_simulation(address liquidatee, address liquidator) internal {
-        try this.simulate_burning(liquidatee, liquidator) {
-
-        } catch (bytes memory results) {
+        try this.simulate_burning(liquidatee, liquidator) {} catch (bytes memory results) {
             bytes4 selector = bytes4(results);
             require(selector == SimulationResults.selector);
             emit LogBytes("r", results);
-            
+
             LeftRightUnsigned totalSupply;
             LeftRightUnsigned totalAssets;
             LeftRightUnsigned delegated;
@@ -645,7 +693,7 @@ contract FuzzHelpers is PropertiesAsserts {
             LeftRightSigned netExchanged;
             uint256 settledTokens0;
             int256 longPremium0;
-            
+
             assembly ("memory-safe") {
                 totalSupply := mload(add(results, 0x24))
                 totalAssets := mload(add(results, 0x44))
@@ -658,7 +706,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 longPremium0 := mload(add(results, 0x124))
                 results := mload(add(results, 0x144))
             }
-            
+
             burnSimResults.totalSupply0 = totalSupply.leftSlot();
             burnSimResults.totalSupply1 = totalSupply.rightSlot();
             burnSimResults.totalAssets0 = totalAssets.leftSlot();
@@ -678,7 +726,8 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function _calculate_margins_and_premia(address who, int24 tick) internal {
-        (int128 expectedP0, int128 expectedP1, uint256[2][] memory posBal) = panopticPool.calculateAccumulatedFeesBatch(who, false, userPositions[who]);
+        (int128 expectedP0, int128 expectedP1, uint256[2][] memory posBal) = panopticPool
+            .calculateAccumulatedFeesBatch(who, false, userPositions[who]);
 
         liqResults.margin0 = collToken0.getAccountMarginDetails(who, tick, posBal, expectedP0);
         liqResults.margin1 = collToken1.getAccountMarginDetails(who, tick, posBal, expectedP1);
@@ -729,7 +778,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
 
-        if(ts_ == 1) {
+        if (ts_ == 1) {
             minTick = int24(((_currentTick - 4096) / ts) * ts);
             maxTick = int24(((_currentTick + 4096) / ts) * ts);
         } else {
@@ -930,5 +979,4 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogInt256("    protocolLoss0Actual", liqResults.protocolLoss0Actual);
         emit LogInt256("    protocolLoss0Expected", liqResults.protocolLoss0Expected);
     }
-
 }

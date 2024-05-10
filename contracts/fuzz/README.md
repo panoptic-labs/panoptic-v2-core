@@ -27,7 +27,6 @@ Medusa is our beta smart contract fuzzer, built off of go-ethereum. Medusa's val
 
 You can find [installation instructions for Medusa here.](https://github.com/crytic/medusa)
 
-
 # Running the tests
 
 To execute the test harness using the provided Makefile, run:
