@@ -1,0 +1,32 @@
+deployContracts:
+  [
+    ["0x11b001", "FeesCalc"],
+    ["0x11b002", "InteractionHelper"],
+    ["0x11b003", "PanopticMath"],
+    ["0xde0001", "UniDeployer"],
+    ["0xde0002", "UniSwapRouterDeployer"],
+  ]
+cryticArgs:
+  ["--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)"]
+
+sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
+#testMode: assertion
+seqLen: 500
+testLimit: 2000000
+shrinkLimit: 10000
+workers: 8
+corpusDir: corpus/evaluate_minting3
+#rpcBlock: 19582800
+coverageFormats: ["html"]
+filterBlacklist: false
+filterFunctions:
+  [
+    "FuzzMint.fund_and_approve()",
+    "FuzzMint.mint_short(bool,bool,bool,uint24,int256,uint256)",
+    "FuzzMint.mint_long(bool,uint64,uint256,uint256)",
+    "FuzzMint.perform_swap(uint160)",
+    "FuzzMint.deposit_to_ct(bool,uint256)",
+  ]
+codeSize: 0xffffffff
+testMaxGas: 0xffffffff
+# format: text
