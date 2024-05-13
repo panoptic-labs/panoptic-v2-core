@@ -392,9 +392,21 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        PanopticPool pp = panopticFactory.deployNewPool(token0, token1, fee, salt);
 
-        panopticFactory.tokenURI(uint160(address(pp)));
+        console2.log(
+            '<html><style>table, th, td {  border:1px solid black;}</style><body><h2>A basic HTML table</h2><table style="width:100%">'
+        );
+        uint256 snapshot = vm.snapshot();
+        for (uint256 rarity; rarity < 25; ++rarity) {
+            console2.log("<tr>");
+            for (uint256 i; i < 16; ++i) {
+                vm.revertTo(snapshot);
+                PanopticPool pp = panopticFactory.deployNewPool(token0, token1, fee, salt);
+                panopticFactory.tokenURI(uint160(address(pp)), rarity, i);
+            }
+            console2.log("</tr>");
+        }
+        console2.log("</table></body></html>");
 
         assertTrue(false);
     }

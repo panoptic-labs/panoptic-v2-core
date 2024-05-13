@@ -37,13 +37,11 @@ library NFTBuilder {
         uint256 lastCharVal = uint160(deployedAddress) & 0xF;
         uint256 rarity = numberOfLeadingHexZeros(deployedAddress);
 
-        rarity = 18;
-        lastCharVal = 13;
         string memory symbol0 = ERC20(token0).symbol();
         string memory name0 = ERC20(token0).name();
         string memory symbol1 = ERC20(token1).symbol();
         string memory name1 = ERC20(token1).name();
-        string memory chainid = LibString.toString(block.chainid);
+        string memory chainid = Labels.getChainId(block.chainid);
 
         string memory svgOut = generateSVG(deployedAddress, rarity, lastCharVal);
 
@@ -51,7 +49,13 @@ library NFTBuilder {
         svgOut = svgOut.addRarity(rarity);
         svgOut = svgOut.addSymbol0(symbol0, rarity);
         svgOut = svgOut.addSymbol1(symbol1, rarity);
-        console2.log(string.concat("data:image/svg+xml;base64,", Base64.encode(bytes(svgOut))));
+        console2.log(
+            string.concat(
+                '<td><img src="data:image/svg+xml;base64,',
+                Base64.encode(bytes(svgOut)),
+                '" width="300px"></td>'
+            )
+        );
         return
             string(
                 abi.encodePacked(
