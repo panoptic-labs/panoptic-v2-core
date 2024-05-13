@@ -545,6 +545,53 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         return shares;
     }
 
+    /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
+    /// @dev Reverts if the account is not solvent with the given `positionIdList`.
+    /// @dev Shares are burned and assets are sent to the LP ('receiver').
+    /// @param assets Amount of assets to be withdrawn
+    /// @param receiver User to receive the assets
+    /// @param owner User to burn the shares from
+    /// @param positionIdList The list of all option positions held by `owner`
+    /// @return shares The amount of shares burned to withdraw the desired amount of assets
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner,
+        TokenId[] calldata positionIdList
+    ) external returns (uint256 shares) {
+        shares = previewWithdraw(assets);
+
+        // check/update allowance for approved withdraw
+        if (msg.sender != owner) {
+            uint256 allowed = allowance[owner][msg.sender]; // Saves gas for limited approvals.
+
+            if (allowed != type(uint256).max) allowance[owner][msg.sender] = allowed - shares;
+        }
+
+        // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
+        _burn(owner, shares);
+
+        // update tracked asset balance
+        unchecked {
+            s_poolAssets -= uint128(assets);
+        }
+
+        // reverts if account is not solvent/eligible to withdraw
+        s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
+
+        // transfer assets (underlying token funds) from the PanopticPool to the LP
+        SafeTransferLib.safeTransferFrom(
+            s_underlyingToken,
+            address(s_panopticPool),
+            receiver,
+            assets
+        );
+
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
+
+        return shares;
+    }
+
     /// @notice Returns the maximum amount of shares that can be redeemed for a given user.
     /// If the user has any open positions, the max redeemable balance is zero.
     /// @param owner The redeeming address.
