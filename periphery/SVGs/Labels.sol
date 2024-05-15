@@ -286,7 +286,7 @@ library Labels {
 
         string memory svgOut = contents.replace(
             "<!-- RARITY_NAME -->",
-            Letters.write(rarityName(rarity), maxWidth)
+            Letters.write(metadata[bytes32("rarities")][rarity].dataStr(), maxWidth)
         );
         svgOut = svgOut.replace("<!-- RARITY -->", Letters.write(LibString.toString(rarity)));
         return svgOut;
@@ -325,41 +325,5 @@ library Labels {
         }
 
         return contents.replace("<!-- LABEL -->", Letters.write(strategy(index), maxWidth));
-    }
-
-    function addAddress(
-        string memory contents,
-        string memory hexAddress
-    ) public pure returns (string memory) {
-        return contents.replace("<!-- POOLADDRESS -->", hexAddress);
-    }
-
-    function addChainId(
-        string memory contents,
-        string memory chainid
-    ) public pure returns (string memory) {
-        return contents.replace("<!-- CHAINID -->", chainid);
-    }
-
-    function getChainId(uint256 chainid) public pure returns (string memory) {
-        if (chainid == 1) {
-            return "Ethereum Mainnet";
-        } else if (chainid == 56) {
-            return "BNB Smart Chain Mainnet";
-        } else if (chainid == 42161) {
-            return "Arbitrum One";
-        } else if (chainid == 8453) {
-            return "Base";
-        } else if (chainid == 43114) {
-            return "Avalanche C-Chain";
-        } else if (chainid == 137) {
-            return "Polygon Mainnet";
-        } else if (chainid == 10) {
-            return "OP Mainnet";
-        } else if (chainid == 42220) {
-            return "Celo Mainnet";
-        } else if (chainid == 238) {
-            return "Blast Mainnet";
-        }
     }
 }

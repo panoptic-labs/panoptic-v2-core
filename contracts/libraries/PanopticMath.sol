@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -75,6 +76,19 @@ library PanopticMath {
     function numberOfLeadingHexZeros(address addr) external pure returns (uint256) {
         unchecked {
             return addr == address(0) ? 40 : 39 - Math.mostSignificantNibble(uint160(addr));
+        }
+    }
+
+    /// @notice Returns ERC20 symbol of `token`.
+    /// @param token The address of the token to get the symbol of
+    /// @return The symbol of `token` or "???" if not supported
+    function safeERC20Symbol(address token) external view returns (string memory) {
+        // not guaranteed that token supports metadata extension
+        // so we need to let call fail and return placeholder if not
+        try IERC20Metadata(token).symbol() returns (string memory symbol) {
+            return symbol;
+        } catch {
+            return "???";
         }
     }
 

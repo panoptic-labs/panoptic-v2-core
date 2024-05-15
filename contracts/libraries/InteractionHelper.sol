@@ -6,6 +6,8 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+// Libraries
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
@@ -52,21 +54,9 @@ library InteractionHelper {
         uint24 fee,
         string memory prefix
     ) external view returns (string memory) {
-        // get the underlying token symbols
-        // it's not guaranteed that they support the metadata extension
-        // so we need to let them fail and return placeholder if not
-        string memory symbol0;
-        string memory symbol1;
-        try IERC20Metadata(token0).symbol() returns (string memory _symbol) {
-            symbol0 = _symbol;
-        } catch {
-            symbol0 = "???";
-        }
-        try IERC20Metadata(token1).symbol() returns (string memory _symbol) {
-            symbol1 = _symbol;
-        } catch {
-            symbol1 = "???";
-        }
+        string memory symbol0 = PanopticMath.safeERC20Symbol(token0);
+        string memory symbol1 = PanopticMath.safeERC20Symbol(token1);
+
         unchecked {
             return
                 string.concat(
@@ -92,13 +82,7 @@ library InteractionHelper {
         address token,
         string memory prefix
     ) external view returns (string memory) {
-        // not guaranteed that token supports metadada extension
-        // so we need to let call fail and return placeholder if not
-        try IERC20Metadata(token).symbol() returns (string memory tokenSymbol) {
-            return string.concat(prefix, tokenSymbol);
-        } catch {
-            return string.concat(prefix, "???");
-        }
+        return string.concat(prefix, PanopticMath.safeERC20Symbol(token));
     }
 
     /// @notice Returns decimals of underlying token (0 if not present).

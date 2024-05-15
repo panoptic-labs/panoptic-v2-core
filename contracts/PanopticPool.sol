@@ -7,7 +7,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
-import {Multicall} from "@multicall/Multicall.sol";
+import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";

@@ -8,10 +8,9 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
-import {Multicall} from "@multicall/Multicall.sol";
+import {FactoryNFT} from "@base/FactoryNFT.sol";
 // OpenZeppelin libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {ERC721} from "solmate/tokens/ERC721.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -19,12 +18,14 @@ import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
-import {NFTBuilder} from "@periphery/NFTBuilder.sol";
+
+// Custom types
+import {Pointer} from "@types/Pointer.sol";
 
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
 /// @notice Facilitates deployment of Panoptic pools.
-contract PanopticFactory is Multicall, ERC721 {
+contract PanopticFactory is FactoryNFT {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -114,8 +115,11 @@ contract PanopticFactory is Multicall, ERC721 {
         SemiFungiblePositionManager _SFPM,
         IUniswapV3Factory _univ3Factory,
         address _poolReference,
-        address _collateralReference
-    ) ERC721("Panoptic Factory Deployer NFTs", "PANOPTIC-NFT") {
+        address _collateralReference,
+        bytes32[] memory properties,
+        uint256[][] memory indices,
+        Pointer[][] memory pointers
+    ) FactoryNFT(properties, indices, pointers) {
         WETH = _WETH9;
         SFPM = _SFPM;
         // We store the Uniswap Factory contract - later we can use this to verify uniswap pools
@@ -276,40 +280,6 @@ contract PanopticFactory is Multicall, ERC721 {
             amount0,
             amount1
         );
-    }
-
-    function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(ownerOf(tokenId) != address(0));
-        PanopticPool panopticPool = PanopticPool(address(uint160(tokenId)));
-        address token0 = address(panopticPool.univ3pool().token0());
-        address token1 = address(panopticPool.univ3pool().token1());
-        uint24 fee = panopticPool.univ3pool().fee();
-        string memory URI = NFTBuilder.constructTokenURI(
-            address(uint160(tokenId)),
-            token0,
-            token1,
-            fee
-        );
-        return URI;
-    }
-
-    function tokenURI(
-        uint256 tokenId,
-        uint256 rarity,
-        uint256 lastCharVal
-    ) public view returns (string memory) {
-        //require(ownerOf(tokenId) != address(0));
-        PanopticPool panopticPool = PanopticPool(address(uint160(tokenId)));
-        address token0 = address(panopticPool.univ3pool().token0());
-        address token1 = address(panopticPool.univ3pool().token1());
-        uint24 fee = panopticPool.univ3pool().fee();
-        string memory URI = NFTBuilder.constructTokenURI(
-            address(uint160(lastCharVal + ((2 ** 159) >> (4 * rarity)))),
-            token0,
-            token1,
-            fee
-        );
-        return URI;
     }
 
     /*//////////////////////////////////////////////////////////////

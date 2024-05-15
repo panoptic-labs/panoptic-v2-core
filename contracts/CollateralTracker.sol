@@ -5,7 +5,7 @@ pragma solidity ^0.8.18;
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
-import {Multicall} from "@multicall/Multicall.sol";
+import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
