@@ -1,4 +1,5 @@
 import data from './FactoryNFT.json'
+import { LibZip } from '../lib/solady/js/solady'
 
 let bytecodes = [""]
 let properties = []
@@ -15,16 +16,21 @@ for (const [key, value] of Object.entries(data)) {
         value.forEach((v, idx) => {
             indices[indices.length - 1].push(idx.toString())
 
-            const encoded = encodeBytes(v)
+            let encoded = ""
+            if (key == "art" || key == "frames" || key == "filters" || key == "descriptions") encoded = LibZip.flzCompress("0x"+Buffer.from(new TextEncoder().encode(v)).toString('hex')).slice(2)
+            else encoded = encodeBytes(v)
+            if (key == "rarities" && idx == 0) console.log("rarities 0", v, encoded, typeof encoded)
 
             // contract size (minus initcode) cannot exceed the Spurious Dragon limit
             if (bytecodes[bytecodes.length - 1].length + encoded.length > 24576 * 2) {
                 prependInitcode()
 
                 bytecodes.push(encoded)
+                console.log("new contract, length", "\""+key+"\"", idx, bytecodes.length - 1, bytecodes[bytecodes.length - 1].length / 2, bytecodes[bytecodes.length - 1].length)
                 pointers[indices.length - 1].push({"start": 0, "end": encoded.length / 2, "codeIndex": bytecodes.length - 1})
             } else {
                 bytecodes[bytecodes.length - 1] += encoded
+                console.log("postpending, new length: ", bytecodes.length - 1, bytecodes[bytecodes.length - 1].length / 2)
                 pointers[indices.length - 1].push({"start": bytecodes[bytecodes.length - 1].length / 2 - encoded.length / 2, "end": encoded.length / 2, "codeIndex": bytecodes.length - 1})
             }
         })
@@ -41,11 +47,14 @@ for (const [key, value] of Object.entries(data)) {
                 pointers[indices.length - 1].push([{"start": 0, "end": encoded.length / 2, "codeIndex": bytecodes.length - 1}])
             } else {
                 bytecodes[bytecodes.length - 1] += encoded
+                console.log("postpending, new length: ", bytecodes.length - 1, bytecodes[bytecodes.length - 1].length / 2)
                 pointers[indices.length - 1].push({"start": bytecodes[bytecodes.length - 1].length / 2 - encoded.length / 2, "end": encoded.length / 2, "codeIndex": bytecodes.length - 1})
             }
         }
     }
 }
+
+bytecodes.forEach((bytecode, idx) => console.log(`Item ${idx} bytecode length: ${bytecode.length / 2 - 14}`))
 
 if (bytecodes[bytecodes.length - 1].length < (24576 + 14) * 2) prependInitcode()
 
@@ -56,17 +65,11 @@ function prependInitcode() {
     bytecodes[bytecodes.length - 1] = "63" + (bytecodes[bytecodes.length - 1].length / 2).toString(16).padStart(8, '0') + "80600E6000396000F3" + bytecodes[bytecodes.length - 1]
 }
 
-// ABI-encodes the metadata as a (string/bytes/bytes1[])
-// Number types are right-padded so they can be interpreted as `uint256`
 function encodeBytes(value) {
     if (typeof value === 'string') {
-        const utf8Bytes = new TextEncoder().encode(value);
-        const lengthHex = utf8Bytes.length.toString(16).padStart(64, '0');
-        const utf8Hex = Buffer.from(utf8Bytes).toString('hex');
-        return lengthHex + utf8Hex;    
+        return Buffer.from(new TextEncoder().encode(value)).toString('hex');
     } else {
-        const numHex = value.toString(16).padStart(64, '0');
-        const lengthHex = '20'.padStart(64, '0');
-        return lengthHex + numHex;
+        return value.toString(16).padStart(64, '0');
     }
 }
+

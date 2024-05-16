@@ -37,11 +37,87 @@ contract FactoryNFT is MetadataStore, ERC721 {
         string memory symbol1 = PanopticMath.safeERC20Symbol(
             PanopticPool(panopticPool).univ3pool().token1()
         );
-
         string memory svgOut = generateSVGArt(lastCharVal, rarity);
 
         svgOut = generateSVGInfo(svgOut, panopticPool, rarity, symbol0, symbol1);
+        console2.log(
+            string.concat(
+                '<td><img src="data:image/svg+xml;base64,',
+                Base64.encode(bytes(svgOut)),
+                '" width="300px"></td>'
+            )
+        );
+        return
+            string(
+                abi.encodePacked(
+                    "data:application/json;base64,",
+                    Base64.encode(
+                        bytes(
+                            abi.encodePacked(
+                                '{"name":"',
+                                abi.encodePacked(
+                                    LibString.toHexString(uint256(uint160(panopticPool)), 20),
+                                    "-",
+                                    string.concat(
+                                        metadata[bytes32("strategies")][lastCharVal].dataStr(),
+                                        "-",
+                                        LibString.toString(rarity)
+                                    )
+                                ),
+                                '", "description":"',
+                                string.concat(
+                                    "Panoptic Pool for the ",
+                                    symbol0,
+                                    "-",
+                                    symbol1,
+                                    "-",
+                                    // @TODO: doesnt support fractional bips -- need to include in open PR for related issue
+                                    LibString.toString(
+                                        PanopticPool(panopticPool).univ3pool().fee() / 100
+                                    ),
+                                    "bps market"
+                                ),
+                                '", "attributes": [{',
+                                //'"trait_type": "Rarity", "value": "',
+                                //LibString.toString(rarity),
+                                '"trait_type": "Rarity", "value": "',
+                                string.concat(
+                                    LibString.toString(rarity),
+                                    " - ",
+                                    metadata[bytes32("rarities")][rarity].dataStr()
+                                ),
+                                '"}, {"trait_type": "Strategy", "value": "',
+                                metadata[bytes32("strategies")][lastCharVal].dataStr(),
+                                '"}, {"trait_type": "ChainId", "value": "',
+                                getChainName(),
+                                '"}]',
+                                '", "image": "',
+                                "data:image/svg+xml;base64,",
+                                Base64.encode(bytes(svgOut)),
+                                '"}'
+                            )
+                        )
+                    )
+                )
+            );
+    }
 
+    function tokenURI(
+        uint256 tokenId,
+        uint256 rarity,
+        uint256 lastCharVal
+    ) public view returns (string memory) {
+        address panopticPool = address(uint160(tokenId));
+
+        string memory symbol0 = PanopticMath.safeERC20Symbol(
+            PanopticPool(panopticPool).univ3pool().token0()
+        );
+        string memory symbol1 = PanopticMath.safeERC20Symbol(
+            PanopticPool(panopticPool).univ3pool().token1()
+        );
+        string memory svgOut = generateSVGArt(lastCharVal, rarity);
+
+        svgOut = generateSVGInfo(svgOut, panopticPool, rarity, symbol0, symbol1);
         console2.log(
             string.concat(
                 '<td><img src="data:image/svg+xml;base64,',
@@ -110,17 +186,19 @@ contract FactoryNFT is MetadataStore, ERC721 {
     ) internal view returns (string memory svgOut) {
         svgOut = metadata[bytes32("frames")][
             rarity < 18 ? rarity / 3 : rarity < 23 ? 23 - rarity : 0
-        ].dataStr();
-
+        ].decompressedDataStr();
         svgOut = svgOut.replace(
             "<!-- LABEL -->",
-            write(metadata[bytes32("strategies")][lastCharVal].dataStr(), getMaxWidth(rarity))
+            write(metadata[bytes32("strategies")][lastCharVal].dataStr(), getMaxLabelWidth(rarity))
         );
 
         svgOut = svgOut
-            .replace("<!-- TEXT -->", metadata[bytes32("descriptions")][lastCharVal].dataStr())
-            .replace("<!-- ART -->", metadata[bytes32("art")][lastCharVal].dataStr())
-            .replace("<!-- FILTER -->", metadata[bytes32("filters")][rarity].dataStr());
+            .replace(
+                "<!-- TEXT -->",
+                metadata[bytes32("descriptions")][lastCharVal].decompressedDataStr()
+            )
+            .replace("<!-- ART -->", metadata[bytes32("art")][lastCharVal].decompressedDataStr())
+            .replace("<!-- FILTER -->", metadata[bytes32("filters")][rarity].decompressedDataStr());
     }
 
     function generateSVGInfo(
@@ -136,13 +214,14 @@ contract FactoryNFT is MetadataStore, ERC721 {
 
         svgIn = svgIn.replace(
             "<!-- RARITY_NAME -->",
-            write(metadata[bytes32("rarities")][rarity].dataStr(), getMaxWidth(rarity))
+            write(metadata[bytes32("rarities")][rarity].dataStr(), getMaxRarityWidth(rarity))
         );
 
-        svgIn = svgIn
-            .replace("<!-- RARITY -->", write(LibString.toString(rarity)))
-            .replace("<!-- SYMBOL0 -->", write(symbol0, getMaxWidth(rarity)))
-            .replace("<!-- SYMBOL1 -->", write(symbol1, getMaxWidth(rarity)));
+        return
+            svgIn
+                .replace("<!-- RARITY -->", write(LibString.toString(rarity)))
+                .replace("<!-- SYMBOL0 -->", write(symbol0, getMaxSymbolWidth(rarity)))
+                .replace("<!-- SYMBOL1 -->", write(symbol1, getMaxSymbolWidth(rarity)));
     }
 
     /// @notice Get the name of the current chain.
@@ -222,7 +301,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         return d;
     }
 
-    function getMaxWidth(uint256 rarity) internal pure returns (uint256 width) {
+    function getMaxSymbolWidth(uint256 rarity) internal pure returns (uint256 width) {
         if (rarity < 3) {
             width = 1600;
         } else if (rarity < 9) {
@@ -241,6 +320,42 @@ contract FactoryNFT is MetadataStore, ERC721 {
             width = 1350;
         } else if (rarity >= 23) {
             width = 1600;
+        }
+    }
+
+    function getMaxRarityWidth(uint256 rarity) internal pure returns (uint256 width) {
+        if (rarity < 3) {
+            width = 210;
+        } else if (rarity < 6) {
+            width = 220;
+        } else if (rarity < 9) {
+            width = 210;
+        } else if (rarity < 12) {
+            width = 220;
+        } else if (rarity < 15) {
+            width = 260;
+        } else if (rarity < 19) {
+            width = 225;
+        } else if (rarity < 20) {
+            width = 260;
+        } else if (rarity < 21) {
+            width = 220;
+        } else if (rarity < 22) {
+            width = 210;
+        } else if (rarity < 23) {
+            width = 220;
+        } else if (rarity >= 23) {
+            width = 210;
+        }
+    }
+
+    function getMaxLabelWidth(uint256 rarity) internal pure returns (uint256 width) {
+        if (rarity < 6) {
+            width = 9000;
+        } else if (rarity < 22) {
+            width = 3900;
+        } else if (rarity > 22) {
+            width = 9000;
         }
     }
 }

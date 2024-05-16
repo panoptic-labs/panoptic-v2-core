@@ -25,6 +25,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -266,7 +267,16 @@ contract PanopticHelperTest is PositionUtils {
     function _deployPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        factory = new PanopticFactory(WETH, sfpm, V3FACTORY, poolReference, collateralReference);
+        factory = new PanopticFactory(
+            WETH,
+            sfpm,
+            V3FACTORY,
+            poolReference,
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
+        );
 
         factory.initialize(Deployer);
 

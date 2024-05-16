@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
 
+// Solady libraries
+import {LibZip} from "solady/utils/LibZip.sol";
+
 type Pointer is uint256;
 
 using PointerLibrary for Pointer global;
@@ -43,5 +46,9 @@ library PointerLibrary {
 
     function dataStr(Pointer self) internal view returns (string memory) {
         return string(data(self));
+    }
+
+    function decompressedDataStr(Pointer self) internal view returns (string memory) {
+        return string(LibZip.flzDecompress(data(self)));
     }
 }

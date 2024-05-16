@@ -23,6 +23,7 @@ import {Math} from "@libraries/Math.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -229,7 +230,10 @@ contract Misctest is Test, PositionUtils {
             sfpm,
             V3FACTORY,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
         factory.initialize(Deployer);
 
