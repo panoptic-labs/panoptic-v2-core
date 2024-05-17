@@ -18,7 +18,6 @@ import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
-
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
 
@@ -104,12 +103,15 @@ contract PanopticFactory is FactoryNFT {
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Set immutable variables.
+    /// @notice Set immutable variables and store metadata pointers.
     /// @param _WETH9 Address of the Wrapped Ether (or other numeraire token) contract
     /// @param _SFPM The canonical `SemiFungiblePositionManager` deployment
     /// @param _univ3Factory The canonical Uniswap V3 Factory deployment
     /// @param _poolReference The reference implementation of the `PanopticPool` to clone
     /// @param _collateralReference The reference implementation of the `CollateralTracker` to clone
+    /// @param properties An array of identifiers for different categories of metadata
+    /// @param indices A nested array of keys for K-V metadata pairs for each property in `properties`
+    /// @param pointers Contains pointers to the metadata values stored in contract data slices for each index in `indices`
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,

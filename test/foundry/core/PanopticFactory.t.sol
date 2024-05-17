@@ -477,7 +477,12 @@ contract PanopticFactoryTest is Test {
             for (uint256 i; i < 16; ++i) {
                 vm.revertTo(snapshot);
                 PanopticPool pp = panopticFactory.deployNewPool(token0, token1, fee, salt);
-                panopticFactory.tokenURI(uint160(address(pp)), rarity, i);
+                panopticFactory.constructMetadata(
+                    address(uint160((0xf << (154 - rarity * 4)) + i)),
+                    "PANOPTIC",
+                    "LABS",
+                    10000
+                );
             }
             console2.log("</tr>");
         }
