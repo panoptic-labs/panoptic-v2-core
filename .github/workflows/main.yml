@@ -10,12 +10,12 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: recursive
+      - uses: oven-sh/setup-bun@v1
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
       - name: Compile metadata
-        uses: oven-sh/setup-bun@v1
         run: |
           bun run ./metadata/compiler.js
       - name: Build
