@@ -15,6 +15,7 @@ jobs:
         with:
           version: nightly
       - name: Compile metadata
+        uses: oven-sh/setup-bun@v1
         run: |
           bun run ./metadata/compiler.js
       - name: Build
