@@ -166,7 +166,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -196,7 +196,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -250,7 +250,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -293,7 +293,7 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         uint256 tokenType
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -338,7 +338,7 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         uint256 tokenType
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -383,7 +383,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -414,7 +414,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -446,7 +446,7 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         uint256 tokenType
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         return
             tokenType == 1
                 ? getBelowRangeSW(widthSeed, strikeSeed, ts_, currentTick)

@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.18;
+
+// Interfaces
+import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {PanopticPool} from "@contracts/PanopticPool.sol";
+// Inherited implementations
+import {ERC721} from "solmate/tokens/ERC721.sol";
+import {MetadataStore} from "@base/MetadataStore.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
-
-import {ERC721} from "solmate/tokens/ERC721.sol";
+// Solady libraries
 import {LibString} from "solady/utils/LibString.sol";
 import {Base64} from "solady/utils/Base64.sol";
-
-import {MetadataStore} from "@base/MetadataStore.sol";
-
-import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 /// @title FactoryNFT: ERC721 contract for Panoptic Factory NFTs.
 /// @notice Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks.

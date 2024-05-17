@@ -466,23 +466,16 @@ contract PanopticFactoryTest is Test {
     // );
     function test_Success_getTokenURI() public {
         // No need to fuzz as we are testing for a specific condition
-        // use pool[7] -> ETH_USDT_5
         _initalizeWorldState(pools[4]);
 
-        // generate a not so random salt
-        uint96 salt = uint96(10);
-
-        // Deploy pool
-        // links the uni v3 pool to the Panoptic pool
-        console2.log(
-            '<html><style>table, th, td {  border:1px solid black;}</style><body><h2>A basic HTML table</h2><table style="width:100%">'
-        );
+        // console2.log(
+        //     '<html><style>table, th, td {  border:1px solid black;}</style><body><h2>A basic HTML table</h2><table style="width:100%">'
+        // );
         uint256 snapshot = vm.snapshot();
         for (uint256 rarity; rarity < 25; ++rarity) {
-            console2.log("<tr>");
+            // console2.log("<tr>");
             for (uint256 i; i < 16; ++i) {
                 vm.revertTo(snapshot);
-                PanopticPool pp = panopticFactory.deployNewPool(token0, token1, fee, salt);
                 panopticFactory.constructMetadata(
                     address(uint160((0xf << (154 - rarity * 4)) + i)),
                     "PANOPTIC",
@@ -490,9 +483,9 @@ contract PanopticFactoryTest is Test {
                     10000
                 );
             }
-            console2.log("</tr>");
+            // console2.log("</tr>");
         }
-        console2.log("</table></body></html>");
+        // console2.log("</table></body></html>");
     }
 
     /*//////////////////////////////////////////////////////////////

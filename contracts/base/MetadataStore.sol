@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.18;
 
+// Custom types
 import {Pointer} from "@types/Pointer.sol";
 
 /// @title MetadataStore: Cost-effective structured data storage.
