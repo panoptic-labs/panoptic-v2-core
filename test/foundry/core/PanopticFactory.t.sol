@@ -453,10 +453,17 @@ contract PanopticFactoryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    TOKEN URI
+                               TOKEN URI
     //////////////////////////////////////////////////////////////*/
 
-    // deploy a pool with token0 as WETH
+    // Logs a table with all NFT rarities and designs if the following code is inserted in the `constructMetadata` function:
+    // console2.log(
+    //     string.concat(
+    //         '<td><img src="data:image/svg+xml;base64,',
+    //         Base64.encode(bytes(svgOut)),
+    //         '" width="300px"></td>'
+    //     )
+    // );
     function test_Success_getTokenURI() public {
         // No need to fuzz as we are testing for a specific condition
         // use pool[7] -> ETH_USDT_5
@@ -467,7 +474,6 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-
         console2.log(
             '<html><style>table, th, td {  border:1px solid black;}</style><body><h2>A basic HTML table</h2><table style="width:100%">'
         );
@@ -487,8 +493,6 @@ contract PanopticFactoryTest is Test {
             console2.log("</tr>");
         }
         console2.log("</table></body></html>");
-
-        assertTrue(false);
     }
 
     /*//////////////////////////////////////////////////////////////

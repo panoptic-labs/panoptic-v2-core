@@ -11,7 +11,6 @@ import {MetadataStore} from "@base/MetadataStore.sol";
 
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import "forge-std/Test.sol";
 
 /// @title FactoryNFT: ERC721 contract for Panoptic Factory NFTs.
 /// @notice Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks.
@@ -67,13 +66,6 @@ contract FactoryNFT is MetadataStore, ERC721 {
         string memory svgOut = generateSVGArt(lastCharVal, rarity);
 
         svgOut = generateSVGInfo(svgOut, panopticPool, rarity, symbol0, symbol1);
-        console2.log(
-            string.concat(
-                '<td><img src="data:image/svg+xml;base64,',
-                Base64.encode(bytes(svgOut)),
-                '" width="300px"></td>'
-            )
-        );
         return
             string(
                 abi.encodePacked(
