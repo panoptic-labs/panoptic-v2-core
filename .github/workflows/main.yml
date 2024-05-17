@@ -14,6 +14,9 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: nightly
+      - name: Compile metadata
+        run: |
+          bun run ./metadata/compiler.js
       - name: Build
         env:
           FOUNDRY_PROFILE: ci_test

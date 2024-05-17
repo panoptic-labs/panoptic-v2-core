@@ -10,7 +10,8 @@ let indices = []
 // array of slices for each property where a slice is a starting index and size associated with a bytecode index in `bytecodes`
 let pointers = []
 
-// This script processes a 2-level deep JSON object and encodes it into a series of data contracts and pointers
+// This script "compiles" a 2-level deep JSON object, encoding it into a series of data contracts that can be deployed to the blockchain
+// It also provides a series of indices and pointers that can be used to structure and access the data in the contracts
 // The resulting structure is K_1 -> K_2 -> V where K_1 is a property name, K_2 is an index, and V is a pointer to the value in the contract
 // If the value of a top-level key is an array, the indices correspond to the array indices
 // If the second level of the JSON is an object, the indices are encoded key strings
@@ -62,8 +63,6 @@ for (const [key, value] of Object.entries(data)) {
 }
 
 // complete the last contract
-bytecodes.forEach((bytecode, idx) => console.log(`Item ${idx} bytecode length: ${bytecode.length / 2 - 14}`))
-
 if (bytecodes[bytecodes.length - 1].length < (24576 + 14) * 2) prependInitcode()
 
 Bun.write('./metadata/out/MetadataPackage.json', JSON.stringify({"bytecodes": bytecodes, "properties": properties, "indices": indices, "pointers": pointers}))
@@ -75,6 +74,7 @@ function prependInitcode() {
     bytecodes[bytecodes.length - 1] = "63" + (bytecodes[bytecodes.length - 1].length / 2).toString(16).padStart(8, '0') + "80600E6000396000F3" + bytecodes[bytecodes.length - 1]
 }
 
+// ABI-encodes strings (excluding the size) and integers
 function encodeBytes(value) {
     if (typeof value === 'string') {
         return Buffer.from(new TextEncoder().encode(value)).toString('hex');
