@@ -140,7 +140,11 @@ contract FactoryNFT is MetadataStore, ERC721 {
         svgOut = svgOut
             .replace(
                 "<!-- TEXT -->",
-                metadata[bytes32("descriptions")][lastCharVal].decompressedDataStr()
+                metadata[
+                    rarity < 7 ? bytes32("descriptions_common") : rarity < 14
+                        ? bytes32("descriptions_rare")
+                        : bytes32("descriptions_epic")
+                ][lastCharVal].decompressedDataStr()
             )
             .replace("<!-- ART -->", metadata[bytes32("art")][lastCharVal].decompressedDataStr())
             .replace("<!-- FILTER -->", metadata[bytes32("filters")][rarity].decompressedDataStr());
