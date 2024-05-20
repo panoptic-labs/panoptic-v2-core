@@ -1,6 +1,11 @@
 {
   "settings": {
-    "compressedProps": ["art", "frames", "filters", "descriptions"],
+    "compressedProps": [
+      "art",
+      "frames",
+      "filters",
+      "descriptions"
+    ],
     "maxCodeSize": 24576
   },
   "metadata": {
