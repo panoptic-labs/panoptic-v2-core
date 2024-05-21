@@ -83,8 +83,6 @@ contract UniswapMigratorTest is Test {
             collateralReference
         );
 
-        factory.initialize(Deployer);
-
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         uniswapMigrator = new UniswapMigrator(V3NFPM);
