@@ -1622,8 +1622,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 .toLeftSlot(int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)));
 
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-            s_collateralToken0.exercise(owner, 0, 0, 0, realizedPremia.rightSlot());
-            s_collateralToken1.exercise(owner, 0, 0, 0, realizedPremia.leftSlot());
+            s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
+            s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
