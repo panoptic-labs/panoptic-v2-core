@@ -157,7 +157,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// Falls back on the more conservative (less solvent) tick during times of extreme volatility (to ensure the account is always solvent)
     int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
 
-    /// @dev The maximum allowed ratio for a single chunk, defined as: totalLiquidity / netLiquidity
+    /// @dev The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
@@ -538,7 +538,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position.
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position.
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     /// @param tickLimitLow The lower tick slippagelimit.
     /// @param tickLimitHigh The upper tick slippagelimit.
@@ -605,7 +605,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Validates the current options of the user, and mints a new position.
     /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position.
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position.
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     /// @param tickLimitLow The lower tick slippagelimit.
     /// @param tickLimitHigh The upper tick slippagelimit.
@@ -732,7 +732,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Store user option data. Track fees collected for the options.
     /// @dev Computes and stores the option data for each leg.
     /// @param tokenId The id of the minted option position.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     function _addUserOption(TokenId tokenId, uint64 effectiveLiquidityLimitX32) internal {
         // Update the position list hash (hash = XOR of all keccak256(tokenId)). Remove hash by XOR'ing again
@@ -1458,7 +1458,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param leg The leg of the option position (used to check if long or short).
     /// @param tickLower The lower tick of the chunk.
     /// @param tickUpper The upper tick of the chunk.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as totalLiquidity/netLiquidity for a new position
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
     function _checkLiquiditySpread(
         TokenId tokenId,
@@ -1476,13 +1476,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         uint128 netLiquidity = accountLiquidities.rightSlot();
-        uint128 totalLiquidity = accountLiquidities.leftSlot();
+        uint128 removedLiquidity = accountLiquidities.leftSlot();
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
         if (netLiquidity == 0) return;
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
-            effectiveLiquidityFactorX32 = (uint256(totalLiquidity) * 2 ** 32) / netLiquidity;
+            effectiveLiquidityFactorX32 = (uint256(removedLiquidity) * 2 ** 32) / netLiquidity;
         }
 
         // put a limit on how much new liquidity in one transaction can be deployed into this leg
@@ -1634,8 +1634,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 .toLeftSlot(int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)));
 
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-            s_collateralToken0.exercise(owner, 0, 0, 0, realizedPremia.rightSlot());
-            s_collateralToken1.exercise(owner, 0, 0, 0, realizedPremia.leftSlot());
+            s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
+            s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
