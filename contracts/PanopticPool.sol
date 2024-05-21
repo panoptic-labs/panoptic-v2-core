@@ -341,6 +341,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    /// @notice Determines if account is eligible to withdraw or transfer collateral.
+    /// @dev Checks whether account is solvent with `BP_DECREASE_BUFFER` according to `_validateSolvency`.
+    /// @dev Prevents insolvent and near-insolvent accounts from withdrawing collateral before they are liquidated.
+    /// @dev Reverts if account is not solvent with `BP_DECREASE_BUFFER`.
+    /// @param user The account to check for collateral withdrawal eligibility
+    /// @param positionIdList The list of all option positions held by `user`
+    function validateCollateralWithdrawable(
+        address user,
+        TokenId[] calldata positionIdList
+    ) external view {
+        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
+    }
+
     /// @notice Returns the total number of contracts owned by user for a specified position.
     /// @param user Address of the account to be checked.
     /// @param tokenId TokenId of the option position to be checked.
@@ -395,26 +408,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // Return the premia as (token0, token1)
         return (premia.rightSlot(), premia.leftSlot(), balances);
-    }
-
-    /// @notice Compute the total value of the portfolio defined by the positionIdList at the given tick.
-    /// @dev The return values do not include the value of the accumulated fees.
-    /// @dev value0 and value1 are related to one another according to: value1 = value0 * price(atTick).
-    /// @param user Address of the user that owns the positions.
-    /// @param atTick Tick at which the portfolio value is evaluated.
-    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...].
-    /// @return value0 Portfolio value in terms of token0 (negative = loss, when compared with starting value).
-    /// @return value1 Portfolio value in terms of token1 (negative = loss, when compared to starting value).
-    function calculatePortfolioValue(
-        address user,
-        int24 atTick,
-        TokenId[] calldata positionIdList
-    ) external view returns (int256 value0, int256 value1) {
-        (value0, value1) = FeesCalc.getPortfolioValue(
-            atTick,
-            s_positionBalance[user],
-            positionIdList
-        );
     }
 
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.

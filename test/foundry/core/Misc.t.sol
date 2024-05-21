@@ -1455,6 +1455,169 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function test_Success_validateCollateralWithdrawable() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        editCollateral(ct0, Bob, ct0.convertToShares(266263));
+        editCollateral(ct1, Bob, 0);
+
+        pp.validateCollateralWithdrawable(Bob, $posIdList);
+    }
+
+    function test_Success_WithdrawWithOpenPositions() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
+        editCollateral(ct1, Bob, 0);
+
+        ct0.withdraw(1_000_000 - 266263, Bob, Bob, $posIdList);
+    }
+
+    function test_Fail_validateCollateralWithdrawable() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        editCollateral(ct0, Bob, ct0.convertToShares(266262));
+        editCollateral(ct1, Bob, 0);
+
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        pp.validateCollateralWithdrawable(Bob, $posIdList);
+    }
+
+    function test_Fail_WithdrawWithOpenPositions_NotEnoughCollateral() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
+        editCollateral(ct1, Bob, 0);
+
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
+    }
+
+    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_NotEnoughCollateral() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
+        editCollateral(ct1, Bob, 0);
+
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
+    }
+
     function test_success_PremiumRollover() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
