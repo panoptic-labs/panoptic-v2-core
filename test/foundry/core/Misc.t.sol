@@ -900,13 +900,13 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0,
+            assetsBefore0 - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
             33_342,
             "Incorrect Buyer 1 1st Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1,
+            assetsBefore1 - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
             33_343_452,
             "Incorrect Buyer 1 1st Collect 1"
         );
@@ -964,37 +964,37 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
+            assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
             333,
             "Incorrect Buyer 1 2nd Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1Arr[0],
+            assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
             3_333,
             "Incorrect Buyer 1 2nd Collect 1"
         );
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[1])) - assetsBefore0Arr[1],
+            assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
             333,
             "Incorrect Buyer 2 2nd Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[1])) - assetsBefore1Arr[1],
+            assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
             3_333,
             "Incorrect Buyer 2 2nd Collect 1"
         );
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[2])) - assetsBefore0Arr[2],
+            assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
             333,
             "Incorrect Buyer 3 2nd Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[2])) - assetsBefore1Arr[2],
+            assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
             3_333,
             "Incorrect Buyer 3 2nd Collect 1"
         );
@@ -1033,37 +1033,37 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
+            assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
             0,
             "Incorrect Buyer 1 3rd Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1Arr[0],
+            assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
             0,
             "Incorrect Buyer 1 3rd Collect 1"
         );
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[1])) - assetsBefore0Arr[1],
+            assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
             0,
             "Incorrect Buyer 2 3rd Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[1])) - assetsBefore1Arr[1],
+            assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
             0,
             "Incorrect Buyer 2 3rd Collect 1"
         );
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[2])) - assetsBefore0Arr[2],
+            assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
             0,
             "Incorrect Buyer 3 3rd Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[2])) - assetsBefore1Arr[2],
+            assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
             0,
             "Incorrect Buyer 3 3rd Collect 1"
         );
@@ -1085,37 +1085,37 @@ contract Misctest is Test, PositionUtils {
         }
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[0])) - assetsBefore0Arr[0],
+            assetsBefore0Arr[0] - ct0.convertToAssets(ct0.balanceOf(Buyers[0])),
             0,
             "Incorrect Buyer 1 4th Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[0])) - assetsBefore1Arr[0],
+            assetsBefore1Arr[0] - ct1.convertToAssets(ct1.balanceOf(Buyers[0])),
             0,
             "Incorrect Buyer 1 4th Collect 1"
         );
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[1])) - assetsBefore0Arr[1],
+            assetsBefore0Arr[1] - ct0.convertToAssets(ct0.balanceOf(Buyers[1])),
             33_342,
             "Incorrect Buyer 2 4th Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[1])) - assetsBefore1Arr[1],
+            assetsBefore1Arr[1] - ct1.convertToAssets(ct1.balanceOf(Buyers[1])),
             33_343_452,
             "Incorrect Buyer 2 4th Collect 1"
         );
 
         assertEq(
-            ct0.convertToAssets(ct0.balanceOf(Buyers[2])) - assetsBefore0Arr[2],
+            assetsBefore0Arr[2] - ct0.convertToAssets(ct0.balanceOf(Buyers[2])),
             33_342,
             "Incorrect Buyer 3 4th Collect 0"
         );
 
         assertEq(
-            ct1.convertToAssets(ct1.balanceOf(Buyers[2])) - assetsBefore1Arr[2],
+            assetsBefore1Arr[2] - ct1.convertToAssets(ct1.balanceOf(Buyers[2])),
             33_343_452,
             "Incorrect Buyer 3 4th Collect 1"
         );
