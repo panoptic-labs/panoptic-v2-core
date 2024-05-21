@@ -237,7 +237,7 @@ library PanopticMath {
     /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages.
     /// @param univ3pool The Uniswap pool from which to compute the TWAP.
     /// @param twapWindow The time window to compute the TWAP over.
-    /// @return twapTick The final calculated TWAP tick.
+    /// @return The final calculated TWAP tick.
     function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
@@ -450,36 +450,6 @@ library PanopticMath {
     ) internal pure returns (uint256, uint256) {
         return
             convertCollateralData(tokenData0, tokenData1, tokenType, Math.getSqrtRatioAtTick(tick));
-    }
-
-    /// @notice Compute the notional amount given an incoming total number of `contracts` deployed between `tickLower` and `tickUpper`.
-    /// @dev The notional value of an option is the value of the crypto assets that are controlled (rather than the cost of the transaction).
-    /// @dev Example: Notional value in an option refers to the value that the option controls.
-    /// @dev For example, token ABC is trading for $20 with a particular ABC call option costing $1.50.
-    /// @dev One option controls 100 underlying tokens. A trader purchases the option for $1.50 x 100 = $150.
-    /// @dev The notional value of the option is $20 x 100 = $2,000 --> (underlying price) * (contract/position size).
-    /// @dev Thus, `contracts` refer to "100" in this example. The $20 is the strike price. We get the strike price from `tickLower` and `tickUpper`.
-    /// @dev From TradFi: [https://www.investopedia.com/terms/n/notionalvalue.asp](https://www.investopedia.com/terms/n/notionalvalue.asp).
-    /// @param contractSize The total number of contracts (position size) between `tickLower` and `tickUpper
-    /// @param tickLower The lower price tick of the position. The strike price can be recovered from this + `tickUpper`
-    /// @param tickUpper The upper price tick of the position. The strike price can be recovered from this + `tickLower`
-    /// @param asset The asset for that leg (token0=0, token1=1)
-    /// @return The notional value of the option position
-    function convertNotional(
-        uint128 contractSize,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 asset
-    ) internal pure returns (uint128) {
-        unchecked {
-            uint256 notional = asset == 0
-                ? convert0to1(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2))
-                : convert1to0(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2));
-
-            if (notional == 0 || notional > type(uint128).max) revert Errors.InvalidNotionalValue();
-
-            return uint128(notional);
-        }
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.

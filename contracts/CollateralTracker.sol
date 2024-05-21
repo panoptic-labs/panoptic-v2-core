@@ -423,7 +423,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return maxShares The maximum amount of shares that can be minted.
     function maxMint(address) external view returns (uint256 maxShares) {
         unchecked {
-            return (convertToShares(type(uint104).max) * DECIMALS) / (DECIMALS + COMMISSION_FEE);
+            return (convertToShares(type(uint104).max) * (DECIMALS - COMMISSION_FEE)) / DECIMALS;
         }
     }
 

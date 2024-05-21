@@ -2,6 +2,7 @@
 pragma solidity ^0.8.18;
 
 // Interfaces
+import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Libraries
@@ -70,6 +71,72 @@ contract PanopticHelper {
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
         return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          ORACLE CALCULATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
+    /// @dev Used when we need a manipulation-resistant TWAP price.
+    /// @dev Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
+    /// @dev The maximum frequency of observations is 1 per block, but there is no guarantee that the pool will be observed at every block.
+    /// @dev Each period has a minimum length of blocktime * period, but may be longer if the Uniswap pool is relatively inactive.
+    /// @dev The final price used in the array (of length `cardinality`) is the average of all observations comprising `period` (which is itself a number of observations).
+    /// @dev Thus, the minimum total time window is `cardinality` * `period` * `blocktime`.
+    /// @param univ3pool The Uniswap pool to get the median observation from
+    /// @param cardinality The number of `periods` to in the median price array, should be odd.
+    /// @param period The number of observations to average to compute one entry in the median price array
+    /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
+    function computeMedianObservedPrice(
+        IUniswapV3Pool univ3pool,
+        uint256 cardinality,
+        uint256 period
+    ) external view returns (int24) {
+        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
+
+        return
+            PanopticMath.computeMedianObservedPrice(
+                univ3pool,
+                observationIndex,
+                observationCardinality,
+                cardinality,
+                period
+            );
+    }
+
+    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
+    /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
+    /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
+    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
+    /// @param univ3pool The Uniswap pool to retrieve observations from
+    /// @return The median of the provided 8-slot queue of ticks in `medianData`
+    /// @return The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
+    function computeInternalMedian(
+        uint256 period,
+        uint256 medianData,
+        IUniswapV3Pool univ3pool
+    ) external view returns (int24, uint256) {
+        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
+
+        return
+            PanopticMath.computeInternalMedian(
+                observationIndex,
+                observationCardinality,
+                period,
+                medianData,
+                univ3pool
+            );
+    }
+
+    /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
+    /// @dev Note that our definition of TWAP differs from a typical mean of prices over a time window.
+    /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages.
+    /// @param univ3pool The Uniswap pool from which to compute the TWAP.
+    /// @param twapWindow The time window to compute the TWAP over.
+    /// @return The final calculated TWAP tick.
+    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
+        return PanopticMath.twapFilter(univ3pool, twapWindow);
     }
 
     /// @notice Returns the net assets (balance - maintenance margin) of a given account on a given pool.
