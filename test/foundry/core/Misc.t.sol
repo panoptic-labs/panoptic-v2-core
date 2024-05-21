@@ -484,6 +484,50 @@ contract Misctest is Test, PositionUtils {
         assertEq(ct0.previewMint(ct0.maxMint(Alice)), type(uint104).max);
     }
 
+    function test_fail_buyAllLiquidity() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Alice);
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(stdError.divisionError);
+        pp.mintOptions($tempIdList, 1_000_000, 0, 0, 0);
+    }
+
     // position length in hash should fail instead of overflowing its slot during construction
     function test_fail_validate_longpositionlist() public {
         swapperc = new SwapperC();
