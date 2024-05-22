@@ -596,6 +596,105 @@ contract Misctest is Test, PositionUtils {
         }
     }
 
+    // total owed/grossPremiumLast should not change when positions with 0 premia are minted/burnt
+    function test_settledtracking_premia0() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        $tempIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        assetsBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        vm.startPrank(Alice);
+        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+
+        vm.startPrank(Bob);
+        pp.mintOptions($posIdList, 1_000_000_000, 0, 0, 0);
+
+        pp.mintOptions($tempIdList, 900_000_000, type(uint64).max, 0, 0);
+
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
+
+        accruePoolFeesInRange(
+            address(uniPool),
+            uniPool.liquidity() - 1,
+            1_000_000_000_000_000_000_000,
+            1_000_000_000_000
+        );
+        swapperc.swapTo(uniPool, 2 ** 96);
+
+        uint256 snap = vm.snapshot();
+        vm.startPrank(Charlie);
+
+        for (uint256 i = 0; i < 10; i++) {
+            pp.mintOptions($posIdList, 250_000_000, type(uint64).max, 0, 0);
+
+            pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+        }
+
+        vm.startPrank(Alice);
+        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+
+        uint256 delta0 = ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0;
+        uint256 delta1 = ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1;
+        vm.revertTo(snap);
+
+        vm.startPrank(Alice);
+        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+
+        // there is a small amount of error in token0 -- this is the commissions from Charlie
+        assertApproxEqAbs(
+            delta0,
+            ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
+            3_000_000
+        );
+        assertEq(delta1, ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1);
+    }
+
     // these tests are PoCs for rounding issues in the premium distribution
     // to demonstrate the issue log the settled, gross, and owed premia at burn
     function test_settledPremiumDistribution_demoInflatedGross() public {
