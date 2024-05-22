@@ -851,9 +851,9 @@ library PanopticMath {
 
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
-                                tokenId.strike(0),
-                                tokenId.width(0),
-                                tokenId.tokenType(0)
+                                tokenId.strike(leg),
+                                tokenId.width(leg),
+                                tokenId.tokenType(leg)
                             )
                         );
 
