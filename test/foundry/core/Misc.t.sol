@@ -481,6 +481,40 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
     }
 
+    function test_success_ITMspreadfee_0_01bp() public {
+        CollateralTracker(collateralReference).startToken(
+            true,
+            address(token0),
+            address(token1),
+            1,
+            pp
+        );
+
+        vm.startPrank(Bob);
+        token0.mint(Bob, type(uint104).max);
+        token0.approve(collateralReference, type(uint104).max);
+        CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
+
+        vm.startPrank(Alice);
+        token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
+        token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
+        CollateralTracker(collateralReference).deposit(
+            (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
+            Alice
+        );
+
+        vm.startPrank(address(pp));
+        CollateralTracker(collateralReference).takeCommissionAddData(Alice, 0, 0, 1_000_000_000);
+        assertEq(
+            1_000_000_000_000_000 -
+                1 -
+                CollateralTracker(collateralReference).convertToAssets(
+                    CollateralTracker(collateralReference).balanceOf(Alice)
+                ),
+            1_000_000_000 + 2000
+        );
+    }
+
     function test_parity_maxmint_previewmint() public {
         assertEq(ct0.previewMint(ct0.maxMint(Alice)), type(uint104).max);
     }

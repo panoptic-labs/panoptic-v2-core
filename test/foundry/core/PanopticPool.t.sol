@@ -1549,12 +1549,12 @@ contract PanopticPoolTest is PositionUtils {
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(8))),
-            bytes32(uint256((2 * uint256(fee)) / 100 + (uint256(fee / 100) << 128)))
+            bytes32(uint256((2 * uint256(fee)) + (uint256(fee) << 128)))
         ); // ITMSpreadFee + poolFee
 
         assertEq(
             vm.load(address(ct1), bytes32(uint256(8))),
-            bytes32(uint256((2 * uint256(fee)) / 100 + (uint256(fee / 100) << 128)))
+            bytes32(uint256((2 * uint256(fee)) + (uint256(fee) << 128)))
         ); // ITMSpreadFee + poolFee
 
         assertEq(vm.load(address(ct0), bytes32(uint256(9))), bytes32(uint256(0))); // 0
