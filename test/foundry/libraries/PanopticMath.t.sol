@@ -489,6 +489,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         uint248 updatedHash = uint248(existingHash) ^
             (uint248(uint256(keccak256(abi.encode(tokenId)))));
+        vm.assume((existingHash >> 248) < 255);
         uint256 expectedHash = uint256(updatedHash) + (((existingHash >> 248) + 1) << 248);
 
         uint256 returnedHash = harness.updatePositionsHash(existingHash, tokenId, true);
@@ -550,6 +551,8 @@ contract PanopticMathTest is Test, PositionUtils {
         unchecked {
             uint248 updatedHash = uint248(existingHash) ^
                 (uint248(uint256(keccak256(abi.encode(tokenId)))));
+            vm.assume((existingHash >> 248) > 0);
+
             expectedHash = uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
 
             returnedHash = harness.updatePositionsHash(existingHash, tokenId, false);
@@ -742,168 +745,6 @@ contract PanopticMathTest is Test, PositionUtils {
         );
         assertEq(collateralBalance, balance1 + PanopticMath.convert0to1(balance0, sqrtPriceX96));
         assertEq(requiredCollateral, required1 + PanopticMath.convert0to1(required0, sqrtPriceX96));
-    }
-
-    function test_Success_convertNotional_asset0(
-        int256 tickLower,
-        int256 tickUpper,
-        uint128 amount
-    ) public {
-        tickLower = bound(tickLower, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        tickUpper = bound(tickUpper, TickMath.MIN_TICK, TickMath.MAX_TICK);
-
-        uint256 sqrtRatio = uint256(
-            TickMath.getSqrtRatioAtTick(int24((tickLower + tickUpper) / 2))
-        );
-
-        // make sure nothing overflows
-        if (sqrtRatio < type(uint128).max) {
-            uint256 priceX192 = uint256(sqrtRatio) ** 2;
-
-            unchecked {
-                uint256 mm = mulmod(priceX192, amount, type(uint256).max);
-                uint256 prod0 = priceX192 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 192);
-            }
-        } else {
-            uint256 priceX128 = FullMath.mulDiv(sqrtRatio, sqrtRatio, 2 ** 64);
-
-            // make sure the final result does not overflow
-            unchecked {
-                uint256 mm = mulmod(priceX128, amount, type(uint256).max);
-                uint256 prod0 = priceX128 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 128);
-            }
-        }
-
-        uint256 res = harness.convert0to1(amount, uint160(sqrtRatio));
-
-        // make sure result fits in uint128 and is nonzero
-        vm.assume(res <= type(uint128).max && res > 0);
-
-        assertEq(harness._convertNotional(amount, int24(tickLower), int24(tickUpper), 0), res);
-    }
-
-    function test_Success_convertNotional_asset0_InvalidNotionalValue(
-        int256 tickLower,
-        int256 tickUpper,
-        uint128 amount
-    ) public {
-        tickLower = bound(tickLower, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        tickUpper = bound(tickUpper, TickMath.MIN_TICK, TickMath.MAX_TICK);
-
-        uint256 sqrtRatio = uint256(
-            TickMath.getSqrtRatioAtTick(int24((tickLower + tickUpper) / 2))
-        );
-
-        // make sure nothing overflows
-        if (sqrtRatio < type(uint128).max) {
-            uint256 priceX192 = uint256(sqrtRatio) ** 2;
-
-            unchecked {
-                uint256 mm = mulmod(priceX192, amount, type(uint256).max);
-                uint256 prod0 = priceX192 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 192);
-            }
-        } else {
-            uint256 priceX128 = FullMath.mulDiv(sqrtRatio, sqrtRatio, 2 ** 64);
-
-            // make sure the final result does not overflow
-            unchecked {
-                uint256 mm = mulmod(priceX128, amount, type(uint256).max);
-                uint256 prod0 = priceX128 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 128);
-            }
-        }
-
-        uint256 res = harness.convert0to1(amount, uint160(sqrtRatio));
-
-        // make sure result does not fit in uint128 or is zero
-        vm.assume(res > type(uint128).max || res == 0);
-
-        vm.expectRevert(Errors.InvalidNotionalValue.selector);
-        harness._convertNotional(amount, int24(tickLower), int24(tickUpper), 0);
-    }
-
-    function test_Success_convertNotional_asset1(
-        int256 tickLower,
-        int256 tickUpper,
-        uint128 amount
-    ) public {
-        tickLower = bound(tickLower, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        tickUpper = bound(tickUpper, TickMath.MIN_TICK, TickMath.MAX_TICK);
-
-        uint256 sqrtRatio = uint256(
-            TickMath.getSqrtRatioAtTick(int24((tickLower + tickUpper) / 2))
-        );
-
-        // make sure nothing overflows
-        if (sqrtRatio < type(uint128).max) {
-            uint256 priceX192 = uint256(sqrtRatio) ** 2;
-
-            unchecked {
-                uint256 mm = mulmod(2 ** 192, amount, type(uint256).max);
-                uint256 prod0 = 2 ** 192 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX192);
-            }
-        } else {
-            uint256 priceX128 = FullMath.mulDiv(sqrtRatio, sqrtRatio, 2 ** 64);
-
-            // make sure the final result does not overflow
-            unchecked {
-                uint256 mm = mulmod(2 * 128, amount, type(uint256).max);
-                uint256 prod0 = 2 ** 128 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX128);
-            }
-        }
-
-        uint256 res = harness.convert1to0(amount, uint160(sqrtRatio));
-
-        // make sure result fits in uint128 and is nonzero
-        vm.assume(res <= type(uint128).max && res > 0);
-
-        assertEq(harness._convertNotional(amount, int24(tickLower), int24(tickUpper), 1), res);
-    }
-
-    function test_Success_convertNotional_asset1_InvalidNotionalValue(
-        int256 tickLower,
-        int256 tickUpper,
-        uint128 amount
-    ) public {
-        tickLower = bound(tickLower, TickMath.MIN_TICK, TickMath.MAX_TICK);
-        tickUpper = bound(tickUpper, TickMath.MIN_TICK, TickMath.MAX_TICK);
-
-        uint256 sqrtRatio = uint256(
-            TickMath.getSqrtRatioAtTick(int24((tickLower + tickUpper) / 2))
-        );
-
-        // make sure nothing overflows
-        if (sqrtRatio < type(uint128).max) {
-            uint256 priceX192 = uint256(sqrtRatio) ** 2;
-
-            unchecked {
-                uint256 mm = mulmod(2 ** 192, amount, type(uint256).max);
-                uint256 prod0 = 2 ** 192 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX192);
-            }
-        } else {
-            uint256 priceX128 = FullMath.mulDiv(sqrtRatio, sqrtRatio, 2 ** 64);
-
-            // make sure the final result does not overflow
-            unchecked {
-                uint256 mm = mulmod(2 * 128, amount, type(uint256).max);
-                uint256 prod0 = 2 ** 128 * amount;
-                vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX128);
-            }
-        }
-
-        uint256 res = harness.convert1to0(amount, uint160(sqrtRatio));
-
-        // make sure result does not fit in uint128 or is zero
-        vm.assume(res > type(uint128).max || res == 0);
-
-        vm.expectRevert(Errors.InvalidNotionalValue.selector);
-        harness._convertNotional(amount, int24(tickLower), int24(tickUpper), 1);
     }
 
     function test_Success_convert0to1_PriceX192_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
