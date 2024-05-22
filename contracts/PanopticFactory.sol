@@ -28,11 +28,6 @@ contract PanopticFactory is Multicall {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Emitted when the ownership of the factory is transferred.
-    /// @param oldOwner The previous owner of the factory
-    /// @param newOwner The new owner of the factory
-    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
-
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
     /// @param uniswapPool Address of the underlying Uniswap V3 pool
@@ -92,12 +87,6 @@ contract PanopticFactory is Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The owner of the Panoptic Factory
-    address internal s_owner;
-
-    /// @notice Whether this contract's state has been initialized
-    bool internal s_initialized;
-
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools
     mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
 
@@ -127,37 +116,6 @@ contract PanopticFactory is Multicall {
         UNIV3_FACTORY = _univ3Factory;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
-    }
-
-    /// @notice Initialize state.
-    /// @param _owner The first owner of `PanopticFactory`
-    function initialize(address _owner) public {
-        if (!s_initialized) {
-            s_owner = _owner;
-            s_initialized = true;
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                             ACCESS CONTROL
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Set the owner of the Panoptic Factory.
-    /// @param newOwner The new owner of the Panoptic Factory
-    function transferOwnership(address newOwner) external {
-        address currentOwner = s_owner;
-
-        if (msg.sender != currentOwner) revert Errors.NotOwner();
-
-        s_owner = newOwner;
-
-        emit OwnershipTransferred(currentOwner, newOwner);
-    }
-
-    /// @notice Get the address of the owner of this Panoptic Factory.
-    /// @return The address which owns this Panoptic Factory
-    function owner() external view returns (address) {
-        return s_owner;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -218,10 +176,6 @@ contract PanopticFactory is Multicall {
 
         // frontrunning protection for mined pool addresses
         if (address(bytes20(salt)) != msg.sender) revert Errors.InvalidSalt();
-
-        // restrict pool deployment to owner if contract has not been made permissionless
-        address _owner = s_owner;
-        if (_owner != address(0) && _owner != msg.sender) revert Errors.NotOwner();
 
         IUniswapV3Pool v3Pool = IUniswapV3Pool(UNIV3_FACTORY.getPool(token0, token1, fee));
         if (address(v3Pool) == address(0)) revert Errors.UniswapPoolNotInitialized();

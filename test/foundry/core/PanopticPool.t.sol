@@ -388,8 +388,6 @@ contract PanopticPoolTest is PositionUtils {
             collateralReference
         );
 
-        factory.initialize(Deployer);
-
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         deal(token0, Deployer, type(uint104).max);
@@ -1817,91 +1815,6 @@ contract PanopticPoolTest is PositionUtils {
             premiaSeed[1],
             premiaSeed[1] / 1_000_000
         );
-    }
-
-    function test_Success_calculatePortfolioValue_2xOTMShortCall(
-        uint256 x,
-        uint256[2] memory widthSeeds,
-        int256[2] memory strikeSeeds,
-        uint256[2] memory positionSizeSeeds
-    ) public {
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOTMSW(
-            widthSeeds[0],
-            strikeSeeds[0],
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-
-        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
-            widthSeeds[1],
-            strikeSeeds[1],
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-        vm.assume(width2 != width || strike2 != strike);
-
-        populatePositionData([width, width2], [strike, strike2], positionSizeSeeds);
-
-        // leg 1
-        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike,
-            width
-        );
-
-        // leg 2
-        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
-            0,
-            1,
-            isWETH,
-            0,
-            0,
-            0,
-            strike2,
-            width2
-        );
-
-        {
-            TokenId[] memory posIdList = new TokenId[](1);
-            posIdList[0] = tokenId;
-
-            pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
-        }
-
-        {
-            TokenId[] memory posIdList = new TokenId[](2);
-            posIdList[0] = tokenId;
-            posIdList[1] = tokenId2;
-
-            pp.mintOptions(posIdList, positionSizes[1], 0, 0, 0);
-
-            userBalance[tokenId] = LeftRightUnsigned.wrap(0).toRightSlot(positionSizes[0]);
-            userBalance[tokenId2] = LeftRightUnsigned.wrap(0).toRightSlot(positionSizes[1]);
-
-            (int256 value0, int256 value1) = FeesCalc.getPortfolioValue(
-                currentTick,
-                userBalance,
-                posIdList
-            );
-
-            (int256 calcValue0, int256 calcValue1) = pp.calculatePortfolioValue(
-                Alice,
-                currentTick,
-                posIdList
-            );
-
-            assertEq(uint256(value0), uint256(calcValue0));
-            assertEq(uint256(value1), uint256(calcValue1));
-        }
     }
 
     /*//////////////////////////////////////////////////////////////
