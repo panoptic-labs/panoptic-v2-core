@@ -48,7 +48,6 @@ contract DeployProtocol is Script {
             collateralReference
         );
 
-        factory.initialize(vm.addr(DEPLOYER_PRIVATE_KEY));
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         vm.stopBroadcast();

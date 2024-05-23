@@ -83,8 +83,6 @@ contract UniswapMigratorTest is Test {
             collateralReference
         );
 
-        factory.initialize(Deployer);
-
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         uniswapMigrator = new UniswapMigrator(V3NFPM);
@@ -100,7 +98,9 @@ contract UniswapMigratorTest is Test {
                     address(USDC),
                     address(WETH),
                     500,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    bytes32(uint256(uint160(Deployer)) << 96),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );

@@ -280,8 +280,6 @@ contract PanopticHelperTest is PositionUtils {
             collateralReference
         );
 
-        factory.initialize(Deployer);
-
         DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         deal(token0, Deployer, type(uint104).max);
@@ -295,7 +293,9 @@ contract PanopticHelperTest is PositionUtils {
                     token0,
                     token1,
                     fee,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    bytes32(uint256(uint160(Deployer)) << 96),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );

@@ -28,11 +28,6 @@ contract PanopticFactory is Multicall {
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Emitted when the ownership of the factory is transferred.
-    /// @param oldOwner The previous owner of the factory
-    /// @param newOwner The new owner of the factory
-    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
-
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
     /// @param uniswapPool Address of the underlying Uniswap V3 pool
@@ -92,12 +87,6 @@ contract PanopticFactory is Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The owner of the Panoptic Factory
-    address internal s_owner;
-
-    /// @notice Whether this contract's state has been initialized
-    bool internal s_initialized;
-
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools
     mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
 
@@ -127,37 +116,6 @@ contract PanopticFactory is Multicall {
         UNIV3_FACTORY = _univ3Factory;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
-    }
-
-    /// @notice Initialize state.
-    /// @param _owner The first owner of `PanopticFactory`
-    function initialize(address _owner) public {
-        if (!s_initialized) {
-            s_owner = _owner;
-            s_initialized = true;
-        }
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                             ACCESS CONTROL
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Set the owner of the Panoptic Factory.
-    /// @param newOwner The new owner of the Panoptic Factory
-    function transferOwnership(address newOwner) external {
-        address currentOwner = s_owner;
-
-        if (msg.sender != currentOwner) revert Errors.NotOwner();
-
-        s_owner = newOwner;
-
-        emit OwnershipTransferred(currentOwner, newOwner);
-    }
-
-    /// @notice Get the address of the owner of this Panoptic Factory.
-    /// @return The address which owns this Panoptic Factory
-    function owner() external view returns (address) {
-        return s_owner;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -206,22 +164,22 @@ contract PanopticFactory is Multicall {
     /// @param token1 Address of token1 for the underlying Uniswap v3 pool
     /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
     /// @param salt User-defined salt used in CREATE2 for the PanopticPool (must contain caller addr as first 20 bytes)
+    /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment, which serves as a slippage check
+    /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment, which serves as a slippage check
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         address token0,
         address token1,
         uint24 fee,
-        bytes32 salt
+        bytes32 salt,
+        uint256 amount0Max,
+        uint256 amount1Max
     ) external returns (PanopticPool newPoolContract) {
         // sort the tokens, if necessary:
         (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
 
         // frontrunning protection for mined pool addresses
         if (address(bytes20(salt)) != msg.sender) revert Errors.InvalidSalt();
-
-        // restrict pool deployment to owner if contract has not been made permissionless
-        address _owner = s_owner;
-        if (_owner != address(0) && _owner != msg.sender) revert Errors.NotOwner();
 
         IUniswapV3Pool v3Pool = IUniswapV3Pool(UNIV3_FACTORY.getPool(token0, token1, fee));
         if (address(v3Pool) == address(0)) revert Errors.UniswapPoolNotInitialized();
@@ -257,13 +215,15 @@ contract PanopticFactory is Multicall {
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
         v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
+        // Issue reward NFT to donor
+        DONOR_NFT.issueNFT(msg.sender, newPoolContract, token0, token1, fee);
+
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
         // The SFPM will `safeTransferFrom` tokens from the donor during the mint callback
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
-        // Issue reward NFT to donor
-        DONOR_NFT.issueNFT(msg.sender, newPoolContract, token0, token1, fee);
+        if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();
 
         emit PoolDeployed(
             newPoolContract,
