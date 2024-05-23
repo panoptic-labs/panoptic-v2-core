@@ -224,9 +224,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
         v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
-        // Issue reward NFT to donor
-        DONOR_NFT.issueNFT(msg.sender, newPoolContract, token0, token1, fee);
-
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
         // The SFPM will `safeTransferFrom` tokens from the donor during the mint callback

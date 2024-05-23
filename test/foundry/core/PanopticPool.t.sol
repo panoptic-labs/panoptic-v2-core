@@ -5873,7 +5873,7 @@ contract PanopticPoolTest is PositionUtils {
         ];
 
         vm.startPrank(Alice);
-        uint256 numLegs = numLegs;
+        uint256 _numLegs = numLegs;
 
         int24 currentTickFinal;
         {
@@ -6064,8 +6064,8 @@ contract PanopticPoolTest is PositionUtils {
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had]
         if (
-            (ct0.totalSupply() - $totalSupply0 <= numLegs) &&
-            (ct1.totalSupply() - $totalSupply1 <= numLegs)
+            (ct0.totalSupply() - $totalSupply0 <= _numLegs) &&
+            (ct1.totalSupply() - $totalSupply1 <= _numLegs)
         ) {
             assertApproxEqAbs(
                 convertToAssets(ct0, $shareDelta0) +

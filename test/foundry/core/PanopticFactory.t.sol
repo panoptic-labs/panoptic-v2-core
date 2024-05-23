@@ -335,7 +335,7 @@ contract PanopticFactoryTest is Test {
 
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0, amount1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0, amount1);
     }
 
     function test_Fail_deployNewPool_Slippage0() public {
@@ -346,7 +346,7 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0 - 1, amount1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0 - 1, amount1);
     }
 
     function test_Fail_deployNewPool_Slippage1() public {
@@ -357,7 +357,7 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0, amount1 - 1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0, amount1 - 1);
     }
 
     function test_Fail_deployNewPool_Slippage0Both() public {
@@ -368,7 +368,7 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0 - 1, amount1 - 1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0 - 1, amount1 - 1);
     }
 
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool

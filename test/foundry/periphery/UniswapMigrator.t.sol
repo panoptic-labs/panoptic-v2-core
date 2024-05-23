@@ -7,9 +7,8 @@ import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {PanopticMath} from "@contracts/libraries/PanopticMath.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {Pointer} from "@types/Pointer.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PeripheryErrors} from "@periphery/PeripheryErrors.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
@@ -72,18 +71,16 @@ contract UniswapMigratorTest is Test {
 
         vm.startPrank(Deployer);
 
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
-
         factory = new PanopticFactory(
             address(WETH),
             sfpm,
             V3FACTORY,
-            dNFT,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
-
-        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         uniswapMigrator = new UniswapMigrator(V3NFPM);
 
@@ -98,7 +95,7 @@ contract UniswapMigratorTest is Test {
                     address(USDC),
                     address(WETH),
                     500,
-                    bytes32(uint256(uint160(Deployer)) << 96),
+                    uint96(block.timestamp),
                     type(uint256).max,
                     type(uint256).max
                 )
