@@ -311,7 +311,14 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     // deploy a pool with token1 as WETH
@@ -325,7 +332,14 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     function test_Success_deployNewPool_SlippagePass() public {
@@ -378,7 +392,14 @@ contract PanopticFactoryTest is Test {
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -391,12 +412,26 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
 
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, salt + 1, type(uint256).max, type(uint256).max);
+            panopticFactory.deployNewPool(
+                token0,
+                token1,
+                fee,
+                salt + 1,
+                type(uint256).max,
+                type(uint256).max
+            );
         }
     }
 

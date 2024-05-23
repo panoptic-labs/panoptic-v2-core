@@ -230,11 +230,11 @@ contract PanopticFactory is FactoryNFT, Multicall {
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
         if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();
-        
+
         // Issue reward NFT to donor
         uint256 tokenId = uint256(uint160(address(newPoolContract)));
         _mint(msg.sender, tokenId);
-        
+
         emit PoolDeployed(
             newPoolContract,
             v3Pool,
