@@ -166,7 +166,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param token0 Address of token0 for the underlying Uniswap v3 pool
     /// @param token1 Address of token1 for the underlying Uniswap v3 pool
     /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
-    /// @param salt User-defined salt used in CREATE2 for the PanopticPool (must contain caller addr as first 20 bytes)
+    /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
     /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment, which serves as a slippage check
     /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment, which serves as a slippage check
     /// @return newPoolContract The address of the newly deployed Panoptic pool
