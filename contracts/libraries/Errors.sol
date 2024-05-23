@@ -65,10 +65,6 @@ library Errors {
     /// @notice PanopticPool: position is still solvent and cannot be liquidated
     error NotMarginCalled();
 
-    /// @notice Caller needs to be the owner
-    /// @dev unauthorized access attempted
-    error NotOwner();
-
     /// @notice CollateralTracker: the caller for a permissioned function is not the Panoptic Pool
     error NotPanopticPool();
 

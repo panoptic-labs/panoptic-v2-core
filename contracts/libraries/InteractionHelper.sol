@@ -44,7 +44,7 @@ library InteractionHelper {
     /// @param token0 The token0 in the Uniswap Pool
     /// @param token1 The token1 in the Uniswap Pool
     /// @param isToken0 Whether the collateral token computing the name is for token0 or token1
-    /// @param fee The fee of the Uniswap pool in basis points
+    /// @param fee The fee of the Uniswap pool in hundredths of basis points
     /// @param prefix A constant string appended to the start of the token name
     /// @return The complete name of the collateral token calling this function
     function computeName(
@@ -68,7 +68,14 @@ library InteractionHelper {
                     "/",
                     symbol1,
                     " ",
-                    Strings.toString(fee),
+                    Strings.toString(fee / 100),
+                    fee % 100 == 0
+                        ? ""
+                        : string.concat(
+                            ".",
+                            Strings.toString((fee / 10) % 10),
+                            Strings.toString(fee % 10)
+                        ),
                     "bps"
                 );
         }

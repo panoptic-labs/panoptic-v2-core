@@ -1027,10 +1027,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 /// @dev If the isLong flag is 1=long and the position is minted, then this is opening a long position
                 /// @dev so the amount of removed liquidity should increase.
                 if (!isBurn) {
-                    // we can't remove more liquidity than we add in the first place, so this can't overflow
-                    unchecked {
-                        removedLiquidity += chunkLiquidity;
-                    }
+                    removedLiquidity += chunkLiquidity;
                 }
             }
 

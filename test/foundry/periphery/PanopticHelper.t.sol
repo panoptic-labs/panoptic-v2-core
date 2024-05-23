@@ -278,15 +278,22 @@ contract PanopticHelperTest is PositionUtils {
             new Pointer[][](0)
         );
 
-        factory.initialize(Deployer);
-
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
         IERC20Partial(token0).approve(address(factory), type(uint104).max);
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
+            address(
+                factory.deployNewPool(
+                    token0,
+                    token1,
+                    fee,
+                    uint96(block.timestamp),
+                    type(uint256).max,
+                    type(uint256).max
+                )
+            )
         );
 
         ct0 = pp.collateralToken0();
