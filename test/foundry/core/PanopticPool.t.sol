@@ -6784,7 +6784,7 @@ contract PanopticPoolTest is PositionUtils {
                 widths[i]
             );
         }
-        pp.mintOptions($posIdLists[0], positionSize * 2, 0, 0, 0);
+        pp.mintOptions($posIdLists[0], positionSize * 2, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         twoWaySwap(swapSizeSeed);
 
@@ -6805,7 +6805,7 @@ contract PanopticPoolTest is PositionUtils {
             );
         }
 
-        pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, 0, 0);
+        pp.mintOptions($posIdLists[1], positionSize, type(uint64).max, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         twoWaySwap(swapSizeSeed);
 
@@ -6892,7 +6892,7 @@ contract PanopticPoolTest is PositionUtils {
         int24 currentTickFinal;
         {
             (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = pp
-                .burnAllOptionsFrom($posIdLists[1], 0, 0);
+                .burnAllOptionsFrom($posIdLists[1], Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
             shareDeltasLiquidatee = [
                 int256(ct0.balanceOf(Alice)) - shareDeltasLiquidatee[0],

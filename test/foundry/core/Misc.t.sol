@@ -613,12 +613,12 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Alice);
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         vm.startPrank(Bob);
 
         vm.expectRevert(stdError.divisionError);
-        pp.mintOptions($tempIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($tempIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
     }
 
     // position length in hash should fail instead of overflowing its slot during construction
@@ -645,14 +645,14 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Alice);
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         TokenId[] memory longPositionList = new TokenId[](257);
 
         for (uint256 i; i < 257; ++i) longPositionList[i] = $posIdList[0];
 
         vm.expectRevert(stdError.arithmeticError);
-        pp.mintOptions(longPositionList, 1_000_000, 0, 0, 0);
+        pp.mintOptions(longPositionList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
     }
 
     // ensure all large mint/deposit amounts revert (instead of overflowing)
@@ -741,12 +741,12 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
 
         vm.startPrank(Alice);
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         vm.startPrank(Bob);
-        pp.mintOptions($posIdList, 1_000_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
-        pp.mintOptions($tempIdList, 900_000_000, type(uint64).max, 0, 0);
+        pp.mintOptions($tempIdList, 900_000_000, type(uint64).max, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(10) + 1);
@@ -763,20 +763,20 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Charlie);
 
         for (uint256 i = 0; i < 10; i++) {
-            pp.mintOptions($posIdList, 250_000_000, type(uint64).max, 0, 0);
+            pp.mintOptions($posIdList, 250_000_000, type(uint64).max, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
-            pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+            pp.burnOptions($posIdList[0], new TokenId[](0), Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
         }
 
         vm.startPrank(Alice);
-        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+        pp.burnOptions($posIdList[0], new TokenId[](0), Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         uint256 delta0 = ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0;
         uint256 delta1 = ct1.convertToAssets(ct1.balanceOf(Alice)) - assetsBefore1;
         vm.revertTo(snap);
 
         vm.startPrank(Alice);
-        pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
+        pp.burnOptions($posIdList[0], new TokenId[](0), Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         // there is a small amount of error in token0 -- this is the commissions from Charlie
         assertApproxEqAbs(
@@ -1860,7 +1860,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         editCollateral(ct0, Bob, ct0.convertToShares(266263));
         editCollateral(ct1, Bob, 0);
@@ -1892,7 +1892,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
@@ -1924,7 +1924,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         editCollateral(ct0, Bob, ct0.convertToShares(266262));
         editCollateral(ct1, Bob, 0);
@@ -1957,7 +1957,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
@@ -1990,7 +1990,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions($posIdList, 1_000_000, 0, 0, 0);
+        pp.mintOptions($posIdList, 1_000_000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
