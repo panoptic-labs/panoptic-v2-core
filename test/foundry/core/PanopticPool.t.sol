@@ -6906,8 +6906,8 @@ contract PanopticPoolTest is PositionUtils {
             (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = pp
                 .burnAllOptionsFrom(
                     $posIdLists[1],
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MIN_V3POOL_TICK,
+                    Constants.MAX_V3POOL_TICK
                 );
 
             shareDeltasLiquidatee = [
