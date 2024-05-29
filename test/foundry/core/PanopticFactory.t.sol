@@ -15,9 +15,9 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
 import {Errors} from "@libraries/Errors.sol";
+// Panoptic Types
+import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 // Panoptic Interfaces
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
@@ -32,11 +32,22 @@ contract PanopticFactoryHarness is PanopticFactory {
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
         IUniswapV3Factory _univ3Factory,
-        IDonorNFT _donorNFT,
         address poolReference,
-        address collateralReference
+        address collateralReference,
+        bytes32[] memory properties,
+        uint256[][] memory indices,
+        Pointer[][] memory pointers
     )
-        PanopticFactory(_WETH9, _SFPM, _univ3Factory, _donorNFT, poolReference, collateralReference)
+        PanopticFactory(
+            _WETH9,
+            _SFPM,
+            _univ3Factory,
+            poolReference,
+            collateralReference,
+            properties,
+            indices,
+            pointers
+        )
     {}
 
     function getPoolReference() external view returns (address) {
@@ -92,8 +103,14 @@ contract PanopticFactoryTest is Test {
         ETH_USDT_5
     ];
 
+    struct PointerInfo {
+        uint256 codeIndex;
+        uint256 end;
+        uint256 start;
+    }
+
     // granted token amounts
-    uint256 constant INITIAL_MOCK_TOKENS = type(uint256).max;
+    uint256 constant INITIAL_MOCK_TOKENS = type(uint256).max / 2;
 
     // store some data about the pool we are testing
     IUniswapV3Pool pool;
@@ -133,8 +150,8 @@ contract PanopticFactoryTest is Test {
         // give test contract a sufficient amount of tokens to deploy a new pool
         deal(token0, address(this), INITIAL_MOCK_TOKENS);
         deal(token1, address(this), INITIAL_MOCK_TOKENS);
-        assertEq(IERC20Partial(token0).balanceOf(address(this)), INITIAL_MOCK_TOKENS);
-        assertEq(IERC20Partial(token1).balanceOf(address(this)), INITIAL_MOCK_TOKENS);
+        assertEq(IERC20Partial(token0).balanceOf(address(this)), INITIAL_MOCK_TOKENS, "token0");
+        assertEq(IERC20Partial(token1).balanceOf(address(this)), INITIAL_MOCK_TOKENS, "token1");
 
         // approve factory to move tokens, on behalf of the test contract
         IERC20Partial(token0).approve(address(panopticFactory), INITIAL_MOCK_TOKENS);
@@ -150,19 +167,67 @@ contract PanopticFactoryTest is Test {
     }
 
     function setUp() public {
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
+        string memory metadata = vm.readFile("./metadata/out/MetadataPackage.json");
+
+        bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
+        address[] memory pointerAddresses = new address[](bytecodes.length);
+
+        for (uint256 i = 0; i < bytecodes.length; i++) {
+            bytes memory code = bytecodes[i];
+            address pointer;
+            // deploy code and store pointer
+            assembly {
+                pointer := create(0, add(code, 0x20), mload(code))
+                if iszero(extcodesize(pointer)) {
+                    revert(0, 0)
+                }
+            }
+            pointerAddresses[i] = pointer;
+        }
+
+        PointerInfo[][] memory pointerInfo = abi.decode(
+            vm.parseJson(metadata, ".pointers"),
+            (PointerInfo[][])
+        );
+        Pointer[][] memory pointers = new Pointer[][](pointerInfo.length);
+
+        for (uint256 i = 0; i < pointerInfo.length; i++) {
+            pointers[i] = new Pointer[](pointerInfo[i].length);
+            for (uint256 j = 0; j < pointerInfo[i].length; j++) {
+                pointers[i][j] = PointerLibrary.createPointer(
+                    pointerAddresses[pointerInfo[i][j].codeIndex],
+                    uint48(pointerInfo[i][j].start),
+                    uint48(pointerInfo[i][j].end)
+                );
+            }
+        }
+
+        string[] memory propsStr = vm.parseJsonStringArray(metadata, ".properties");
+        bytes32[] memory props = new bytes32[](propsStr.length);
+        for (uint256 i = 0; i < propsStr.length; i++) {
+            props[i] = bytes32(bytes(propsStr[i]));
+        }
+
+        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
+        uint256[][] memory indices = new uint256[][](indicesStr.length);
+        for (uint256 i = 0; i < indicesStr.length; i++) {
+            indices[i] = new uint256[](indicesStr[i].length);
+            for (uint256 j = 0; j < indicesStr[i].length; j++) {
+                indices[i][j] = vm.parseUint(indicesStr[i][j]);
+            }
+        }
 
         // Deploy factory
         panopticFactory = new PanopticFactoryHarness(
             address(_WETH),
             sfpm,
             V3FACTORY,
-            dNFT,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000))
+            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)),
+            props,
+            indices,
+            pointers
         );
-
-        DonorNFT(address(dNFT)).changeFactory(address(panopticFactory));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -171,15 +236,20 @@ contract PanopticFactoryTest is Test {
 
     // fuzz seed to deploy random pools
     // fuzz salt to generate a pool with a random address
-    function test_Success_deployNewPool(uint256 x, uint96 nonce) public {
+    function test_Success_deployNewPool(uint256 x, uint96 salt) public {
         _initWorld(x);
 
-        bytes32 salt = bytes32(nonce + (uint256(uint160(address(this))) << 96));
         // Compute clone determinsitic Panoptic Factory address
         address poolReference = panopticFactory.getPoolReference();
         address preComputedPool = predictDeterministicAddress(
             poolReference,
-            salt,
+            bytes32(
+                abi.encodePacked(
+                    uint80(uint160(address(this)) >> 80),
+                    uint80(uint160(address(pool)) >> 80),
+                    salt
+                )
+            ),
             address(panopticFactory)
         );
 
@@ -237,7 +307,7 @@ contract PanopticFactoryTest is Test {
         _initalizeWorldState(pools[5]);
 
         // generate a not so random salt
-        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+        uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
@@ -245,7 +315,7 @@ contract PanopticFactoryTest is Test {
             token0,
             token1,
             fee,
-            bytes32(salt),
+            salt,
             type(uint256).max,
             type(uint256).max
         );
@@ -258,7 +328,7 @@ contract PanopticFactoryTest is Test {
         _initalizeWorldState(pools[1]);
 
         // generate a not so random salt
-        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+        uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
@@ -266,7 +336,7 @@ contract PanopticFactoryTest is Test {
             token0,
             token1,
             fee,
-            bytes32(salt),
+            salt,
             type(uint256).max,
             type(uint256).max
         );
@@ -279,7 +349,7 @@ contract PanopticFactoryTest is Test {
 
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0, amount1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0, amount1);
     }
 
     function test_Fail_deployNewPool_Slippage0() public {
@@ -290,7 +360,7 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0 - 1, amount1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0 - 1, amount1);
     }
 
     function test_Fail_deployNewPool_Slippage1() public {
@@ -301,7 +371,7 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0, amount1 - 1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0, amount1 - 1);
     }
 
     function test_Fail_deployNewPool_Slippage0Both() public {
@@ -312,13 +382,13 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, bytes32(salt), amount0 - 1, amount1 - 1);
+        panopticFactory.deployNewPool(token0, token1, fee, uint96(salt), amount0 - 1, amount1 - 1);
     }
 
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool
     function test_Fail_deployinvalidPool() public {
         // generate a not so random salt
-        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+        uint96 salt = uint96(block.timestamp);
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
@@ -326,7 +396,7 @@ contract PanopticFactoryTest is Test {
             token0,
             token1,
             fee,
-            bytes32(salt),
+            salt,
             type(uint256).max,
             type(uint256).max
         );
@@ -339,14 +409,14 @@ contract PanopticFactoryTest is Test {
         _initalizeWorldState(pools[0]);
 
         // generate a not so random salt
-        uint256 salt = uint96(block.timestamp) + (uint256(uint160(address(this))) << 96);
+        uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
         panopticFactory.deployNewPool(
             token0,
             token1,
             fee,
-            bytes32(salt),
+            salt,
             type(uint256).max,
             type(uint256).max
         );
@@ -358,28 +428,11 @@ contract PanopticFactoryTest is Test {
                 token0,
                 token1,
                 fee,
-                bytes32(salt + 1),
+                salt + 1,
                 type(uint256).max,
                 type(uint256).max
             );
         }
-    }
-
-    function test_Fail_saltValidation(uint256 x, uint96 nonce) public {
-        _initWorld(x);
-
-        address randomAddr = address(uint160(uint256(keccak256(abi.encode(x)))));
-        vm.assume(randomAddr != address(this));
-
-        vm.expectRevert(Errors.InvalidSalt.selector);
-        panopticFactory.deployNewPool(
-            token0,
-            token1,
-            fee,
-            bytes32(nonce + (uint256(uint160(randomAddr)) << 96)),
-            type(uint256).max,
-            type(uint256).max
-        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -389,14 +442,14 @@ contract PanopticFactoryTest is Test {
     // Successfully reach or surpass target rarity and deploy a Panoptic pool with the mined 'bestSalt'
     function test_Success_mineTargetRarity(
         uint256 x,
-        uint256 nonce,
+        uint96 nonce,
         address randomAddress,
         uint256 minTargetRarity
     ) public {
         // limit minTargetRarity to 1-2 leading zeroes for test efficiency
         minTargetRarity = bound(minTargetRarity, 1, 2);
 
-        nonce = bound(nonce, 0, type(uint96).max - 1001);
+        nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
         // fuzz a random uniswap pool
         _initWorld(x);
@@ -406,8 +459,10 @@ contract PanopticFactoryTest is Test {
         vm.startPrank(randomAddress);
 
         // mine pool address
-        (bytes32 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
-            bytes32(nonce + (uint256(uint160(randomAddress)) << 96)),
+        (uint96 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
+            randomAddress,
+            address(pool),
+            nonce,
             50_000,
             minTargetRarity
         );
@@ -417,7 +472,13 @@ contract PanopticFactoryTest is Test {
             PanopticMath.numberOfLeadingHexZeros(
                 predictDeterministicAddress(
                     panopticFactory.getPoolReference(),
-                    bestSalt,
+                    bytes32(
+                        abi.encodePacked(
+                            uint80(uint160(randomAddress) >> 80),
+                            uint80(uint160(address(pool)) >> 80),
+                            bestSalt
+                        )
+                    ),
                     address(panopticFactory)
                 )
             )

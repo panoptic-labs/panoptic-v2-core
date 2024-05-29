@@ -9,8 +9,6 @@ import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
@@ -28,6 +26,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {Constants} from "@libraries/Constants.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -378,18 +377,16 @@ contract PanopticPoolTest is PositionUtils {
     function _deployPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
-
         factory = new PanopticFactory(
             WETH,
             sfpm,
             V3FACTORY,
-            dNFT,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
-
-        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
@@ -402,7 +399,7 @@ contract PanopticPoolTest is PositionUtils {
                     token0,
                     token1,
                     fee,
-                    bytes32(uint256(uint160(Deployer)) << 96),
+                    uint96(block.timestamp),
                     type(uint256).max,
                     type(uint256).max
                 )
@@ -5876,7 +5873,7 @@ contract PanopticPoolTest is PositionUtils {
         ];
 
         vm.startPrank(Alice);
-        uint256 numLegs = numLegs;
+        uint256 _numLegs = numLegs;
 
         int24 currentTickFinal;
         {
@@ -6067,8 +6064,8 @@ contract PanopticPoolTest is PositionUtils {
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had]
         if (
-            (ct0.totalSupply() - $totalSupply0 <= numLegs) &&
-            (ct1.totalSupply() - $totalSupply1 <= numLegs)
+            (ct0.totalSupply() - $totalSupply0 <= _numLegs) &&
+            (ct1.totalSupply() - $totalSupply1 <= _numLegs)
         ) {
             assertApproxEqAbs(
                 convertToAssets(ct0, $shareDelta0) +

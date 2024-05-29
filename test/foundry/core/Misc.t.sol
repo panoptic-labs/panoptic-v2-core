@@ -6,8 +6,6 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
@@ -25,6 +23,7 @@ import {Math} from "@libraries/Math.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -228,17 +227,16 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Deployer);
 
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
         factory = new PanopticFactory(
             address(token1),
             sfpm,
             V3FACTORY,
-            dNFT,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
-
-        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         token0.mint(Deployer, type(uint104).max);
         token1.mint(Deployer, type(uint104).max);
@@ -251,7 +249,7 @@ contract Misctest is Test, PositionUtils {
                     address(token0),
                     address(token1),
                     500,
-                    bytes32(uint256(uint160(Deployer)) << 96),
+                    uint96(block.timestamp),
                     type(uint256).max,
                     type(uint256).max
                 )
