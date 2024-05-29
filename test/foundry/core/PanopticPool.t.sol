@@ -1572,7 +1572,7 @@ contract PanopticPoolTest is PositionUtils {
     function test_Success_assertMinCollateralValues() public {
         _initPool(0);
 
-        changePrank(Bob);
+        vm.startPrank(Bob);
         pp.assertMinCollateralValues(
             ct0.convertToAssets(ct0.balanceOf(Bob)),
             ct1.convertToAssets(ct1.balanceOf(Bob))
@@ -1582,34 +1582,37 @@ contract PanopticPoolTest is PositionUtils {
     function test_Fail_assertMinCollateralValues_Below0() public {
         _initPool(0);
 
-        changePrank(Bob);
+        vm.startPrank(Bob);
+
+        uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
-        pp.assertMinCollateralValues(
-            ct0.convertToAssets(ct0.balanceOf(Bob)) + 1,
-            ct1.convertToAssets(ct1.balanceOf(Bob))
-        );
+        pp.assertMinCollateralValues(assets0 + 1, assets1);
     }
 
     function test_Fail_assertMinCollateralValues_Below1() public {
         _initPool(0);
 
-        changePrank(Bob);
+        vm.startPrank(Bob);
+
+        uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
-        pp.assertMinCollateralValues(
-            ct0.convertToAssets(ct0.balanceOf(Bob)),
-            ct1.convertToAssets(ct1.balanceOf(Bob)) + 1
-        );
+        pp.assertMinCollateralValues(assets0, assets1 + 1);
     }
 
     function test_Fail_assertMinCollateralValues_BelowBoth() public {
         _initPool(0);
 
-        changePrank(Bob);
+        vm.startPrank(Bob);
+
+        uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
-        pp.assertMinCollateralValues(
-            ct0.convertToAssets(ct0.balanceOf(Bob)) + 1,
-            ct1.convertToAssets(ct1.balanceOf(Bob)) + 1
-        );
+        pp.assertMinCollateralValues(assets0 + 1, assets1 + 1);
     }
 
     /// forge-config: default.fuzz.runs = 10
