@@ -329,7 +329,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Reverts if the caller has a lower collateral balance than required to meet the provided `minValue0` and `minValue1`.
-    /// @dev Can be used for composable slippage checks with `multicall` (such as for a force exercise or liquidation)
+    /// @dev Can be used for composable slippage checks with `multicall` (such as for a force exercise or liquidation).
     /// @param minValue0 The minimum acceptable `token0` value of collateral
     /// @param minValue1 The minimum acceptable `token1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
