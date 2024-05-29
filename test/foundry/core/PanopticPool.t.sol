@@ -1569,46 +1569,47 @@ contract PanopticPoolTest is PositionUtils {
                              STATIC QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    function test_Success_assertPriceWithinBounds(
-        uint256 x,
-        uint256 sqrtPriceX96,
-        uint256 sqrtPriceX96Lower,
-        uint256 sqrtPriceX96Upper
-    ) public {
-        sqrtPriceX96 = bound(
-            sqrtPriceX96,
-            TickMath.MIN_SQRT_RATIO + 1,
-            TickMath.MAX_SQRT_RATIO - 1
-        );
-        sqrtPriceX96Lower = bound(sqrtPriceX96Lower, TickMath.MIN_SQRT_RATIO, sqrtPriceX96 - 1);
-        sqrtPriceX96Upper = bound(sqrtPriceX96Upper, sqrtPriceX96 + 1, TickMath.MAX_SQRT_RATIO);
+    function test_Success_assertMinCollateralValues() public {
+        _initPool(0);
 
-        _initWorldAtPrice(x, 0, uint160(sqrtPriceX96));
-        pp.assertPriceWithinBounds(uint160(sqrtPriceX96Lower), uint160(sqrtPriceX96Upper));
+        changePrank(Bob);
+        pp.assertMinCollateralValues(
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            ct1.convertToAssets(ct1.balanceOf(Bob))
+        );
     }
 
-    function test_Fail_assertPriceWithinBounds(
-        uint256 x,
-        uint256 sqrtPriceX96,
-        uint256 sqrtPriceX96Lower,
-        uint256 sqrtPriceX96Upper
-    ) public {
-        sqrtPriceX96 = bound(sqrtPriceX96, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO);
-        sqrtPriceX96Lower = bound(
-            sqrtPriceX96Lower,
-            TickMath.MIN_SQRT_RATIO,
-            TickMath.MAX_SQRT_RATIO
-        );
-        sqrtPriceX96Upper = bound(
-            sqrtPriceX96Upper,
-            TickMath.MIN_SQRT_RATIO,
-            TickMath.MAX_SQRT_RATIO
-        );
+    function test_Fail_assertMinCollateralValues_Below0() public {
+        _initPool(0);
 
-        vm.assume(sqrtPriceX96 <= sqrtPriceX96Lower || sqrtPriceX96 >= sqrtPriceX96Upper);
-        _initWorldAtPrice(x, 0, uint160(sqrtPriceX96));
-        vm.expectRevert(Errors.PriceBoundFail.selector);
-        pp.assertPriceWithinBounds(uint160(sqrtPriceX96Lower), uint160(sqrtPriceX96Upper));
+        changePrank(Bob);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        pp.assertMinCollateralValues(
+            ct0.convertToAssets(ct0.balanceOf(Bob)) - 1,
+            ct1.convertToAssets(ct1.balanceOf(Bob))
+        );
+    }
+
+    function test_Fail_assertMinCollateralValues_Below1() public {
+        _initPool(0);
+
+        changePrank(Bob);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        pp.assertMinCollateralValues(
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            ct1.convertToAssets(ct1.balanceOf(Bob)) - 1
+        );
+    }
+
+    function test_Fail_assertMinCollateralValues_BelowBoth() public {
+        _initPool(0);
+
+        changePrank(Bob);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        pp.assertMinCollateralValues(
+            ct0.convertToAssets(ct0.balanceOf(Bob)) - 1,
+            ct1.convertToAssets(ct1.balanceOf(Bob)) - 1
+        );
     }
 
     /// forge-config: default.fuzz.runs = 10
