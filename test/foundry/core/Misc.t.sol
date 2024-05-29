@@ -2197,6 +2197,281 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function test_Success_ReverseIronCondor() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+                .addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    1,
+                    0,
+                    4055, // 1.5 put
+                    1
+                )
+                .addLeg(
+                    1,
+                    1,
+                    1,
+                    0,
+                    0,
+                    1,
+                    -6935, // 0.5 call
+                    1
+                )
+        );
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // long put = 1.5, short put 1.25, short call 0.75, long call 0.5
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, 1, 1, 1, 0, 4055, 1)
+            .addLeg(1, 1, 1, 0, 1, 1, 2235, 1)
+            .addLeg(2, 1, 1, 0, 0, 2, -2875, 1)
+            .addLeg(3, 1, 1, 1, 0, 3, -6935, 1);
+
+        uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // 0.25, 0.6, 0.9, 1.1, 1.4, 1.6
+        int16[6] memory ticks = [-13862, -5108, -1053, 952, 3364, 4699];
+
+        for (uint256 i = 0; i < ticks.length; ++i) {
+            uint256 snap = vm.snapshot();
+            vm.startPrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
+
+            vm.startPrank(Alice);
+            pp.burnOptions(
+                $posIdList[0],
+                new TokenId[](0),
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
+
+            console2.log(
+                "balance0Delta",
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
+            );
+            console2.log(
+                "balance1Delta",
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
+            );
+            vm.revertTo(snap);
+        }
+    }
+
+    function test_Success_CallCondor() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+                .addLeg(
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    2235, // 1.25 call
+                    1
+                )
+                .addLeg(
+                    1,
+                    1,
+                    1,
+                    0,
+                    0,
+                    1,
+                    6935, // 2 call
+                    1
+                )
+        );
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // long call = 1.25, short call = 1.5, short call = 1.75, long call = 2
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, 1, 1, 0, 0, 2235, 1)
+            .addLeg(1, 1, 1, 0, 0, 1, 4055, 1)
+            .addLeg(2, 1, 1, 0, 0, 2, 5595, 1)
+            .addLeg(3, 1, 1, 1, 0, 3, 6935, 1);
+
+        uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // 1.3, 1.6, 1.8, 2.1
+        uint16[4] memory ticks = [2623, 4699, 5877, 7419];
+
+        for (uint256 i = 0; i < ticks.length; ++i) {
+            uint256 snap = vm.snapshot();
+            vm.startPrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int16(ticks[i])));
+
+            vm.startPrank(Alice);
+            pp.burnOptions(
+                $posIdList[0],
+                new TokenId[](0),
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
+
+            console2.log(
+                "balance0Delta",
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
+            );
+            console2.log(
+                "balance1Delta",
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
+            );
+            vm.revertTo(snap);
+        }
+    }
+
+    function test_Success_PutCondor() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -13_865, // 0.25 put
+                1
+            )
+        );
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // long put = 0.25, short put = 0.5, short put = 0.75, short call = 0.9
+        $posIdList[0] = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, 1, 1, 1, 0, -13_865, 1)
+            .addLeg(1, 1, 1, 0, 1, 1, -6935, 1)
+            .addLeg(2, 1, 1, 0, 1, 2, -2875, 1)
+            .addLeg(3, 1, 1, 0, 0, 3, -1055, 1);
+
+        uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 balanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // 0.2, 0.4, 0.6, 0.8, 1.1
+        int16[5] memory ticks = [-16093, -9162, -5108, -2231, 952];
+
+        for (uint256 i = 0; i < ticks.length; ++i) {
+            uint256 snap = vm.snapshot();
+            vm.startPrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(ticks[i]));
+
+            vm.startPrank(Alice);
+            pp.burnOptions(
+                $posIdList[0],
+                new TokenId[](0),
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
+
+            console2.log(
+                "balance0Delta",
+                int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0)
+            );
+            console2.log(
+                "balance1Delta",
+                int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(balanceBefore1)
+            );
+            vm.revertTo(snap);
+        }
+    }
+
     function test_success_liquidation_fuzzedSwapITM(uint256[4] memory prices) public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
