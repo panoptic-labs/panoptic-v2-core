@@ -1585,7 +1585,7 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Bob);
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
         pp.assertMinCollateralValues(
-            ct0.convertToAssets(ct0.balanceOf(Bob)) - 1,
+            ct0.convertToAssets(ct0.balanceOf(Bob)) + 1,
             ct1.convertToAssets(ct1.balanceOf(Bob))
         );
     }
@@ -1597,7 +1597,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
         pp.assertMinCollateralValues(
             ct0.convertToAssets(ct0.balanceOf(Bob)),
-            ct1.convertToAssets(ct1.balanceOf(Bob)) - 1
+            ct1.convertToAssets(ct1.balanceOf(Bob)) + 1
         );
     }
 
@@ -1607,8 +1607,8 @@ contract PanopticPoolTest is PositionUtils {
         changePrank(Bob);
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
         pp.assertMinCollateralValues(
-            ct0.convertToAssets(ct0.balanceOf(Bob)) - 1,
-            ct1.convertToAssets(ct1.balanceOf(Bob)) - 1
+            ct0.convertToAssets(ct0.balanceOf(Bob)) + 1,
+            ct1.convertToAssets(ct1.balanceOf(Bob)) + 1
         );
     }
 
