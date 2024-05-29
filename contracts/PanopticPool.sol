@@ -19,6 +19,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
@@ -156,6 +157,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// The maximum allowed delta between the fast and slow oracle ticks
     /// Falls back on the more conservative (less solvent) tick during times of extreme volatility (to ensure the account is always solvent)
     int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
+
+    /// @notice The basal fee to force exercise a just-out-of-range position.
+    int256 internal constant FORCE_EXERCISE_FEE = -1_024;
 
     /// @dev The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -991,12 +995,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightSigned premia;
+        LeftRightSigned lossCompensationDeltaTotal;
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                revert Errors.StaleTWAP();
 
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
@@ -1027,6 +1028,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
 
             if (balanceCross >= thresholdCross) revert Errors.NotMarginCalled();
+
+            // compensate the liquidatee for any potential differences in their long position debts between the TWAP and final ticks
+            for (uint256 i = 0; i < positionIdList.length; ++i) {
+                lossCompensationDeltaTotal = lossCompensationDeltaTotal.add(
+                    PanopticMath.getLossCompensationDelta(
+                        positionIdList[i],
+                        LeftRightUnsigned.wrap(positionBalanceArray[i][1]).rightSlot(),
+                        twapTick,
+                        currentTick
+                    )
+                );
+                console2.log("LCDT0", lossCompensationDeltaTotal.rightSlot());
+                console2.log("LCDT1", lossCompensationDeltaTotal.leftSlot());
+            }
         }
 
         // Perform the specified delegation from `msg.sender` to `liquidatee`
@@ -1037,36 +1052,48 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         int256 liquidationBonus0;
         int256 liquidationBonus1;
-        int24 finalTick;
         {
-            LeftRightSigned netExchanged;
-            LeftRightSigned[4][] memory premiasByLeg;
+            address _liquidatee = liquidatee;
+            TokenId[] calldata _positionIdList = positionIdList;
+
             // burn all options from the liquidatee
 
+            LeftRightSigned netExchanged;
+            LeftRightSigned[4][] memory premiasByLeg;
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
             // Note: tick limits are not applied here since it is not the liquidator's position being liquidated
             (netExchanged, premiasByLeg) = _burnAllOptionsFrom(
-                liquidatee,
+                _liquidatee,
                 MIN_SWAP_TICK,
                 MAX_SWAP_TICK,
                 DONOT_COMMIT_LONG_SETTLED,
-                positionIdList
+                _positionIdList
             );
 
-            (, finalTick, , , , , ) = s_univ3pool.slot0();
+            LeftRightSigned _premia = premia;
+            int24 _twapTick = twapTick;
+
+            LeftRightUnsigned _tokenData0 = tokenData0;
+            LeftRightUnsigned _tokenData1 = tokenData1;
 
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
             (liquidationBonus0, liquidationBonus1, collateralRemaining) = PanopticMath
                 .getLiquidationBonus(
-                    tokenData0,
-                    tokenData1,
-                    Math.getSqrtRatioAtTick(twapTick),
-                    Math.getSqrtRatioAtTick(finalTick),
+                    _tokenData0,
+                    _tokenData1,
+                    Math.getSqrtRatioAtTick(_twapTick),
                     netExchanged,
-                    premia
+                    _premia
                 );
+
+            liquidationBonus0 += lossCompensationDeltaTotal.rightSlot();
+            liquidationBonus1 += lossCompensationDeltaTotal.leftSlot();
+
+            // we subtract here because the bonus is paid from the liquidatee to the liquidator
+            // loss compensation will either be 0 in both tokens or positive in one token and negative in another
+            collateralRemaining = collateralRemaining.sub(lossCompensationDeltaTotal);
 
             // premia cannot be paid if there is protocol loss associated with the liquidatee
             // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
@@ -1077,9 +1104,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
             // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
-            address _liquidatee = liquidatee;
-            TokenId[] memory _positionIdList = positionIdList;
-            int24 _finalTick = finalTick;
             int256 deltaBonus0;
             int256 deltaBonus1;
             (deltaBonus0, deltaBonus1) = PanopticMath.haircutPremia(
@@ -1089,7 +1113,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 collateralRemaining,
                 s_collateralToken0,
                 s_collateralToken1,
-                Math.getSqrtRatioAtTick(_finalTick),
+                Math.getSqrtRatioAtTick(_twapTick),
                 s_settledTokens
             );
 
@@ -1099,28 +1123,32 @@ contract PanopticPool is ERC1155Holder, Multicall {
             }
         }
 
-        LeftRightUnsigned _delegations = delegations;
-        // revoke the delegated amount plus the bonus amount.
-        s_collateralToken0.revoke(
-            msg.sender,
-            liquidatee,
-            uint256(int256(uint256(_delegations.rightSlot())) + liquidationBonus0)
-        );
-        s_collateralToken1.revoke(
-            msg.sender,
-            liquidatee,
-            uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
-        );
+        {
+            LeftRightUnsigned _delegations = delegations;
+            // revoke the delegated amount plus the bonus amount.
+            s_collateralToken0.revoke(
+                msg.sender,
+                liquidatee,
+                uint256(int256(uint256(_delegations.rightSlot())) + liquidationBonus0)
+            );
+            s_collateralToken1.revoke(
+                msg.sender,
+                liquidatee,
+                uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
+            );
+        }
+
+        TokenId[] calldata _positionIdListLiquidator = positionIdListLiquidator;
 
         // check that the provided positionIdList matches the positions in memory
-        _validatePositionList(msg.sender, positionIdListLiquidator, 0);
+        _validatePositionList(msg.sender, _positionIdListLiquidator, 0);
 
         if (
             !_checkSolvencyAtTick(
                 msg.sender,
-                positionIdListLiquidator,
-                finalTick,
-                finalTick,
+                _positionIdListLiquidator,
+                twapTick,
+                twapTick,
                 BP_DECREASE_BUFFER
             )
         ) revert Errors.NotEnoughCollateral();
@@ -1189,17 +1217,31 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
         _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
 
-        // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
-        /// @dev use the medianTick to prevent price manipulations based on swaps.
-        LeftRightSigned exerciseFees = s_collateralToken0.exerciseCost(
+        // Compute the fee paid to exercise `touchedId`, this will decrease the further away the price is from the forcedExercised position
+        LeftRightSigned exerciseFees = PanopticMath.getExerciseFee(
             currentTick,
-            twapTick,
             touchedId[0],
-            positionBalance,
+            FORCE_EXERCISE_FEE,
             longAmounts
+        );
+        console2.log(
+            "cd0",
+            PanopticMath
+                .getLossCompensationDelta(touchedId[0], positionBalance, currentTick, twapTick)
+                .rightSlot()
         );
 
         LeftRightSigned refundAmounts = delegatedAmounts.add(exerciseFees);
+
+        // Compensate the exercisee for any differences in token composition between the current and oracle ticks
+        refundAmounts = refundAmounts.add(
+            PanopticMath.getLossCompensationDelta(
+                touchedId[0],
+                positionBalance,
+                currentTick,
+                twapTick
+            )
+        );
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = PanopticMath.getRefundAmounts(

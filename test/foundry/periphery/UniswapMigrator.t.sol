@@ -66,9 +66,7 @@ contract UniswapMigratorTest is Test {
         poolReference = address(new PanopticPool(sfpm));
 
         // no commission/mint fee
-        collateralReference = address(
-            new CollateralTracker(0, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
-        );
+        collateralReference = address(new CollateralTracker(0, 2_000, 1_000, 5_000, 9_000, 20_000));
 
         vm.startPrank(Deployer);
 

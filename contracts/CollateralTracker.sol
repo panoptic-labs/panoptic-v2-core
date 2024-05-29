@@ -141,10 +141,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// i.e 10% -> 0.1 * 10_000 = 1_000.
     uint256 immutable BUYER_COLLATERAL_RATIO;
 
-    // liquidation parameters
-    /// @notice basal cost to force exercise a position that is barely far-the-money (out-of-range).
-    int256 immutable FORCE_EXERCISE_COST;
-
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
     /// i.e 50% -> 0.5 * 10_000 = 5_000.
@@ -176,7 +172,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 _commissionFee,
         uint256 _sellerCollateralRatio,
         uint256 _buyerCollateralRatio,
-        int256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization,
         uint256 _ITMSpreadMultiplier
@@ -184,7 +179,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         COMMISSION_FEE = _commissionFee;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
-        FORCE_EXERCISE_COST = _forceExerciseCost;
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
         ITM_SPREAD_MULTIPLIER = _ITMSpreadMultiplier;
@@ -649,110 +643,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /*//////////////////////////////////////////////////////////////
                         ACCOUNTING LOGIC
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Get the cost of exercising an option. Used during a forced exercise.
-    /// @dev This one computes the cost of calling the forceExercise function on a position:
-    /// - The forceExercisor will have to *pay* the exercisee because their position will be closed "against their will"
-    /// - The cost must be larger when the position is close to being in-range, and should be minimal when it is far from being in range. eg. Exercising a (1000, 1050)
-    ///   position will cost more if the price is 999 than if it is 100
-    /// - The cost is an exponentially decaying function of the distance between the position's strike and the current price
-    /// - The cost decreases by a factor of 2 for every "position's width"
-    /// - Note that the cost is the largest among all active legs, not the sum
-    /// @dev Example exercise costs:
-    /// - 10% if the position is liquidated when the price is between 950 and 1000, or if it is between 1050 and 1100
-    /// - 5% if the price is between 900 and 950 or (1100, 1150)
-    /// - 2.5% if between (850, 900) or (1150, 1200)
-    /// @param currentTick The current price tick.
-    /// @param oracleTick The price oracle tick.
-    /// @param positionId The position to be exercised
-    /// @param positionBalance The balance in `account` of the position to be exercised
-    /// @param longAmounts The amount of longs in the position.
-    /// @return exerciseFees The fees for exercising the option position.
-    function exerciseCost(
-        int24 currentTick,
-        int24 oracleTick,
-        TokenId positionId,
-        uint128 positionBalance,
-        LeftRightSigned longAmounts
-    ) external view returns (LeftRightSigned exerciseFees) {
-        // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
-        // we don't need the leg information itself, really just "the number of half ranges" from the strike price:
-        uint256 maxNumRangesFromStrike = 1; // technically "maxNum(Half)RangesFromStrike" but the name is long
-
-        unchecked {
-            for (uint256 leg = 0; leg < positionId.countLegs(); ++leg) {
-                // short legs are not counted - exercise is intended to be based on long legs
-                if (positionId.isLong(leg) == 0) continue;
-
-                {
-                    int24 range = int24(
-                        int256(
-                            Math.unsafeDivRoundingUp(
-                                uint24(positionId.width(leg) * positionId.tickSpacing()),
-                                2
-                            )
-                        )
-                    );
-                    maxNumRangesFromStrike = Math.max(
-                        maxNumRangesFromStrike,
-                        uint256(Math.abs(currentTick - positionId.strike(leg)) / range)
-                    );
-                }
-
-                uint256 currentValue0;
-                uint256 currentValue1;
-                uint256 oracleValue0;
-                uint256 oracleValue1;
-
-                {
-                    LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                        positionId,
-                        leg,
-                        positionBalance
-                    );
-
-                    (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
-                        currentTick,
-                        liquidityChunk
-                    );
-
-                    (oracleValue0, oracleValue1) = Math.getAmountsForLiquidity(
-                        oracleTick,
-                        liquidityChunk
-                    );
-                }
-
-                uint256 tokenType = positionId.tokenType(leg);
-                // compensate user for loss in value if chunk has lost money between current and median tick
-                // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
-                if (
-                    (tokenType == 0 && currentValue1 < oracleValue1) ||
-                    (tokenType == 1 && currentValue0 < oracleValue0)
-                )
-                    exerciseFees = exerciseFees.sub(
-                        LeftRightSigned
-                            .wrap(0)
-                            .toRightSlot(
-                                int128(uint128(oracleValue0)) - int128(uint128(currentValue0))
-                            )
-                            .toLeftSlot(
-                                int128(uint128(oracleValue1)) - int128(uint128(currentValue1))
-                            )
-                    );
-            }
-
-            // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
-            // the result is rounded DOWN and NOT toward zero
-            // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-            // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-            int256 fee = (FORCE_EXERCISE_COST >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
-
-            // store the exercise fees in the exerciseFees variable
-            exerciseFees = exerciseFees
-                .toRightSlot(int128((longAmounts.rightSlot() * fee) / DECIMALS_128))
-                .toLeftSlot(int128((longAmounts.leftSlot() * fee) / DECIMALS_128));
-        }
-    }
 
     /// @notice Get the pool utilization; it is a measure of the ratio of assets in the AMM vs the total assets managed by the pool.
     // With total assets being the current Panoptic pool balance + the amount in the AMM.

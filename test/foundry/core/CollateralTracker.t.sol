@@ -36,7 +36,7 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
-    constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000) {}
+    constructor() CollateralTracker(10, 2_000, 1_000, 5_000, 9_000, 20_000) {}
 
     // view deployer (panoptic pool)
     function panopticPool() external view returns (PanopticPool) {
@@ -579,15 +579,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker(
-            10,
-            2_000,
-            1_000,
-            -1_024,
-            5_000,
-            9_000,
-            20_000
-        );
+        CollateralTracker ct = new CollateralTracker(10, 2_000, 1_000, 5_000, 9_000, 20_000);
         ct.startToken(false, token0, token1, fee, panopticPool);
 
         assertEq(ct.totalSupply(), 10 ** 6);
@@ -4823,11 +4815,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = PanopticMath.getExerciseFee(
                 atTick,
-                atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
+                -1_024,
                 longAmounts
             );
 
@@ -4960,11 +4951,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = PanopticMath.getExerciseFee(
                 atTick,
-                atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
+                -1_024,
                 longAmounts
             );
 
@@ -5097,11 +5087,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = PanopticMath.getExerciseFee(
                 atTick,
-                atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
+                -1_024,
                 longAmounts
             );
 
@@ -5234,11 +5223,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
             int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = PanopticMath.getExerciseFee(
                 atTick,
-                atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
-                positionSize0 / 4,
+                -1_024,
                 longAmounts
             );
 

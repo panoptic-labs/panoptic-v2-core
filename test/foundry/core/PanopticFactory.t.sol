@@ -159,7 +159,7 @@ contract PanopticFactoryTest is Test {
             V3FACTORY,
             dNFT,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000))
+            address(new CollateralTracker(10, 2_000, 1_000, 5_000, 9_000, 20_000))
         );
 
         DonorNFT(address(dNFT)).changeFactory(address(panopticFactory));

@@ -86,10 +86,6 @@ library Errors {
     /// @notice SFPM: function has been called while reentrancy lock is active
     error ReentrantCall();
 
-    /// @notice An oracle price is too far away from another oracle price or the current tick
-    /// This is a safeguard against price manipulation during option mints, burns, and liquidations
-    error StaleTWAP();
-
     /// @notice PanopticPool: too many positions open (above limit per account)
     error TooManyPositionsOpen();
 

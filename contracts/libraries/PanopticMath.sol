@@ -607,14 +607,13 @@ library PanopticMath {
     }
 
     /*//////////////////////////////////////////////////////////////
-                       REVOKE/REFUND COMPUTATIONS
+                      LIQUIDATION/FORCE EXERCISES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Check that the account is liquidatable, get the split of bonus0 and bonus1 amounts.
     /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot
     /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot
     /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
-    /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user
     /// @param netExchanged The net exchanged value of the closed portfolio
     /// @param premia Premium across all positions being liquidated present in tokenData
     /// @return bonus0 Bonus amount for token0
@@ -624,7 +623,6 @@ library PanopticMath {
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
         uint160 sqrtPriceX96Twap,
-        uint160 sqrtPriceX96Final,
         LeftRightSigned netExchanged,
         LeftRightSigned premia
     ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
@@ -656,7 +654,7 @@ library PanopticMath {
                 bonus1 = int256(
                     PanopticMath.convert0to1(
                         Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                        sqrtPriceX96Final
+                        sqrtPriceX96Twap
                     )
                 );
             }
@@ -687,10 +685,10 @@ library PanopticMath {
                     // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
                     bonus1 += Math.min(
                         balance1 - paid1,
-                        PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
+                        PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Twap)
                     );
                     bonus0 -= Math.min(
-                        PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
+                        PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Twap),
                         paid0 - balance0
                     );
                 }
@@ -705,10 +703,10 @@ library PanopticMath {
                     // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
                     bonus0 += Math.min(
                         balance0 - paid0,
-                        PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
+                        PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Twap)
                     );
                     bonus1 -= Math.min(
-                        PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
+                        PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Twap),
                         paid1 - balance1
                     );
                 }
@@ -732,7 +730,7 @@ library PanopticMath {
     /// @param positionIdList The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
-    /// @param sqrtPriceX96Final The sqrt price at which to convert between token0/token1 when awarding the bonus
+    /// @param sqrtPriceX96TWAP The sqrt price at which to convert between token0/token1 when awarding the bonus
     /// @param collateral0 The collateral tracker for token0
     /// @param collateral1 The collateral tracker for token1
     /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
@@ -745,7 +743,7 @@ library PanopticMath {
         LeftRightSigned collateralRemaining,
         CollateralTracker collateral0,
         CollateralTracker collateral1,
-        uint160 sqrtPriceX96Final,
+        uint160 sqrtPriceX96TWAP,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
     ) external returns (int256, int256) {
         unchecked {
@@ -778,14 +776,14 @@ library PanopticMath {
                         collateralDelta0 - longPremium.rightSlot(),
                         PanopticMath.convert1to0(
                             longPremium.leftSlot() - collateralDelta1,
-                            sqrtPriceX96Final
+                            sqrtPriceX96TWAP
                         )
                     ),
                     Math.min(
                         longPremium.leftSlot() - collateralDelta1,
                         PanopticMath.convert0to1(
                             collateralDelta0 - longPremium.rightSlot(),
-                            sqrtPriceX96Final
+                            sqrtPriceX96TWAP
                         )
                     )
                 );
@@ -802,14 +800,14 @@ library PanopticMath {
                         longPremium.rightSlot() - collateralDelta0,
                         PanopticMath.convert1to0(
                             collateralDelta1 - longPremium.leftSlot(),
-                            sqrtPriceX96Final
+                            sqrtPriceX96TWAP
                         )
                     ),
                     -Math.min(
                         collateralDelta1 - longPremium.leftSlot(),
                         PanopticMath.convert0to1(
                             longPremium.rightSlot() - collateralDelta0,
-                            sqrtPriceX96Final
+                            sqrtPriceX96TWAP
                         )
                     )
                 );
@@ -878,6 +876,117 @@ library PanopticMath {
             }
 
             return (collateralDelta0, collateralDelta1);
+        }
+    }
+
+    /// @notice Get the required loss compensation deltas for a position's liquidator/exercisor.
+    /// @dev This function returns the token composition delta between a position's value at two ticks
+    /// @dev This is intended to mitigate potential extractable value resulting from a forced liquidity add at a manipulated price.
+    /// @dev ITM swaps are not performed during liquidations and force exercises, however, a sale can still be forced at an option's strike price:
+    /// The current price of ETH is 1000. Bob has a 1 ETH long call option with a strike price of 2000 USDC that can be exercised or liquidated.
+    /// Alice could manipulate the price to 2000 USDC and force exercise or liquidate Bob, forcing him to "purchase" 1 ETH at a price of 2000 USDC.
+    /// Effectively, Bob is paying 2000 USDC to settle his position, leaving him with 1 ETH of backing (worth 1000 USDC at the unmanipulated price).
+    /// At the "true" price of 1000 USDC, Bob only needs to pay 1 ETH to settle his position with the option seller.
+    /// @param positionId The position to calculate the loss compensation for
+    /// @param positionBalance The balance of `positionId` held by the liquidated or exercised user
+    /// @param currentTick The current price tick
+    /// @param oracleTick The canonical price oracle tick to use as a benchmark
+    /// @return lossCompensationDelta The loss compensation delta token0/token1 to apply to the liquidation bonus or exercise fee
+    function getLossCompensationDelta(
+        TokenId positionId,
+        uint128 positionBalance,
+        int24 currentTick,
+        int24 oracleTick
+    ) internal pure returns (LeftRightSigned lossCompensationDelta) {
+        uint256 numLegs = positionId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ++leg) {
+            if (positionId.isLong(leg) == 0) continue;
+
+            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                positionId,
+                leg,
+                positionBalance
+            );
+
+            (uint256 currentValue0, uint256 currentValue1) = Math.getAmountsForLiquidity(
+                currentTick,
+                liquidityChunk
+            );
+
+            (uint256 oracleValue0, uint256 oracleValue1) = Math.getAmountsForLiquidity(
+                oracleTick,
+                liquidityChunk
+            );
+
+            // compensate user for loss in value if chunk has lost money between current and median tick
+            // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
+            lossCompensationDelta = lossCompensationDelta.add(
+                LeftRightSigned
+                    .wrap(0)
+                    .toRightSlot(int128(uint128(currentValue0)) - int128(uint128(oracleValue0)))
+                    .toLeftSlot(int128(uint128(currentValue1)) - int128(uint128(oracleValue1)))
+            );
+        }
+    }
+
+    /// @notice Get the fee percentage for force exercising an option.
+    /// @dev This one computes the cost of calling the forceExercise function on a position:
+    /// - The forceExercisor will have to *pay* the exercisee because their position will be closed "against their will"
+    /// - The cost must be larger when the position is close to being in-range, and should be minimal when it is far from being in range. eg. Exercising a (1000, 1050)
+    ///   position will cost more if the price is 999 than if it is 100
+    /// - The cost is an exponentially decaying function of the distance between the position's strike and the current price
+    /// - The cost decreases by a factor of 2 for every "position's width"
+    /// - Note that the cost is the largest among all active legs, not the sum
+    /// @dev Example exercise costs (with a 'baseFee' of 1024 bps):
+    /// - 10.24%% if the position is liquidated when the price is between 950 and 1000, or if it is between 1050 and 1100
+    /// - 5% if the price is between 900 and 950 or (1100, 1150)
+    /// - 2.5% if between (850, 900) or (1150, 1200)
+    /// @param currentTick The current price tick
+    /// @param positionId The position to be force exercised
+    /// @param longAmounts The amount of longs in the position
+    /// @return The fee for force exercising the option position (represented as a negative delta)
+    function getExerciseFee(
+        int24 currentTick,
+        TokenId positionId,
+        int256 baseFee,
+        LeftRightSigned longAmounts
+    ) internal pure returns (LeftRightSigned) {
+        // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
+        // we don't need the leg information itself, really just "the number of half ranges" from the strike price:
+        uint256 maxNumRangesFromStrike = 1; // technically "maxNum(Half)RangesFromStrike" but the name is long
+
+        unchecked {
+            uint256 numLegs = positionId.countLegs();
+            for (uint256 leg = 0; leg < numLegs; ++leg) {
+                // short legs are not counted - exercise is intended to be based on long legs
+                if (positionId.isLong(leg) == 0) continue;
+
+                int24 range = int24(
+                    int256(
+                        Math.unsafeDivRoundingUp(
+                            uint24(positionId.width(leg) * positionId.tickSpacing()),
+                            2
+                        )
+                    )
+                );
+
+                maxNumRangesFromStrike = Math.max(
+                    maxNumRangesFromStrike,
+                    uint256(Math.abs(currentTick - positionId.strike(leg)) / range)
+                );
+            }
+
+            // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
+            // the result is rounded DOWN and NOT toward zero
+            // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
+            // subtract 1 from max half ranges from strike so fee starts at baseFee when moving OTM
+            int256 fee = (baseFee >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
+
+            return
+                LeftRightSigned
+                    .wrap(0)
+                    .toRightSlot(int128((longAmounts.rightSlot() * fee) / 10_000))
+                    .toLeftSlot(int128((longAmounts.leftSlot() * fee) / 10_000));
         }
     }
 
