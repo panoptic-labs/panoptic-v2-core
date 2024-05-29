@@ -328,17 +328,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
                              QUERY HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Reverts if current Uniswap price is not within the provided bounds.
-    /// @dev Can be used for composable slippage checks with `multicall` (such as for a force exercise or liquidation)
-    /// @dev Can also be used for more granular subtick precision on slippage checks
-    /// @param sqrtLowerBound The lower bound of the acceptable open interval for `currentSqrtPriceX96`
-    /// @param sqrtUpperBound The upper bound of the acceptable open interval for `currentSqrtPriceX96`
-    function assertPriceWithinBounds(uint160 sqrtLowerBound, uint160 sqrtUpperBound) external view {
-        (uint160 currentSqrtPriceX96, , , , , , ) = s_univ3pool.slot0();
-
-        if (currentSqrtPriceX96 <= sqrtLowerBound || currentSqrtPriceX96 >= sqrtUpperBound) {
-            revert Errors.PriceBoundFail();
-        }
+    /// @notice Reverts if the caller has a lower collateral balance than required to meet the provided `minValue0` and `minValue1`.
+    /// @dev Can be used for composable slippage checks with `multicall` (such as for a force exercise or liquidation).
+    /// @param minValue0 The minimum acceptable `token0` value of collateral
+    /// @param minValue1 The minimum acceptable `token1` value of collateral
+    function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
+        CollateralTracker ct0 = s_collateralToken0;
+        CollateralTracker ct1 = s_collateralToken1;
+        if (
+            ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
+            ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
+        ) revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
