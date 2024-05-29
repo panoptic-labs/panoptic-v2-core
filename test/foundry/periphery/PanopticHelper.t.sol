@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {Constants} from "@libraries/Constants.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -1068,7 +1069,13 @@ contract PanopticHelperTest is PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
+            pp.mintOptions(
+                posIdList,
+                positionSizes[0],
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
         }
 
         {
@@ -1076,7 +1083,13 @@ contract PanopticHelperTest is PositionUtils {
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
 
-            pp.mintOptions(posIdList, positionSizes[1], 0, 0, 0);
+            pp.mintOptions(
+                posIdList,
+                positionSizes[1],
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
 
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
                 .calculateAccumulatedFeesBatch(Alice, false, posIdList);
