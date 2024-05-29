@@ -722,23 +722,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     );
                 }
 
-                uint256 tokenType = positionId.tokenType(leg);
                 // compensate user for loss in value if chunk has lost money between current and median tick
                 // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
-                if (
-                    (tokenType == 0 && currentValue1 < oracleValue1) ||
-                    (tokenType == 1 && currentValue0 < oracleValue0)
-                )
-                    exerciseFees = exerciseFees.sub(
-                        LeftRightSigned
-                            .wrap(0)
-                            .toRightSlot(
-                                int128(uint128(oracleValue0)) - int128(uint128(currentValue0))
-                            )
-                            .toLeftSlot(
-                                int128(uint128(oracleValue1)) - int128(uint128(currentValue1))
-                            )
-                    );
+                exerciseFees = exerciseFees.sub(
+                    LeftRightSigned
+                        .wrap(0)
+                        .toRightSlot(int128(uint128(oracleValue0)) - int128(uint128(currentValue0)))
+                        .toLeftSlot(int128(uint128(oracleValue1)) - int128(uint128(currentValue1)))
+                );
             }
 
             // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
