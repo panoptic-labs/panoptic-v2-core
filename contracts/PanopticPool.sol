@@ -482,29 +482,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (portfolioPremium, balances);
     }
 
-    /// @notice Disable slippage checks if tickLimitLow == tickLimitHigh and reverses ticks if given in correct order to enable ITM swaps
-    /// @param tickLimitLow The lower slippage limit on the tick.
-    /// @param tickLimitHigh The upper slippage limit on the tick.
-    /// @return tickLimitLow Adjusted value for the lower tick limit.
-    /// @return tickLimitHigh Adjusted value for the upper tick limit.
-    function _getSlippageLimits(
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) internal pure returns (int24, int24) {
-        // disable slippage checks if tickLimitLow == tickLimitHigh
-        if (tickLimitLow == tickLimitHigh) {
-            // note the reversed order of the ticks
-            return (MAX_SWAP_TICK, MIN_SWAP_TICK);
-        }
-
-        // ensure tick limits are reversed (the SFPM uses low > high as a flag to do ITM swaps, which we need)
-        if (tickLimitLow < tickLimitHigh) {
-            return (tickLimitHigh, tickLimitLow);
-        }
-
-        return (tickLimitLow, tickLimitHigh);
-    }
-
     /*//////////////////////////////////////////////////////////////
                           ONBOARD MEDIAN TWAP
     //////////////////////////////////////////////////////////////*/
@@ -617,8 +594,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // do duplicate checks and the checks related to minting and positions
         _validatePositionList(msg.sender, positionIdList, 1);
-
-        (tickLimitLow, tickLimitHigh) = _getSlippageLimits(tickLimitLow, tickLimitHigh);
 
         // make sure the tokenId is for this Panoptic pool
         if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
@@ -821,9 +796,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
-        // Ensure that the current price is within the tick limits
-        (tickLimitLow, tickLimitHigh) = _getSlippageLimits(tickLimitLow, tickLimitHigh);
-
         uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
 
         LeftRightSigned premiaOwed;
@@ -1076,8 +1048,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // Note: tick limits are not applied here since it is not the liquidator's position being liquidated
             (netExchanged, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
-                0,
-                0,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK,
                 DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
@@ -1214,8 +1186,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
 
         // Exercise the option
-        // Note: tick limits are not applied here since it is not the exercisor's position being closed
-        _burnAllOptionsFrom(account, 0, 0, COMMIT_LONG_SETTLED, touchedId);
+        // Turn off ITM swapping to prevent swap at potentially unfavorable price
+        _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
 
         // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
         /// @dev use the medianTick to prevent price manipulations based on swaps.
