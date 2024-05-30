@@ -410,6 +410,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (premia.rightSlot(), premia.leftSlot(), balances);
     }
 
+    /// @notice Compute the total value of the portfolio defined by the positionIdList at the given tick.
+    /// @dev The return values do not include the value of the accumulated fees.
+    /// @dev value0 and value1 are related to one another according to: value1 = value0 * price(atTick).
+    /// @param user Address of the user that owns the positions.
+    /// @param atTick Tick at which the portfolio value is evaluated.
+    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...].
+    /// @return value0 Portfolio value in terms of token0 (negative = loss, when compared with starting value).
+    /// @return value1 Portfolio value in terms of token1 (negative = loss, when compared to starting value).
+    function calculatePortfolioValue(
+        address user,
+        int24 atTick,
+        TokenId[] calldata positionIdList
+    ) external view returns (int256 value0, int256 value1) {
+        (value0, value1) = FeesCalc.getPortfolioValue(
+            atTick,
+            s_positionBalance[user],
+            positionIdList
+        );
+    }
+
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.
     /// @param user The holder of options.
     /// @param positionIdList The list of all option positions held by user.
