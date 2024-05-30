@@ -5316,13 +5316,8 @@ contract PanopticPoolTest is PositionUtils {
 
             // compensate user for loss in value if chunk has lost money between current and median tick
             // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
-            if (
-                (tokenTypes[i] == 0 && currentValue1 < medianValue1) ||
-                (tokenTypes[i] == 1 && currentValue0 < medianValue0)
-            ) {
-                exerciseFeeAmounts[0] += int256(medianValue0) - int256(currentValue0);
-                exerciseFeeAmounts[1] += int256(medianValue1) - int256(currentValue1);
-            }
+            exerciseFeeAmounts[0] += int256(medianValue0) - int256(currentValue0);
+            exerciseFeeAmounts[1] += int256(medianValue1) - int256(currentValue1);
         }
 
         // since the position is sufficiently OTM, the spread between value at current tick and median tick is 0
