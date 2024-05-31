@@ -505,6 +505,10 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    function test_asserting_abilities() public {
+        assertWithMsg(1 > 2, "1 is greater than 2???");
+    }
+
     function perform_swap(uint160 target_sqrt_price) public {
         // bound the price between 10 and 500000
         target_sqrt_price = uint160(
