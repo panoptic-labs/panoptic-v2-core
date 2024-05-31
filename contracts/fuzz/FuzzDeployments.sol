@@ -874,7 +874,7 @@ contract FuzzDeployments is FuzzHelpers {
                 0
             );
         } else if (strategy == 5) {
-            // Mint a OTM calebdar spread
+            // Mint a OTM calendar spread
             spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
