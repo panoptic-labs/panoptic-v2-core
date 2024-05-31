@@ -739,6 +739,89 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    function mint_strategy_defined(
+        bool asset,
+        bool tokenType,
+        uint256 strategy,
+        uint24 width,
+        int256 strike,
+        uint256 posSize
+    ) public {
+        // We have two strategies now, this can be expanded later
+        strategy = bound(strategy, 0, 4);
+
+        address minter = msg.sender;
+
+        (, currentTick, , , , , ) = pool.slot0();
+
+        if (strategy == 0) {
+            // Mint a OTM spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                false,
+                false,
+                false,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 1) {
+            // Mint a ATM spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                true,
+                true,
+                false,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 2) {
+            // Mint an inverted spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                false,
+                false,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 3) {
+            // Mint an inverted ATM spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                true,
+                false,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 4) {
+            // Mint an inverted ATM spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                false,
+                true,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        }
+    }
+
     function test_asserting_abilities() public {
         assertWithMsg(1 > 2, "1 is greater than 2???");
     }
