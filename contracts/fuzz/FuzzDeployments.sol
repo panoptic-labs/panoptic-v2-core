@@ -215,6 +215,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool is_call_in,
         bool is_long_in,
         bool is_otm_in,
+        bool is_atm,
         uint24 width_in,
         int256 strike_in
     ) internal returns (TokenId out) {
@@ -228,7 +229,15 @@ contract FuzzDeployments is FuzzHelpers {
         int24 width;
         int24 strike;
 
-        if (is_otm_in) {
+        if (is_atm) {
+            (width, strike) = getATMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                call_put
+            );
+        } else if (is_otm_in) {
             (width, strike) = getOTMSW(
                 width_in,
                 strike_in,
@@ -439,6 +448,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool is_call,
         bool is_long,
         bool is_otm,
+        bool is_atm,
         uint64 effLiqLimit,
         uint24 width,
         int256 strike,
@@ -458,7 +468,7 @@ contract FuzzDeployments is FuzzHelpers {
             // Mint a short position
             _mint_option(
                 minter,
-                _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike),
+                _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
                 posSize,
                 0
             );
@@ -466,13 +476,13 @@ contract FuzzDeployments is FuzzHelpers {
             // Mint a short position first, then a long position
             _mint_option(
                 seller,
-                _generate_single_leg_tokenid(asset, is_call, false, is_otm, width, strike),
+                _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
                 (12 * posSize) / 10,
                 0
             );
             _mint_option(
                 minter,
-                _generate_single_leg_tokenid(asset, is_call, true, is_otm, width, strike),
+                _generate_single_leg_tokenid(asset, is_call, true, is_otm, is_atm, width, strike),
                 posSize,
                 effLiqLimit
             );

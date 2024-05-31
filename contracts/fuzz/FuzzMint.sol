@@ -25,6 +25,7 @@ contract FuzzMint is FuzzDeployments {
         bool asset,
         bool is_call,
         bool is_otm,
+        bool is_atm,
         uint24 width,
         int256 strike,
         uint256 posSize
@@ -36,6 +37,7 @@ contract FuzzMint is FuzzDeployments {
             is_call,
             false,
             is_otm,
+            is_atm,
             width,
             strike
         );

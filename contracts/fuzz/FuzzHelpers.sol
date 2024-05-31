@@ -873,6 +873,41 @@ contract FuzzHelpers is PropertiesAsserts {
         strike = int24(strike * ts + strikeOffset);
     }
 
+    function getATMSW(
+        uint256 _widthSeed,
+        int256 _strikeSeed,
+        uint256 ts_,
+        int24 _currentTick,
+        uint256 _tokenType
+    ) internal view returns (int24 width, int24 strike) {
+        int256 ts = int256(ts_);
+
+        width = ts == 1
+            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+            : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
+        int24 oneSidedRange = int24((width * ts) / 2);
+
+        int24 rangeDown;
+        int24 rangeUp;
+        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
+
+        int24 lowerBound = int24(_currentTick + ts - oneSidedRange - strikeOffset);
+        int24 upperBound = int24(_currentTick + oneSidedRange - strikeOffset);
+
+        if (ts == 1) {
+            lowerBound = int24(_currentTick + rangeDown - strikeOffset);
+            upperBound = int24(_currentTick + ts - rangeUp - strikeOffset);
+        }
+
+        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
+        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
+        strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
+
+        strike = int24(strike * ts + strikeOffset);
+    }
+
     function getValidSW(
         uint256 _widthSeed,
         int256 _strikeSeed,
