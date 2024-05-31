@@ -445,6 +445,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool is_atm0_in,
         bool is_atm1_in,
         bool is_inverted_in,
+        bool is_calendar_in,
         uint24 width_in,
         int256 strike_in,
         int24 strike_delta
@@ -454,12 +455,13 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 asset = asset_in == true ? 1 : 0;
         uint256 tokenType = tokenType_in == true ? 1 : 0;
 
-        int24 width;
+        int24 width_short;
+        int24 width_long;
         int24 strike_short;
         int24 strike_long;
 
         if (is_atm0_in) {
-            (width, strike_short) = getATMSW(
+            (width_short, strike_short) = getATMSW(
                 width_in,
                 strike_in,
                 uint24(poolTickSpacing),
@@ -468,7 +470,7 @@ contract FuzzDeployments is FuzzHelpers {
             );
         } else {
             if (is_inverted_in) {
-                (width, strike_short) = getITMSW(
+                (width_short, strike_short) = getITMSW(
                     width_in,
                     strike_in,
                     uint24(poolTickSpacing),
@@ -476,7 +478,7 @@ contract FuzzDeployments is FuzzHelpers {
                     asset
                 );
             } else {
-                (width, strike_short) = getOTMSW(
+                (width_short, strike_short) = getOTMSW(
                     width_in,
                     strike_in,
                     uint24(poolTickSpacing),
@@ -487,16 +489,19 @@ contract FuzzDeployments is FuzzHelpers {
         }
 
         if (is_atm1_in) {
-            (, strike_long) = getATMSW(
+            (width_long, strike_long) = getATMSW(
                 width_in,
                 strike_in,
                 uint24(poolTickSpacing),
                 currentTick,
                 1 - asset
             );
+            if (is_calendar_in == false) {
+                width_long = width_short;
+            }
         } else {
             if (is_inverted_in) {
-                (, strike_long) = getITMSW(
+                (width_long, strike_long) = getITMSW(
                     width_in,
                     strike_in,
                     uint24(poolTickSpacing),
@@ -504,7 +509,7 @@ contract FuzzDeployments is FuzzHelpers {
                     1 - asset
                 );
             } else {
-                (, strike_long) = getOTMSW(
+                (width_long, strike_long) = getOTMSW(
                     width_in,
                     strike_in,
                     uint24(poolTickSpacing),
@@ -512,12 +517,16 @@ contract FuzzDeployments is FuzzHelpers {
                     1 - asset
                 );
             }
+            if (is_calendar_in == false) {
+                width_long = width_short;
+            }
         }
 
-        // Create call
-        out = out.addLeg(0, 1, asset, 0, tokenType, 1, strike_short + strike_delta, width);
-        // Create put
-        out = out.addLeg(1, 1, asset, 1, tokenType, 0, strike_long - strike_delta, width);
+        // Create short
+        out = out.addLeg(0, 1, asset, 0, tokenType, 1, strike_short + strike_delta, width_short);
+        // Create long
+
+        out = out.addLeg(1, 1, asset, 1, tokenType, 0, strike_long - strike_delta, width_long);
 
         log_tokenid_leg(out, 0);
         log_tokenid_leg(out, 1);
@@ -762,6 +771,7 @@ contract FuzzDeployments is FuzzHelpers {
                 false,
                 false,
                 false,
+                false,
                 width,
                 strike,
                 0
@@ -774,6 +784,7 @@ contract FuzzDeployments is FuzzHelpers {
                 tokenType,
                 true,
                 true,
+                false,
                 false,
                 width,
                 strike,
@@ -788,6 +799,7 @@ contract FuzzDeployments is FuzzHelpers {
                 false,
                 false,
                 true,
+                false,
                 width,
                 strike,
                 0
@@ -801,6 +813,7 @@ contract FuzzDeployments is FuzzHelpers {
                 true,
                 false,
                 true,
+                false,
                 width,
                 strike,
                 0
@@ -814,6 +827,77 @@ contract FuzzDeployments is FuzzHelpers {
                 false,
                 true,
                 true,
+                false,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 5) {
+            // Mint a OTM calebdar spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                false,
+                false,
+                false,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 6) {
+            // Mint a ATM calendar spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                true,
+                true,
+                false,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 7) {
+            // Mint an inverted calendar spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                false,
+                false,
+                true,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 8) {
+            // Mint an inverted ATM calendar spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                true,
+                false,
+                true,
+                true,
+                width,
+                strike,
+                0
+            );
+            _mint_option(minter, spread, posSize, 0);
+        } else if (strategy == 4) {
+            // Mint an inverted ATM calendar spread
+            TokenId spread = _generate_spread_tokenid(
+                asset,
+                tokenType,
+                false,
+                true,
+                true,
+                false,
                 width,
                 strike,
                 0
