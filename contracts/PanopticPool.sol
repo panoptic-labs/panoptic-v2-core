@@ -1732,7 +1732,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 leg,
                 liquidityChunk.tickLower(),
                 liquidityChunk.tickUpper(),
-                uint64(Math.min(effectiveLiquidityLimitX32, MAX_SPREAD))
+                isLong == 0 ? MAX_SPREAD : uint64(Math.min(effectiveLiquidityLimitX32, MAX_SPREAD))
             );
 
             // if position is short, update gross premia accumulator
