@@ -160,7 +160,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity
     /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
-    uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
+    uint64 internal constant MAX_SPREAD = 4 * (2 ** 32);
 
     /// @dev The maximum allowed number of opened positions
     uint64 internal constant MAX_POSITIONS = 32;
