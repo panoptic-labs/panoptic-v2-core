@@ -315,6 +315,7 @@ contract FuzzDeployments is FuzzHelpers {
     function _generate_straddle_tokenid(
         bool asset_in,
         bool is_long_in,
+        bool is_atm_in,
         uint24 width_in,
         int256 strike_in
     ) internal returns (TokenId out) {
@@ -326,7 +327,24 @@ contract FuzzDeployments is FuzzHelpers {
         int24 width;
         int24 strike;
 
-        (width, strike) = getOTMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick, 0);
+        if (is_atm_in) {
+            (width, strike) = getATMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                0
+            );
+        } else {
+            // use the asset_in bool as a way to determine which side of the current price the strike is
+            (width, strike) = getOTMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                asset
+            );
+        }
 
         // Create call
         out = out.addLeg(0, 1, asset, long_short, 1 - asset, 1, strike, width);
@@ -340,6 +358,8 @@ contract FuzzDeployments is FuzzHelpers {
     function _generate_strangle_tokenid(
         bool asset_in,
         bool is_long_in,
+        bool is_atm_in,
+        bool is_inverted_in,
         uint24 width_in,
         int256 strike_in,
         int24 strike_delta
@@ -349,20 +369,56 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 asset = asset_in == true ? 1 : 0;
         uint256 long_short = is_long_in == true ? 1 : 0;
 
-        (int24 width_sc, int24 strike_sc) = getOTMSW(
-            width_in,
-            strike_in,
-            uint24(poolTickSpacing),
-            currentTick,
-            asset
-        );
-        (, int24 strike_sp) = getOTMSW(
-            width_in,
-            strike_in,
-            uint24(poolTickSpacing),
-            currentTick,
-            1 - asset
-        );
+        int24 width_sc;
+        int24 strike_sc;
+        int24 strike_sp;
+
+        if (is_atm_in) {
+            (width_sc, strike_sc) = getATMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                asset
+            );
+            (, strike_sp) = getATMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                1 - asset
+            );
+        } else if (is_inverted_in) {
+            (width_sc, strike_sc) = getITMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                asset
+            );
+            (, strike_sp) = getITMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                1 - asset
+            );
+        } else {
+            (width_sc, strike_sc) = getOTMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                asset
+            );
+            (, strike_sp) = getOTMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                1 - asset
+            );
+        }
 
         // Create call
         out = out.addLeg(0, 1, asset, long_short, 1 - asset, 1, strike_sc + strike_delta, width_sc);
@@ -507,20 +563,56 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 posSize
     ) public {
         // We have two strategies now, this can be expanded later
-        strategy = bound(strategy, 0, 1);
+        strategy = bound(strategy, 0, 4);
 
         address minter = msg.sender;
 
         (, currentTick, , , , , ) = pool.slot0();
 
         if (strategy == 0) {
-            // Mint a strangle
-            TokenId strangle = _generate_strangle_tokenid(asset, is_long, width, strike, 10); // Fixed delta of 10, can be changed/fuzzed
-            _mint_option(minter, strangle, posSize, 0);
-        } else if (strategy == 1) {
-            // Mint a straddle
-            TokenId straddle = _generate_straddle_tokenid(asset, is_long, width, strike);
+            // Mint a ATM straddle
+            TokenId straddle = _generate_straddle_tokenid(asset, is_long, true, width, strike);
             _mint_option(minter, straddle, posSize, 0);
+        } else if (strategy == 1) {
+            // Mint a OTM straddle
+            TokenId straddle = _generate_straddle_tokenid(asset, is_long, false, width, strike);
+            _mint_option(minter, straddle, posSize, 0);
+        } else if (strategy == 2) {
+            // Mint an OTM strangle
+            TokenId strangle = _generate_strangle_tokenid(
+                asset,
+                is_long,
+                false,
+                false,
+                width,
+                strike,
+                10
+            ); // Fixed delta of 10, can be changed/fuzzed
+            _mint_option(minter, strangle, posSize, 0);
+        } else if (strategy == 3) {
+            // Mint an ATM strangle (may be interted)
+            TokenId strangle = _generate_strangle_tokenid(
+                asset,
+                is_long,
+                true,
+                false,
+                width,
+                strike,
+                10
+            ); // Fixed delta of 10, can be changed/fuzzed
+            _mint_option(minter, strangle, posSize, 0);
+        } else if (strategy == 4) {
+            // Mint an inverted strangle
+            TokenId strangle = _generate_strangle_tokenid(
+                asset,
+                is_long,
+                false,
+                true,
+                width,
+                strike,
+                10
+            ); // Fixed delta of 10, can be changed/fuzzed
+            _mint_option(minter, strangle, posSize, 0);
         }
     }
 
