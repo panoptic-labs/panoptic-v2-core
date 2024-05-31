@@ -439,6 +439,90 @@ contract FuzzDeployments is FuzzHelpers {
         log_tokenid_leg(out, 1);
     }
 
+    function _generate_spread_tokenid(
+        bool asset_in,
+        bool tokenType_in,
+        bool is_atm0_in,
+        bool is_atm1_in,
+        bool is_inverted_in,
+        uint24 width_in,
+        int256 strike_in,
+        int24 strike_delta
+    ) internal returns (TokenId out) {
+        out = TokenId.wrap(poolId);
+
+        uint256 asset = asset_in == true ? 1 : 0;
+        uint256 tokenType = tokenType_in == true ? 1 : 0;
+
+        int24 width;
+        int24 strike_short;
+        int24 strike_long;
+
+        if (is_atm0_in) {
+            (width, strike_short) = getATMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                asset
+            );
+        } else {
+            if (is_inverted_in) {
+                (width, strike_short) = getITMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    asset
+                );
+            } else {
+                (width, strike_short) = getOTMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    asset
+                );
+            }
+        }
+
+        if (is_atm1_in) {
+            (, strike_long) = getATMSW(
+                width_in,
+                strike_in,
+                uint24(poolTickSpacing),
+                currentTick,
+                1 - asset
+            );
+        } else {
+            if (is_inverted_in) {
+                (, strike_long) = getITMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    1 - asset
+                );
+            } else {
+                (, strike_long) = getOTMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    1 - asset
+                );
+            }
+        }
+
+        // Create call
+        out = out.addLeg(0, 1, asset, 0, tokenType, 1, strike_short + strike_delta, width);
+        // Create put
+        out = out.addLeg(1, 1, asset, 1, tokenType, 0, strike_long - strike_delta, width);
+
+        log_tokenid_leg(out, 0);
+        log_tokenid_leg(out, 1);
+    }
+
     ////////////////////////////////////////////////////
     // Minting
     ////////////////////////////////////////////////////
