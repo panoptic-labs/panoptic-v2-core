@@ -679,9 +679,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             effectiveLiquidityLimitX32
         );
 
-        // calculate and write position data
-        //_addUserOption(tokenId, effectiveLiquidityLimitX32);
-
         // pay commission based on total moved amount (long + short)
         // write data about inAMM in collateralBase
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
@@ -722,56 +719,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)
         unchecked {
             return uint128(uint256(utilization0) + uint128(uint256(utilization1) << 64));
-        }
-    }
-
-    /// @notice Store user option data. Track fees collected for the options.
-    /// @dev Computes and stores the option data for each leg.
-    /// @param tokenId The id of the minted option position.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
-    function _addUserOption(TokenId tokenId, uint64 effectiveLiquidityLimitX32) internal {
-        // Update the position list hash (hash = XOR of all keccak256(tokenId)). Remove hash by XOR'ing again
-        _updatePositionsHash(msg.sender, tokenId, ADD);
-
-        uint256 numLegs = tokenId.countLegs();
-        // compute upper and lower tick and liquidity
-        for (uint256 leg = 0; leg < numLegs; ) {
-            // Extract base fee (AMM swap/trading fees) for the position and add it to s_options
-            // (ie. the (feeGrowth * liquidity) / 2**128 for each token)
-            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
-            uint256 isLong = tokenId.isLong(leg);
-            {
-                (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
-                    address(s_univ3pool),
-                    address(this),
-                    tokenId.tokenType(leg),
-                    tickLower,
-                    tickUpper,
-                    type(int24).max,
-                    isLong
-                );
-
-                // update the premium accumulators
-                s_options[msg.sender][tokenId][leg] = LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot(premiumAccumulator0)
-                    .toLeftSlot(premiumAccumulator1);
-            }
-            // verify base Liquidity limit only if new position is long
-            if (isLong == 1) {
-                // Move this into a new function
-                _checkLiquiditySpread(
-                    tokenId,
-                    leg,
-                    tickLower,
-                    tickUpper,
-                    uint64(Math.min(effectiveLiquidityLimitX32, MAX_SPREAD))
-                );
-            }
-            unchecked {
-                ++leg;
-            }
         }
     }
 
@@ -836,9 +783,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionSize,
             owner
         );
-
-        // erase position data
-        //_updatePositionDataBurn(owner, tokenId);
 
         // emit event
         emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
