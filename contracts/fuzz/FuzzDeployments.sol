@@ -710,21 +710,16 @@ contract FuzzDeployments is FuzzHelpers {
 
         (, currentTick, , , , , ) = pool.slot0();
 
+        TokenId tokenId_undefined;
         if (strategy == 0) {
             // Mint a ATM straddle
-            TokenId straddle = _generate_straddle_tokenid(asset, is_long, true, width, strike);
-            if (straddle.countLongs() > 0) {
-                TokenId straddleLongs = _generate_long_only_tokenid(straddle);
-                _mint_option(seller, straddleLongs, (15 * posSize) / 10, 0);
-            }
-            _mint_option(minter, straddle, posSize, 0);
+            tokenId_undefined = _generate_straddle_tokenid(asset, is_long, true, width, strike);
         } else if (strategy == 1) {
             // Mint a OTM straddle
-            TokenId straddle = _generate_straddle_tokenid(asset, is_long, false, width, strike);
-            _mint_option(minter, straddle, posSize, 0);
+            tokenId_undefined = _generate_straddle_tokenid(asset, is_long, false, width, strike);
         } else if (strategy == 2) {
             // Mint an OTM strangle
-            TokenId strangle = _generate_strangle_tokenid(
+            TokenId tokenId_undefined = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 false,
@@ -734,10 +729,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
-            _mint_option(minter, strangle, posSize, 0);
         } else if (strategy == 3) {
             // Mint an ATM strangle (may be inverted)
-            TokenId strangle = _generate_strangle_tokenid(
+            tokenId_undefined = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 true,
@@ -747,10 +741,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
-            _mint_option(minter, strangle, posSize, 0);
         } else if (strategy == 4) {
             // Mint an inverted OTM strangle
-            TokenId strangle = _generate_strangle_tokenid(
+            tokenId_undefined = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 false,
@@ -760,10 +753,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
-            _mint_option(minter, strangle, posSize, 0);
         } else if (strategy == 5) {
             // Mint an inverted ATM strangle
-            TokenId strangle = _generate_strangle_tokenid(
+            tokenId_undefined = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 true,
@@ -773,10 +765,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
-            _mint_option(minter, strangle, posSize, 0);
         } else if (strategy == 6) {
             // Mint an inverted ATM strangle
-            TokenId strangle = _generate_strangle_tokenid(
+            tokenId_undefined = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 false,
@@ -786,11 +777,16 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
-            _mint_option(minter, strangle, posSize, 0);
         }
+        if (tokenId_undefined.countLongs() > 0) {
+            TokenId tokenIdLongs = _generate_long_only_tokenid(tokenId_undefined);
+            _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, 0);
+        }
+        _mint_option(minter, tokenId_undefined, posSize, 0);
     }
 
     function mint_strategy_defined(
+        uint256 seller_index,
         bool asset,
         bool tokenType,
         uint256 strategy,
@@ -798,16 +794,23 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint256 posSize
     ) public {
-        // We have two strategies now, this can be expanded later
-        strategy = bound(strategy, 0, 4);
+        seller_index = bound(seller_index, 0, 4);
+        if (actors[seller_index] == msg.sender) {
+            seller_index = bound(seller_index + 1, 0, 4);
+        }
 
         address minter = msg.sender;
+        address seller = actors[seller_index];
+
+        // We have two strategies now, this can be expanded later
+        strategy = bound(strategy, 0, 9);
 
         (, currentTick, , , , , ) = pool.slot0();
 
+        TokenId spread;
         if (strategy == 0) {
             // Mint a OTM spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 false,
@@ -818,10 +821,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 1) {
             // Mint a ATM spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 true,
@@ -832,10 +834,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 2) {
             // Mint an inverted spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 false,
@@ -846,10 +847,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 3) {
             // Mint an inverted ATM spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 true,
@@ -860,10 +860,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 4) {
             // Mint an inverted ATM spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 false,
@@ -874,10 +873,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 5) {
             // Mint a OTM calebdar spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 false,
@@ -888,10 +886,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 6) {
             // Mint a ATM calendar spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 true,
@@ -902,10 +899,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 7) {
             // Mint an inverted calendar spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 false,
@@ -916,10 +912,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         } else if (strategy == 8) {
             // Mint an inverted ATM calendar spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 true,
@@ -930,10 +925,9 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
-        } else if (strategy == 4) {
+        } else if (strategy == 9) {
             // Mint an inverted ATM calendar spread
-            TokenId spread = _generate_spread_tokenid(
+            spread = _generate_spread_tokenid(
                 asset,
                 tokenType,
                 false,
@@ -944,8 +938,13 @@ contract FuzzDeployments is FuzzHelpers {
                 strike,
                 0
             );
-            _mint_option(minter, spread, posSize, 0);
         }
+
+        if (spread.countLongs() > 0) {
+            TokenId tokenIdLongs = _generate_long_only_tokenid(spread);
+            _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, 0);
+        }
+        _mint_option(minter, spread, posSize, 0);
     }
 
     function test_asserting_abilities() public {
