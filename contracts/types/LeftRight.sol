@@ -15,18 +15,17 @@ using LeftRightLibrary for LeftRightSigned global;
 /// @author Axicon Labs Limited
 /// @notice Simple data type that divides a 256-bit word into two 128-bit slots.
 library LeftRightLibrary {
-    // Used for safecasting
     using Math for uint256;
 
-    /// @notice AND bitmask to isolate the right half of a uint256
+    /// @notice AND bitmask to isolate the left half of a uint256.
     uint256 internal constant LEFT_HALF_BIT_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
 
-    /// @notice AND bitmask to isolate the left half of an int256
+    /// @notice AND bitmask to isolate the left half of an int256.
     int256 internal constant LEFT_HALF_BIT_MASK_INT =
         int256(uint256(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000));
 
-    /// @notice AND bitmask to isolate the left half of an int256
+    /// @notice AND bitmask to isolate the right half of an int256.
     int256 internal constant RIGHT_HALF_BIT_MASK = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
     /*//////////////////////////////////////////////////////////////

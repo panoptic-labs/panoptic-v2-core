@@ -171,7 +171,7 @@ abstract contract ERC1155 {
     }
 
     /// @notice Query balances for multiple users and tokens at once.
-    /// @dev `owners` and `ids` should be of equal length
+    /// @dev `owners` and `ids` should be of equal length.
     /// @param owners The list of users to query balances for
     /// @param ids The list of ERC1155 token ids to query
     /// @return balances The balances for each owner-id pair in the same order as the input arrays

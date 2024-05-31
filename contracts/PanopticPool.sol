@@ -20,10 +20,9 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
-/// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
+/// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-/// @dev All liquidity deployed to/from the AMM is owned by this smart contract.
 contract PanopticPool is ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -31,10 +30,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Emitted when an account is liquidated.
     /// @dev Need to unpack bonusAmounts to get raw numbers, which are always positive.
-    /// @param liquidator Address of the caller whom is liquidating the distressed account.
-    /// @param liquidatee Address of the distressed/liquidatable account.
-    /// @param bonusAmounts LeftRight encoding for the the bonus paid for token 0 (right slot) and 1 (left slot) from the Panoptic Pool to the liquidator.
-    /// The token0 bonus is in the right slot, and token1 bonus is in the left slot.
+    /// @param liquidator Address of the caller liquidating the distressed account
+    /// @param liquidatee Address of the distressed/liquidatable account
+    /// @param bonusAmounts LeftRight encoding for the the bonus paid for token 0 (right slot) and 1 (left slot) from the Panoptic Pool to the liquidator
     event AccountLiquidated(
         address indexed liquidator,
         address indexed liquidatee,
@@ -42,12 +40,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
     );
 
     /// @notice Emitted when a position is force exercised.
-    /// @dev Need to unpack exerciseFee to get raw numbers, represented as a negative value (fee debited).
-    /// @param exercisor Address of the account that forces the exercise of the position.
+    /// @param exercisor Address of the account that forces the exercise of the position
     /// @param user Address of the owner of the liquidated position
-    /// @param tokenId TokenId of the liquidated position.
-    /// @param exerciseFee LeftRight encoding for the cost paid by the exercisor to force the exercise of the token.
-    /// The token0 fee is in the right slot, and token1 fee is in the left slot.
+    /// @param tokenId TokenId of the liquidated position
+    /// @param exerciseFee LeftRight encoding for the cost paid by the exercisor to force the exercise of the token;
+    /// the cost for token 0 (right slot) and 1 (left slot) is represented as negative
     event ForcedExercised(
         address indexed exercisor,
         address indexed user,
@@ -55,10 +52,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightSigned exerciseFee
     );
 
-    /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`)
-    /// @param user Address of the owner of the settled position.
-    /// @param tokenId TokenId of the settled position.
-    /// @param settledAmounts LeftRight encoding for the amount of premium settled for token0 (right slot) and token1 (left slot).
+    /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`).
+    /// @param user Address of the owner of the settled position
+    /// @param tokenId TokenId of the settled position
+    /// @param settledAmounts LeftRight encoding for the amount of premium settled for token0 (right slot) and token1 (left slot)
     event PremiumSettled(
         address indexed user,
         TokenId indexed tokenId,
@@ -66,12 +63,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     );
 
     /// @notice Emitted when an option is burned.
-    /// @dev Is not emitted when a position is liquidated or force exercised.
-    /// @param recipient User that burnt the option.
-    /// @param positionSize The number of contracts burnt, expressed in terms of the asset.
-    /// @param tokenId TokenId of the burnt option.
-    /// @param premia LeftRight packing for the amount of premia collected for token0 and token1.
-    /// The token0 premia is in the right slot, and token1 premia is in the left slot.
+    /// @param recipient User that burnt the option
+    /// @param positionSize The number of contracts burnt, expressed in terms of the asset
+    /// @param tokenId TokenId of the burnt option
+    /// @param premia LeftRight packing for the amount of premia collected for token0 (right) and token1 (left)
     event OptionBurnt(
         address indexed recipient,
         uint128 positionSize,
@@ -80,13 +75,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     );
 
     /// @notice Emitted when an option is minted.
-    /// @dev Cannot add liquidity to an existing position
-    /// @param recipient User that minted the option.
-    /// @param positionSize The number of contracts minted, expressed in terms of the asset.
-    /// @param tokenId TokenId of the created option.
+    /// @param recipient User that minted the option
+    /// @param positionSize The number of contracts minted, expressed in terms of the asset
+    /// @param tokenId TokenId of the created option
     /// @param poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
-    /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
+    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets()
+    /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     event OptionMinted(
         address indexed recipient,
         uint128 positionSize,
@@ -98,104 +92,101 @@ contract PanopticPool is ERC1155Holder, Multicall {
                          IMMUTABLES & CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
-    // specifies what the MIN/MAX slippage ticks are:
+    /// @notice Lower price bound used when no slippage check is required.
     int24 internal constant MIN_SWAP_TICK = Constants.MIN_V3POOL_TICK - 1;
+
+    /// @notice Upper price bound used when no slippage check is required.
     int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK + 1;
 
-    // Flags used as arguments to premia caluculation functions
-    /// @dev 'COMPUTE_ALL_PREMIA' calculates premia for all legs of a position
+    /// @notice Flag that signals to compute premia for both the short and long legs of a position.
     bool internal constant COMPUTE_ALL_PREMIA = true;
-    /// @dev 'COMPUTE_LONG_PREMIA' calculates premia for only the long legs of a position
+    /// @notice Flag that signals to compute premia only for the long legs of a position.
     bool internal constant COMPUTE_LONG_PREMIA = false;
 
-    /// @dev Only include the share of (settled) premium that is available to collect when calling `_calculateAccumulatedPremia`
+    /// @notice Flag that indicates only to include the share of (settled) premium that is available to collect when calling `_calculateAccumulatedPremia`.
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
 
-    /// @dev Flag on the function `updateSettlementPostBurn`
-    /// @dev 'COMMIT_LONG_SETTLED' commits both collected Uniswap fees and settled long premium to `s_settledTokens`
-    /// @dev 'DONOT_COMMIT_LONG__SETTLED' only commits collected Uniswap fees to `s_settledTokens`
+    /// @notice Flag that signals to commit both collected Uniswap fees and settled long premium to `s_settledTokens`.
     bool internal constant COMMIT_LONG_SETTLED = true;
+    /// @notice Flag that signals to only commit collected Uniswap fees to `s_settledTokens`.
     bool internal constant DONOT_COMMIT_LONG_SETTLED = false;
 
-    /// @dev Boolean flag to determine wether a position is added (true) or not (!ADD = false)
+    /// @notice Flag that signals to add a new position to the user's positions hash (as opposed to removing an existing position).
     bool internal constant ADD = true;
 
-    /// @dev The window to calculate the TWAP used for solvency checks
-    /// Currently calculated by dividing this value into 20 periods, averaging them together, then taking the median
-    /// May be configurable on a pool-by-pool basis in the future, but hardcoded for now
+    /// @notice The minimum window (in seconds) used to calculate the TWAP price for solvency checks during liquidations.
     uint32 internal constant TWAP_WINDOW = 600;
 
-    // If false, an 8-slot internal median array is used to compute the "slow" oracle price
-    // This oracle is updated with the last Uniswap observation during `mintOptions` if MEDIAN_PERIOD has elapsed past the last observation
-    // If true, the "slow" oracle price is instead computed on-the-fly from 8 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls
+    /// @notice Parameter that determines which oracle type to use for the "slow" oracle price on non-liquidation solvency checks.
+    /// @dev If false, an 8-slot internal median array is used to compute the "slow" oracle price.
+    /// @dev This oracle is updated with the last Uniswap observation during `mintOptions` if MEDIAN_PERIOD has elapsed past the last observation.
+    /// @dev If true, the "slow" oracle price is instead computed on-the-fly from 8 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls.
     bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
 
-    // The minimum amount of time, in seconds, permitted between internal TWAP updates.
+    /// @notice The minimum amount of time, in seconds, permitted between internal TWAP updates.
     uint256 internal constant MEDIAN_PERIOD = 60;
 
-    /// @dev Amount of Uniswap observations to take in computing the "fast" oracle price
+    /// @notice Amount of Uniswap observations to include in the "fast" oracle price.
     uint256 internal constant FAST_ORACLE_CARDINALITY = 3;
 
-    /// @dev Amount of observation indices to skip in between each observation for the "fast" oracle price
-    /// Note that the *minimum* total observation time is determined by the blocktime and may need to be adjusted by chain
-    /// Uniswap observations snapshot the last block's closing price at the first interaction with the pool in a block
-    /// In this case, if there is an interaction every block, the "fast" oracle can consider 3 consecutive block end prices (min=36 seconds on Ethereum)
+    /// @dev Amount of observation indices to skip in between each observation for the "fast" oracle price.
+    /// @dev Note that the *minimum* total observation time is determined by the blocktime and may need to be adjusted by chain.
+    /// @dev Uniswap observations snapshot the last block's closing price at the first interaction with the pool in a block.
+    /// @dev In this case, if there is an interaction every block, the "fast" oracle can consider 3 consecutive block end prices (min=36 seconds on Ethereum).
     uint256 internal constant FAST_ORACLE_PERIOD = 1;
 
-    /// @dev Amount of Uniswap observations to take in computing the "slow" oracle price (in Uniswap mode)
+    /// @notice Amount of Uniswap observations to include in the "slow" oracle price (in Uniswap mode).
     uint256 internal constant SLOW_ORACLE_CARDINALITY = 8;
 
-    /// @dev Amount of observation indices to skip in between each observation for the "slow" oracle price
-    /// @dev Structured such that the minimum total observation time is 8 minutes on Ethereum (similar to internal median mode)
+    /// @notice Amount of observation indices to skip in between each observation for the "slow" oracle price.
+    /// @dev Structured such that the minimum total observation time is 8 minutes on Ethereum (similar to internal median mode).
     uint256 internal constant SLOW_ORACLE_PERIOD = 5;
 
-    // The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up)
-    // Prevents manipulation of the currentTick to liquidate positions at a less favorable price
+    /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up).
+    /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// The maximum allowed delta between the fast and slow oracle ticks
-    /// Falls back on the more conservative (less solvent) tick during times of extreme volatility (to ensure the account is always solvent)
+    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the slow oracle tick.
+    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility.
     int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
 
-    /// @dev The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity
-    /// The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
-    /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04
+    /// @notice The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity.
+    /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
+    /// which can be explored in this calculator: https://www.desmos.com/calculator/mdeqob2m04.
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
 
-    /// @dev The maximum allowed number of opened positions
+    /// @notice The maximum allowed number of opened positions for a user.
     uint64 internal constant MAX_POSITIONS = 32;
 
-    // multiplier (x10k) for the collateral requirement in the event of a buying power decrease, such as minting or force exercising
+    /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     uint256 internal constant BP_DECREASE_BUFFER = 13_333;
 
-    // multiplier (x10k) for the collateral requirement in the general case
+    /// @notice Multiplier for the collateral requirement in the general case.
     uint256 internal constant NO_BUFFER = 10_000;
 
-    // Panoptic ecosystem contracts - addresses are set in the constructor
-
-    /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises
+    /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
     SemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE 
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev The Uniswap v3 pool that this instance of Panoptic is deployed on
+    /// @notice The Uniswap v3 pool that this instance of Panoptic is deployed on.
     IUniswapV3Pool internal s_univ3pool;
 
-    /// @notice Mini-median storage slot
-    /// @dev The data for the last 8 interactions is stored as such:
-    /// LAST UPDATED BLOCK TIMESTAMP (40 bits)
-    /// [BLOCK.TIMESTAMP]
+    /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
+    // The data for the last 8 interactions is stored as such:
+    // LAST UPDATED BLOCK TIMESTAMP (40 bits)
+    // [BLOCK.TIMESTAMP]
     // (00000000000000000000000000000000) // dynamic
     //
-    /// @dev ORDERING of tick indices least --> greatest (24 bits)
-    /// The value of the bit codon ([#]) is a pointer to a tick index in the tick array.
-    /// The position of the bit codon from most to least significant is the ordering of the
-    /// tick index it points to from least to greatest.
+    // ORDERING of tick indices least --> greatest (24 bits)
+    // The value of the bit codon ([#]) is a pointer to a tick index in the tick array.
+    // The position of the bit codon from most to least significant is the ordering of the
+    // tick index it points to from least to greatest.
     //
-    /// @dev [7] [5] [3] [1] [0] [2] [4] [6]
-    /// 111 101 011 001 000 010 100 110
+    // [7] [5] [3] [1] [0] [2] [4] [6]
+    // 111 101 011 001 000 010 100 110
     //
     // [Constants.MIN_V3POOL_TICK-1] [7]
     // 111100100111011000010111
@@ -215,77 +206,80 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // [Constants.MAX_V3POOL_TICK+1] [2]
     // 000011011000100111101001
     //
-    ///  @dev [CURRENT TICK] [4]
-    /// (000000000000000000000000) // dynamic
+    // [CURRENT TICK] [4]
+    // (000000000000000000000000) // dynamic
     //
-    ///  @dev [CURRENT TICK] [3]
-    /// (000000000000000000000000) // dynamic
+    // [CURRENT TICK] [3]
+    // (000000000000000000000000) // dynamic
     uint256 internal s_miniMedian;
 
-    /// @dev ERC4626 vaults that users collateralize their positions with
-    /// Each token has its own vault, listed in the same order as the tokens in the pool
-    /// In addition to collateral deposits, these vaults also handle various collateral/bonus/exercise computations
-    /// underlying collateral token0
+    // ERC4626 vaults that users collateralize their positions with
+    // Each token has its own vault, listed in the same order as the tokens in the pool
+    // In addition to collateral deposits, these vaults also handle various collateral/bonus/exercise computations
+
+    /// @notice Collateral vault for token0 in the Uniswap pool.
     CollateralTracker internal s_collateralToken0;
-    /// @dev underlying collateral token1
+    /// @notice Collateral vault for token1 in the Uniswap pool.
     CollateralTracker internal s_collateralToken1;
 
-    /// @dev Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth
-    // premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
-    // collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index)
+    /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
+    /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
+    /// collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index).
     mapping(address account => mapping(TokenId tokenId => mapping(uint256 leg => LeftRightUnsigned premiaGrowth)))
         internal s_options;
 
-    /// @dev Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`
-    /// totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64
-    /// Used to compute the denominator for the fraction of premium available to sellers to collect
-    /// LeftRight - right slot is token0, left slot is token1
+    /// @notice Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`.
+    /// @dev totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64.
+    /// @dev Used to compute the denominator for the fraction of premium available to sellers to collect.
+    /// @dev LeftRight - right slot is token0, left slot is token1.
     mapping(bytes32 chunkKey => LeftRightUnsigned lastGrossPremium) internal s_grossPremiumLast;
 
-    /// @dev per-chunk accumulator for tokens owed to sellers that have been settled and are now available
-    /// This number increases when buyers pay long premium and when tokens are collected from Uniswap
-    /// It decreases when sellers close positions and collect the premium they are owed
-    /// LeftRight - right slot is token0, left slot is token1
+    /// @notice Per-chunk accumulator for tokens owed to sellers that have been settled and are now available.
+    /// @dev This number increases when buyers pay long premium and when tokens are collected from Uniswap.
+    /// @dev It decreases when sellers close positions and collect the premium they are owed.
+    /// @dev LeftRight - right slot is token0, left slot is token1.
     mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) internal s_settledTokens;
 
-    /// @dev Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot)
-    ///    poolUtilizations when minted (left)    liquidity=ERC1155 balance (right)
-    ///        token0          token1
-    ///  |<-- 64 bits -->|<-- 64 bits -->|<---------- 128 bits ---------->|
-    ///  |<-------------------------- 256 bits -------------------------->|
+    /// @notice Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot).
+    //    poolUtilizations when minted (left)    liquidity=ERC1155 balance (right)
+    //        token0          token1
+    //  |<-- 64 bits -->|<-- 64 bits -->|<---------- 128 bits ---------->|
+    //  |<-------------------------- 256 bits -------------------------->|
     mapping(address account => mapping(TokenId tokenId => LeftRightUnsigned balanceAndUtilizations))
         internal s_positionBalance;
 
-    /// @dev numPositions (32 positions max)    user positions hash
-    ///  |<-- 8 bits -->|<------------------ 248 bits ------------------->|
-    ///  |<---------------------- 256 bits ------------------------------>|
-    /// @dev Tracks the position list hash i.e keccak256(XORs of abi.encodePacked(positionIdList)).
-    /// The order and content of this list is emitted in an event every time it is changed
-    /// If the user has no positions, the hash is not the hash of "[]" but just bytes32(0) for consistency.
-    /// The accumulator also tracks the total number of positions (ie. makes sure the length of the provided positionIdList matches);
-    /// @dev The purpose of the positionIdList is to reduce storage usage when a user has more than one active position
-    /// instead of having to manage an unwieldy storage array and do lots of loads, we just store a hash of the array
-    /// this hash can be cheaply verified on every operation with a user provided positionIdList - and we can use that for operations
-    /// without having to every load any other data from storage
+    //    numPositions (32 positions max)    user positions hash
+    //  |<-- 8 bits -->|<------------------ 248 bits ------------------->|
+    //  |<---------------------- 256 bits ------------------------------>|
+    /// @notice Tracks the position list hash i.e keccak256(XORs of abi.encodePacked(positionIdList)).
+    /// @dev The order and content of this list (the preimage for the hash) is emitted in an event every time it is changed.
+    /// @dev A component of this hash also tracks the total number of positions (i.e. makes sure the length of the provided positionIdList matches).
+    /// @dev The purpose of this system is to reduce storage usage when a user has more than one active position.
+    /// @dev Instead of having to manage an unwieldy storage array and do lots of loads, we just store a hash of the array.
+    /// @dev This hash can be cheaply verified on every operation with a user provided positionIdList - which can then be used for operations
+    /// without having to every load any other data from storage.
+    //    numPositions (32 positions max)    user positions hash
+    //  |<-- 8 bits -->|<------------------ 248 bits ------------------->|
+    //  |<---------------------- 256 bits ------------------------------>|
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice During construction: sets the address of the panoptic factory smart contract and the SemiFungiblePositionMananger (SFPM).
-    /// @param _sfpm The address of the SemiFungiblePositionManager (SFPM) contract.
+    /// @notice Store the address of the canonical SemiFungiblePositionManager (SFPM) contract.
+    /// @param _sfpm The address of the SemiFungiblePositionManager (SFPM) contract
     constructor(SemiFungiblePositionManager _sfpm) {
         SFPM = _sfpm;
     }
 
-    /// @notice Creates a method for creating a Panoptic Pool on top of an existing Uniswap v3 pair.
-    /// @dev Must be called first before any transaction can occur. Must also deploy collateralReference first.
-    /// @param _univ3pool Address of the target Uniswap v3 pool.
-    /// @param token0 Address of the pool's token0.
-    /// @param token1 Address of the pool's token1.
-    /// @param collateralTracker0 Interface for collateral token0.
-    /// @param collateralTracker1 Interface for collateral token1.
+    /// @notice Initializes a Panoptic Pool on top of an existing Uniswap v3 + collateral vault pair.
+    /// @dev Must be called first (by a factory contract) before any transaction can occur.
+    /// @param _univ3pool Address of the target Uniswap v3 pool
+    /// @param token0 Address of the pool's token0
+    /// @param token1 Address of the pool's token1
+    /// @param collateralTracker0 Address of the collateral vault for token0
+    /// @param collateralTracker1 Address of the collateral vault for token1
     function startPool(
         IUniswapV3Pool _univ3pool,
         address token0,
@@ -355,11 +349,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Returns the total number of contracts owned by user for a specified position.
-    /// @param user Address of the account to be checked.
-    /// @param tokenId TokenId of the option position to be checked.
-    /// @return balance Number of contracts of tokenId owned by the user.
-    /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint.
-    /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint.
+    /// @param user Address of the account to be checked
+    /// @param tokenId TokenId of the option position to be checked
+    /// @return balance Number of contracts of tokenId owned by the user
+    /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
+    /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
     function optionPositionBalance(
         address user,
         TokenId tokenId
@@ -382,13 +376,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Compute the total amount of premium accumulated for a list of positions.
-    /// @dev Can be costly as it reads information from 2 ticks for each leg of each tokenId.
-    /// @param user Address of the user that owns the positions.
-    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...].
-    /// @param includePendingPremium true = include premium that is owed to the user but has not yet settled, false = only include premium that is available to collect.
-    /// @return premium0 Premium for token0 (negative = amount is owed).
-    /// @return premium1 Premium for token1 (negative = amount is owed).
-    /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...].
+    /// @param user Address of the user that owns the positions
+    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
+    /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
+    /// @return premium0 Premium for token0 (negative = amount is owed)
+    /// @return premium1 Premium for token1 (negative = amount is owed)
+    /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function calculateAccumulatedFeesBatch(
         address user,
         bool includePendingPremium,
@@ -410,14 +403,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (premia.rightSlot(), premia.leftSlot(), balances);
     }
 
-    /// @notice Compute the total value of the portfolio defined by the positionIdList at the given tick.
-    /// @dev The return values do not include the value of the accumulated fees.
-    /// @dev value0 and value1 are related to one another according to: value1 = value0 * price(atTick).
+    /// @notice Compute the net token amounts owned by a given positionIdList in the Uniswap pool at the given price tick.
     /// @param user Address of the user that owns the positions.
-    /// @param atTick Tick at which the portfolio value is evaluated.
-    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...].
-    /// @return value0 Portfolio value in terms of token0 (negative = loss, when compared with starting value).
-    /// @return value1 Portfolio value in terms of token1 (negative = loss, when compared to starting value).
+    /// @param atTick Tick at which the portfolio value is evaluated
+    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
+    /// @return value0 Net amount of token0 in the Uniswap pool owned by the positionIdList (negative = borrowed liquidity owed to sellers)
+    /// @return value1 Net amount of token1 in the Uniswap pool owned by the positionIdList (negative = borrowed liquidity owed to sellers)
     function calculatePortfolioValue(
         address user,
         int24 atTick,
@@ -431,12 +422,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.
-    /// @param user The holder of options.
-    /// @param positionIdList The list of all option positions held by user.
-    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false).
-    /// @param includePendingPremium true = include premium that is owed to the user but has not yet settled, false = only include premium that is available to collect.
-    /// @return portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot.
-    /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...].
+    /// @param user The holder of options
+    /// @param positionIdList The list of all option positions held by user
+    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
+    /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
+    /// @return portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot
+    /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function _calculateAccumulatedPremia(
         address user,
         TokenId[] calldata positionIdList,
@@ -526,12 +517,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validates the current options of the user, and mints a new position.
-    /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
-    /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position.
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
-    /// @param tickLimitLow The lower tick slippagelimit.
-    /// @param tickLimitHigh The upper tick slippagelimit.
+    /// @param positionIdList The list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'
+    /// @param positionSize The size of the position to be minted, expressed in terms of the asset
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position and
+    /// denominated as X32 = (ratioLimit * 2**32)
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function mintOptions(
         TokenId[] calldata positionIdList,
         uint128 positionSize,
@@ -548,12 +539,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
     }
 
-    /// @notice Burns the entire balance of tokenId of the caller(msg.sender).
-    /// @dev Will exercise if necessary, and will revert if user does not have enough collateral to exercise.
-    /// @param tokenId The tokenId of the option position to be burnt.
-    /// @param newPositionIdList The new positionIdList without the token being burnt.
-    /// @param tickLimitLow Price slippage limit when burning an ITM option.
-    /// @param tickLimitHigh Price slippage limit when burning an ITM option.
+    /// @notice Closes and burns the caller's entire balance of `tokenId`.
+    /// @param tokenId The tokenId of the option position to be burnt
+    /// @param newPositionIdList The new positionIdList without the token being burnt
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function burnOptions(
         TokenId tokenId,
         TokenId[] calldata newPositionIdList,
@@ -565,12 +555,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
     }
 
-    /// @notice Burns the entire balance of all tokenIds provided in positionIdList of the caller(msg.sender).
-    /// @dev Will exercise if necessary, and will revert if user does not have enough collateral to exercise.
-    /// @param positionIdList The list of tokenIds for the option positions to be burnt.
-    /// @param newPositionIdList The new positionIdList without the token(s) being burnt.
-    /// @param tickLimitLow Price slippage limit when burning an ITM option.
-    /// @param tickLimitHigh Price slippage limit when burning an ITM option.
+    /// @notice Closes and burns the caller's entire balance of each `tokenId` in `positionIdList.
+    /// @param positionIdList The list of tokenIds for the option positions to be burnt
+    /// @param newPositionIdList The new positionIdList without the token(s) being burnt
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function burnOptions(
         TokenId[] calldata positionIdList,
         TokenId[] calldata newPositionIdList,
@@ -593,12 +582,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validates the current options of the user, and mints a new position.
-    /// @param positionIdList the list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'.
-    /// @param positionSize The size of the position to be minted, expressed in terms of the asset.
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position.
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
-    /// @param tickLimitLow The lower tick slippagelimit.
-    /// @param tickLimitHigh The upper tick slippagelimit.
+    /// @param positionIdList The list of currently held positions by the user, where the newly minted position(token) will be the last element in 'positionIdList'
+    /// @param positionSize The size of the position to be minted, expressed in terms of the asset
+    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position and
+    /// denominated as X32 = (ratioLimit * 2**32)
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function _mintOptions(
         TokenId[] calldata positionIdList,
         uint128 positionSize,
@@ -652,43 +641,36 @@ contract PanopticPool is ERC1155Holder, Multicall {
         emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
     }
 
-    /// @notice Check user health (collateral status).
-    /// @dev Moves the required liquidity and checks for user health.
-    /// @param tokenId The option position to be minted.
-    /// @param positionSize The size of the position, expressed in terms of the asset.
-    /// @param tickLimitLow The lower slippage limit on the tick.
-    /// @param tickLimitHigh The upper slippage limit on the tick.
+    /// @notice Move all the required liquidity to/from the AMM and settle any required collateral deltas.
+    /// @param tokenId The option position to be minted
+    /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1.
+    /// right 64bits for token0 and left 64bits for token1
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
-        // Mint position by using the SFPM. totalSwapped will reflect tokens swapped because of minting ITM.
-        // Switch order of tickLimits to create "swapAtMint" flag
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
-        // update premium settlement info
         _updateSettlementPostMint(tokenId, collectedByLeg, positionSize);
 
-        // pay commission based on total moved amount (long + short)
-        // write data about inAMM in collateralBase
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         return poolUtilizations;
     }
 
-    /// @notice Pay the commission fees for creating the options and update internal state.
-    /// @dev Computes long+short amounts, extracts pool utilizations.
+    /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param totalSwapped How much was swapped (if in-the-money position).
+    /// @param totalSwapped The amount of tokens moved during creation of the option position
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
-    /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
+    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets()
+    /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
@@ -717,11 +699,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Store user option data. Track fees collected for the options.
-    /// @dev Computes and stores the option data for each leg.
-    /// @param tokenId The id of the minted option position.
+    /// @notice Add a new option to the user's position hash, perform required checks, and initialize the premium accumulators.
+    /// @param tokenId The minted option position
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
+    /// denominated as X32 = (ratioLimit * 2**32)
     function _addUserOption(TokenId tokenId, uint64 effectiveLiquidityLimitX32) internal {
         // Update the position list hash (hash = XOR of all keccak256(tokenId)). Remove hash by XOR'ing again
         _updatePositionsHash(msg.sender, tokenId, ADD);
@@ -771,12 +752,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                          POSITION BURNING LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Helper to burn option during a liquidation from an account _owner.
-    /// @param owner the owner of the option position to be liquidated.
-    /// @param tickLimitLow Price slippage limit when burning an ITM option
-    /// @param tickLimitHigh Price slippage limit when burning an ITM option
-    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
-    /// @param positionIdList the option position to liquidate.
+    /// @notice Close all options in `positionIdList.
+    /// @param owner The owner of the option position to be closed
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
+    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
+    /// @param positionIdList The list of option positions to close
+    /// @return netPaid The net amount of tokens paid after closing the positions
+    /// @return premiasByLeg The amount of premia owed to the user for each leg of the position
     function _burnAllOptionsFrom(
         address owner,
         int24 tickLimitLow,
@@ -801,13 +784,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Helper to burn an option position held by '_owner'.
-    /// @param tokenId the option position to burn.
-    /// @param owner the owner of the option position to be burned.
-    /// @param tickLimitLow Price slippage limit when burning an ITM option
-    /// @param tickLimitHigh Price slippage limit when burning an ITM option
-    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
-    /// @return paidAmounts The amount of tokens paid when closing the option
+    /// @notice Close a single option position.
+    /// @param tokenId The option position to burn
+    /// @param owner The owner of the option position to be burned
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
+    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
+    /// @return paidAmounts The net amount of tokens paid after closing the position
     /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
     function _burnOptions(
         bool commitLongSettled,
@@ -832,13 +815,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // erase position data
         _updatePositionDataBurn(owner, tokenId);
 
-        // emit event
         emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
     }
 
-    /// @notice Update the internal tracking of the owner's position data upon burning a position.
-    /// @param owner The owner of the option position.
-    /// @param tokenId The option position to burn.
+    /// @notice Remove an option position from a user's position hash and reset its premium accumulators on close.
+    /// @param owner The owner of the option position
+    /// @param tokenId The option position being closed
     function _updatePositionDataBurn(address owner, TokenId tokenId) internal {
         // reset balances and delete stored option data
         s_positionBalance[owner][tokenId] = LeftRightUnsigned.wrap(0);
@@ -860,11 +842,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _updatePositionsHash(owner, tokenId, !ADD);
     }
 
-    /// @notice Validates the solvency of `user` at the fast oracle tick.
-    /// @notice Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_SLOW_FAST_DELTA`.
+    /// @notice Validates the solvency of `user`.
+    /// @dev Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_SLOW_FAST_DELTA`.
     /// @dev Effectively, this means that the users must be solvent at both the fast and slow oracle ticks if one of them is stale to mint or burn options.
-    /// @param user The account to validate.
-    /// @param positionIdList The new positionIdList without the token(s) being burnt.
+    /// @param user The account to validate
+    /// @param positionIdList The list of positions to validate solvency for
     /// @param buffer The buffer to apply to the collateral requirement for `user`
     /// @return medianData If nonzero (enough time has passed since last observation), the updated value for `s_miniMedian` with a new observation
     function _validateSolvency(
@@ -929,12 +911,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Burns and handles the exercise of options.
-    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
-    /// @param tickLimitLow The lower slippage limit on the tick.
-    /// @param tickLimitHigh The upper slippage limit on the tick.
-    /// @param tokenId The option position to burn.
-    /// @param positionSize The size of the option position, expressed in terms of the asset.
-    /// @param owner The owner of the option position.
+    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param tokenId The option position to burn
+    /// @param positionSize The size of the option position, expressed in terms of the asset
+    /// @param owner The owner of the option position
+    /// @return realizedPremia The net premia paid/received from the option position
+    /// @return premiaByLeg The premia owed to the user for each leg of the option position
+    /// @return paidAmounts The net amount of tokens paid after closing the position
     function _burnAndHandleExercise(
         bool commitLongSettled,
         int24 tickLimitLow,
@@ -991,12 +976,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     LIQUIDATIONS & FORCED EXERCISES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Liquidates a distressed account. Will burn all positions and will issue a bonus to the liquidator.
+    /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
-    /// @param positionIdListLiquidator List of positions owned by the liquidator.
-    /// @param liquidatee Address of the distressed account.
-    /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised.
-    /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...].
+    /// @param positionIdListLiquidator List of positions owned by the liquidator
+    /// @param liquidatee Address of the distressed account
+    /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised
+    /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...]
     function liquidate(
         TokenId[] calldata positionIdListLiquidator,
         address liquidatee,
@@ -1154,7 +1139,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
-    /// @dev Will revert if: number of touchedId is larger than 1 or if user force exercises their own position
     /// @param account Address of the distressed account
     /// @param touchedId List of position to be force exercised. Can only contain one tokenId, written as [tokenId]
     /// @param positionIdListExercisee Post-burn list of open positions in the exercisee's (account) account
@@ -1210,7 +1194,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
 
         // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
-        /// @dev use the medianTick to prevent price manipulations based on swaps.
+        // Use an oracle tick to prevent price manipulations based on swaps.
         LeftRightSigned exerciseFees = s_collateralToken0.exerciseCost(
             currentTick,
             twapTick,
@@ -1264,12 +1248,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
                             SOLVENCY CHECKS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionIdList`.
-    /// @param account The account to check solvency for.
-    /// @param positionIdList The list of positions to check solvency for.
-    /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations).
-    /// @param atTick The tick to check solvency at.
-    /// @param buffer The buffer to apply to the collateral requirement.
+    /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionIdList`.
+    /// @param account The account to check solvency for
+    /// @param positionIdList The list of positions to check solvency for
+    /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)
+    /// @param atTick The tick to check solvency at
+    /// @param buffer The buffer to apply to the collateral requirement
+    /// @return Whether the account is solvent at the given tick
     function _checkSolvencyAtTick(
         address account,
         TokenId[] calldata positionIdList,
@@ -1313,12 +1298,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Get parameters related to the solvency state of the account associated with the incoming tokenData.
-    /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot.
-    /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot.
-    /// @param sqrtPriceX96 The current sqrt(price) of the AMM.
-    /// @return balanceCross The current cross-collateral balance of the option positions.
-    /// @return thresholdCross The cross-collateral threshold balance under which the account is insolvent.
+    /// @notice Get a cross-collateral balance and required threshold for a given set of token balances and collateral requirements.
+    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
+    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
+    /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
+    /// @return balanceCross The current cross-collateral balance of the option positions
+    /// @return thresholdCross The cross-collateral threshold balance under which the account is insolvent
     function _getSolvencyBalances(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
@@ -1343,10 +1328,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Makes sure that the positions in the incoming user's list match the existing active option positions.
-    /// @dev Check whether the list of positionId 1) has duplicates and 2) matches the length stored in the positionsHash.
-    /// @param account The owner of the incoming list of positions.
-    /// @param positionIdList The existing list of active options for the owner.
-    /// @param offset Changes depending on whether this is a new mint or a liquidation (=1 if new mint, 0 if liquidation).
+    /// @param account The owner of the incoming list of positions
+    /// @param positionIdList The existing list of active options for the owner
+    /// @param offset The amount of positions from the end of the list to exclude from validation
     function _validatePositionList(
         address account,
         TokenId[] calldata positionIdList,
@@ -1358,8 +1342,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         unchecked {
             pLength = positionIdList.length - offset;
         }
-        // note that if pLength == 0 even if a user has existing position(s) the below will fail b/c the fingerprints will mismatch
-        // Check that position hash (the fingerprint of option positions) matches the one stored for the '_account'
+
         uint256 fingerprintIncomingList;
 
         for (uint256 i = 0; i < pLength; ) {
@@ -1381,10 +1364,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev The outcome of this function will be to update the hash of positions.
     /// This is done as a duplicate/validation check of the incoming list O(N).
     /// @dev The positions hash is stored as the XOR of the keccak256 of each tokenId. Updating will XOR the existing hash with the new tokenId.
-    /// The same update can either add a new tokenId (when minting an option), or remove an existing one (when burning it) - this happens through the XOR.
-    /// @param account The owner of the options.
-    /// @param tokenId The option position.
-    /// @param addFlag Pass addFlag=true when this is adding a position, needed to ensure the number of positions increases or decreases.
+    /// The same update can either add a new tokenId (when minting an option), or remove an existing one (when burning it).
+    /// @param account The owner of `tokenId`
+    /// @param tokenId The option position
+    /// @param addFlag Whether to add `tokenId` to the hash (true) or remove it (false)
     function _updatePositionsHash(address account, TokenId tokenId, bool addFlag) internal {
         // Get the current position hash value (fingerprint of all pre-existing positions created by '_account')
         // Add the current tokenId to the positionsHash as XOR'd
@@ -1404,32 +1387,32 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the address of the AMM pool connected to this Panoptic pool.
-    /// @return univ3pool AMM pool corresponding to this Panoptic pool.
+    /// @return univ3pool AMM pool corresponding to this Panoptic pool
     function univ3pool() external view returns (IUniswapV3Pool) {
         return s_univ3pool;
     }
 
     /// @notice Get the collateral token corresponding to token0 of the AMM pool.
-    /// @return collateralToken Collateral token corresponding to token0 in the AMM.
+    /// @return collateralToken Collateral token corresponding to token0 in the AMM
     function collateralToken0() external view returns (CollateralTracker collateralToken) {
         return s_collateralToken0;
     }
 
     /// @notice Get the collateral token corresponding to token1 of the AMM pool.
-    /// @return collateralToken collateral token corresponding to token1 in the AMM.
+    /// @return collateralToken collateral token corresponding to token1 in the AMM
     function collateralToken1() external view returns (CollateralTracker) {
         return s_collateralToken1;
     }
 
-    /// @notice get the number of positions for an account
-    /// @param user the account to get the positions hash of
-    /// @return _numberOfPositions number of positions in the account
+    /// @notice Get the current number of open positions for an account
+    /// @param user The account to query
+    /// @return _numberOfPositions Number of open positions for `user`
     function numberOfPositions(address user) public view returns (uint256 _numberOfPositions) {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 
-    /// @notice Compute the TWAP price from the last 600s = 10mins.
-    /// @return twapTick The TWAP price in ticks.
+    /// @notice Get the oracle price used to check solvency in liquidations.
+    /// @return twapTick The current oracle price used to check solvency in liquidations
     function getUniV3TWAP() internal view returns (int24 twapTick) {
         twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
     }
@@ -1439,12 +1422,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Ensure the effective liquidity in a given chunk is above a certain threshold.
-    /// @param tokenId The id of the option position.
-    /// @param leg The leg of the option position (used to check if long or short).
-    /// @param tickLower The lower tick of the chunk.
-    /// @param tickUpper The upper tick of the chunk.
+    /// @param tokenId An option position
+    /// @param leg A leg index of `tokenId` corresponding to a tickLower-tickUpper chunk
+    /// @param tickLower The lower tick of the chunk
+    /// @param tickUpper The upper tick of the chunk
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
-    /// denominated as X32 = (ratioLimit * 2**32). Set to 0 for no limit / only short options.
+    /// denominated as X32 = (ratioLimit * 2**32)
     function _checkLiquiditySpread(
         TokenId tokenId,
         uint256 leg,
@@ -1477,12 +1460,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Compute the premia collected for a single option position 'tokenId'.
-    /// @param tokenId The option position.
-    /// @param positionSize The number of contracts (size) of the option position.
-    /// @param owner The holder of the tokenId option.
-    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false).
+    /// @param tokenId The option position
+    /// @param positionSize The number of contracts (size) of the option position
+    /// @param owner The holder of the tokenId option
+    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
     /// @param atTick The tick at which the premia is calculated -> use (atTick < type(int24).max) to compute it
-    /// up to current block. atTick = type(int24).max will only consider fees as of the last on-chain transaction.
+    /// up to current block. atTick = type(int24).max will only consider fees as of the last on-chain transaction
+    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
+    /// @return premiumAccumulatorsByLeg The amount of premia accumulated for each leg of the position
     function _getPremia(
         TokenId tokenId,
         uint128 positionSize,
@@ -1522,9 +1507,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 unchecked {
                     LeftRightUnsigned premiumAccumulatorLast = s_options[owner][tokenId][leg];
 
-                    // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
-                    // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
-                    // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
                     premiaByLeg[leg] = LeftRightSigned
                         .wrap(0)
                         .toRightSlot(
@@ -1561,12 +1543,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         AVAILABLE PREMIUM LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Settle all unpaid premium for long legs of chunk `chunkIdentity` on `tokenIds` of `owners`.
+    /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
-    /// @dev This feature is only available when all `owners` is solvent at the current tick
-    /// @param positionIdList Exhaustive list of open positions for the `owners` used for solvency checks where the tokenId to be settled is the last element.
-    /// @param owner The owner of the option position to make premium payments on.
-    /// @param legIndex the index of the leg in tokenId that is to be collected on (must be isLong=1).
+    /// @dev This feature is only available when `owner` is solvent and has the requisite tokens to settle the premium.
+    /// @param positionIdList Exhaustive list of open positions for `owner` used for solvency checks where the tokenId to settle is placed at the last index
+    /// @param owner The owner of the option position to make premium payments on
+    /// @param legIndex the index of the leg in tokenId that is to be collected on (must be isLong=1)
     function settleLongPremium(
         TokenId[] calldata positionIdList,
         address owner,
@@ -1641,11 +1623,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validateSolvency(owner, positionIdList, NO_BUFFER);
     }
 
-    /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added
-    /// @dev Always called after `mintTokenizedPosition`
-    /// @param tokenId The option position that was minted.
-    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position.
-    /// @param positionSize The size of the position, expressed in terms of the asset.
+    /// @notice Adds collected tokens to settled accumulator and adjusts grossPremiumLast for any liquidity added.
+    /// @param tokenId The option position that was minted
+    /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
+    /// @param positionSize The size of the position, expressed in terms of the asset
     function _updateSettlementPostMint(
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
@@ -1728,9 +1709,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Query the amount of premium available for withdrawal given a certain `premiumOwed` for a chunk
-    /// @dev Based on the ratio between `settledTokens` and the total premium owed to sellers in a chunk
-    /// @dev The ratio is capped at 1 (it can be greater than one if some seller forfeits enough premium)
+    /// @notice Query the amount of premium available for withdrawal given a certain `premiumOwed` for a chunk.
+    /// @dev Based on the ratio between `settledTokens` and the total premium owed to sellers in a chunk.
+    /// @dev The ratio is capped at 1 (as the base ratio can be greater than one if some seller forfeits enough premium).
     /// @param totalLiquidity The updated total liquidity amount for the chunk
     /// @param settledTokens LeftRight accumulator for the amount of tokens that have been settled (collected or paid)
     /// @param grossPremiumLast The `last` values used with `premiumAccumulators` to compute the total premium owed to sellers
@@ -1778,10 +1759,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Query the total amount of liquidity sold in the corresponding chunk for a position leg
-    /// @dev totalLiquidity (total sold) = removedLiquidity + netLiquidity (in AMM)
+    /// @notice Query the total amount of liquidity sold in the corresponding chunk for a position leg.
+    /// @dev totalLiquidity (total sold) = removedLiquidity + netLiquidity (in AMM).
     /// @param tokenId The option position
-    /// @param leg The leg of the option position to get `totalLiquidity for
+    /// @param leg The leg of the option position to get `totalLiquidity` for
+    /// @return totalLiquidity The total amount of liquidity sold in the corresponding chunk for a position leg
     function _getTotalLiquidity(
         TokenId tokenId,
         uint256 leg
@@ -1804,8 +1786,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info
-    /// @dev Always called after `burnTokenizedPosition`
+    /// @notice Updates settled tokens and grossPremiumLast for a chunk after a burn and returns premium info.
     /// @param owner The owner of the option position that was burnt
     /// @param tokenId The option position that was burnt
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position

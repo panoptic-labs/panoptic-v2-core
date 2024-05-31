@@ -16,7 +16,7 @@ library Errors {
     error DepositTooLarge();
 
     /// @notice PanopticPool: the effective liquidity (X32) is greater than min(`MAX_SPREAD`, `USER_PROVIDED_THRESHOLD`) during a long mint or short burn
-    /// Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
+    /// @dev Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
     error EffectiveLiquidityAboveThreshold();
 
     /// @notice CollateralTracker: attempted to withdraw/redeem more than available liquidity, owned shares, or open positions would allow for
@@ -28,7 +28,7 @@ library Errors {
     /// @notice PanopticPool: the provided list of option positions is incorrect or invalid
     error InputListFail();
 
-    /// @notice PanopticFactory: irst 20 bytes of provided salt does not match caller address
+    /// @notice PanopticFactory: first 20 bytes of provided salt does not match caller address
     error InvalidSalt();
 
     /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
@@ -38,13 +38,13 @@ library Errors {
     error InvalidNotionalValue();
 
     /// @notice Invalid TokenId parameter detected
-    /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3 , strike=4, width=5, two identical strike/width/tokenType chunks=6
+    /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
 
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
     error InvalidUniswapCallback();
 
-    /// @notice Invalid input in LeftRight library.
+    /// @notice Invalid input in LeftRight library
     error LeftRightInputError();
 
     /// @notice PanopticPool: one of the legs in a position are force-exercisable (they are all either short or ITM long)
