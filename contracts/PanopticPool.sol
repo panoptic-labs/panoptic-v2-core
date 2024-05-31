@@ -268,7 +268,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Store the address of the canonical SemiFungiblePositionManager (SFPM) contract.
-    /// @param _sfpm The address of the SemiFungiblePositionManager (SFPM) contract
+    /// @param _sfpm The address of the SFPM
     constructor(SemiFungiblePositionManager _sfpm) {
         SFPM = _sfpm;
     }
@@ -381,7 +381,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @return premium0 Premium for token0 (negative = amount is owed)
     /// @return premium1 Premium for token1 (negative = amount is owed)
-    /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
+    /// @return A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function calculateAccumulatedFeesBatch(
         address user,
         bool includePendingPremium,
@@ -625,7 +625,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _addUserOption(tokenId, effectiveLiquidityLimitX32);
 
         // update the users options balance of position 'tokenId'
-        // note: user can't mint same position multiple times, so set the positionSize instead of adding
+        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
         s_positionBalance[msg.sender][tokenId] = LeftRightUnsigned
             .wrap(0)
             .toLeftSlot(poolUtilizations)
@@ -646,7 +646,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
+    /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
     /// right 64bits for token0 and left 64bits for token1
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
@@ -668,7 +668,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped The amount of tokens moved during creation of the option position
-    /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
+    /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets()
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function _payCommissionAndWriteData(
@@ -1050,7 +1050,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
-            // Note: tick limits are not applied here since it is not the liquidator's position being liquidated
+            // NOTE: tick limits are not applied here since it is not the liquidator's position being liquidated
             (netExchanged, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
                 MIN_SWAP_TICK,
@@ -1387,7 +1387,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the address of the AMM pool connected to this Panoptic pool.
-    /// @return univ3pool AMM pool corresponding to this Panoptic pool
+    /// @return AMM pool corresponding to this Panoptic pool
     function univ3pool() external view returns (IUniswapV3Pool) {
         return s_univ3pool;
     }
@@ -1399,7 +1399,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Get the collateral token corresponding to token1 of the AMM pool.
-    /// @return collateralToken collateral token corresponding to token1 in the AMM
+    /// @return Collateral token corresponding to token1 in the AMM
     function collateralToken1() external view returns (CollateralTracker) {
         return s_collateralToken1;
     }
@@ -1717,7 +1717,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param grossPremiumLast The `last` values used with `premiumAccumulators` to compute the total premium owed to sellers
     /// @param premiumOwed The amount of premium owed to sellers in the chunk
     /// @param premiumAccumulators The current values of the premium accumulators for the chunk
-    /// @return availablePremium The amount of premium available for withdrawal
+    /// @return The amount of token0/token1 premium available for withdrawal
     function _getAvailablePremium(
         uint256 totalLiquidity,
         LeftRightUnsigned settledTokens,

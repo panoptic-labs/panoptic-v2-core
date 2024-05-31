@@ -376,7 +376,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
         // store the poolId => UniswapV3Pool information in a mapping
         // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
-        // note: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
+        // NOTE: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
         s_poolContext[poolId] = PoolAddressAndLock({
             pool: IUniswapV3Pool(univ3pool),
             locked: s_poolContext[poolId].locked
@@ -780,14 +780,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 })
             );
 
-            // note: upstream users of this function such as the Panoptic Pool should ensure users always compensate for the ITM amount delta
+            // NOTE: upstream users of this function such as the Panoptic Pool should ensure users always compensate for the ITM amount delta
             // the netting swap is not perfectly accurate, and it is possible for swaps to run out of liquidity, so we do not want to rely on it
             // this is simply a convenience feature, and should be treated as such
             if ((itm0 != 0) && (itm1 != 0)) {
                 (uint160 sqrtPriceX96, , , , , , ) = _univ3pool.slot0();
 
                 // implement a single "netting" swap. Thank you @danrobinson for this puzzle/idea
-                // note: negative ITM amounts denote a surplus of tokens (burning liquidity), while positive amounts denote a shortage of tokens (minting liquidity)
+                // NOTE: negative ITM amounts denote a surplus of tokens (burning liquidity), while positive amounts denote a shortage of tokens (minting liquidity)
                 // compute the approximate delta of token0 that should be resolved in the swap at the current tick
                 // we do this by flipping the signs on the token1 ITM amount converting+deducting it against the token0 ITM amount
                 // couple examples (price = 2 1/0):
@@ -827,12 +827,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 swapAmount = -itm1;
             }
 
-            // note - can occur if itm0 and itm1 have the same value
+            // NOTE: can occur if itm0 and itm1 have the same value
             // in that case, swapping would be pointless so skip
             if (swapAmount == 0) return LeftRightSigned.wrap(0);
 
             // swap tokens in the Uniswap pool
-            // note: this triggers our swap callback function
+            // NOTE: this triggers our swap callback function
             (int256 swap0, int256 swap1) = _univ3pool.swap(
                 msg.sender,
                 zeroForOne,
@@ -1435,8 +1435,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param tickUpper The upper end of the tick range for the position (int24)
     /// @param atTick The current tick. Set atTick < type(int24).max = 8388608 to get latest premium up to the current block
     /// @param isLong Whether the position is long (=1) or short (=0)
-    /// @return premiumToken0 The amount of premium (per liquidity X64) for token0 = sum (feeGrowthLast0X128) over every block where the position has been touched
-    /// @return premiumToken1 The amount of premium (per liquidity X64) for token1 = sum (feeGrowthLast0X128) over every block where the position has been touched
+    /// @return The amount of premium (per liquidity X64) for token0 = sum (feeGrowthLast0X128) over every block where the position has been touched
+    /// @return The amount of premium (per liquidity X64) for token1 = sum (feeGrowthLast0X128) over every block where the position has been touched
     function getAccountPremium(
         address univ3pool,
         address owner,

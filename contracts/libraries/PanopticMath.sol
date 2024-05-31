@@ -910,7 +910,7 @@ library PanopticMath {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
+            // NOTE: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
             int256 balanceShortage = refundValues.rightSlot() -
                 int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
 

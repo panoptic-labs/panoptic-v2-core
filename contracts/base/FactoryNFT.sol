@@ -318,7 +318,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         }
     }
 
-    /// @notice Get the maximum SVG unit width for the strategy name label in the center for a given rarity (frame)
+    /// @notice Get the maximum SVG unit width for the strategy name label in the center for a given rarity (frame).
     /// @dev This is to ensure the text fits within its section on the frame. There are 6 frames, and each rarity is assigned one of the six.
     /// @param rarity The rarity of the NFT
     /// @return width The maximum SVG unit width for the strategy name label

@@ -269,7 +269,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Returns name of token composed of underlying token symbol and pool data.
-    /// @return name The name of the token
+    /// @return The name of the token
     function name() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return
@@ -283,14 +283,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Returns symbol as prefixed symbol of underlying token.
-    /// @return symbol The symbol of the token
+    /// @return The symbol of the token
     function symbol() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return InteractionHelper.computeSymbol(s_underlyingToken, TICKER_PREFIX);
     }
 
     /// @notice Returns decimals of underlying token (0 if not present).
-    /// @return decimals The decimals of the token
+    /// @return The decimals of the token
     function decimals() external view returns (uint8) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return InteractionHelper.computeDecimals(s_underlyingToken);
@@ -731,7 +731,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 }
 
                 // compensate user for loss in value if chunk has lost money between current and median tick
-                // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
+                // NOTE: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
                 exerciseFees = exerciseFees.sub(
                     LeftRightSigned
                         .wrap(0)
@@ -740,7 +740,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 );
             }
 
-            // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
+            // NOTE: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
@@ -1058,7 +1058,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shortAmount The amount of shorts to be exercised (if any)
     /// @param swappedAmount The amount of tokens moved during the option close
     /// @param realizedPremium Premium to settle on the current positions
-    /// @return paidAmount The amount of tokens paid when closing that position
+    /// @return The amount of tokens paid when closing that position
     function exercise(
         address optionOwner,
         int128 longAmount,

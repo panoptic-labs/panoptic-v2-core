@@ -8,12 +8,12 @@ import {Pointer} from "@types/Pointer.sol";
 /// @notice Base contract that can store two-deep objects with large value sizes at deployment time.
 /// @author Axicon Labs Limited
 contract MetadataStore {
-    /// @notice Stores metadata pointers for future retrieval
-    /// @dev Can hold 2-deep object structures
-    /// @dev Examples include ``{"A": ["B", "C"]}` and ``{"A": {"B": "C"}}`
-    /// @dev The first and second keys can be up-to-32-char strings (or array indices
-    /// @dev Values are pointers to a certain section of contract code: [address, start, length]
-    /// @dev The maximum size of a value is theoretically unlimited, but depends on the effective contract size limit for a given chain
+    /// @notice Stores metadata pointers for future retrieval.
+    /// @dev Can hold 2-deep object structures.
+    /// @dev Examples include `{"A": ["B", "C"]}` and `{"A": {"B": "C"}}`.
+    /// @dev The first and second keys can be up-to-32-char strings (or array indices.
+    /// @dev Values are pointers to a certain section of contract code: [address, start, length].
+    /// @dev The maximum size of a value is theoretically unlimited, but depends on the effective contract size limit for a given chain.
     mapping(bytes32 property => mapping(uint256 index => Pointer pointer)) internal metadata;
 
     /// @notice Stores provided metadata pointers for future retrieval.
