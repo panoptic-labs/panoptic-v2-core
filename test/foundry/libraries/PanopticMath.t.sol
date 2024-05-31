@@ -660,7 +660,7 @@ contract PanopticMathTest is Test, PositionUtils {
         int256[] memory sortedTicks = Math.sort(twapMeasurement);
 
         // Get the median value
-        int256 twapTick = sortedTicks[10];
+        int256 twapTick = sortedTicks[9];
 
         assertEq(twapTick, harness.twapFilter(selectedPool, twapWindow));
     }

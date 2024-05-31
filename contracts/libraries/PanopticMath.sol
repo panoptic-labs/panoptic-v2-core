@@ -17,13 +17,12 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
 library PanopticMath {
-    // Used for safecasting
     using Math for uint256;
 
     /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
-    /// @notice masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
+    /// @notice Masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
     uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
 
     /*//////////////////////////////////////////////////////////////
@@ -31,18 +30,18 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
-    /// @dev Example:
-    ///      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
-    ///      e.g.:
-    ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
-    ///        tickSpacing = 60
-    ///      the returned id is then:
-    ///        poolPattern = 0x00008ad599c3A0ff
-    ///        tickSpacing = 0x003c000000000000    +
-    ///        --------------------------------------------
-    ///        poolId      = 0x003c8ad599c3A0ff
-    ///
+    // Example:
+    //      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
+    //      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
+    //      e.g.:
+    //        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    //        tickSpacing = 60
+    //      the returned id is then:
+    //        poolPattern = 0x00008ad599c3A0ff
+    //        tickSpacing = 0x003c000000000000    +
+    //        --------------------------------------------
+    //        poolId      = 0x003c8ad599c3A0ff
+    //
     /// @param univ3pool The address of the Uniswap v3 pool to get the ID of
     /// @return A uint64 representing a fingerprint of the uniswap v3 pool address
     function getPoolId(address univ3pool) internal view returns (uint64) {
@@ -59,18 +58,17 @@ library PanopticMath {
     /// @return The provided `poolId` with its pool pattern slot incremented by 1
     function incrementPoolPattern(uint64 poolId) internal pure returns (uint64) {
         unchecked {
-            // increment
             return (poolId & TICKSPACING_MASK) + (uint48(poolId) + 1);
         }
     }
 
     /// @notice Get the number of leading hex characters in an address.
-    ///     0x0000bababaab...     0xababababab...
-    ///          ▲                 ▲
-    ///          │                 │
-    ///     4 leading hex      0 leading hex
-    ///    character zeros    character zeros
-    ///
+    //     0x0000bababaab...     0xababababab...
+    //          ▲                 ▲
+    //          │                 │
+    //     4 leading hex      0 leading hex
+    //    character zeros    character zeros
+    //
     /// @param addr The address to get the number of leading zero hex characters for
     /// @return The number of leading zero hex characters in the address
     function numberOfLeadingHexZeros(address addr) external pure returns (uint256) {
@@ -135,7 +133,7 @@ library PanopticMath {
     /// @param univ3pool The Uniswap pool to get the median observation from
     /// @param observationIndex The index of the last observation in the pool
     /// @param observationCardinality The number of observations in the pool
-    /// @param cardinality The number of `periods` to in the median price array, should be odd.
+    /// @param cardinality The number of `periods` to in the median price array, should be odd
     /// @param period The number of observations to average to compute one entry in the median price array
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
     function computeMedianObservedPrice(
@@ -167,7 +165,7 @@ library PanopticMath {
                     int256(timestamps[i] - timestamps[i + 1]);
             }
 
-            // get the median of the 3 calculated ticks
+            // get the median of the `ticks` array (assuming `cardinality` is odd)
             return int24(Math.sort(ticks)[cardinality / 2]);
         }
     }
@@ -251,9 +249,9 @@ library PanopticMath {
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
     /// @dev Note that our definition of TWAP differs from a typical mean of prices over a time window.
     /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages.
-    /// @param univ3pool The Uniswap pool from which to compute the TWAP.
-    /// @param twapWindow The time window to compute the TWAP over.
-    /// @return The final calculated TWAP tick.
+    /// @param univ3pool The Uniswap pool from which to compute the TWAP
+    /// @param twapWindow The time window to compute the TWAP over
+    /// @return The final calculated TWAP tick
     function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
@@ -279,7 +277,7 @@ library PanopticMath {
             int256[] memory sortedTicks = Math.sort(twapMeasurement);
 
             // Get the median value
-            return int24(sortedTicks[10]);
+            return int24(sortedTicks[9]);
         }
     }
 
@@ -289,15 +287,15 @@ library PanopticMath {
 
     /// @notice For a given option position (`tokenId`), leg index within that position (`legIndex`), and `positionSize` get the tick range spanned and its
     /// liquidity (share ownership) in the Univ3 pool; this is a liquidity chunk.
-    ///          Liquidity chunk  (defined by tick upper, tick lower, and its size/amount: the liquidity)
-    ///   liquidity    │
-    ///         ▲      │
-    ///         │     ┌▼┐
-    ///         │  ┌──┴─┴──┐
-    ///         │  │       │
-    ///         │  │       │
-    ///         └──┴───────┴────► price
-    ///         Uniswap v3 Pool
+    //          Liquidity chunk  (defined by tick upper, tick lower, and its size/amount: the liquidity)
+    //   liquidity    │
+    //         ▲      │
+    //         │     ┌▼┐
+    //         │  ┌──┴─┴──┐
+    //         │  │       │
+    //         │  │       │
+    //         └──┴───────┴────► price
+    //         Uniswap v3 Pool
     /// @param tokenId The option position id
     /// @param legIndex The leg index of the option position, can be {0,1,2,3}
     /// @param positionSize The number of contracts held by this leg
@@ -380,8 +378,8 @@ library PanopticMath {
 
     /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.
     /// @dev Given `r = (width * tickSpacing) / 2`, `tickLower = strike - floor(r)` and `tickUpper = strike + ceil(r)`.
-    /// @param width The width of the leg.
-    /// @param tickSpacing The tick spacing of the underlying pool.
+    /// @param width The width of the leg
+    /// @param tickSpacing The tick spacing of the underlying pool
     /// @return The lower tick of the range
     /// @return The upper tick of the range
     function getRangesFromStrike(
@@ -401,8 +399,8 @@ library PanopticMath {
     /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
     /// @param tokenId The option position id
     /// @param positionSize The number of contracts of this option
-    /// @return longAmounts Left-right packed word where the right contains the total contract size and the left total notional
-    /// @return shortAmounts Left-right packed word where the right contains the total contract size and the left total notional
+    /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
+    /// @return shortAmounts Left-right packed word where where rightSlot = token0 and leftSlot = token1 borrowed to create short legs
     function computeExercisedAmounts(
         TokenId tokenId,
         uint128 positionSize
@@ -469,7 +467,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of tick.s
+    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -901,7 +899,7 @@ library PanopticMath {
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param collateral0 CollateralTracker for token0
     /// @param collateral1 CollateralTracker for token1
-    /// @return The LeftRight-packed amount of token0/token1 to refund to the user.
+    /// @return The LeftRight-packed amount of token0/token1 to refund to the user
     function getRefundAmounts(
         address refunder,
         LeftRightSigned refundValues,
@@ -912,7 +910,7 @@ library PanopticMath {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
+            // NOTE: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
             int256 balanceShortage = refundValues.rightSlot() -
                 int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
 

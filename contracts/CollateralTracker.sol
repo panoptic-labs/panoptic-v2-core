@@ -34,7 +34,6 @@ import {TokenId} from "@types/TokenId.sol";
 //
 /// @notice 2) get any gain in capital that results from buying an option that becomes in-the-money.
 contract CollateralTracker is ERC20Minimal, Multicall {
-    // Used for safecasting
     using Math for uint256;
 
     /*//////////////////////////////////////////////////////////////
@@ -105,57 +104,59 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                            PANOPTIC POOL DATA
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev The Collateral Tracker keeps a reference to the Panoptic Pool using it.
+    /// @notice The Collateral Tracker keeps a reference to the Panoptic Pool using it.
     PanopticPool internal s_panopticPool;
 
-    /// @dev Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
+    /// @notice Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
     uint128 internal s_poolAssets;
 
-    /// @dev Amount of assets moved from the Panoptic Pool to the AMM.
+    /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
 
-    /// @notice additional risk premium charged on intrinsic value of ITM positions,
+    /// @notice Additional risk premium charged on intrinsic value of ITM positions,
     /// defined in hundredths of basis points.
     /// @dev The result of the calculation is stored instead of the multiple to save gas during usage.
-    /// When the fee is set, the multiple is calculated and stored
+    /// When the fee is set, the multiple is calculated and stored.
     uint128 internal s_ITMSpreadFee;
 
-    /// @dev The fee of the Uniswap pool.
+    /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice when creating an option, collect a commission for the Panoptic LPs.
-    /// In Panoptic, options never expire, commissions are only paid when a new position is minted.
-    /// We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
+    /// @notice The commission fee, in basis points, collected from PLPs at option mint.
+    /// @dev In Panoptic, options never expire, commissions are only paid when a new position is minted.
+    /// @dev We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
     uint256 immutable COMMISSION_FEE;
 
     // base collateral ratios
+
     /// @notice Required collateral ratios for buying, represented as percentage * 10_000.
-    /// i.e 20% -> 0.2 * 10_000 = 2_000.
+    /// @dev i.e 20% -> 0.2 * 10_000 = 2_000.
     uint256 immutable SELLER_COLLATERAL_RATIO;
 
     /// @notice Required collateral ratios for selling, represented as percentage * 10_000.
-    /// i.e 10% -> 0.1 * 10_000 = 1_000.
+    /// @dev i.e 10% -> 0.1 * 10_000 = 1_000.
     uint256 immutable BUYER_COLLATERAL_RATIO;
 
-    // liquidation parameters
-    /// @notice basal cost to force exercise a position that is barely far-the-money (out-of-range).
+    // miscellaneous parameters
+
+    /// @notice Basal cost (in bps of notional) to force exercise a position that is barely far-the-money (out-of-range).
     int256 immutable FORCE_EXERCISE_COST;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
-    /// i.e 50% -> 0.5 * 10_000 = 5_000.
+    /// @dev i.e 50% -> 0.5 * 10_000 = 5_000.
     uint256 immutable TARGET_POOL_UTIL;
 
     /// @notice Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
-    /// i.e 90% -> 0.9 * 10_000 = 9_000.
+    /// @dev i.e 90% -> 0.9 * 10_000 = 9_000.
     uint256 immutable SATURATED_POOL_UTIL;
 
-    /// @notice multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions.
-    /// e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee
+    /// @notice Multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions.
+    /// @dev e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee.
     uint256 immutable ITM_SPREAD_MULTIPLIER;
 
     /*//////////////////////////////////////////////////////////////
@@ -172,6 +173,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Set immutable parameters for the Collateral Tracker.
+    /// @param _commissionFee The commission fee, in basis points, collected from PLPs at option mint.
+    /// @param _sellerCollateralRatio Required collateral ratios for buying, represented as percentage * 10_000.
+    /// @param _buyerCollateralRatio Required collateral ratios for selling, represented as percentage * 10_000.
+    /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise a position that is barely far-the-money (out-of-range).
+    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
+    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
+    /// @param _ITMSpreadMultiplier Multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions.
     constructor(
         uint256 _commissionFee,
         uint256 _sellerCollateralRatio,
@@ -192,12 +201,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
     /// @dev The factory calls this function to start a new collateral tracking system for the incoming token at 'underlyingToken'.
-    /// The factory will do this for each of the two tokens being tracked. Thus, the collateral tracking system does not track *both* tokens at once.
-    /// @param underlyingIsToken0 whether this collateral tracker is for token0 (true) or token1 (false).
-    /// @param token0 token 0 of the Uniswap pool.
-    /// @param token1 token 1 of the Uniswap pool.
-    /// @param fee the fee of the Uniswap pool.
-    /// @param panopticPool the address of the Panoptic Pool being created and linked to this Collateral Tracker.
+    /// @dev The factory will do this for each of the two tokens being tracked. Thus, the collateral tracking system does not track *both* tokens at once.
+    /// @param underlyingIsToken0 whether this collateral tracker is for token0 (true) or token1 (false)
+    /// @param token0 token 0 of the Uniswap pool
+    /// @param token1 token 1 of the Uniswap pool
+    /// @param fee the fee of the Uniswap pool
+    /// @param panopticPool the address of the Panoptic Pool being created and linked to this Collateral Tracker
     function startToken(
         bool underlyingIsToken0,
         address token0,
@@ -243,13 +252,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         COLLATERAL TOKEN INFORMATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get the Panoptic pool data.
-    /// @dev the Panoptic pool owns this collateral token. This token, in turn, keeps a reference to the Panoptic pool.
-    /// @return poolAssets cached amount of assets accounted to be held by the Panoptic Pool - ignores donations, pending fee payouts, and other untracked balance changes.
-    /// @return insideAMM the underlying token amount held in the AMM.
+    /// @notice Get information about the utilization of this collateral vault.
+    /// @return poolAssets cached amount of assets accounted to be held by the Panoptic Pool - ignores donations, pending fee payouts, and other untracked balance changes
+    /// @return insideAMM the underlying token amount held in the AMM
     /// @return currentPoolUtilization Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets().
-    /// Where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool.
+    /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets()
+    /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function getPoolData()
         external
         view
@@ -261,7 +269,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Returns name of token composed of underlying token symbol and pool data.
-    /// @return name The name of the token.
+    /// @return The name of the token
     function name() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return
@@ -275,14 +283,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Returns symbol as prefixed symbol of underlying token.
-    /// @return symbol The symbol of the token.
+    /// @return The symbol of the token
     function symbol() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return InteractionHelper.computeSymbol(s_underlyingToken, TICKER_PREFIX);
     }
 
-    /// @notice Returns decimals of underlying token (0 if not present)
-    /// @return decimals The decimals of the token.
+    /// @notice Returns decimals of underlying token (0 if not present).
+    /// @return The decimals of the token
     function decimals() external view returns (uint8) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
         return InteractionHelper.computeDecimals(s_underlyingToken);
@@ -302,7 +310,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) public override(ERC20Minimal) returns (bool) {
         // make sure the caller does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
-        // since that's like reducing collateral
+        // as this would reduce their amount of collateral against the opened positions
 
         if (s_panopticPool.numberOfPositions(msg.sender) != 0) revert Errors.PositionCountNotZero();
 
@@ -333,7 +341,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the token contract address of the underlying asset being managed.
-    /// @return assetTokenAddress The address of the underlying asset.
+    /// @return assetTokenAddress The address of the underlying asset
     function asset() external view returns (address assetTokenAddress) {
         return s_underlyingToken;
     }
@@ -342,7 +350,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev This returns the total tracked assets in the AMM and PanopticPool,
     /// @dev - EXCLUDING the amount of collected fees (because they are reserved for short options)
     /// @dev - EXCLUDING any donations that have been made to the pool
-    /// @return totalManagedAssets The total amount of assets managed.
+    /// @return totalManagedAssets The total amount of assets managed
     function totalAssets() public view returns (uint256 totalManagedAssets) {
         unchecked {
             return s_poolAssets + s_inAMM;
@@ -350,28 +358,28 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Returns the amount of shares that can be minted for the given amount of assets.
-    /// @param assets The amount of assets to be deposited.
-    /// @return shares The amount of shares that can be minted.
+    /// @param assets The amount of assets to be deposited
+    /// @return shares The amount of shares that can be minted
     function convertToShares(uint256 assets) public view returns (uint256 shares) {
         return Math.mulDiv(assets, totalSupply, totalAssets());
     }
 
     /// @notice Returns the amount of assets that can be redeemed for the given amount of shares.
-    /// @param shares The amount of shares to be redeemed.
-    /// @return assets The amount of assets that can be redeemed.
+    /// @param shares The amount of shares to be redeemed
+    /// @return assets The amount of assets that can be redeemed
     function convertToAssets(uint256 shares) public view returns (uint256 assets) {
         return Math.mulDiv(shares, totalAssets(), totalSupply);
     }
 
-    /// @notice returns The maximum deposit amount.
-    /// @return maxAssets The maximum amount of assets that can be deposited.
+    /// @notice Returns the maximum deposit amount.
+    /// @return maxAssets The maximum amount of assets that can be deposited
     function maxDeposit(address) external pure returns (uint256 maxAssets) {
         return type(uint104).max;
     }
 
     /// @notice Returns shares received for depositing given amount of assets.
-    /// @param assets The amount of assets to be deposited.
-    /// @return shares The amount of shares that can be minted.
+    /// @param assets The amount of assets to be deposited
+    /// @return shares The amount of shares that can be minted
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
         // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
         unchecked {
@@ -384,12 +392,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
-    /// There is a maximum asset deposit limit of (2 ** 104) - 1.
-    /// An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
+    /// @dev There is a maximum asset deposit limit of (2 ** 104) - 1.
+    /// @dev An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
-    /// @param assets Amount of assets deposited.
-    /// @param receiver User to receive the shares.
-    /// @return shares The amount of Panoptic pool shares that were minted to the recipient.
+    /// @param assets Amount of assets deposited
+    /// @param receiver User to receive the shares
+    /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
 
@@ -662,12 +670,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// - 10% if the position is liquidated when the price is between 950 and 1000, or if it is between 1050 and 1100
     /// - 5% if the price is between 900 and 950 or (1100, 1150)
     /// - 2.5% if between (850, 900) or (1150, 1200)
-    /// @param currentTick The current price tick.
-    /// @param oracleTick The price oracle tick.
+    /// @param currentTick The current price tick
+    /// @param oracleTick The price oracle tick
     /// @param positionId The position to be exercised
     /// @param positionBalance The balance in `account` of the position to be exercised
-    /// @param longAmounts The amount of longs in the position.
-    /// @return exerciseFees The fees for exercising the option position.
+    /// @param longAmounts The amount of longs in the position
+    /// @return exerciseFees The fees for exercising the option position
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
@@ -723,7 +731,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 }
 
                 // compensate user for loss in value if chunk has lost money between current and median tick
-                // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
+                // NOTE: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
                 exerciseFees = exerciseFees.sub(
                     LeftRightSigned
                         .wrap(0)
@@ -732,7 +740,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 );
             }
 
-            // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
+            // NOTE: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
@@ -748,8 +756,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Get the pool utilization; it is a measure of the ratio of assets in the AMM vs the total assets managed by the pool.
     // With total assets being the current Panoptic pool balance + the amount in the AMM.
     /// @dev compute: inAMM/totalAssets().
-    /// @dev 1bps precision controlled by DECIMALS.
-    /// @return poolUtilization the pool utilization as a fraction.
+    /// @return poolUtilization The pool utilization in basis points
     function _poolUtilization() internal view returns (int256 poolUtilization) {
         unchecked {
             return int256((s_inAMM * DECIMALS) / totalAssets());
@@ -758,8 +765,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Get the (sell) collateral ratio that is paid when a short option is minted at a specific pool utilization.
     /// @dev This is computed at the time the position is minted.
-    /// @param utilization The fraction of totalAssets() that belongs to the Uniswap Pool.
-    /// @return sellCollateralRatio The sell collateral ratio.
+    /// @param utilization The fraction of totalAssets() that belongs to the Uniswap Pool
+    /// @return sellCollateralRatio The sell collateral ratio at `utilization`
     function _sellCollateralRatio(
         int256 utilization
     ) internal view returns (uint256 sellCollateralRatio) {
@@ -813,8 +820,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Get the (buy) collateral ratio that is paid when a long option is minted at a specific pool utilization.
     /// @dev This is computed at the time the position is minted.
-    /// @param utilization The fraction of totalBalance() that belongs to the Uniswap Pool.
-    /// @return buyCollateralRatio The buy collateral ratio.
+    /// @param utilization The fraction of totalBalance() that belongs to the Uniswap Pool
+    /// @return buyCollateralRatio The buy collateral ratio at `utilization`
     function _buyCollateralRatio(
         uint256 utilization
     ) internal view returns (uint256 buyCollateralRatio) {
@@ -870,9 +877,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Delegate and transfer shares corresponding to the incoming assets 'from' delegator 'to' delegatee.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @param delegator The delegator to send shares from - the sender of the shares.
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares.
-    /// @param assets The assets to which the shares delegated correspond.
+    /// @param delegator The delegator to send shares from - the sender of the shares
+    /// @param delegatee The delegatee to send shares to - the recipient of the shares
+    /// @param assets The assets to which the shares delegated correspond
     function delegate(
         address delegator,
         address delegatee,
@@ -900,26 +907,26 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev mints ghost shares so a position can be settled - the total supply is not affected.
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares.
-    /// @param assets The assets to which the shares delegated correspond.
+    /// @dev Mints ghost shares so a position can be settled - the total supply is not affected.
+    /// @param delegatee The delegatee to send shares to - the recipient of the shares
+    /// @param assets The assets to which the shares delegated correspond
     function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
         balanceOf[delegatee] += convertToShares(assets);
     }
 
-    /// @notice Refunds delegated tokens back to the protocol
-    /// @dev Assumes that `delegatee` has enough money to pay for the refund
-    /// @dev burns ghost shares after a position has been settled - the total supply is not affected.
-    /// @param delegatee The account refunding tokens to 'delegatee'.
-    /// @param assets The amount of assets to which the shares to refund to the protocol correspond.
+    /// @notice Refunds delegated tokens back to the protocol.
+    /// @dev Assumes that `delegatee` has enough money to pay for the refund.
+    /// @dev Burns ghost shares after a position has been settled - the total supply is not affected.
+    /// @param delegatee The account refunding tokens to 'delegatee'
+    /// @param assets The amount of assets to which the shares to refund to the protocol correspond
     function refund(address delegatee, uint256 assets) external onlyPanopticPool {
         balanceOf[delegatee] -= convertToShares(assets);
     }
 
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
-    /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate).
-    /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate).
-    /// @param assets The assets to which the shares revoked correspond.
+    /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate)
+    /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate)
+    /// @param assets The assets to which the shares revoked correspond
     function revoke(
         address delegator,
         address delegatee,
@@ -978,12 +985,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Refunds delegated tokens to 'refunder' from 'refundee', similar to 'revoke'
-    /// @dev Assumes that the refunder has enough money to pay for the refund
-    /// @dev can handle negative refund amounts that go from refundee to refunder in the case of high exercise fees.
-    /// @param refunder The account refunding tokens to 'refundee'.
-    /// @param refundee The account being refunded to.
-    /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative.
+    /// @notice Refunds delegated tokens to 'refunder' from 'refundee', similar to 'revoke'.
+    /// @dev Assumes that the refunder has enough money to pay for the refund.
+    /// @dev Can handle negative refund amounts that go from refundee to refunder in the case of high exercise fees.
+    /// @param refunder The account refunding tokens to 'refundee'
+    /// @param refundee The account being refunded to
+    /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
         if (assets > 0) {
             _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
@@ -999,11 +1006,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Take commission on option creation/opening (commissions will not be taken on closing).
-    /// @param optionOwner The user minting the option.
-    /// @param longAmount The amount of longs.
-    /// @param shortAmount The amount of shorts.
-    /// @param swappedAmount The amount of tokens swapped during creation of the option position (non-zero for options minted ITM).
-    /// @return utilization The utilization of the Panoptic Pool.
+    /// @param optionOwner The user minting the option
+    /// @param longAmount The amount of longs
+    /// @param shortAmount The amount of shorts
+    /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @return utilization The final utilization of the collateral vault
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
@@ -1046,12 +1053,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Exercise an option and pay to the seller what is owed from the buyer.
     /// @dev Called when a position is burnt because it may need to be exercised.
-    /// @param optionOwner The owner of the option being burned and potentially exercised.
-    /// @param longAmount The amount of longs to be exercised (if any).
-    /// @param shortAmount The amount of shorts to be exercised (if any).
-    /// @param swappedAmount The amount of tokens potentially swapped.
-    /// @param realizedPremium Premium to settle on the current positions.
-    /// @return paidAmount The amount of tokens paid when closing that position.
+    /// @param optionOwner The owner of the option being burned and potentially exercised
+    /// @param longAmount The amount of longs to be exercised (if any)
+    /// @param shortAmount The amount of shorts to be exercised (if any)
+    /// @param swappedAmount The amount of tokens moved during the option close
+    /// @param realizedPremium Premium to settle on the current positions
+    /// @return The amount of tokens paid when closing that position
     function exercise(
         address optionOwner,
         int128 longAmount,
@@ -1091,10 +1098,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Get the amount exchanged to mint an option.
-    /// @param longAmount The amount of long options held.
-    /// @param shortAmount The amount of short options held.
-    /// @param swappedAmount The (potential) amount swapped during any ITM option creations.
-    /// @return exchangedAmount The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value).
+    /// @param longAmount The amount of long options held
+    /// @param shortAmount The amount of short options held
+    /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @return exchangedAmount The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
@@ -1132,13 +1139,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the collateral status/margin details of an account/user.
-    /// NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
+    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user The account to check collateral/margin health for.
-    /// @param currentTick The current AMM price tick.
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
-    /// @param premiumAllPositions The premium collected thus far across all positions.
-    /// @return tokenData Information collected for the tokens about the health of the account.
+    /// @param user The account to check collateral/margin health for
+    /// @param currentTick The tick at which to evaluate the account's positions
+    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
+    /// @param premiumAllPositions The premium collected thus far across all positions
+    /// @return tokenData Information collected for the tokens about the health of the account
     /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getAccountMarginDetails(
         address user,
@@ -1150,14 +1157,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Get the collateral status/margin details of an account/user.
-    /// NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
+    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user the account to check collateral/margin health for.
-    /// @param atTick tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param positionBalanceArray the list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
-    /// @param premiumAllPositions the premium collected thus far across all positions.
-    /// @return tokenData information collected for the tokens about the health of the account.
-    /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
+    /// @param user The account to check collateral/margin health for.
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
+    /// @param premiumAllPositions The premium collected thus far across all positions
+    /// @return tokenData Information collected for the tokens about the health of the account;
+    /// the collateral balance of the user is in the right slot and the threshold for margin call is in the left slot
     function _getAccountMargin(
         address user,
         int24 atTick,
@@ -1196,9 +1203,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
     /// @dev Returns the token amounts required for the entire account with active positions in 'positionIdList' (list of tokenIds).
-    /// @param atTick Tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...].
-    /// @return tokenRequired The amount of tokens required to stay above the margin threshold for all active positions of user.
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
+    /// @return tokenRequired The amount of tokens required to stay above the margin threshold for all active positions of user
     function _getTotalRequiredCollateral(
         int24 atTick,
         uint256[2][] memory positionBalanceArray
@@ -1239,11 +1246,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Get the required amount of collateral tokens corresponding to a specific single position 'tokenId' at a price 'tick'.
     /// The required collateral of an account depends on the price ('tick') in the AMM pool: if in the position's favor less collateral needed, etc.
-    /// @param tokenId The option position.
-    /// @param positionSize The size of the option position.
-    /// @param atTick Tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param poolUtilization The utilization of the Panoptic pool (balance of buying and selling).
-    /// @return tokenRequired total required tokens for all legs of the specified tokenId.
+    /// @param tokenId The option position
+    /// @param positionSize The size of the option position
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param poolUtilization The utilization of the collateral vault (balance of buying and selling)
+    /// @return tokenRequired Total required tokens for all legs of the specified tokenId.
     function _getRequiredCollateralAtTickSinglePosition(
         TokenId tokenId,
         uint128 positionSize,
@@ -1269,14 +1276,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Calculate the required amount of collateral for a single leg 'index' of position 'tokenId' when the leg does not have a risk partner.
-    /// @dev Also called "undefined risk."
-    /// @param tokenId The option position.
-    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for.
-    /// @param positionSize The size of the position.
-    /// @param atTick Tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
-    /// @return required The required amount collateral needed for this leg 'index'.
+    /// @notice Calculate the required amount of collateral for a single leg 'index' of position 'tokenId'.
+    /// @param tokenId The option position
+    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for
+    /// @param positionSize The size of the position
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool
+    /// @return required The required amount collateral needed for this leg 'index'
     function _getRequiredCollateralSingleLeg(
         TokenId tokenId,
         uint256 index,
@@ -1303,13 +1309,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Calculate the required amount of collateral for leg 'index' of position 'tokenId' when the leg does not have a risk partner.
-    /// @dev Also called "defined risk."
-    /// @param tokenId The option position.
-    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for.
-    /// @param positionSize The size of the position.
-    /// @param atTick Tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param poolUtilization The pool utilization: ratio of how much funds are in the Panoptic pool versus the AMM pool.
-    /// @return required The required amount collateral needed for this leg 'index'.
+    /// @param tokenId The option position
+    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for
+    /// @param positionSize The size of the position
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param poolUtilization The pool utilization: ratio of how much funds are in the Panoptic pool versus the AMM pool
+    /// @return required The required amount collateral needed for this leg 'index'
     function _getRequiredCollateralSingleLegNoPartner(
         TokenId tokenId,
         uint256 index,
@@ -1376,7 +1381,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         ((atTick < tickLower) && (tokenType == 1)) || // strike ITM but out of range price < lowerTick for tokenType=1
                         ((atTick >= tickUpper) && (tokenType == 0)) // strike ITM but out of range when price >= upperTick for tokenType=0
                     ) {
-                        /**
+                        /*
                                     Short put BPR = 100% - (price/strike) + SCR
 
                            BUYING
@@ -1424,20 +1429,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Calculate the required amount of collateral for leg 'index' for position 'tokenId' accounting for its partner leg.
-    /// @notice If the two token long-types are different (one is a long, the other a short, e.g.) but the tokenTypes are the same, this is a spread
+    /// @dev If the two token long-types are different (one is a long, the other a short, e.g.) but the tokenTypes are the same, this is a spread
     /// a spread is a defined risk position which has a max loss given by difference between the long and short strikes.
-    /// @notice If the two token long-types are the same but the tokenTypes are different (one is a call, the other a put, e.g.), this is a strangle -
+    /// @dev If the two token long-types are the same but the tokenTypes are different (one is a call, the other a put, e.g.), this is a strangle -
     /// a strangle benefits from enhanced capital efficiency because only one side can be ITM at a time.
     /// @dev if the position is a spread, then the collateral requirement consists of two components:
-    ///   1) The difference in notional value at both strikes: abs(strikeLong - strikeShort) or abs(strikeShort - strikeLong)
-    ///   2) A spread term which is relevant for legs that have different widths (calendar spreads)
-    /// @dev If a position is a strangle, only one leg can be tested at a time which allows us to increase the capital efficiency.
-    /// @param tokenId the option position
-    /// @param index the leg index (associated with a liquidity chunk) to consider a partner for
-    /// @param positionSize the size of the position
-    /// @param atTick tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param poolUtilization the pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
-    /// @return required the required amount collateral needed for this leg 'index', accounting for what the leg's risk partner is.
+    /// @dev 1) The difference in notional value at both strikes: abs(strikeLong - strikeShort) or abs(strikeShort - strikeLong)
+    /// @dev 2) A spread term which is relevant for legs that have different widths (calendar spreads)
+    /// @param tokenId The option position
+    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for
+    /// @param positionSize The size of the position
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool
+    /// @return required The required amount collateral needed for this leg 'index', accounting for what the leg's risk partner is
     function _getRequiredCollateralSingleLegPartner(
         TokenId tokenId,
         uint256 index,
@@ -1467,11 +1471,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Get the base collateral requirement for an 'amount' at the current Panoptic pool 'utilization' level.
     /// @notice For a given incoming 'amount' - which is the size of a user position (e.g. opening a position), what is the corresponding required collateral to have.
-    /// @dev NOTE this does not depend on the price of the AMM pool. This only computes what is needed in response to the current utilization.
-    /// @param amount The amount from which required collateral is computed.
-    /// @param isLong Whether the position is long (=1) or short (=0).
-    /// @param utilization The utilization of the Panoptic pool (balance between sellers and buyers).
-    /// @return required The required collateral corresponding to the incoming 'amount'.
+    /// @dev NOTE: this does not depend on the price of the AMM pool. This only computes what is needed in response to the current utilization.
+    /// @param amount The amount from which required collateral is computed
+    /// @param isLong Whether the position is long (=1) or short (=0)
+    /// @param utilization The utilization of the Panoptic pool (balance between sellers and buyers)
+    /// @return required The required collateral corresponding to the incoming 'amount'
     function _getRequiredCollateralAtUtilization(
         uint128 amount,
         uint256 isLong,
@@ -1501,14 +1505,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Calculate the required amount of collateral for the spread portion of the spread position.
-    /// @dev long leg requirement + 100% collateralized risk
-    /// @dev may be higher than the requirement of non risk-partnered legs if the spread is very wide (risky)
-    /// @param tokenId the option position.
-    /// @param positionSize the size of the position.
-    /// @param index the leg index of the LONG leg in the spread position.
-    /// @param partnerIndex the index of the partnered SHORT leg in the spread position.
-    /// @param poolUtilization the pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
-    /// @return spreadRequirement the required amount of collateral needed for the spread portion.
+    /// @dev (long leg requirement + 100% collateralized risk)
+    /// @dev May be higher than the requirement of non risk-partnered legs if the spread is very wide (risky).
+    /// @param tokenId The option position
+    /// @param positionSize The size of the position
+    /// @param index The leg index of the LONG leg in the spread position
+    /// @param partnerIndex The index of the partnered SHORT leg in the spread position
+    /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool
+    /// @return spreadRequirement The required amount of collateral needed for the spread portion
     function _computeSpread(
         TokenId tokenId,
         uint128 positionSize,
@@ -1591,14 +1595,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.
-    /// Strangle legs are evaluated at 2x capital efficiency at low pool utilizations.
+    /// @dev Strangle legs are evaluated at 2x capital efficiency at low pool utilizations.
     /// @dev A strangle can only have only one of its leg tested at the same time, so this reduces the total risk and collateral requirement.
-    /// @param tokenId The option position.
-    /// @param positionSize The size of the position.
-    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for.
-    /// @param atTick Tick to convert values at. This can be the current tick or the Uniswap pool TWAP tick.
-    /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool.
-    /// @return strangleRequired The required amount of collateral needed for the strangle leg.
+    /// @param tokenId The option position
+    /// @param positionSize The size of the position
+    /// @param index The leg index (associated with a liquidity chunk) to consider a partner for
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param poolUtilization The pool utilization: how much funds are in the Panoptic pool versus the AMM pool
+    /// @return strangleRequired The required amount of collateral needed for the strangle leg
     function _computeStrangle(
         TokenId tokenId,
         uint256 index,
