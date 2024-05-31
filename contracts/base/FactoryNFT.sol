@@ -91,9 +91,8 @@ contract FactoryNFT is MetadataStore, ERC721 {
                                     "-",
                                     symbol1,
                                     "-",
-                                    // @TODO: doesnt support fractional bips -- need to include in open PR for related issue
-                                    LibString.toString(fee / 100),
-                                    "bps market"
+                                    PanopticMath.uniswapFeeToString(uint24(fee)),
+                                    " market"
                                 ),
                                 '", "attributes": [{',
                                 '"trait_type": "Rarity", "value": "',

@@ -9,6 +9,8 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
+// OpenZeppelin libraries
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -88,6 +90,25 @@ library PanopticMath {
         } catch {
             return "???";
         }
+    }
+
+    /// @notice Converts `fee` to a string with "bps" appended.
+    /// @dev The lowest supported value of `fee` is 1 (`="0.01bps"`).
+    /// @param fee The fee to convert to a string (in hundredths of basis points)
+    /// @return Stringified version of `fee` with "bps" appended
+    function uniswapFeeToString(uint24 fee) internal pure returns (string memory) {
+        return
+            string.concat(
+                Strings.toString(fee / 100),
+                fee % 100 == 0
+                    ? ""
+                    : string.concat(
+                        ".",
+                        Strings.toString((fee / 10) % 10),
+                        Strings.toString(fee % 10)
+                    ),
+                "bps"
+            );
     }
 
     /*//////////////////////////////////////////////////////////////

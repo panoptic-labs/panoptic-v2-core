@@ -8,8 +8,6 @@ import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-// OpenZeppelin libraries
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
 /// @title InteractionHelper - contains helper functions for external interactions such as approvals.
 /// @notice Used to delegate logic with multiple external calls.
@@ -68,15 +66,7 @@ library InteractionHelper {
                     "/",
                     symbol1,
                     " ",
-                    Strings.toString(fee / 100),
-                    fee % 100 == 0
-                        ? ""
-                        : string.concat(
-                            ".",
-                            Strings.toString((fee / 10) % 10),
-                            Strings.toString(fee % 10)
-                        ),
-                    "bps"
+                    PanopticMath.uniswapFeeToString(fee)
                 );
         }
     }
