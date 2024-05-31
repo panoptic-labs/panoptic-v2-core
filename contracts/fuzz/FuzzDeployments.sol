@@ -265,6 +265,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool[4] memory is_call_in,
         bool[4] memory is_long_in,
         bool[4] memory is_otm_in,
+        bool[4] memory is_atm_in,
         uint24[4] memory width_in,
         int256[4] memory strike_in
     ) internal returns (TokenId out) {
@@ -280,7 +281,15 @@ contract FuzzDeployments is FuzzHelpers {
             int24 width;
             int24 strike;
 
-            if (is_otm_in[i]) {
+            if (is_atm_in[i]) {
+                (width, strike) = getATMSW(
+                    width_in[i],
+                    strike_in[i],
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    call_put
+                );
+            } else if (is_otm_in[i]) {
                 (width, strike) = getOTMSW(
                     width_in[i],
                     strike_in[i],
