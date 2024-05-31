@@ -358,7 +358,8 @@ contract FuzzDeployments is FuzzHelpers {
     function _generate_strangle_tokenid(
         bool asset_in,
         bool is_long_in,
-        bool is_atm_in,
+        bool is_atm0_in,
+        bool is_atm1_in,
         bool is_inverted_in,
         uint24 width_in,
         int256 strike_in,
@@ -373,7 +374,7 @@ contract FuzzDeployments is FuzzHelpers {
         int24 strike_sc;
         int24 strike_sp;
 
-        if (is_atm_in) {
+        if (is_atm0_in) {
             (width_sc, strike_sc) = getATMSW(
                 width_in,
                 strike_in,
@@ -381,6 +382,27 @@ contract FuzzDeployments is FuzzHelpers {
                 currentTick,
                 asset
             );
+        } else {
+            if (is_inverted_in) {
+                (width_sc, strike_sc) = getITMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    asset
+                );
+            } else {
+                (width_sc, strike_sc) = getOTMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    asset
+                );
+            }
+        }
+
+        if (is_atm1_in) {
             (, strike_sp) = getATMSW(
                 width_in,
                 strike_in,
@@ -388,36 +410,24 @@ contract FuzzDeployments is FuzzHelpers {
                 currentTick,
                 1 - asset
             );
-        } else if (is_inverted_in) {
-            (width_sc, strike_sc) = getITMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                asset
-            );
-            (, strike_sp) = getITMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                1 - asset
-            );
         } else {
-            (width_sc, strike_sc) = getOTMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                asset
-            );
-            (, strike_sp) = getOTMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                1 - asset
-            );
+            if (is_inverted_in) {
+                (, strike_sp) = getITMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    1 - asset
+                );
+            } else {
+                (, strike_sp) = getOTMSW(
+                    width_in,
+                    strike_in,
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    1 - asset
+                );
+            }
         }
 
         // Create call
@@ -554,7 +564,7 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function mint_strategy(
+    function mint_strategy_undefined(
         bool asset,
         bool is_long,
         uint256 strategy,
@@ -563,7 +573,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 posSize
     ) public {
         // We have two strategies now, this can be expanded later
-        strategy = bound(strategy, 0, 4);
+        strategy = bound(strategy, 0, 6);
 
         address minter = msg.sender;
 
@@ -584,16 +594,18 @@ contract FuzzDeployments is FuzzHelpers {
                 is_long,
                 false,
                 false,
+                false,
                 width,
                 strike,
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
             _mint_option(minter, strangle, posSize, 0);
         } else if (strategy == 3) {
-            // Mint an ATM strangle (may be interted)
+            // Mint an ATM strangle (may be inverted)
             TokenId strangle = _generate_strangle_tokenid(
                 asset,
                 is_long,
+                true,
                 true,
                 false,
                 width,
@@ -602,11 +614,38 @@ contract FuzzDeployments is FuzzHelpers {
             ); // Fixed delta of 10, can be changed/fuzzed
             _mint_option(minter, strangle, posSize, 0);
         } else if (strategy == 4) {
-            // Mint an inverted strangle
+            // Mint an inverted OTM strangle
             TokenId strangle = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 false,
+                false,
+                true,
+                width,
+                strike,
+                10
+            ); // Fixed delta of 10, can be changed/fuzzed
+            _mint_option(minter, strangle, posSize, 0);
+        } else if (strategy == 5) {
+            // Mint an inverted ATM strangle
+            TokenId strangle = _generate_strangle_tokenid(
+                asset,
+                is_long,
+                true,
+                false,
+                true,
+                width,
+                strike,
+                10
+            ); // Fixed delta of 10, can be changed/fuzzed
+            _mint_option(minter, strangle, posSize, 0);
+        } else if (strategy == 6) {
+            // Mint an inverted ATM strangle
+            TokenId strangle = _generate_strangle_tokenid(
+                asset,
+                is_long,
+                false,
+                true,
                 true,
                 width,
                 strike,
