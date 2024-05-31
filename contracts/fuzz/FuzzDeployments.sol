@@ -209,6 +209,36 @@ contract FuzzDeployments is FuzzHelpers {
     // Leg generation
     ////////////////////////////////////////////////////
 
+    /// @dev Generate a tokenId with only long legs when tokenId_in had short legs
+    function _generate_long_only_tokenid(TokenId tokenId_in) internal returns (TokenId out) {
+        if (tokenId_in.countLongs() > 0) {
+            out = TokenId.wrap(poolId);
+            uint256 numLegs = tokenId_in.countLegs();
+            uint256 _newLegs;
+
+            for (uint256 leg; leg < numLegs; ++leg) {
+                if (tokenId_in.isLong(leg) == 1) {
+                    {
+                        uint256 ratio = tokenId_in.optionRatio(leg);
+                        uint256 asset = tokenId_in.asset(leg);
+                        uint256 tokenType = tokenId_in.tokenType(leg);
+                        int24 strike = tokenId_in.strike(leg);
+                        int24 width = tokenId_in.width(leg);
+                        out.addOptionRatio(ratio, _newLegs);
+                        out.addAsset(asset, _newLegs);
+                        out.addTokenType(tokenType, _newLegs);
+                        out.addStrike(strike, _newLegs);
+                        out.addWidth(width, _newLegs);
+                        out.addIsLong(0, _newLegs);
+                    }
+                    ++_newLegs;
+                }
+            }
+        } else {
+            out = TokenId.wrap(0);
+        }
+    }
+
     /// @dev Generate a single leg
     function _generate_single_leg_tokenid(
         bool asset_in,
@@ -546,7 +576,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 posSize,
         uint64 effLiqLim
     ) internal {
-        // Mint a position according to tokenid and posSize
+        // Mint a position according to tokenId and posSize
         uint256 userCollateral;
 
         if (tokenid.tokenType(0) == 0) {
@@ -556,6 +586,7 @@ contract FuzzDeployments is FuzzHelpers {
             userCollateral = collToken1.convertToAssets(collToken1.balanceOf(minter));
             emit LogUint256("User collateral 1", userCollateral);
         }
+
         posSize = bound(posSize, (userCollateral * 60) / 100, (userCollateral * 400) / 100);
         require(posSize > 0);
 
@@ -645,7 +676,7 @@ contract FuzzDeployments is FuzzHelpers {
             _mint_option(
                 seller,
                 _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
-                (12 * posSize) / 10,
+                (15 * posSize) / 10,
                 0
             );
             _mint_option(
@@ -658,6 +689,7 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function mint_strategy_undefined(
+        uint256 seller_index,
         bool asset,
         bool is_long,
         uint256 strategy,
@@ -665,16 +697,26 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint256 posSize
     ) public {
-        // We have two strategies now, this can be expanded later
-        strategy = bound(strategy, 0, 6);
+        seller_index = bound(seller_index, 0, 4);
+        if (actors[seller_index] == msg.sender) {
+            seller_index = bound(seller_index + 1, 0, 4);
+        }
 
         address minter = msg.sender;
+        address seller = actors[seller_index];
+
+        // We have two strategies now, this can be expanded later
+        strategy = bound(strategy, 0, 6);
 
         (, currentTick, , , , , ) = pool.slot0();
 
         if (strategy == 0) {
             // Mint a ATM straddle
             TokenId straddle = _generate_straddle_tokenid(asset, is_long, true, width, strike);
+            if (straddle.countLongs() > 0) {
+                TokenId straddleLongs = _generate_long_only_tokenid(straddle);
+                _mint_option(seller, straddleLongs, (15 * posSize) / 10, 0);
+            }
             _mint_option(minter, straddle, posSize, 0);
         } else if (strategy == 1) {
             // Mint a OTM straddle
