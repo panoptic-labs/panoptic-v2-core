@@ -577,18 +577,11 @@ contract FuzzDeployments is FuzzHelpers {
         uint64 effLiqLim
     ) internal {
         // Mint a position according to tokenId and posSize
-        uint256 userCollateral;
 
-        if (tokenid.tokenType(0) == 0) {
-            userCollateral = collToken0.convertToAssets(collToken0.balanceOf(minter));
-            emit LogUint256("User collateral 0", userCollateral);
-        } else {
-            userCollateral = collToken1.convertToAssets(collToken1.balanceOf(minter));
-            emit LogUint256("User collateral 1", userCollateral);
-        }
-
-        posSize = bound(posSize, (userCollateral * 60) / 100, (userCollateral * 400) / 100);
-        require(posSize > 0);
+        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(minter));
+        emit LogUint256("User collateral 0", userCollateral0);
+        uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(minter));
+        emit LogUint256("User collateral 1", userCollateral1);
 
         uint256 positionsOpened = panopticPool.numberOfPositions(minter);
         emit LogUint256("Positions opened for user", positionsOpened);
@@ -597,6 +590,39 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory posIdList = userPositions[minter];
         TokenId[] memory lastPos = new TokenId[](1);
         lastPos[0] = tokenid;
+
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+
+            uint256[2][] memory positionBalance = new uint256[2][](1);
+
+            positionBalance[0][0] = TokenId.unwrap(tokenid);
+            positionBalance[0][1] = 1e6;
+
+            LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
+                minter,
+                currentTick,
+                positionBalance,
+                0
+            );
+            LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(
+                minter,
+                currentTick,
+                positionBalance,
+                0
+            );
+
+            (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+                tokenData0,
+                tokenData1,
+                0,
+                currentTick
+            );
+
+            uint256 size = (required0 * balance0) / 1e6;
+            posSize = bound(posSize, (size * 20) / 100, (size * 90) / 100);
+            require(posSize > 0);
+        }
 
         if (tokenid.isLong(0) == 1) {
             (int24 tickLower, int24 tickUpper) = tokenid.asTicks(0);
@@ -719,7 +745,7 @@ contract FuzzDeployments is FuzzHelpers {
             tokenId_undefined = _generate_straddle_tokenid(asset, is_long, false, width, strike);
         } else if (strategy == 2) {
             // Mint an OTM strangle
-            TokenId tokenId_undefined = _generate_strangle_tokenid(
+            tokenId_undefined = _generate_strangle_tokenid(
                 asset,
                 is_long,
                 false,
