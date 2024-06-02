@@ -939,10 +939,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
         if (!solventAtFast) revert Errors.NotEnoughCollateral();
 
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
-        if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
-            if (!_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer))
-                revert Errors.NotEnoughCollateral();
+        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
+        if (
+            Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA ||
+            Math.abs(int256(fastOracleTick) - currentTick) > MAX_SLOW_FAST_DELTA ||
+            Math.abs(currentTick - slowOracleTick) > MAX_SLOW_FAST_DELTA
+        )
+            if (
+                !_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer) ||
+                !_checkSolvencyAtTick(user, positionIdList, currentTick, currentTick, buffer)
+            ) revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns and handles the exercise of options.
