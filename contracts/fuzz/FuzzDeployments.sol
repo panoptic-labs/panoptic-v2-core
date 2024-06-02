@@ -594,6 +594,8 @@ contract FuzzDeployments is FuzzHelpers {
         {
             (, currentTick, , , , , ) = pool.slot0();
 
+            emit LogInt256("pre-mint Tick", currentTick);
+
             uint256[2][] memory positionBalance = new uint256[2][](1);
 
             positionBalance[0][0] = TokenId.unwrap(tokenid);
@@ -660,6 +662,83 @@ contract FuzzDeployments is FuzzHelpers {
 
         (uint128 balance, , ) = panopticPool.optionPositionBalance(minter, tokenid);
         assertWithMsg(balance == posSize, "Position size and balance do not match");
+
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+            emit LogInt256("final Tick", currentTick);
+
+            LeftRightUnsigned tokenData0;
+            LeftRightUnsigned tokenData1;
+            address _m = minter;
+            {
+                // Compute premia for all options (includes short+long premium)
+                (
+                    int128 premium0,
+                    int128 premium1,
+                    uint256[2][] memory positionBalanceArray
+                ) = panopticPool.calculateAccumulatedFeesBatch(_m, false, posIdList);
+
+                // Query the current and required collateral amounts for the two tokens
+                tokenData0 = collToken0.getAccountMarginDetails(
+                    _m,
+                    currentTick,
+                    positionBalanceArray,
+                    premium0
+                );
+                tokenData1 = collToken1.getAccountMarginDetails(
+                    _m,
+                    currentTick,
+                    positionBalanceArray,
+                    premium1
+                );
+            }
+
+            // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
+            (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+                tokenData0,
+                tokenData1,
+                0,
+                currentTick
+            );
+            emit LogUint256("Balance0 after", balance0);
+            emit LogUint256("required0 after", required0);
+
+            assertWithMsg(balance0 >= required0, "account is not solvent in token0");
+
+            // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
+            (uint256 balance1, uint256 required1) = PanopticMath.convertCollateralData(
+                tokenData0,
+                tokenData1,
+                1,
+                currentTick
+            );
+            emit LogUint256("Balance1 after", balance1);
+            emit LogUint256("required1 after", required1);
+
+            assertWithMsg(balance1 >= required1, "account is not solvent in token1");
+
+            {
+                uint256 sqrtPriceX96 = Math.getSqrtRatioAtTick(currentTick);
+
+                uint256 balanceCross = Math.mulDiv(
+                    uint256(tokenData1.rightSlot()),
+                    2 ** 96,
+                    sqrtPriceX96
+                ) + Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
+                // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
+                // overstimate by rounding up
+
+                uint256 thresholdCross = Math.mulDivRoundingUp(
+                    uint256(tokenData1.leftSlot()),
+                    2 ** 96,
+                    sqrtPriceX96
+                ) + Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
+                assertWithMsg(
+                    balanceCross >= thresholdCross,
+                    "account is not solvent in cross token"
+                );
+            }
+        }
 
         emit LogInt256("Balance after", int256(_get_assets_in_token0(minter, currentTick)));
         emit LogString("Minted a new option");
