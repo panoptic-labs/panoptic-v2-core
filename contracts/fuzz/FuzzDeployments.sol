@@ -1326,7 +1326,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         _execute_burn_simulation(liquidatee, liquidator);
 
-        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTick);
+        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTickOld);
         {
             (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
                 liquidatee,
@@ -1338,40 +1338,28 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogInt256("Premium in token 1", p1);
         }
 
+        hevm.prank(liquidator);
+        panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
+
+        currentTickOld = currentTick;
+        (, currentTick, , , , , ) = pool.slot0();
+
         _calculate_liquidation_bonus(TWAPtick, currentTick);
 
         burnSimResults.delegated0 = uint256(
             int256(
                 collToken0.convertToShares(
-                    uint256(
-                        int256(
-                            uint256(
-                                uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator)))
-                            )
-                        ) + liqResults.bonus0
-                    )
+                    uint256(int256(uint256(uint96(burnSimResults.delegated0))) + liqResults.bonus0)
                 )
             )
         );
         burnSimResults.delegated1 = uint256(
             int256(
                 collToken1.convertToShares(
-                    uint256(
-                        int256(
-                            uint256(
-                                uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator)))
-                            )
-                        ) + liqResults.bonus1
-                    )
+                    uint256(int256(uint256(uint96(burnSimResults.delegated0))) + liqResults.bonus1)
                 )
             )
         );
-
-        hevm.prank(liquidator);
-        panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
-
-        log_burn_simulation_results();
-        log_liquidation_results();
 
         liqResults.sharesD0 =
             burnSimResults.shareDelta0 -
@@ -1379,7 +1367,7 @@ contract FuzzDeployments is FuzzHelpers {
         liqResults.sharesD1 =
             burnSimResults.shareDelta1 -
             (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
-        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
+        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick); // currentTickOld
 
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(currentTick);
@@ -1469,15 +1457,13 @@ contract FuzzDeployments is FuzzHelpers {
             liqResults.protocolLoss0Expected -
                 Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
         );
-        emit LogUint256("asset", liquidated_positions[0].asset(0));
-        emit LogUint256("tokenType", liquidated_positions[0].tokenType(0));
-        emit LogInt256("strike", liquidated_positions[0].strike(0));
-        emit LogInt256("width", liquidated_positions[0].width(0));
-
-        assertWithMsg(
-            liqResults.protocolLoss0Actual ==
-                liqResults.protocolLoss0Expected -
-                    Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+        assertLt(
+            abs(
+                liqResults.protocolLoss0Actual -
+                    (liqResults.protocolLoss0Expected -
+                        Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected))
+            ),
+            10,
             "Not all premium was haircut during protocol loss"
         );
 

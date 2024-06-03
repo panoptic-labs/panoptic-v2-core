@@ -290,6 +290,7 @@ contract FuzzHelpers is PropertiesAsserts {
     int24 poolTickSpacing;
     uint160 currentSqrtPriceX96;
     int24 currentTick;
+    int24 currentTickOld;
 
     CollateralTracker collToken0;
     CollateralTracker collToken1;
@@ -617,6 +618,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
         hevm.prank(who);
         (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
+
+        currentTickOld = currentTick;
+        (, currentTick, , , , , ) = pool.slot0();
 
         shareDeltasLiquidatee = [
             int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0],
