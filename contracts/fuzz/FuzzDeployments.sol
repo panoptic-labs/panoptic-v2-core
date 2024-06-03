@@ -1048,6 +1048,8 @@ contract FuzzDeployments is FuzzHelpers {
 
     ////////////////////////////////////////////////////
     // Interaction with collateral trackers
+    // TODO: I'm going to add some more assertions about CollateralTracker.sol here;
+    // the below are already passing, it seems
     ////////////////////////////////////////////////////
 
     /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
