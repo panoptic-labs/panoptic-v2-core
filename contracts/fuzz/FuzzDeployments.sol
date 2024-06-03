@@ -212,7 +212,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @dev Generate a tokenId with only long legs when tokenId_in had short legs
     function _generate_long_only_tokenid(TokenId tokenId_in) internal returns (TokenId out) {
         if (tokenId_in.countLongs() > 0) {
-            out = TokenId.wrap(poolId);
+            out = TokenId.wrap(tokenId_in.poolId());
             uint256 numLegs = tokenId_in.countLegs();
             uint256 _newLegs;
 
@@ -224,13 +224,15 @@ contract FuzzDeployments is FuzzHelpers {
                         uint256 tokenType = tokenId_in.tokenType(leg);
                         int24 strike = tokenId_in.strike(leg);
                         int24 width = tokenId_in.width(leg);
-                        out.addOptionRatio(ratio, _newLegs);
-                        out.addAsset(asset, _newLegs);
-                        out.addTokenType(tokenType, _newLegs);
-                        out.addStrike(strike, _newLegs);
-                        out.addWidth(width, _newLegs);
-                        out.addIsLong(0, _newLegs);
+                        out = out.addOptionRatio(ratio, _newLegs);
+                        out = out.addAsset(asset, _newLegs);
+                        out = out.addTokenType(tokenType, _newLegs);
+                        out = out.addStrike(strike, _newLegs);
+                        out = out.addWidth(width, _newLegs);
+                        out = out.addIsLong(0, _newLegs);
+                        out = out.addRiskPartner(_newLegs, _newLegs);
                     }
+                    log_tokenid_leg(out, _newLegs);
                     ++_newLegs;
                 }
             }
@@ -391,7 +393,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool is_atm0_in,
         bool is_atm1_in,
         bool is_inverted_in,
-        uint24 width_in,
+        uint256 width_in,
         int256 strike_in,
         int24 strike_delta
     ) internal returns (TokenId out) {
@@ -401,6 +403,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 long_short = is_long_in == true ? 1 : 0;
 
         int24 width_sc;
+        int24 width_sp;
         int24 strike_sc;
         int24 strike_sp;
 
@@ -432,8 +435,11 @@ contract FuzzDeployments is FuzzHelpers {
             }
         }
 
+        strike_in = int24(strike_in >> 24);
+        width_in = uint24(width_in >> 24);
+
         if (is_atm1_in) {
-            (, strike_sp) = getATMSW(
+            (width_sp, strike_sp) = getATMSW(
                 width_in,
                 strike_in,
                 uint24(poolTickSpacing),
@@ -442,7 +448,7 @@ contract FuzzDeployments is FuzzHelpers {
             );
         } else {
             if (is_inverted_in) {
-                (, strike_sp) = getITMSW(
+                (width_sp, strike_sp) = getITMSW(
                     width_in,
                     strike_in,
                     uint24(poolTickSpacing),
@@ -450,7 +456,7 @@ contract FuzzDeployments is FuzzHelpers {
                     1 - asset
                 );
             } else {
-                (, strike_sp) = getOTMSW(
+                (width_sp, strike_sp) = getOTMSW(
                     width_in,
                     strike_in,
                     uint24(poolTickSpacing),
@@ -458,6 +464,8 @@ contract FuzzDeployments is FuzzHelpers {
                     1 - asset
                 );
             }
+
+            // add logic for calendar strangles
         }
 
         // Create call
@@ -476,7 +484,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool is_atm1_in,
         bool is_inverted_in,
         bool is_calendar_in,
-        uint24 width_in,
+        uint256 width_in,
         int256 strike_in,
         int24 strike_delta
     ) internal returns (TokenId out) {
@@ -518,6 +526,8 @@ contract FuzzDeployments is FuzzHelpers {
             }
         }
 
+        strike_in = int24(strike_in >> 24);
+        width_in = uint24(width_in >> 24);
         if (is_atm1_in) {
             (width_long, strike_long) = getATMSW(
                 width_in,
@@ -620,12 +630,16 @@ contract FuzzDeployments is FuzzHelpers {
                 0,
                 currentTick
             );
+            emit LogUint256("balance0", balance0);
+            emit LogUint256("required0", required0);
 
             uint256 size = (required0 * balance0) / 1e6;
-            posSize = bound(posSize, (size * 20) / 100, (size * 90) / 100);
+            posSize = bound(posSize, (size * 40) / 100, (size * 60) / 100);
             require(posSize > 0);
         }
+        emit LogUint256("positionSize", posSize);
 
+        /*
         if (tokenid.isLong(0) == 1) {
             (int24 tickLower, int24 tickUpper) = tokenid.asTicks(0);
             uint64 effLiqFactor = _get_effective_liq_factor(
@@ -651,6 +665,10 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(minter);
             panopticPool.mintOptions(posIdList, uint128(posSize), 0, 0, 0);
         }
+        */
+        emit LogInt256("Balance before", int256(_get_assets_in_token0(minter, currentTick)));
+        hevm.prank(minter);
+        panopticPool.mintOptions(posIdList, uint128(posSize), type(uint64).max / 2, 0, 0);
 
         assertWithMsg(positionsOpened < 32, "More than 32 positions are minted for user");
         assertWithMsg(
@@ -883,8 +901,13 @@ contract FuzzDeployments is FuzzHelpers {
                 10
             ); // Fixed delta of 10, can be changed/fuzzed
         }
+
         if (tokenId_undefined.countLongs() > 0) {
             TokenId tokenIdLongs = _generate_long_only_tokenid(tokenId_undefined);
+            emit LogUint256(
+                "mint_strategy_undefined - tokenIdLongs",
+                uint256(TokenId.unwrap(tokenIdLongs))
+            );
             _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, 0);
         }
         _mint_option(minter, tokenId_undefined, posSize, 0);
@@ -909,6 +932,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         // We have two strategies now, this can be expanded later
         strategy = bound(strategy, 0, 9);
+        emit LogUint256("mint_strategy_defined - strategy", strategy);
 
         (, currentTick, , , , , ) = pool.slot0();
 
@@ -1044,10 +1068,15 @@ contract FuzzDeployments is FuzzHelpers {
                 0
             );
         }
+        emit LogUint256("mint_strategy_defined - spread", uint256(TokenId.unwrap(spread)));
 
         if (spread.countLongs() > 0) {
             TokenId tokenIdLongs = _generate_long_only_tokenid(spread);
             _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, 0);
+            emit LogUint256(
+                "mint_strategy_defined - tokenIdLongs",
+                uint256(TokenId.unwrap(tokenIdLongs))
+            );
         }
         _mint_option(minter, spread, posSize, 0);
     }
@@ -1221,6 +1250,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:precondition The liquidatee has a liquidatable position open
     function try_liquidate_option(uint256 i_liquidated) public {
         i_liquidated = bound(i_liquidated, 0, 4);
+
         address liquidatee = actors[i_liquidated];
         address liquidator = msg.sender;
 
@@ -1343,6 +1373,8 @@ contract FuzzDeployments is FuzzHelpers {
 
         hevm.prank(liquidator);
         panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
+
+        //assertWithMsg(0 > 1, "liquidation successful");
 
         log_burn_simulation_results();
         log_liquidation_results();
