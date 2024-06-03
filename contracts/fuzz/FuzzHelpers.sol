@@ -507,23 +507,25 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 totalAssets0 = burnSimResults.totalAssets0;
         uint256 totalAssets1 = burnSimResults.totalAssets1;
 
-        liqResults.protocolLoss0Actual = int256(
-            (collToken0.convertToAssets(
-                (collToken0.totalSupply() - totalSupply0) -
-                    ((collToken0.totalAssets() - totalAssets0) * totalSupply0) /
-                    totalAssets0
-            ) * (totalSupply0 - delegated0)) /
-                (totalSupply0 - (collToken0.totalSupply() - totalSupply0)) +
-                PanopticMath.convert1to0(
-                    (collToken1.convertToAssets(
-                        (collToken1.totalSupply() - totalSupply1) -
-                            ((collToken1.totalAssets() - totalAssets1) * totalSupply1) /
-                            totalAssets1
-                    ) * (totalSupply1 - delegated1)) /
-                        (totalSupply1 - (collToken1.totalSupply() - totalSupply1)),
-                    TickMath.getSqrtRatioAtTick(tick)
-                )
-        );
+        unchecked {
+            liqResults.protocolLoss0Actual = int256(
+                (collToken0.convertToAssets(
+                    (collToken0.totalSupply() - totalSupply0) -
+                        ((collToken0.totalAssets() - totalAssets0) * totalSupply0) /
+                        totalAssets0
+                ) * (totalSupply0 - delegated0)) /
+                    (totalSupply0 - (collToken0.totalSupply() - totalSupply0)) +
+                    PanopticMath.convert1to0(
+                        (collToken1.convertToAssets(
+                            (collToken1.totalSupply() - totalSupply1) -
+                                ((collToken1.totalAssets() - totalAssets1) * totalSupply1) /
+                                totalAssets1
+                        ) * (totalSupply1 - delegated1)) /
+                            (totalSupply1 - (collToken1.totalSupply() - totalSupply1)),
+                        TickMath.getSqrtRatioAtTick(tick)
+                    )
+            );
+        }
     }
 
     function _calculate_protocol_loss_expected_0(int24 twaptick, int24 curtick) internal {
