@@ -1370,8 +1370,6 @@ contract FuzzDeployments is FuzzHelpers {
         hevm.prank(liquidator);
         panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
 
-        //assertWithMsg(0 > 1, "liquidation successful");
-
         log_burn_simulation_results();
         log_liquidation_results();
 
@@ -1471,6 +1469,11 @@ contract FuzzDeployments is FuzzHelpers {
             liqResults.protocolLoss0Expected -
                 Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
         );
+        emit LogUint256("asset", liquidated_positions[0].asset(0));
+        emit LogUint256("tokenType", liquidated_positions[0].tokenType(0));
+        emit LogInt256("strike", liquidated_positions[0].strike(0));
+        emit LogInt256("width", liquidated_positions[0].width(0));
+
         assertWithMsg(
             liqResults.protocolLoss0Actual ==
                 liqResults.protocolLoss0Expected -
