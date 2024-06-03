@@ -167,56 +167,6 @@ contract PanopticFactoryTest is Test {
     }
 
     function setUp() public {
-        string memory metadata = vm.readFile("./metadata/out/MetadataPackage.json");
-
-        bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
-        address[] memory pointerAddresses = new address[](bytecodes.length);
-
-        for (uint256 i = 0; i < bytecodes.length; i++) {
-            bytes memory code = bytecodes[i];
-            address pointer;
-            // deploy code and store pointer
-            assembly {
-                pointer := create(0, add(code, 0x20), mload(code))
-                if iszero(extcodesize(pointer)) {
-                    revert(0, 0)
-                }
-            }
-            pointerAddresses[i] = pointer;
-        }
-
-        PointerInfo[][] memory pointerInfo = abi.decode(
-            vm.parseJson(metadata, ".pointers"),
-            (PointerInfo[][])
-        );
-        Pointer[][] memory pointers = new Pointer[][](pointerInfo.length);
-
-        for (uint256 i = 0; i < pointerInfo.length; i++) {
-            pointers[i] = new Pointer[](pointerInfo[i].length);
-            for (uint256 j = 0; j < pointerInfo[i].length; j++) {
-                pointers[i][j] = PointerLibrary.createPointer(
-                    pointerAddresses[pointerInfo[i][j].codeIndex],
-                    uint48(pointerInfo[i][j].start),
-                    uint48(pointerInfo[i][j].end)
-                );
-            }
-        }
-
-        string[] memory propsStr = vm.parseJsonStringArray(metadata, ".properties");
-        bytes32[] memory props = new bytes32[](propsStr.length);
-        for (uint256 i = 0; i < propsStr.length; i++) {
-            props[i] = bytes32(bytes(propsStr[i]));
-        }
-
-        string[][] memory indicesStr = abi.decode(vm.parseJson(metadata, ".indices"), (string[][]));
-        uint256[][] memory indices = new uint256[][](indicesStr.length);
-        for (uint256 i = 0; i < indicesStr.length; i++) {
-            indices[i] = new uint256[](indicesStr[i].length);
-            for (uint256 j = 0; j < indicesStr[i].length; j++) {
-                indices[i][j] = vm.parseUint(indicesStr[i][j]);
-            }
-        }
-
         // Deploy factory
         panopticFactory = new PanopticFactoryHarness(
             address(_WETH),
@@ -224,9 +174,9 @@ contract PanopticFactoryTest is Test {
             V3FACTORY,
             address(new PanopticPool(sfpm)),
             address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)),
-            props,
-            indices,
-            pointers
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
     }
 
