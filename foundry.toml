@@ -23,6 +23,5 @@ test = 'DO_NOT_COMPILE'
 viaIR = true
 
 [fuzz]
-# temporary workaround while we figure out perf issues + configure different test sets + profiles
 runs = 1
 max_test_rejects = 9_999_999
