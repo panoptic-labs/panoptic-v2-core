@@ -635,40 +635,36 @@ contract FuzzDeployments is FuzzHelpers {
 
             uint256 size = (required0 * balance0) / 1e6;
             posSize = bound(posSize, (size * 40) / 100, (size * 60) / 100);
+
             require(posSize > 0);
         }
         emit LogUint256("positionSize", posSize);
 
-        /*
-        if (tokenid.isLong(0) == 1) {
-            (int24 tickLower, int24 tickUpper) = tokenid.asTicks(0);
-            uint64 effLiqFactor = _get_effective_liq_factor(
-                tokenid.tokenType(0),
-                tickLower,
-                tickUpper
-            );
+        emit LogInt256("Balance before", int256(_get_assets_in_token0(minter, currentTick)));
 
-            emit LogUint256("Effective liquidity limit", effLiqLim);
-            emit LogUint256("Effective liquidity factor", effLiqFactor);
+        hevm.prank(minter);
+        panopticPool.mintOptions(posIdList, uint128(posSize), effLiqLim, 0, 0);
 
-            hevm.prank(minter);
-            try panopticPool.mintOptions(posIdList, uint128(posSize), effLiqLim, 0, 0) {
-                // Option was minted
+        // check effective liquidities
+        for (uint256 leg; leg < tokenid.countLegs(); ++leg) {
+            if (tokenid.isLong(leg) == 1) {
+                (int24 tickLower, int24 tickUpper) = tokenid.asTicks(0);
+                uint64 effLiqFactor = _get_effective_liq_factor(
+                    tokenid.tokenType(leg),
+                    tickLower,
+                    tickUpper
+                );
+
+                emit LogUint256("Effective liquidity limit", effLiqLim);
+                emit LogUint256("Effective liquidity factor", effLiqFactor);
+
+                // Option was minted, check liquidity factor
                 assertWithMsg(
                     effLiqFactor <= effLiqLim,
                     "A long position with liquidity factor greater than the liquidity limit was minted"
                 );
-            } catch {
-                revert();
             }
-        } else {
-            hevm.prank(minter);
-            panopticPool.mintOptions(posIdList, uint128(posSize), 0, 0, 0);
         }
-        */
-        emit LogInt256("Balance before", int256(_get_assets_in_token0(minter, currentTick)));
-        hevm.prank(minter);
-        panopticPool.mintOptions(posIdList, uint128(posSize), type(uint64).max / 2, 0, 0);
 
         assertWithMsg(positionsOpened < 32, "More than 32 positions are minted for user");
         assertWithMsg(
