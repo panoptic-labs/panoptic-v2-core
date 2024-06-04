@@ -1116,23 +1116,89 @@ contract FuzzDeployments is FuzzHelpers {
         (price, , , , , , ) = pool.slot0();
 
         int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
-        emit LogInt256("TWAP tick after", TWAPtick_before);
-
         emit LogUint256("price before swap", uint256(price));
 
         hevm.prank(pool_manipulator);
         swapperc.swapTo(pool, target_sqrt_price);
-        hevm.warp(block.timestamp + 1000);
-        hevm.roll(block.number + 100);
 
-        hevm.prank(pool_manipulator);
-        swapperc.mint(pool, -10, 10, 10 ** 18);
-        hevm.prank(pool_manipulator);
-        swapperc.burn(pool, -10, 10, 10 ** 18);
+        update_twap();
 
         (price, , , , , , ) = pool.slot0();
         emit LogUint256("price after swap", uint256(price));
+    }
 
+    function perform_swap_with_delay(uint160 target_sqrt_price, uint256 delay) public {
+        // bound the price between 10 and 500000
+        target_sqrt_price = uint160(
+            bound(
+                target_sqrt_price,
+                112028621795169773357271145775104,
+                25054084147398268684193622782902272
+            )
+        );
+
+        uint160 price;
+
+        int24 currentTick;
+        (price, currentTick, , , , , ) = pool.slot0();
+
+        emit LogInt256("tick before swap", currentTick);
+        emit LogUint256("price before swap", uint256(price));
+        int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick before", TWAPtick_before);
+
+        uint256 delay_on = (delay % 2 == 0) ? 1 : 0;
+        uint256 delay_block = bound(delay, 0, 150);
+
+        emit LogUint256("number of block delayed", delay_block);
+
+        hevm.prank(pool_manipulator);
+        swapperc.swapTo(pool, target_sqrt_price);
+        hevm.warp(block.timestamp + delay_on * delay_block * 12);
+        hevm.roll(block.number + delay_on * delay_block);
+
+        // Do another random mint+burn
+        delay_on = ((delay >> 4) % 2) == 0 ? 1 : 0;
+        if (delay_on == 1) {
+            hevm.prank(pool_manipulator);
+            swapperc.mint(pool, -10, 10, 10 ** 18);
+            hevm.prank(pool_manipulator);
+            swapperc.burn(pool, -10, 10, 10 ** 18);
+        }
+
+        (price, currentTick, , , , , ) = pool.slot0();
+        emit LogInt256("tick after swap", currentTick);
+        emit LogUint256("price after swap", uint256(price));
+        int24 TWAPtick_after = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick after", TWAPtick_after);
+    }
+
+    function perform_swap_no_delay(uint160 target_sqrt_price) public {
+        // bound the price between 10 and 500000
+        target_sqrt_price = uint160(
+            bound(
+                target_sqrt_price,
+                112028621795169773357271145775104,
+                25054084147398268684193622782902272
+            )
+        );
+
+        uint160 price;
+
+        int24 currentTick;
+        (price, currentTick, , , , , ) = pool.slot0();
+
+        emit LogInt256("tick before swap", currentTick);
+        emit LogUint256("price before swap", uint256(price));
+        int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
+        emit LogInt256("TWAP tick before", TWAPtick_before);
+
+        hevm.prank(pool_manipulator);
+        swapperc.swapTo(pool, target_sqrt_price);
+
+        (price, currentTick, , , , , ) = pool.slot0();
+        emit LogInt256("tick after swap", currentTick);
+        emit LogUint256("price after swap", uint256(price));
         int24 TWAPtick_after = PanopticMath.twapFilter(pool, 600);
         emit LogInt256("TWAP tick after", TWAPtick_after);
     }
