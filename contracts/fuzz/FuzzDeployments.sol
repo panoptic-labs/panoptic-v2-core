@@ -973,7 +973,10 @@ contract FuzzDeployments is FuzzHelpers {
 
             if (bal0 > 0) {
                 try collToken0.transfer(recipient, bal0) {
-                    assertWithMsg(false, "Collateral could be removed via transfer with open positions");
+                    assertWithMsg(
+                        false,
+                        "Collateral could be removed via transfer with open positions"
+                    );
                 } catch {}
             }
             if (bal1 > 0) {
