@@ -42,7 +42,7 @@ contract FuzzMint is FuzzDeployments {
             strike
         );
 
-        _mint_option(minter, tokenId, posSize, 0);
+        _mint_option(minter, tokenId, posSize, false, 0);
         shortPositions.push(tokenId);
         mint_short_counter += 1;
     }
@@ -55,7 +55,7 @@ contract FuzzMint is FuzzDeployments {
 
         TokenId tokenId = shortPositions[position % shortPositions.length];
 
-        _mint_option(minter, tokenId, posSize, effLiqLimit);
+        _mint_option(minter, tokenId, posSize, false, effLiqLimit);
         longPositions.push(tokenId);
         mint_long_counter += 1;
     }
