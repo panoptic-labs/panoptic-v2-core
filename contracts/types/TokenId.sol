@@ -564,7 +564,7 @@ library TokenIdLibrary {
                     // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
                     // unlike short stranlges, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
                     if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
-                        revert Errors.InvalidTokenIdParameter(5);
+                        revert Errors.InvalidTokenIdParameter(6);
                 }
             } // end for loop over legs
         }
