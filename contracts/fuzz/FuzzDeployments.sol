@@ -911,7 +911,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open positions is zero
     /// @custom:property PANO-SYS-002 Users can't withdraw collateral with open positions
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal() public {
+    function invariant_collateral_removal_via_withdrawal() public {
         // If user has positions open, they cannot remove collateral
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
@@ -940,6 +940,45 @@ contract FuzzDeployments is FuzzHelpers {
             if (bal1 > 0) {
                 try collToken1.withdraw(bal1, msg.sender, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
+                } catch {}
+            }
+        }
+    }
+
+    /// @custom:property PANO-SYS-003 The max transfer amount of users with open positions is zero
+    /// @custom:property PANO-SYS-004 Users can't transfer collateral with open positions
+    /// @custom:precondition The user has a position open
+    function invariant_collateral_removal_via_transfer() public {
+        // If user has positions open, they cannot remove collateral
+        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+        emit LogAddress("Caller", msg.sender);
+        emit LogUint256("Positions opened for user", numOfPositions);
+
+        address recipient = 0x0000000000000000000000000000000000000001; // Example recipient address
+
+        if (numOfPositions > 0) {
+            uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+            uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
+            emit LogUint256("Balance in token0", bal0);
+            emit LogUint256("Balance in token1", bal1);
+
+            assertWithMsg(
+                collToken0.allowance(msg.sender, recipient) == 0,
+                "It is possible to transfer collateral assets when the user has open positions"
+            );
+            assertWithMsg(
+                collToken1.allowance(msg.sender, recipient) == 0,
+                "It is possible to transfer collateral assets when the user has open positions"
+            );
+
+            if (bal0 > 0) {
+                try collToken0.transfer(recipient, bal0) {
+                    assertWithMsg(false, "Collateral could be removed via transfer with open positions");
+                } catch {}
+            }
+            if (bal1 > 0) {
+                try collToken1.transfer(recipient, bal1) {
+                    assertWithMsg(false, "Collateral could be removed via transfer open positions");
                 } catch {}
             }
         }
