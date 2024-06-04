@@ -1051,18 +1051,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
-            // add premium to be paid/collected on position close
-            int256 tokenToPay = -realizedPremium;
-
-            // if burning ITM and swap occurred, compute tokens to be paid through exercise and add swap fees
-            int256 intrinsicValue = swappedAmount - (longAmount - shortAmount);
-
-            if ((intrinsicValue != 0) && ((shortAmount != 0) || (longAmount != 0))) {
-                // intrinsic value is the amount that need to be exchanged due to burning in-the-money
-
-                // add the intrinsic value to the tokenToPay
-                tokenToPay += intrinsicValue;
-            }
+            // add premium and token deltas not covered by swap to be paid/collected on position close
+            int256 tokenToPay = swappedAmount - (longAmount - shortAmount) - realizedPremium;
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
