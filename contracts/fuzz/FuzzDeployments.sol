@@ -596,6 +596,12 @@ contract FuzzDeployments is FuzzHelpers {
 
         uint256 positionsOpened = panopticPool.numberOfPositions(minter);
         emit LogUint256("Positions opened for user", positionsOpened);
+        emit LogUint256("Positions opened for user - internal", userPositions[minter].length);
+
+        assertWithMsg(
+            positionsOpened == userPositions[minter].length,
+            "number of positions match internal one"
+        );
 
         userPositions[minter].push(tokenid);
         TokenId[] memory posIdList = userPositions[minter];
@@ -1425,7 +1431,7 @@ contract FuzzDeployments is FuzzHelpers {
         liqResults.sharesD0 = int256(collToken0.balanceOf(liquidatee));
         liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
 
-        _execute_burn_simulation(liquidatee, liquidator);
+        //_execute_burn_simulation(liquidatee, liquidator);
 
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTickOld);
         {
@@ -1440,6 +1446,26 @@ contract FuzzDeployments is FuzzHelpers {
         }
 
         hevm.prank(liquidator);
+        try
+            panopticPool.liquidate(
+                liquidator_positions,
+                liquidatee,
+                delegations,
+                liquidated_positions
+            )
+        {
+            emit LogString("liquidation success");
+            //assertWithMsg(0>1, "success liquidation");
+        } catch (bytes memory _err) {
+            emit LogBytes("err", _err);
+            uint256 receivedSelector = uint256(bytes32(bytes4(_err))) >> 224;
+            emit LogUint256("selector", receivedSelector);
+            if (receivedSelector == 3877932976) {
+                assertWithMsg(0 > 1, "reverted, what's the error?");
+            } else if (receivedSelector == 1126409557) {
+                emit LogString("NotEnoughLiquidity");
+            }
+        }
         panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
 
         currentTickOld = currentTick;
@@ -1448,6 +1474,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("final tick", currentTick);
         _calculate_liquidation_bonus(TWAPtick, currentTick);
 
+        /*
         burnSimResults.delegated0 = uint256(
             int256(
                 collToken0.convertToShares(
@@ -1470,7 +1497,7 @@ contract FuzzDeployments is FuzzHelpers {
             burnSimResults.shareDelta1 -
             (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
         liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick); // currentTickOld
-
+        */
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(currentTick);
         _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
@@ -1585,6 +1612,141 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogUint256("balanceAfter1", c1a);
             //assertWithMsg(c0a < canaryBalances.rightSlot(), "protocol loss token0");
             //assertWithMsg(c1a < canaryBalances.leftSlot(), "protocol loss token1");
+        }
+    }
+
+    function try_liquidate_aggressively(uint256 i_liquidated) public {
+        address liquidator = msg.sender;
+
+        for (uint256 i; i < 5; ++i) {
+            address liquidatee = actors[i];
+
+            if (userPositions[liquidatee].length > 0) {
+                // Make sure the liquidator has tokens to delegate
+                {
+                    hevm.prank(liquidator);
+                    fund_and_approve();
+
+                    uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
+                    uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
+                    hevm.prank(liquidator);
+                    deposit_to_ct(true, lb0);
+                    hevm.prank(liquidator);
+                    deposit_to_ct(false, lb1);
+                }
+
+                require(liquidatee != liquidator);
+
+                TokenId[] memory liquidated_positions = userPositions[liquidatee];
+                TokenId[] memory liquidator_positions = userPositions[liquidator];
+
+                emit LogUint256("liquidator positions length", liquidator_positions.length);
+                emit LogUint256(
+                    "liquidator positions length",
+                    panopticPool.numberOfPositions(liquidator)
+                );
+                emit LogUint256("liquidated positions length", liquidated_positions.length);
+                emit LogUint256(
+                    "liquidated positions length",
+                    panopticPool.numberOfPositions(liquidatee)
+                );
+                emit LogAddress("liquidator", liquidator);
+                emit LogAddress("liquidated", liquidatee);
+
+                int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+                uint160 price;
+                (price, currentTick, , , , , ) = pool.slot0();
+                emit LogInt256("TWAP tick", TWAPtick);
+                emit LogInt256("Current tick", currentTick);
+
+                log_account_collaterals(liquidator);
+                log_account_collaterals(liquidatee);
+                log_trackers_status();
+
+                require(liquidated_positions.length > 0);
+
+                (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
+                    liquidatee,
+                    TWAPtick
+                );
+                emit LogUint256("Balance cross", balanceCross);
+                emit LogUint256("Threshold cross", thresholdCross);
+
+                LeftRightUnsigned delegations = LeftRightUnsigned
+                    .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
+                    .toLeftSlot(
+                        uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator)))
+                    );
+
+                hevm.prank(liquidator);
+
+                // If the position is not liquidatable, liquidation call must revert
+                if (balanceCross > thresholdCross) {
+                    perform_swap_no_delay(price * 100);
+                    hevm.prank(liquidator);
+                    try
+                        panopticPool.liquidate(
+                            liquidator_positions,
+                            liquidatee,
+                            delegations,
+                            liquidated_positions
+                        )
+                    {
+                        emit LogString("liquidated on the way up");
+                        delete userPositions[liquidatee];
+                    } catch (bytes memory _err) {
+                        emit LogBytes("err", _err);
+                        perform_swap_no_delay(price / 100);
+                        hevm.prank(liquidator);
+                        try
+                            panopticPool.liquidate(
+                                liquidator_positions,
+                                liquidatee,
+                                delegations,
+                                liquidated_positions
+                            )
+                        {
+                            emit LogString("liquidated on the way down");
+                            delete userPositions[liquidatee];
+                        } catch (bytes memory _err) {
+                            emit LogBytes("err", _err);
+                            emit LogString("not liquidatable");
+                        }
+                    }
+                } else {
+                    try
+                        panopticPool.liquidate(
+                            liquidator_positions,
+                            liquidatee,
+                            delegations,
+                            liquidated_positions
+                        )
+                    {
+                        emit LogString("liquidated account");
+                        delete userPositions[liquidatee];
+                    } catch (bytes memory _err) {
+                        emit LogBytes("err", _err);
+                    }
+
+                    currentTickOld = currentTick;
+                    (, currentTick, , , , , ) = pool.slot0();
+
+                    emit LogInt256("final tick", currentTick);
+
+                    emit LogUint256(
+                        "Number of positions",
+                        panopticPool.numberOfPositions(liquidatee)
+                    );
+                    assertWithMsg(
+                        panopticPool.numberOfPositions(liquidatee) == 0,
+                        "Liquidation did not close all positions"
+                    );
+
+                    log_account_collaterals(liquidator);
+                    log_account_collaterals(liquidatee);
+                    log_trackers_status();
+                }
+            }
         }
     }
 
