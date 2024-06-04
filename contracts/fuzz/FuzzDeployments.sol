@@ -1433,7 +1433,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         //_execute_burn_simulation(liquidatee, liquidator);
 
-        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTickOld);
+        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTick);
         {
             (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
                 liquidatee,
@@ -1478,14 +1478,14 @@ contract FuzzDeployments is FuzzHelpers {
         burnSimResults.delegated0 = uint256(
             int256(
                 collToken0.convertToShares(
-                    uint256(int256(uint256(uint96(burnSimResults.delegated0))) + liqResults.bonus0)
+                    uint256(int256(uint256(burnSimResults.delegated0)) + liqResults.bonus0)
                 )
             )
         );
         burnSimResults.delegated1 = uint256(
             int256(
                 collToken1.convertToShares(
-                    uint256(int256(uint256(uint96(burnSimResults.delegated0))) + liqResults.bonus1)
+                    uint256(int256(uint256(burnSimResults.delegated1)) + liqResults.bonus1)
                 )
             )
         );
@@ -1496,8 +1496,8 @@ contract FuzzDeployments is FuzzHelpers {
         liqResults.sharesD1 =
             burnSimResults.shareDelta1 -
             (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
-        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick); // currentTickOld
-        */
+        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
+
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(currentTick);
         _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
