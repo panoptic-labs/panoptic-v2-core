@@ -1461,7 +1461,7 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 receivedSelector = uint256(bytes32(bytes4(_err))) >> 224;
             emit LogUint256("selector", receivedSelector);
             if (receivedSelector == 3877932976) {
-                assertWithMsg(0 > 1, "reverted, what's the error?");
+                emit LogString("StaleTWAP");
             } else if (receivedSelector == 1126409557) {
                 emit LogString("NotEnoughLiquidity");
             }
@@ -1615,26 +1615,25 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function try_liquidate_aggressively(uint256 i_liquidated) public {
+    function try_liquidate_aggressively() public {
         address liquidator = msg.sender;
+        hevm.prank(liquidator);
+        fund_and_approve();
+
+        // Make sure the liquidator has tokens to delegate
+        {
+            uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
+            uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
+            hevm.prank(liquidator);
+            deposit_to_ct(true, lb0);
+            hevm.prank(liquidator);
+            deposit_to_ct(false, lb1);
+        }
 
         for (uint256 i; i < 5; ++i) {
             address liquidatee = actors[i];
 
             if (userPositions[liquidatee].length > 0) {
-                // Make sure the liquidator has tokens to delegate
-                {
-                    hevm.prank(liquidator);
-                    fund_and_approve();
-
-                    uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
-                    uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
-                    hevm.prank(liquidator);
-                    deposit_to_ct(true, lb0);
-                    hevm.prank(liquidator);
-                    deposit_to_ct(false, lb1);
-                }
-
                 require(liquidatee != liquidator);
 
                 TokenId[] memory liquidated_positions = userPositions[liquidatee];
@@ -1679,7 +1678,16 @@ contract FuzzDeployments is FuzzHelpers {
                     );
 
                 hevm.prank(liquidator);
-
+                LeftRightUnsigned liquidatorBalances;
+                address _liquidator = liquidator;
+                {
+                    uint c0b = collToken0.convertToAssets(collToken0.balanceOf(_liquidator));
+                    uint c1b = collToken1.convertToAssets(collToken1.balanceOf(_liquidator));
+                    liquidatorBalances = LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(uint128(c0b))
+                        .toLeftSlot(uint128(c1b));
+                }
                 // If the position is not liquidatable, liquidation call must revert
                 if (balanceCross > thresholdCross) {
                     perform_swap_no_delay(price * 100);
@@ -1711,6 +1719,7 @@ contract FuzzDeployments is FuzzHelpers {
                         } catch (bytes memory _err) {
                             emit LogBytes("err", _err);
                             emit LogString("not liquidatable");
+                            revert();
                         }
                     }
                 } else {
@@ -1726,10 +1735,31 @@ contract FuzzDeployments is FuzzHelpers {
                         delete userPositions[liquidatee];
                     } catch (bytes memory _err) {
                         emit LogBytes("err", _err);
+                        revert();
                     }
 
                     currentTickOld = currentTick;
-                    (, currentTick, , , , , ) = pool.slot0();
+                    {
+                        uint c0a = collToken0.convertToAssets(collToken0.balanceOf(_liquidator));
+                        uint c1a = collToken1.convertToAssets(collToken1.balanceOf(_liquidator));
+                        assertWithMsg(
+                            (PanopticMath.convert0to1(c0a, price) + c1a) >=
+                                (PanopticMath.convert0to1(liquidatorBalances.rightSlot(), price) +
+                                    liquidatorBalances.leftSlot()),
+                            "liquidator lost money old price"
+                        );
+                    }
+                    (price, currentTick, , , , , ) = pool.slot0();
+                    {
+                        uint c0a = collToken0.convertToAssets(collToken0.balanceOf(_liquidator));
+                        uint c1a = collToken1.convertToAssets(collToken1.balanceOf(_liquidator));
+                        assertWithMsg(
+                            (PanopticMath.convert0to1(c0a, price) + c1a) >=
+                                (PanopticMath.convert0to1(liquidatorBalances.rightSlot(), price) +
+                                    liquidatorBalances.leftSlot()),
+                            "liquidator lost money new price"
+                        );
+                    }
 
                     emit LogInt256("final tick", currentTick);
 
@@ -1746,6 +1776,107 @@ contract FuzzDeployments is FuzzHelpers {
                     log_account_collaterals(liquidatee);
                     log_trackers_status();
                 }
+            }
+        }
+    }
+
+    function try_force_exercise_aggressively() public {
+        address exercisor = msg.sender;
+
+        for (uint256 i; i < 5; ++i) {
+            address exercisee = actors[i];
+
+            if (userPositions[exercisee].length > 0) {
+                // Make sure the liquidator has tokens to delegate
+                {
+                    hevm.prank(exercisor);
+                    fund_and_approve();
+
+                    uint256 lb0 = IERC20(USDC).balanceOf(exercisor);
+                    uint256 lb1 = IERC20(WETH).balanceOf(exercisor);
+                    hevm.prank(exercisor);
+                    deposit_to_ct(true, lb0);
+                    hevm.prank(exercisor);
+                    deposit_to_ct(false, lb1);
+                }
+
+                require(exercisee != exercisor);
+
+                TokenId[] memory exercised_positions = userPositions[exercisee];
+                TokenId[] memory exercisor_positions = userPositions[exercisor];
+
+                emit LogUint256("exercisor positions length", exercisor_positions.length);
+                emit LogUint256(
+                    "exercisor positions length",
+                    panopticPool.numberOfPositions(exercisor)
+                );
+                emit LogUint256("exercisee positions length", exercised_positions.length);
+                emit LogUint256(
+                    "exercisee positions length",
+                    panopticPool.numberOfPositions(exercisee)
+                );
+                emit LogAddress("exercisor", exercisor);
+                emit LogAddress("exercisee", exercisee);
+
+                int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+                uint160 price;
+                (price, currentTick, , , , , ) = pool.slot0();
+                emit LogInt256("TWAP tick", TWAPtick);
+                emit LogInt256("Current tick", currentTick);
+
+                log_account_collaterals(exercisor);
+                log_account_collaterals(exercisee);
+                log_trackers_status();
+
+                require(exercised_positions.length > 0);
+
+                (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
+                    exercisee,
+                    TWAPtick
+                );
+                emit LogUint256("Balance cross", balanceCross);
+                emit LogUint256("Threshold cross", thresholdCross);
+
+                hevm.prank(exercisor);
+
+                for (uint i; i < exercised_positions.length; ++i) {
+                    TokenId _tokenid = exercised_positions[i];
+
+                    if (_tokenid.countLongs() > 0) {
+                        TokenId[] memory touchedPos = new TokenId[](1);
+                        touchedPos[0] = _tokenid;
+                        TokenId[] memory positions_new = _get_list_without_tokenid(
+                            userPositions[exercisee],
+                            _tokenid
+                        );
+                        log_account_collaterals(exercisor);
+                        log_account_collaterals(exercisee);
+                        log_trackers_status();
+                        try
+                            panopticPool.forceExercise(
+                                exercisee,
+                                touchedPos,
+                                positions_new,
+                                exercisor_positions
+                            )
+                        {
+                            userPositions[exercisee] = positions_new;
+                        } catch (bytes memory _err) {
+                            emit LogBytes("err", _err);
+                        }
+                    }
+                }
+
+                currentTickOld = currentTick;
+                (, currentTick, , , , , ) = pool.slot0();
+
+                emit LogInt256("final tick", currentTick);
+
+                emit LogUint256("Number of positions", panopticPool.numberOfPositions(exercisee));
+
+                log_account_collaterals(exercisor);
+                log_account_collaterals(exercisee);
+                log_trackers_status();
             }
         }
     }
