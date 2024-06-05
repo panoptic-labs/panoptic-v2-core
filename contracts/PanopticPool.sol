@@ -898,25 +898,35 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // Check the user's solvency at the fast tick; revert if not solvent
-        bool solventAtFast = _checkSolvencyAtTick(
+        uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
+        LeftRightSigned premia;
+        (premia, positionBalanceArray) = _calculateAccumulatedPremia(
             user,
             positionIdList,
-            currentTick,
+            COMPUTE_ALL_PREMIA,
+            ONLY_AVAILABLE_PREMIUM,
+            currentTick
+        );
+
+        bool solventAtFast = _checkCrossBalances(
+            user,
             fastOracleTick,
+            positionBalanceArray,
+            premia,
             buffer
         );
         if (!solventAtFast) revert Errors.NotEnoughCollateral();
 
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
+        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
+        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
         if (
             Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA ||
             Math.abs(int256(fastOracleTick) - currentTick) > MAX_SLOW_FAST_DELTA ||
             Math.abs(currentTick - slowOracleTick) > MAX_SLOW_FAST_DELTA
         )
             if (
-                !_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer) ||
-                !_checkSolvencyAtTick(user, positionIdList, currentTick, currentTick, buffer)
+                !_checkCrossBalances(user, currentTick, positionBalanceArray, premia, buffer) ||
+                !_checkCrossBalances(user, slowOracleTick, positionBalanceArray, premia, buffer)
             ) revert Errors.NotEnoughCollateral();
     }
 
@@ -1006,10 +1016,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                revert Errors.StaleTWAP();
-
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -1018,27 +1024,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
-            tokenData0 = s_collateralToken0.getAccountMarginDetails(
-                liquidatee,
-                twapTick,
-                positionBalanceArray,
-                premia.rightSlot()
-            );
 
-            tokenData1 = s_collateralToken1.getAccountMarginDetails(
-                liquidatee,
-                twapTick,
-                positionBalanceArray,
-                premia.leftSlot()
-            );
+            if (!_checkCrossBalances(liquidatee, twapTick, positionBalanceArray, premia, NO_BUFFER))
+                revert Errors.NotMarginCalled();
 
-            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-                tokenData0,
-                tokenData1,
-                Math.getSqrtRatioAtTick(twapTick)
-            );
-
-            if (balanceCross >= thresholdCross) revert Errors.NotMarginCalled();
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            // TODO check with currentTick as well, do conservative collateral checks if outside
+            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
+                if (
+                    !_checkCrossBalances(
+                        liquidatee,
+                        currentTick,
+                        positionBalanceArray,
+                        premia,
+                        NO_BUFFER
+                    )
+                ) revert Errors.NotMarginCalled();
         }
 
         // Perform the specified delegation from `msg.sender` to `liquidatee`
@@ -1280,6 +1281,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick
             );
 
+        return _checkCrossBalances(account, atTick, positionBalanceArray, portfolioPremium, buffer);
+    }
+
+    function _checkCrossBalances(
+        address account,
+        int24 atTick,
+        uint256[2][] memory positionBalanceArray,
+        LeftRightSigned portfolioPremium,
+        uint256 buffer
+    ) internal view returns (bool) {
         LeftRightUnsigned tokenData0 = s_collateralToken0.getAccountMarginDetails(
             account,
             atTick,
