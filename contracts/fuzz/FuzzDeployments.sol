@@ -911,7 +911,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open positions is zero
     /// @custom:property PANO-SYS-002 Users can't withdraw collateral with open positions
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal_via_withdrawal(uint256 fuzzNumerator, uint256 fuzzDenominator) public {
+    function invariant_collateral_removal_via_withdrawal(uint256 fuzzNumerator, uint256 fuzzDenominator, address receiver) public {
         // If user has positions open, they cannot remove collateral
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
@@ -945,13 +945,18 @@ contract FuzzDeployments is FuzzHelpers {
                 fuzzedAmtToWithdraw1 = bal1;
             }
 
+            // withdraw to self every 4th block, in case that makes a difference:
+            if (block.number % 4 == 0) {
+                receiver = msg.sender;
+            }
+
             if (fuzzedAmtToWithdraw0 > 0) {
-                try collToken0.withdraw(fuzzedAmtToWithdraw0, msg.sender, msg.sender) {
+                try collToken0.withdraw(fuzzedAmtToWithdraw0, receiver, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
             }
             if (fuzzedAmtToWithdraw1 > 0) {
-                try collToken1.withdraw(fuzzedAmtToWithdraw1, msg.sender, msg.sender) {
+                try collToken1.withdraw(fuzzedAmtToWithdraw1, receiver, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
             }
@@ -1005,7 +1010,10 @@ contract FuzzDeployments is FuzzHelpers {
             }
             if (fuzzedAmtToTransfer1 > 0) {
                 try collToken1.transfer(recipient, fuzzedAmtToTransfer1) {
-                    assertWithMsg(false, "Collateral could be removed via transfer open positions");
+                    assertWithMsg(
+                        false,
+                        "Collateral could be removed via transfer with open positions"
+                    );
                 } catch {}
             }
         }
@@ -1187,11 +1195,11 @@ contract FuzzDeployments is FuzzHelpers {
             amount = bound(amount, 1, collToken0.convertToAssets(collToken0.balanceOf(withdrawer)));
             hevm.prank(withdrawer);
             // TODO
-            try collToken0.withdraw(amount, withdrawer, withdrawer) {
+            /* try collToken0.withdraw(amount, withdrawer, withdrawer) {
                 assertWithMsg(withdrawer has a balance += amount, "Could not withdraw full assets");
             } catch (bytes memory reason) {
 
-            }
+            } */
 
             uint256 pool_bal0_after = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
             assertWithMsg(
@@ -1207,11 +1215,11 @@ contract FuzzDeployments is FuzzHelpers {
             amount = bound(amount, 1, collToken1.convertToAssets(collToken1.balanceOf(withdrawer)));
             hevm.prank(withdrawer);
             // TODO
-            try collToken1.withdraw(amount, withdrawer, withdrawer) {
+            /* try collToken1.withdraw(amount, withdrawer, withdrawer) {
                 assertWithMsg(withdrawer has a balance += amount, "Could not withdraw full assets");
             } catch (bytes memory reason) {
 
-            }
+            } */
 
             uint256 pool_bal1_after = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
             assertWithMsg(
