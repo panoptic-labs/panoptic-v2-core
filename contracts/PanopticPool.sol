@@ -654,6 +654,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
+        // check if the price has deviated too much recently.
+        {
+            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+            uint256 medianData = s_miniMedian;
+            int24 medianTick = (int24(
+                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
+
+            // If ticks have recently deviated more than +/- 20%, enforce covered mints
+            if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
+                if (tickLimitLow > tickLimitHigh) {
+                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+                }
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
