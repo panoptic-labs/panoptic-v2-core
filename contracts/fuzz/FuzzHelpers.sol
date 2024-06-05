@@ -237,6 +237,7 @@ contract FuzzHelpers is PropertiesAsserts {
         LeftRightSigned,
         uint256,
         int256,
+        int24,
         bytes
     );
 
@@ -621,7 +622,6 @@ contract FuzzHelpers is PropertiesAsserts {
         hevm.prank(who);
         (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
 
-        currentTickOld = currentTick;
         (, currentTick, , , , , ) = pool.slot0();
 
         shareDeltasLiquidatee = [
@@ -670,6 +670,7 @@ contract FuzzHelpers is PropertiesAsserts {
             .toLeftSlot(int128(convertToAssets(collToken0, shareDeltasLiquidatee[0])))
             .toRightSlot(int128(convertToAssets(collToken1, shareDeltasLiquidatee[1])));
 
+        bytes memory _settledTokens = settledTokens;
         revert SimulationResults(
             supply,
             assets,
@@ -680,7 +681,8 @@ contract FuzzHelpers is PropertiesAsserts {
             netExchanged,
             settledTokens0,
             longPremium0,
-            settledTokens
+            currentTick,
+            _settledTokens
         );
     }
 
@@ -689,44 +691,51 @@ contract FuzzHelpers is PropertiesAsserts {
             bytes4 selector = bytes4(results);
             require(selector == SimulationResults.selector);
             emit LogBytes("r", results);
+            {
+                LeftRightUnsigned totalSupply;
+                LeftRightUnsigned totalAssets;
+                LeftRightUnsigned delegated;
+                LeftRightSigned shareDelta;
+                int256 burnDelta0C;
+                LeftRightSigned burnDelta;
+                LeftRightSigned netExchanged;
+                uint256 settledTokens0;
+                int256 longPremium0;
 
-            LeftRightUnsigned totalSupply;
-            LeftRightUnsigned totalAssets;
-            LeftRightUnsigned delegated;
-            LeftRightSigned shareDelta;
-            int256 burnDelta0C;
-            LeftRightSigned burnDelta;
-            LeftRightSigned netExchanged;
-            uint256 settledTokens0;
-            int256 longPremium0;
+                assembly ("memory-safe") {
+                    totalSupply := mload(add(results, 0x24))
+                    totalAssets := mload(add(results, 0x44))
+                    delegated := mload(add(results, 0x64))
+                    shareDelta := mload(add(results, 0x84))
+                    burnDelta0C := mload(add(results, 0xa4))
+                    burnDelta := mload(add(results, 0xc4))
+                    netExchanged := mload(add(results, 0xe4))
+                    settledTokens0 := mload(add(results, 0x104))
+                    longPremium0 := mload(add(results, 0x124))
+                }
 
-            assembly ("memory-safe") {
-                totalSupply := mload(add(results, 0x24))
-                totalAssets := mload(add(results, 0x44))
-                delegated := mload(add(results, 0x64))
-                shareDelta := mload(add(results, 0x84))
-                burnDelta0C := mload(add(results, 0xa4))
-                burnDelta := mload(add(results, 0xc4))
-                netExchanged := mload(add(results, 0xe4))
-                settledTokens0 := mload(add(results, 0x104))
-                longPremium0 := mload(add(results, 0x124))
-                results := mload(add(results, 0x144))
+                burnSimResults.totalSupply0 = totalSupply.leftSlot();
+                burnSimResults.totalSupply1 = totalSupply.rightSlot();
+                burnSimResults.totalAssets0 = totalAssets.leftSlot();
+                burnSimResults.totalAssets1 = totalAssets.rightSlot();
+                burnSimResults.delegated0 = delegated.leftSlot();
+                burnSimResults.delegated1 = delegated.rightSlot();
+                burnSimResults.shareDelta0 = shareDelta.leftSlot();
+                burnSimResults.shareDelta1 = shareDelta.rightSlot();
+                burnSimResults.settledTokens0 = settledTokens0;
+                burnSimResults.longPremium0 = longPremium0;
+                burnSimResults.burnDelta0C = burnDelta0C;
+                burnSimResults.burnDelta0 = burnDelta.leftSlot();
+                burnSimResults.burnDelta1 = burnDelta.rightSlot();
+                burnSimResults.netExchanged = netExchanged;
             }
-
-            burnSimResults.totalSupply0 = totalSupply.leftSlot();
-            burnSimResults.totalSupply1 = totalSupply.rightSlot();
-            burnSimResults.totalAssets0 = totalAssets.leftSlot();
-            burnSimResults.totalAssets1 = totalAssets.rightSlot();
-            burnSimResults.delegated0 = delegated.leftSlot();
-            burnSimResults.delegated1 = delegated.rightSlot();
-            burnSimResults.shareDelta0 = shareDelta.leftSlot();
-            burnSimResults.shareDelta1 = shareDelta.rightSlot();
-            burnSimResults.settledTokens0 = settledTokens0;
-            burnSimResults.longPremium0 = longPremium0;
-            burnSimResults.burnDelta0C = burnDelta0C;
-            burnSimResults.burnDelta0 = burnDelta.leftSlot();
-            burnSimResults.burnDelta1 = burnDelta.rightSlot();
-            burnSimResults.netExchanged = netExchanged;
+            int24 ct;
+            assembly ("memory-safe") {
+                ct := mload(add(results, 0x144))
+                results := mload(add(results, 0x164))
+            }
+            currentTickOld = currentTick;
+            currentTick = ct;
             burnSimResults.settledTokens = abi.decode(results, (uint256[2][4][32]));
         }
     }
