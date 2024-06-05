@@ -911,7 +911,7 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open positions is zero
     /// @custom:property PANO-SYS-002 Users can't withdraw collateral with open positions
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal_via_withdrawal() public {
+    function invariant_collateral_removal_via_withdrawal(uint256 fuzzNumerator, uint256 fuzzDenominator) public {
         // If user has positions open, they cannot remove collateral
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
@@ -922,6 +922,13 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
             emit LogUint256("Balance in token0", bal0);
             emit LogUint256("Balance in token1", bal1);
+
+            if (fuzzNumerator > fuzzDenominator) {
+                (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
+            }
+            // TODO: i don't think we have to care about overflows here with how bal0 / bal1 get generated, but check that.
+            uint256 fuzzedAmtToWithdraw0 = (bal0 * fuzzNumerator) / fuzzDenominator;
+            uint256 fuzzedAmtToWithdraw1 = (bal1 * fuzzNumerator) / fuzzDenominator;
 
             assertWithMsg(
                 collToken0.maxWithdraw(msg.sender) == 0,
@@ -932,13 +939,19 @@ contract FuzzDeployments is FuzzHelpers {
                 "It is possible to withdraw assets when the user has open positions"
             );
 
-            if (bal0 > 0) {
-                try collToken0.withdraw(bal0, msg.sender, msg.sender) {
+            // attempt a full withdrawal every 4th block, to ensure we're testing that case too
+            if (block.number % 4 == 0) {
+                fuzzedAmtToWithdraw0 = bal0;
+                fuzzedAmtToWithdraw1 = bal1;
+            }
+
+            if (fuzzedAmtToWithdraw0 > 0) {
+                try collToken0.withdraw(fuzzedAmtToWithdraw0, msg.sender, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
             }
-            if (bal1 > 0) {
-                try collToken1.withdraw(bal1, msg.sender, msg.sender) {
+            if (fuzzedAmtToWithdraw1 > 0) {
+                try collToken1.withdraw(fuzzedAmtToWithdraw1, msg.sender, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
             }
@@ -948,19 +961,24 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-003 The max transfer amount of users with open positions is zero
     /// @custom:property PANO-SYS-004 Users can't transfer collateral with open positions
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal_via_transfer() public {
+    function invariant_collateral_removal_via_transfer(uint256 fuzzNumerator, uint256 fuzzDenominator, address recipient) public {
         // If user has positions open, they cannot remove collateral
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
         emit LogUint256("Positions opened for user", numOfPositions);
-
-        address recipient = 0x0000000000000000000000000000000000000001; // Example recipient address
 
         if (numOfPositions > 0) {
             uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
             uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
             emit LogUint256("Balance in token0", bal0);
             emit LogUint256("Balance in token1", bal1);
+
+            if (fuzzNumerator > fuzzDenominator) {
+                (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
+            }
+            // TODO: i don't think we have to care about overflows here with how bal0 / bal1 get generated, but check that.
+            uint256 fuzzedAmtToTransfer0 = (bal0 * fuzzNumerator) / fuzzDenominator;
+            uint256 fuzzedAmtToTransfer1 = (bal1 * fuzzNumerator) / fuzzDenominator;
 
             assertWithMsg(
                 collToken0.allowance(msg.sender, recipient) == 0,
@@ -971,16 +989,22 @@ contract FuzzDeployments is FuzzHelpers {
                 "It is possible to transfer collateral assets when the user has open positions"
             );
 
-            if (bal0 > 0) {
-                try collToken0.transfer(recipient, bal0) {
+            // attempt a full withdrawal every 4th block, to ensure we're testing that case too
+            if (block.number % 4 == 0) {
+                fuzzedAmtToTransfer0 = bal0;
+                fuzzedAmtToTransfer1 = bal1;
+            }
+
+            if (fuzzedAmtToTransfer0 > 0) {
+                try collToken0.transfer(recipient, fuzzedAmtToTransfer0) {
                     assertWithMsg(
                         false,
                         "Collateral could be removed via transfer with open positions"
                     );
                 } catch {}
             }
-            if (bal1 > 0) {
-                try collToken1.transfer(recipient, bal1) {
+            if (fuzzedAmtToTransfer1 > 0) {
+                try collToken1.transfer(recipient, fuzzedAmtToTransfer1) {
                     assertWithMsg(false, "Collateral could be removed via transfer open positions");
                 } catch {}
             }
@@ -1162,7 +1186,12 @@ contract FuzzDeployments is FuzzHelpers {
         if (token0) {
             amount = bound(amount, 1, collToken0.convertToAssets(collToken0.balanceOf(withdrawer)));
             hevm.prank(withdrawer);
-            collToken0.withdraw(amount, withdrawer, withdrawer);
+            // TODO
+            try collToken0.withdraw(amount, withdrawer, withdrawer) {
+                assertWithMsg(withdrawer has a balance += amount, "Could not withdraw full assets");
+            } catch (bytes memory reason) {
+
+            }
 
             uint256 pool_bal0_after = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
             assertWithMsg(
@@ -1177,7 +1206,12 @@ contract FuzzDeployments is FuzzHelpers {
         } else {
             amount = bound(amount, 1, collToken1.convertToAssets(collToken1.balanceOf(withdrawer)));
             hevm.prank(withdrawer);
-            collToken1.withdraw(amount, withdrawer, withdrawer);
+            // TODO
+            try collToken1.withdraw(amount, withdrawer, withdrawer) {
+                assertWithMsg(withdrawer has a balance += amount, "Could not withdraw full assets");
+            } catch (bytes memory reason) {
+
+            }
 
             uint256 pool_bal1_after = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
             assertWithMsg(
