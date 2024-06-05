@@ -1010,12 +1010,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param safeMode whether to mandate 100% collateralization
     /// @return utilization The final utilization of the collateral vault
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 swappedAmount,
+        bool safeMode
     ) external onlyPanopticPool returns (int256 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
@@ -1047,7 +1049,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint128(uint256(updatedAssets));
             s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
 
-            utilization = _poolUtilization();
+            utilization = safeMode ? DECIMALS_128 : _poolUtilization();
         }
     }
 

@@ -654,6 +654,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
+        bool safeMode;
         // check if the price has deviated too much recently.
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
@@ -664,6 +665,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // If ticks have recently deviated more than +/- 20%, enforce covered mints
             if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
+                safeMode = true;
                 if (tickLimitLow > tickLimitHigh) {
                     (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
                 }
@@ -675,7 +677,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         _updateSettlementPostMint(tokenId, collectedByLeg, positionSize);
 
-        uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
+        uint128 poolUtilizations = _payCommissionAndWriteData(
+            tokenId,
+            positionSize,
+            totalSwapped,
+            safeMode
+        );
 
         return poolUtilizations;
     }
@@ -684,13 +691,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped The amount of tokens moved during creation of the option position
+    /// @param safeMode whether to mandate 100% collateralization
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as (inAMM * 10_000) / totalAssets()
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
-        LeftRightSigned totalSwapped
+        LeftRightSigned totalSwapped,
+        bool safeMode
     ) internal returns (uint128) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
@@ -700,13 +709,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
-            totalSwapped.rightSlot()
+            totalSwapped.rightSlot(),
+            safeMode
         );
         int256 utilization1 = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
-            totalSwapped.leftSlot()
+            totalSwapped.leftSlot(),
+            safeMode
         );
 
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)
