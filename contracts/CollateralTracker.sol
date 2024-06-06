@@ -1425,6 +1425,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         // position is in-the-money, collateral requirement = amountMoved*(1-SRC)*(scaleFactor-ratio)/(scaleFactor+1) + SCR*amountMoved
                         required += c3;
                     }
+                    // cannot require more than the notional value of that position
+                    required = Math.max(required, amountMoved);
                 }
             }
         }
