@@ -96,7 +96,7 @@ contract UniswapMinter {
     function uniswapV3MintCallback(
         uint256 amount0Owed,
         uint256 amount1Owed,
-        bytes calldata data
+        bytes calldata
     ) external {
         if (amount0Owed > 0) token0.transfer(address(pool), amount0Owed);
         if (amount1Owed > 0) token1.transfer(address(pool), amount1Owed);
@@ -114,7 +114,7 @@ contract UniswapMinter {
     function getStats(
         int24 _tickLower,
         int24 _tickUpper
-    ) internal returns (MinterStats memory stats) {
+    ) internal view returns (MinterStats memory stats) {
         (uint128 tL_lg, int128 tL_ln, uint128 tU_lg, int128 tU_ln) = getTickLiquidityVars(
             _tickLower,
             _tickUpper
@@ -157,7 +157,7 @@ contract UniswapSwapper {
         int24 tick;
     }
 
-    constructor(MockERC20 _token0, MockERC20 _token1) public {
+    constructor(MockERC20 _token0, MockERC20 _token1) {
         token0 = _token0;
         token1 = _token1;
     }
@@ -169,7 +169,7 @@ contract UniswapSwapper {
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
-        bytes calldata data
+        bytes calldata
     ) external {
         if (amount0Delta > 0) token0.transfer(address(pool), uint256(amount0Delta));
         if (amount1Delta > 0) token1.transfer(address(pool), uint256(amount1Delta));

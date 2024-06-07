@@ -79,6 +79,13 @@ contract FuzzDeployments is FuzzHelpers {
         IERC20(USDC).approve(address(swapperc), type(uint256).max);
         hevm.prank(pool_manipulator);
         IERC20(WETH).approve(address(swapperc), type(uint256).max);
+
+        for (uint i = 0; i < 100; i++) {
+            _perform_swap_with_delay(
+                uint160(uint256(bytes32(keccak256(abi.encode(1, i))))),
+                uint256(bytes32(keccak256(abi.encode(i))))
+            );
+        }
     }
 
     function initialize() internal {
@@ -206,899 +213,127 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     ////////////////////////////////////////////////////
-    // Leg generation
-    ////////////////////////////////////////////////////
-
-    /// @dev Generate a tokenId with only long legs when tokenId_in had short legs
-    function _generate_long_only_tokenid(TokenId tokenId_in) internal returns (TokenId out) {
-        if (tokenId_in.countLongs() > 0) {
-            out = TokenId.wrap(tokenId_in.poolId());
-            uint256 numLegs = tokenId_in.countLegs();
-            uint256 _newLegs;
-
-            for (uint256 leg; leg < numLegs; ++leg) {
-                if (tokenId_in.isLong(leg) == 1) {
-                    {
-                        uint256 ratio = tokenId_in.optionRatio(leg);
-                        uint256 asset = tokenId_in.asset(leg);
-                        uint256 tokenType = tokenId_in.tokenType(leg);
-                        int24 strike = tokenId_in.strike(leg);
-                        int24 width = tokenId_in.width(leg);
-                        out = out.addOptionRatio(ratio, _newLegs);
-                        out = out.addAsset(asset, _newLegs);
-                        out = out.addTokenType(tokenType, _newLegs);
-                        out = out.addStrike(strike, _newLegs);
-                        out = out.addWidth(width, _newLegs);
-                        out = out.addIsLong(0, _newLegs);
-                        out = out.addRiskPartner(_newLegs, _newLegs);
-                    }
-                    log_tokenid_leg(out, _newLegs);
-                    ++_newLegs;
-                }
-            }
-        } else {
-            out = TokenId.wrap(0);
-        }
-    }
-
-    /// @dev Generate a single leg
-    function _generate_single_leg_tokenid(
-        bool asset_in,
-        bool is_call_in,
-        bool is_long_in,
-        bool is_otm_in,
-        bool is_atm,
-        uint24 width_in,
-        int256 strike_in
-    ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
-
-        // Rest of the parameters come from the function parameters
-        uint256 asset = asset_in == true ? 1 : 0;
-        uint256 call_put = is_call_in == true ? 1 - asset : asset;
-        uint256 long_short = is_long_in == true ? 1 : 0;
-
-        int24 width;
-        int24 strike;
-
-        if (is_atm) {
-            (width, strike) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                call_put
-            );
-        } else if (is_otm_in) {
-            (width, strike) = getOTMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                call_put
-            );
-        } else {
-            (width, strike) = getITMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                call_put
-            );
-        }
-
-        out = out.addLeg(0, 1, asset, long_short, call_put, 0, strike, width);
-        log_tokenid_leg(out, 0);
-    }
-
-    function _generate_multiple_leg_tokenid(
-        uint256 numLegs,
-        bool[4] memory asset_in,
-        bool[4] memory is_call_in,
-        bool[4] memory is_long_in,
-        bool[4] memory is_otm_in,
-        bool[4] memory is_atm_in,
-        uint24[4] memory width_in,
-        int256[4] memory strike_in
-    ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
-        numLegs = bound(numLegs, 1, 4);
-
-        // The parameters come from the function parameters
-        for (uint256 i = 0; i < numLegs; i++) {
-            uint256 asset = asset_in[i] == true ? 1 : 0;
-            uint256 call_put = is_call_in[i] == true ? 1 - asset : asset;
-            uint256 long_short = is_long_in[i] == true ? 1 : 0;
-
-            int24 width;
-            int24 strike;
-
-            if (is_atm_in[i]) {
-                (width, strike) = getATMSW(
-                    width_in[i],
-                    strike_in[i],
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    call_put
-                );
-            } else if (is_otm_in[i]) {
-                (width, strike) = getOTMSW(
-                    width_in[i],
-                    strike_in[i],
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    call_put
-                );
-            } else {
-                (width, strike) = getITMSW(
-                    width_in[i],
-                    strike_in[i],
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    call_put
-                );
-            }
-
-            out = out.addLeg(i, 1, asset, long_short, call_put, 0, strike, width);
-            log_tokenid_leg(out, i);
-        }
-    }
-
-    function _generate_straddle_tokenid(
-        bool asset_in,
-        bool is_long_in,
-        bool is_atm_in,
-        uint24 width_in,
-        int256 strike_in
-    ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
-
-        uint256 asset = asset_in == true ? 1 : 0;
-        uint256 long_short = is_long_in == true ? 1 : 0;
-
-        int24 width;
-        int24 strike;
-
-        if (is_atm_in) {
-            (width, strike) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                0
-            );
-        } else {
-            // use the asset_in bool as a way to determine which side of the current price the strike is
-            (width, strike) = getOTMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                asset
-            );
-        }
-
-        // Create call
-        out = out.addLeg(0, 1, asset, long_short, 1 - asset, 1, strike, width);
-        // Create put
-        out = out.addLeg(1, 1, asset, long_short, asset, 0, strike, width);
-
-        log_tokenid_leg(out, 0);
-        log_tokenid_leg(out, 1);
-    }
-
-    function _generate_strangle_tokenid(
-        bool asset_in,
-        bool is_long_in,
-        bool is_atm0_in,
-        bool is_atm1_in,
-        bool is_inverted_in,
-        uint256 width_in,
-        int256 strike_in,
-        int24 strike_delta
-    ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
-
-        uint256 asset = asset_in == true ? 1 : 0;
-        uint256 long_short = is_long_in == true ? 1 : 0;
-
-        int24 width_sc;
-        int24 width_sp;
-        int24 strike_sc;
-        int24 strike_sp;
-
-        if (is_atm0_in) {
-            (width_sc, strike_sc) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                asset
-            );
-        } else {
-            if (is_inverted_in) {
-                (width_sc, strike_sc) = getITMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    asset
-                );
-            } else {
-                (width_sc, strike_sc) = getOTMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    asset
-                );
-            }
-        }
-
-        strike_in = int24(strike_in >> 24);
-        width_in = uint24(width_in >> 24);
-
-        if (is_atm1_in) {
-            (width_sp, strike_sp) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                1 - asset
-            );
-        } else {
-            if (is_inverted_in) {
-                (width_sp, strike_sp) = getITMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    1 - asset
-                );
-            } else {
-                (width_sp, strike_sp) = getOTMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    1 - asset
-                );
-            }
-
-            // add logic for calendar strangles
-        }
-
-        // Create call
-        out = out.addLeg(0, 1, asset, long_short, 1 - asset, 1, strike_sc + strike_delta, width_sc);
-        // Create put
-        out = out.addLeg(1, 1, asset, long_short, asset, 0, strike_sp - strike_delta, width_sc);
-
-        log_tokenid_leg(out, 0);
-        log_tokenid_leg(out, 1);
-    }
-
-    function _generate_spread_tokenid(
-        bool asset_in,
-        bool tokenType_in,
-        bool is_atm0_in,
-        bool is_atm1_in,
-        bool is_inverted_in,
-        bool is_calendar_in,
-        uint256 width_in,
-        int256 strike_in,
-        int24 strike_delta
-    ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
-
-        uint256 asset = asset_in == true ? 1 : 0;
-        uint256 tokenType = tokenType_in == true ? 1 : 0;
-
-        int24 width_short;
-        int24 width_long;
-        int24 strike_short;
-        int24 strike_long;
-
-        if (is_atm0_in) {
-            (width_short, strike_short) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                asset
-            );
-        } else {
-            if (is_inverted_in) {
-                (width_short, strike_short) = getITMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    asset
-                );
-            } else {
-                (width_short, strike_short) = getOTMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    asset
-                );
-            }
-        }
-
-        strike_in = int24(strike_in >> 24);
-        width_in = uint24(width_in >> 24);
-        if (is_atm1_in) {
-            (width_long, strike_long) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                1 - asset
-            );
-            if (is_calendar_in == false) {
-                width_long = width_short;
-            }
-        } else {
-            if (is_inverted_in) {
-                (width_long, strike_long) = getITMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    1 - asset
-                );
-            } else {
-                (width_long, strike_long) = getOTMSW(
-                    width_in,
-                    strike_in,
-                    uint24(poolTickSpacing),
-                    currentTick,
-                    1 - asset
-                );
-            }
-            if (is_calendar_in == false) {
-                width_long = width_short;
-            }
-        }
-
-        // Create short
-        out = out.addLeg(0, 1, asset, 0, tokenType, 1, strike_short + strike_delta, width_short);
-        // Create long
-
-        out = out.addLeg(1, 1, asset, 1, tokenType, 0, strike_long - strike_delta, width_long);
-
-        log_tokenid_leg(out, 0);
-        log_tokenid_leg(out, 1);
-    }
-
-    ////////////////////////////////////////////////////
     // Minting
     ////////////////////////////////////////////////////
 
-    /// @custom:property PANO-MINT-001 For long positions, the effective liquidity factor must be lower than or equal to the liquidity limit
-    /// @custom:property PANO-MINT-002 The position balance for the minted position must equal the position size
-    /// @custom:property PANO-MINT-003 Users cannot have more than 32 simultaneous positions opened
-    /// @custom:property PANO-MINT-004 The position counter must increase after a successful mint
-    function _mint_option(
-        address minter,
-        TokenId tokenid,
-        uint256 posSize,
-        bool is_covered,
-        uint64 effLiqLim
-    ) internal {
-        // Mint a position according to tokenId and posSize
+    function mint_option_basic(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory assets,
+        bool[2] memory distributions,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public {
+        emit LogAddress("actor", msg.sender);
 
-        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(minter));
-        emit LogUint256("User collateral 0", userCollateral0);
-        uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(minter));
-        emit LogUint256("User collateral 1", userCollateral1);
+        $numLegs = bound(numLegs, 1, 4);
 
-        uint256 positionsOpened = panopticPool.numberOfPositions(minter);
-        emit LogUint256("Positions opened for user", positionsOpened);
+        userPositions[msg.sender].push(TokenId.wrap(poolId));
 
-        userPositions[minter].push(tokenid);
-        TokenId[] memory posIdList = userPositions[minter];
-        TokenId[] memory lastPos = new TokenId[](1);
-        lastPos[0] = tokenid;
+        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        {
-            (, currentTick, , , , , ) = pool.slot0();
-
-            emit LogInt256("pre-mint Tick", currentTick);
-
-            uint256[2][] memory positionBalance = new uint256[2][](1);
-
-            positionBalance[0][0] = TokenId.unwrap(tokenid);
-            positionBalance[0][1] = 1e6;
-
-            LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
-                minter,
-                currentTick,
-                positionBalance,
-                0
-            );
-            LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(
-                minter,
-                currentTick,
-                positionBalance,
-                0
-            );
-
-            (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
-                tokenData0,
-                tokenData1,
-                0,
-                currentTick
-            );
-            emit LogUint256("balance0", balance0);
-            emit LogUint256("required0", required0);
-
-            uint256 size = (required0 * balance0) / 1e6;
-            posSize = bound(posSize, (size * 10) / 100, (size * 200) / 100);
-
-            require(posSize > 0);
-        }
-        emit LogUint256("positionSize", posSize);
-
-        emit LogInt256("Balance before", int256(_get_assets_in_token0(minter, currentTick)));
-
-        {
-            int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
-            int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
-            emit LogInt256("tickLimitLow", tickLimitLow);
-            emit LogInt256("tickLimitHigh", tickLimitHigh);
-            log_account_collaterals(minter);
-            hevm.prank(minter);
-            panopticPool.mintOptions(
-                posIdList,
-                uint128(posSize),
-                effLiqLim,
-                tickLimitLow,
-                tickLimitHigh
-            );
-            log_account_collaterals(minter);
-        }
-        // check effective liquidities
-        for (uint256 leg; leg < tokenid.countLegs(); ++leg) {
-            if (tokenid.isLong(leg) == 1) {
-                (int24 tickLower, int24 tickUpper) = tokenid.asTicks(0);
-                uint256 tokenType = tokenid.tokenType(leg);
-                uint64 effLiqFactor = _get_effective_liq_factor(tokenType, tickLower, tickUpper);
-
-                emit LogUint256("Effective liquidity limit", effLiqLim);
-                emit LogUint256("Effective liquidity factor", effLiqFactor);
-
-                // Option was minted, check liquidity factor
-                assertWithMsg(
-                    effLiqFactor <= effLiqLim,
-                    "A long position with liquidity factor greater than the liquidity limit was minted"
-                );
-            }
-        }
-
-        assertWithMsg(positionsOpened < 32, "More than 32 positions are minted for user");
-        assertWithMsg(
-            panopticPool.numberOfPositions(minter) == positionsOpened + 1,
-            "Position counter did not increase after minting"
+        $fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            pool,
+            observationIndex,
+            observationCardinality,
+            3,
+            1
         );
 
-        userBalance[minter][tokenid] = LeftRightUnsigned.wrap(0).toRightSlot(uint128(posSize));
+        for (uint256 i = 0; i < $numLegs; ++i) {
+            $tokenTypes[i] = bound(tokenTypes[i], 0, 1);
+            $isLongs[i] = bound(isLongs[i], 0, 0);
+            $assets[i] = bound(assets[i], 0, 1);
+            $ratios[i] = bound(ratioSeeds[i], 1, 127);
+            ($widths[i], $strikes[i]) = getValidSW(
+                widthSeeds[i],
+                strikeSeeds[i],
+                uint24(poolTickSpacing),
+                currentTick,
+                distributions[0]
+            );
+            userPositions[msg.sender][userPositions[msg.sender].length - 1] = userPositions[
+                msg.sender
+            ][userPositions[msg.sender].length - 1].addLeg(
+                    i,
+                    $ratios[i],
+                    $assets[i],
+                    $isLongs[i],
+                    $tokenTypes[i],
+                    i,
+                    $strikes[i],
+                    $widths[i]
+                );
+        }
 
-        (uint128 balance, , ) = panopticPool.optionPositionBalance(minter, tokenid);
-        assertWithMsg(balance == posSize, "Position size and balance do not match");
+        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+        uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
 
+        positionSize = uint128(
+            distributions[1]
+                ? bound(positionSize, 0, 1_000_000_000 * 2 ** 64)
+                : bound(positionSize, uint256(2 ** 64) / 10, 2 * 2 ** 64)
+        );
+
+        try this.size_for_collateral_solo(positionSize, userCollateral0, userCollateral1) {} catch (
+            bytes memory reason
+        ) {
+            emit LogBytes("Reason", reason);
+            // assertWithMsg(!distributions[0], "failed2");
+        }
+
+        positionSize = uint128(
+            size_for_collateral_solo(positionSize, userCollateral0, userCollateral1)
+        );
+
+        $positionSizeActive = uint128(positionSize);
+
+        $tokenIdActive = userPositions[msg.sender][userPositions[msg.sender].length - 1];
+
+        write_mintburn_transfer_amts();
+
+        // assertWithMsg(false, "yahoo(2)!");
+
+        bool shouldRevert = $netTokenTransfers0 > int256(USDC.balanceOf(address(panopticPool))) ||
+            $netTokenTransfers1 > int256(WETH.balanceOf(address(panopticPool)));
+
+        emit LogInt256("Net token transfers 0", $netTokenTransfers0);
+        emit LogInt256("Net token transfers 1", $netTokenTransfers1);
+        emit LogInt256("pool balance 0", int256(USDC.balanceOf(address(panopticPool))));
+        emit LogInt256("pool balance 1", int256(WETH.balanceOf(address(panopticPool))));
+
+        hevm.prank(msg.sender);
+        try
+            panopticPool.mintOptions(
+                userPositions[msg.sender],
+                uint128(positionSize),
+                type(uint64).max,
+                TickMath.MAX_TICK,
+                TickMath.MIN_TICK
+            )
         {
-            (, currentTick, , , , , ) = pool.slot0();
-            emit LogInt256("final Tick", currentTick);
+            // assertWithMsg(false, "yahoo!");
+        } catch (bytes memory reason) {
+            emit LogBytes("Reason", reason);
 
-            LeftRightUnsigned tokenData0;
-            LeftRightUnsigned tokenData1;
-            address _m = minter;
-            {
-                // Compute premia for all options (includes short+long premium)
-                (
-                    int128 premium0,
-                    int128 premium1,
-                    uint256[2][] memory positionBalanceArray
-                ) = panopticPool.calculateAccumulatedFeesBatch(_m, false, posIdList);
-
-                // Query the current and required collateral amounts for the two tokens
-                tokenData0 = collToken0.getAccountMarginDetails(
-                    _m,
-                    currentTick,
-                    positionBalanceArray,
-                    premium0
-                );
-                tokenData1 = collToken1.getAccountMarginDetails(
-                    _m,
-                    currentTick,
-                    positionBalanceArray,
-                    premium1
-                );
-            }
-
-            // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
-            (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
-                tokenData0,
-                tokenData1,
-                0,
-                currentTick
+            assertWithMsg(
+                !(positionSize != 0 &&
+                    !distributions[0] &&
+                    !distributions[1] &&
+                    $numLegs == 1 &&
+                    !shouldRevert &&
+                    bytes4(reason) != Errors.TransferFailed.selector &&
+                    keccak256(reason) !=
+                    keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))),
+                "failed"
             );
-            emit LogUint256("Balance0 after", balance0);
-            emit LogUint256("required0 after", required0);
 
-            assertWithMsg(balance0 >= required0, "account is not solvent in token0");
-
-            // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
-            (uint256 balance1, uint256 required1) = PanopticMath.convertCollateralData(
-                tokenData0,
-                tokenData1,
-                1,
-                currentTick
-            );
-            emit LogUint256("Balance1 after", balance1);
-            emit LogUint256("required1 after", required1);
-
-            assertWithMsg(balance1 >= required1, "account is not solvent in token1");
-
-            {
-                uint256 sqrtPriceX96 = Math.getSqrtRatioAtTick(currentTick);
-
-                uint256 balanceCross = Math.mulDiv(
-                    uint256(tokenData1.rightSlot()),
-                    2 ** 96,
-                    sqrtPriceX96
-                ) + Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
-                // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-                // overstimate by rounding up
-
-                uint256 thresholdCross = Math.mulDivRoundingUp(
-                    uint256(tokenData1.leftSlot()),
-                    2 ** 96,
-                    sqrtPriceX96
-                ) + Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
-                assertWithMsg(
-                    balanceCross >= thresholdCross,
-                    "account is not solvent in cross token"
-                );
-            }
+            // reverse test state changes (i.e. positionidlist)
+            revert();
         }
-
-        emit LogInt256("Balance after", int256(_get_assets_in_token0(minter, currentTick)));
-        emit LogString("Minted a new option");
-        emit LogString(is_covered ? "Minted a covered option" : "Minted a settled option");
-        emit LogUint256("Position size", posSize);
-        emit LogAddress("Minter", minter);
-    }
-
-    function mint_option(
-        uint256 seller_index,
-        bool asset,
-        bool is_call,
-        bool is_long,
-        bool is_otm,
-        bool is_atm,
-        bool is_covered,
-        uint64 effLiqLimit,
-        uint24 width,
-        int256 strike,
-        uint256 posSize
-    ) public {
-        seller_index = bound(seller_index, 0, 4);
-        if (actors[seller_index] == msg.sender) {
-            seller_index = bound(seller_index + 1, 0, 4);
-        }
-
-        address minter = msg.sender;
-        address seller = actors[seller_index];
-
-        (, currentTick, , , , , ) = pool.slot0();
-
-        if (!is_long) {
-            // Mint a short position
-            _mint_option(
-                minter,
-                _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
-                posSize,
-                is_covered,
-                0
-            );
-        } else {
-            // Mint a short position first, then a long position
-            _mint_option(
-                seller,
-                _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
-                (15 * posSize) / 10,
-                false,
-                0
-            );
-            _mint_option(
-                minter,
-                _generate_single_leg_tokenid(asset, is_call, true, is_otm, is_atm, width, strike),
-                posSize,
-                is_covered,
-                effLiqLimit
-            );
-        }
-    }
-
-    function mint_strategy_undefined(
-        uint256 seller_index,
-        bool asset,
-        bool is_long,
-        bool is_covered,
-        uint256 strategy,
-        uint64 effLiqLimit,
-        uint24 width,
-        int256 strike,
-        uint256 posSize
-    ) public {
-        seller_index = bound(seller_index, 0, 4);
-        if (actors[seller_index] == msg.sender) {
-            seller_index = bound(seller_index + 1, 0, 4);
-        }
-
-        address minter = msg.sender;
-        address seller = actors[seller_index];
-
-        // We have two strategies now, this can be expanded later
-        strategy = bound(strategy, 0, 6);
-
-        (, currentTick, , , , , ) = pool.slot0();
-
-        TokenId tokenId_undefined;
-        if (strategy == 0) {
-            // Mint a ATM straddle
-            tokenId_undefined = _generate_straddle_tokenid(asset, is_long, true, width, strike);
-        } else if (strategy == 1) {
-            // Mint a OTM straddle
-            tokenId_undefined = _generate_straddle_tokenid(asset, is_long, false, width, strike);
-        } else if (strategy == 2) {
-            // Mint an OTM strangle
-            tokenId_undefined = _generate_strangle_tokenid(
-                asset,
-                is_long,
-                false,
-                false,
-                false,
-                width,
-                strike,
-                10
-            ); // Fixed delta of 10, can be changed/fuzzed
-        } else if (strategy == 3) {
-            // Mint an ATM strangle (may be inverted)
-            tokenId_undefined = _generate_strangle_tokenid(
-                asset,
-                is_long,
-                true,
-                true,
-                false,
-                width,
-                strike,
-                10
-            ); // Fixed delta of 10, can be changed/fuzzed
-        } else if (strategy == 4) {
-            // Mint an inverted OTM strangle
-            tokenId_undefined = _generate_strangle_tokenid(
-                asset,
-                is_long,
-                false,
-                false,
-                true,
-                width,
-                strike,
-                10
-            ); // Fixed delta of 10, can be changed/fuzzed
-        } else if (strategy == 5) {
-            // Mint an inverted ATM strangle
-            tokenId_undefined = _generate_strangle_tokenid(
-                asset,
-                is_long,
-                true,
-                false,
-                true,
-                width,
-                strike,
-                10
-            ); // Fixed delta of 10, can be changed/fuzzed
-        } else if (strategy == 6) {
-            // Mint an inverted ATM strangle
-            tokenId_undefined = _generate_strangle_tokenid(
-                asset,
-                is_long,
-                false,
-                true,
-                true,
-                width,
-                strike,
-                10
-            ); // Fixed delta of 10, can be changed/fuzzed
-        }
-
-        if (tokenId_undefined.countLongs() > 0) {
-            TokenId tokenIdLongs = _generate_long_only_tokenid(tokenId_undefined);
-            emit LogUint256(
-                "mint_strategy_undefined - tokenIdLongs",
-                uint256(TokenId.unwrap(tokenIdLongs))
-            );
-            _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, false, 0);
-        }
-        _mint_option(minter, tokenId_undefined, posSize, is_covered, effLiqLimit);
-    }
-
-    function mint_strategy_defined(
-        uint256 seller_index,
-        bool asset,
-        bool tokenType,
-        bool is_covered,
-        uint256 strategy,
-        uint64 effLiqLimit,
-        uint24 width,
-        int256 strike,
-        uint256 posSize
-    ) public {
-        seller_index = bound(seller_index, 0, 4);
-        if (actors[seller_index] == msg.sender) {
-            seller_index = bound(seller_index + 1, 0, 4);
-        }
-
-        address minter = msg.sender;
-        address seller = actors[seller_index];
-
-        // We have two strategies now, this can be expanded later
-        strategy = bound(strategy, 0, 9);
-        emit LogUint256("mint_strategy_defined - strategy", strategy);
-
-        (, currentTick, , , , , ) = pool.slot0();
-
-        TokenId spread;
-        if (strategy == 0) {
-            // Mint a OTM spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                false,
-                false,
-                false,
-                false,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 1) {
-            // Mint a ATM spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                true,
-                true,
-                false,
-                false,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 2) {
-            // Mint an inverted spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                false,
-                false,
-                true,
-                false,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 3) {
-            // Mint an inverted ATM spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                true,
-                false,
-                true,
-                false,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 4) {
-            // Mint an inverted ATM spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                false,
-                true,
-                true,
-                false,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 5) {
-            // Mint a OTM calendar spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                false,
-                false,
-                false,
-                true,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 6) {
-            // Mint a ATM calendar spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                true,
-                true,
-                false,
-                true,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 7) {
-            // Mint an inverted calendar spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                false,
-                false,
-                true,
-                true,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 8) {
-            // Mint an inverted ATM calendar spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                true,
-                false,
-                true,
-                true,
-                width,
-                strike,
-                0
-            );
-        } else if (strategy == 9) {
-            // Mint an inverted ATM calendar spread
-            spread = _generate_spread_tokenid(
-                asset,
-                tokenType,
-                false,
-                true,
-                true,
-                false,
-                width,
-                strike,
-                0
-            );
-        }
-        emit LogUint256("mint_strategy_defined - spread", uint256(TokenId.unwrap(spread)));
-
-        if (spread.countLongs() > 0) {
-            TokenId tokenIdLongs = _generate_long_only_tokenid(spread);
-            _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, false, 0);
-            emit LogUint256(
-                "mint_strategy_defined - tokenIdLongs",
-                uint256(TokenId.unwrap(tokenIdLongs))
-            );
-        }
-        _mint_option(minter, spread, posSize, is_covered, effLiqLimit);
-    }
-
-    function test_asserting_abilities() public {
-        assertWithMsg(1 > 2, "1 is greater than 2???");
     }
 
     function perform_swap(uint160 target_sqrt_price) public {
@@ -1127,7 +362,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("price after swap", uint256(price));
     }
 
-    function perform_swap_with_delay(uint160 target_sqrt_price, uint256 delay) public {
+    function _perform_swap_with_delay(uint160 target_sqrt_price, uint256 delay) internal {
         // bound the price between 10 and 500000
         target_sqrt_price = uint160(
             bound(
@@ -1144,8 +379,6 @@ contract FuzzDeployments is FuzzHelpers {
 
         emit LogInt256("tick before swap", currentTick);
         emit LogUint256("price before swap", uint256(price));
-        int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
-        emit LogInt256("TWAP tick before", TWAPtick_before);
 
         uint256 delay_on = (delay % 2 == 0) ? 1 : 0;
         uint256 delay_block = bound(delay, 0, 150);
@@ -1169,8 +402,6 @@ contract FuzzDeployments is FuzzHelpers {
         (price, currentTick, , , , , ) = pool.slot0();
         emit LogInt256("tick after swap", currentTick);
         emit LogUint256("price after swap", uint256(price));
-        int24 TWAPtick_after = PanopticMath.twapFilter(pool, 600);
-        emit LogInt256("TWAP tick after", TWAPtick_after);
     }
 
     function perform_swap_no_delay(uint160 target_sqrt_price) public {

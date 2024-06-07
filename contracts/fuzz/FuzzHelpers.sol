@@ -32,6 +32,8 @@ import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
+import {Constants} from "@libraries/Constants.sol";
+import {Errors} from "@libraries/Errors.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -275,6 +277,12 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256[2][4][32] settledTokens;
     }
 
+    struct ChunkWithTokenType {
+        int24 tickLower;
+        int24 tickUpper;
+        uint256 tokenType;
+    }
+
     PanopticHelper panopticHelper;
     SemiFungiblePositionManager sfpm;
     IUniswapV3Factory univ3factory;
@@ -292,8 +300,32 @@ contract FuzzHelpers is PropertiesAsserts {
     int24 currentTick;
     int24 currentTickOld;
 
+    uint16 observationIndex;
+    uint16 observationCardinality;
+
     CollateralTracker collToken0;
     CollateralTracker collToken1;
+
+    int24[4] $widths;
+    int24[4] $strikes;
+    uint256[4] $assets;
+    uint256[4] $tokenTypes;
+    uint256[4] $ratios;
+    uint256[4] $riskPartners;
+    uint256[4] $isLongs;
+
+    TokenId $tokenIdActive;
+    uint128 $positionSizeActive;
+
+    uint256 $numLegs;
+
+    int256 $netTokenTransfers0;
+    int256 $netTokenTransfers1;
+
+    int24 $fastOracleTick;
+
+    int24 $tickLower;
+    int24 $tickUpper;
 
     address[] actors;
     address pool_manipulator;
@@ -303,6 +335,10 @@ contract FuzzHelpers is PropertiesAsserts {
     mapping(address => TokenId[]) userPositions;
 
     mapping(address => mapping(TokenId => LeftRightUnsigned)) userBalance;
+
+    mapping(bytes32 chunk => LeftRightUnsigned removedAndNet) panopticChunkLiquidity;
+
+    ChunkWithTokenType[] touchedPanopticChunks;
 
     uint256 constant MAX_DEPOSIT = 100 ether;
     uint256 constant MIN_DEPOSIT = 0.01 ether;
@@ -775,171 +811,347 @@ contract FuzzHelpers is PropertiesAsserts {
     // Imported functions
     /////////////////////////////////////////////////////////////
 
+    // function getOTMSW(
+    //     uint256 _widthSeed,
+    //     int256 _strikeSeed,
+    //     uint256 ts_,
+    //     int24 _currentTick,
+    //     uint256 _tokenType
+    // ) internal view returns (int24 width, int24 strike) {
+    //     int256 ts = int256(ts_);
+
+    //     width = ts == 1
+    //         ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+    //         : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
+    //     int24 oneSidedRange = int24((width * ts) / 2);
+
+    //     int24 rangeDown;
+    //     int24 rangeUp;
+    //     (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+    //     (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
+
+    //     int24 lowerBound = _tokenType == 0
+    //         ? int24(_currentTick + ts + oneSidedRange - strikeOffset)
+    //         : int24(minTick + oneSidedRange - strikeOffset);
+    //     int24 upperBound = _tokenType == 0
+    //         ? int24(maxTick - oneSidedRange - strikeOffset)
+    //         : int24(_currentTick - oneSidedRange - strikeOffset);
+
+    //     if (ts == 1) {
+    //         lowerBound = _tokenType == 0
+    //             ? int24(_currentTick + ts + rangeDown - strikeOffset)
+    //             : int24(minTick + rangeDown - strikeOffset);
+    //         upperBound = _tokenType == 0
+    //             ? int24(maxTick - rangeUp - strikeOffset)
+    //             : int24(_currentTick - rangeUp - strikeOffset);
+    //     }
+
+    //     // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
+    //     // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
+    //     strike = int24(int256(bound(_strikeSeed, lowerBound / ts, upperBound / ts)));
+
+    //     strike = int24(strike * ts + strikeOffset);
+    // }
+
+    // function getITMSW(
+    //     uint256 _widthSeed,
+    //     int256 _strikeSeed,
+    //     uint256 ts_,
+    //     int24 _currentTick,
+    //     uint256 _tokenType
+    // ) internal view returns (int24 width, int24 strike) {
+    //     int256 ts = int256(ts_);
+
+    //     width = ts == 1
+    //         ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+    //         : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
+    //     int24 oneSidedRange = int24((width * ts) / 2);
+
+    //     int24 rangeDown;
+    //     int24 rangeUp;
+    //     (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+    //     (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
+
+    //     int24 lowerBound = _tokenType == 0
+    //         ? int24(minTick + oneSidedRange - strikeOffset)
+    //         : int24(_currentTick + oneSidedRange - strikeOffset);
+    //     int24 upperBound = _tokenType == 0
+    //         ? int24(_currentTick + ts - oneSidedRange - strikeOffset)
+    //         : int24(maxTick - oneSidedRange - strikeOffset);
+
+    //     if (ts == 1) {
+    //         lowerBound = _tokenType == 0
+    //             ? int24(minTick + rangeDown - strikeOffset)
+    //             : int24(_currentTick + rangeDown - strikeOffset);
+    //         upperBound = _tokenType == 0
+    //             ? int24(_currentTick + ts - rangeUp - strikeOffset)
+    //             : int24(maxTick - rangeUp - strikeOffset);
+    //     }
+
+    //     // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
+    //     // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
+    //     strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
+
+    //     strike = int24(strike * ts + strikeOffset);
+    // }
+
+    // function getATMSW(
+    //     uint256 _widthSeed,
+    //     int256 _strikeSeed,
+    //     uint256 ts_,
+    //     int24 _currentTick,
+    //     uint256 _tokenType
+    // ) internal view returns (int24 width, int24 strike) {
+    //     int256 ts = int256(ts_);
+
+    //     width = ts == 1
+    //         ? width = int24(int256(bound(_widthSeed, 1, 1000)))
+    //         : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
+    //     int24 oneSidedRange = int24((width * ts) / 2);
+
+    //     int24 rangeDown;
+    //     int24 rangeUp;
+    //     (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
+
+    //     (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
+
+    //     int24 lowerBound = int24(_currentTick + ts - oneSidedRange - strikeOffset);
+    //     int24 upperBound = int24(_currentTick + oneSidedRange - strikeOffset);
+
+    //     if (ts == 1) {
+    //         lowerBound = int24(_currentTick + rangeDown - strikeOffset);
+    //         upperBound = int24(_currentTick + ts - rangeUp - strikeOffset);
+    //     }
+
+    //     // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
+    //     // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
+    //     strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
+
+    //     strike = int24(strike * ts + strikeOffset);
+    // }
+
     function getContext(
         uint256 ts_,
         int24 _currentTick,
-        int24 _width
+        int24 _width,
+        bool distribution
     ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
         strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
 
-        if (ts_ == 1) {
+        if (distribution) {
+            minTick = int24((TickMath.MIN_TICK / ts) * ts);
+            maxTick = int24((TickMath.MAX_TICK / ts) * ts);
+        } else {
             minTick = int24(((_currentTick - 4096) / ts) * ts);
             maxTick = int24(((_currentTick + 4096) / ts) * ts);
-        } else {
-            minTick = int24(((_currentTick - 4096 * 10) / ts) * ts);
-            maxTick = int24(((_currentTick + 4096 * 10) / ts) * ts);
         }
-    }
-
-    function getOTMSW(
-        uint256 _widthSeed,
-        int256 _strikeSeed,
-        uint256 ts_,
-        int24 _currentTick,
-        uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
-        int256 ts = int256(ts_);
-
-        width = ts == 1
-            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-            : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-        int24 lowerBound = _tokenType == 0
-            ? int24(_currentTick + ts + oneSidedRange - strikeOffset)
-            : int24(minTick + oneSidedRange - strikeOffset);
-        int24 upperBound = _tokenType == 0
-            ? int24(maxTick - oneSidedRange - strikeOffset)
-            : int24(_currentTick - oneSidedRange - strikeOffset);
-
-        if (ts == 1) {
-            lowerBound = _tokenType == 0
-                ? int24(_currentTick + ts + rangeDown - strikeOffset)
-                : int24(minTick + rangeDown - strikeOffset);
-            upperBound = _tokenType == 0
-                ? int24(maxTick - rangeUp - strikeOffset)
-                : int24(_currentTick - rangeUp - strikeOffset);
-        }
-
-        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(int256(bound(_strikeSeed, lowerBound / ts, upperBound / ts)));
-
-        strike = int24(strike * ts + strikeOffset);
-    }
-
-    function getITMSW(
-        uint256 _widthSeed,
-        int256 _strikeSeed,
-        uint256 ts_,
-        int24 _currentTick,
-        uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
-        int256 ts = int256(ts_);
-
-        width = ts == 1
-            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-            : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-        int24 lowerBound = _tokenType == 0
-            ? int24(minTick + oneSidedRange - strikeOffset)
-            : int24(_currentTick + oneSidedRange - strikeOffset);
-        int24 upperBound = _tokenType == 0
-            ? int24(_currentTick + ts - oneSidedRange - strikeOffset)
-            : int24(maxTick - oneSidedRange - strikeOffset);
-
-        if (ts == 1) {
-            lowerBound = _tokenType == 0
-                ? int24(minTick + rangeDown - strikeOffset)
-                : int24(_currentTick + rangeDown - strikeOffset);
-            upperBound = _tokenType == 0
-                ? int24(_currentTick + ts - rangeUp - strikeOffset)
-                : int24(maxTick - rangeUp - strikeOffset);
-        }
-
-        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
-
-        strike = int24(strike * ts + strikeOffset);
-    }
-
-    function getATMSW(
-        uint256 _widthSeed,
-        int256 _strikeSeed,
-        uint256 ts_,
-        int24 _currentTick,
-        uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
-        int256 ts = int256(ts_);
-
-        width = ts == 1
-            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-            : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
-        int24 oneSidedRange = int24((width * ts) / 2);
-
-        int24 rangeDown;
-        int24 rangeUp;
-        (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-        int24 lowerBound = int24(_currentTick + ts - oneSidedRange - strikeOffset);
-        int24 upperBound = int24(_currentTick + oneSidedRange - strikeOffset);
-
-        if (ts == 1) {
-            lowerBound = int24(_currentTick + rangeDown - strikeOffset);
-            upperBound = int24(_currentTick + ts - rangeUp - strikeOffset);
-        }
-
-        // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-        // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-        strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
-
-        strike = int24(strike * ts + strikeOffset);
     }
 
     function getValidSW(
         uint256 _widthSeed,
         int256 _strikeSeed,
         uint256 ts_,
-        int24 _currentTick
-    ) internal view returns (int24 width, int24 strike) {
+        int24 _currentTick,
+        bool distribution
+    ) internal returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
-        width = ts == 1
-            ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-            : int24(int256(bound(_widthSeed, 1, 1000)));
+        width = distribution
+            ? int24(
+                int256(
+                    bound(
+                        _widthSeed,
+                        ts_,
+                        uint256((TickMath.MAX_TICK - TickMath.MIN_TICK) / ts / 10)
+                    )
+                )
+            )
+            : int24(int256(bound(_widthSeed, ts_, 4096 / ts_)));
 
         int24 rangeDown;
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
+        emit LogInt256("rangeDown", rangeDown);
+        emit LogInt256("rangeUp", rangeUp);
+        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(
+            ts_,
+            _currentTick,
+            width,
+            distribution
+        );
+
+        emit LogInt256("minTick", minTick);
+        emit LogInt256("maxTick", maxTick);
+        emit LogInt256("strikeOffset", strikeOffset);
 
         int24 lowerBound = int24(minTick + rangeDown - strikeOffset);
         int24 upperBound = int24(maxTick - rangeUp - strikeOffset);
+
+        emit LogInt256("lowerBound", lowerBound);
+        emit LogInt256("upperBound", upperBound);
+
+        emit LogInt256("lowerBound / ts", lowerBound / ts);
+        emit LogInt256("upperBound / ts", upperBound / ts);
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
         // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
         strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
 
+        emit LogInt256("strike", strike);
+
         strike = int24(strike * ts + strikeOffset);
+    }
+
+    function size_for_collateral_solo(
+        uint256 multiplierX64,
+        uint256 collateral0,
+        uint256 collateral1
+    ) public returns (uint256) {
+        // position size * 2**128 / colReq
+        uint256 sizeMultiplierX128;
+        for (uint256 i = 0; i < $numLegs; i++) {
+            emit LogInt256("$strikes[i]", $strikes[i]);
+            emit LogInt256("$widths[i]", $widths[i]);
+            emit LogInt256("poolTickSpacing", poolTickSpacing);
+
+            ($tickLower, $tickUpper) = PanopticMath.getTicks(
+                $strikes[i],
+                $widths[i],
+                poolTickSpacing
+            );
+            emit LogUint256("1", 1);
+            emit LogUint256(
+                "Math.getSqrtRatioAtTick($strikes[i])",
+                Math.getSqrtRatioAtTick($strikes[i])
+            );
+            uint256 baseCR = uint256($isLongs[i] == 0 ? 2_000 : 1_000) * 2 ** 117;
+            emit LogUint256("baseCR", baseCR);
+            if ($assets[i] != $tokenTypes[i]) {
+                baseCR = $tokenTypes[i] == 0
+                    ? PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($strikes[i]))
+                    : PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($strikes[i]));
+            }
+            emit LogUint256("11", 11);
+
+            emit LogUint256("baseCR", baseCR);
+
+            emit LogInt256("fastOracleTick", $fastOracleTick);
+            emit LogUint256("tokenTypes[i]", $tokenTypes[i]);
+
+            sizeMultiplierX128 += Math.mulDiv(
+                10_000 * 2 ** 117,
+                2 ** 128,
+                (((
+                    (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                        ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                        ? baseCR
+                        : $tokenTypes[i] == 0
+                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                ) * 13_333) / 10_000) * $ratios[i]
+            );
+            emit LogUint256("2", 2);
+
+            if (
+                $isLongs[i] == 0 &&
+                !((($fastOracleTick >= $tickUpper) && ($tokenTypes[i] == 1)) ||
+                    (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 0)))
+            ) {
+                // amountMoved for 2k posSize
+                uint256 ITMCR = baseCR;
+
+                uint160 ratio = $tokenTypes[i] == 1
+                    ? Math.getSqrtRatioAtTick(
+                        Math.max24(2 * ($fastOracleTick - $strikes[i]), Constants.MIN_V3POOL_TICK)
+                    )
+                    : Math.getSqrtRatioAtTick(
+                        Math.max24(2 * ($strikes[i] - $fastOracleTick), Constants.MIN_V3POOL_TICK)
+                    );
+
+                if (
+                    (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 1)) ||
+                    (($fastOracleTick >= $tickUpper) && ($tokenTypes[i] == 0))
+                ) {
+                    uint256 c2 = Constants.FP96 - ratio;
+
+                    ITMCR = Math.mulDiv96RoundingUp(ITMCR, c2);
+                } else {
+                    uint160 scaleFactor = Math.getSqrtRatioAtTick(
+                        ($tickUpper - $strikes[i]) + ($strikes[i] - $tickLower)
+                    );
+                    ITMCR = Math.mulDivRoundingUp(
+                        ITMCR,
+                        scaleFactor - ratio,
+                        scaleFactor + Constants.FP96
+                    );
+                }
+                emit LogUint256("3", 4);
+
+                sizeMultiplierX128 += Math.mulDiv(
+                    2_000 * 2 ** 117,
+                    2 ** 128,
+                    (((
+                        (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                            ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                            ? ITMCR
+                            : $tokenTypes[i] == 0
+                            ? PanopticMath.convert0to1(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                    ) * 13_333) / 10_000) * $ratios[i]
+                );
+            }
+        }
+        emit LogUint256("4", 4);
+
+        uint256 targetCross = Math.mulDiv64(
+            $fastOracleTick > 0
+                ? collateral0 +
+                    PanopticMath.convert1to0(collateral1, Math.getSqrtRatioAtTick($fastOracleTick))
+                : PanopticMath.convert0to1(collateral0, Math.getSqrtRatioAtTick($fastOracleTick)) +
+                    collateral1,
+            multiplierX64
+        );
+        emit LogUint256("5", 5);
+
+        emit LogUint256("targetCross", targetCross);
+        emit LogUint256("sizeMultiplierX128", sizeMultiplierX128);
+
+        // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
+        return Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128);
+    }
+
+    function write_mintburn_transfer_amts() internal {
+        for (uint256 i = 0; i < $tokenIdActive.countLegs(); ++i) {
+            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                $tokenIdActive,
+                i,
+                $positionSizeActive
+            );
+
+            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                currentTick,
+                liquidityChunk
+            );
+
+            if ($tokenIdActive.isLong(i) == 0) {
+                $netTokenTransfers0 += int256(amount0);
+                $netTokenTransfers1 += int256(amount1);
+            } else {
+                $netTokenTransfers0 -= int256(amount0);
+                $netTokenTransfers0 -= int256(amount1);
+            }
+        }
     }
 
     ////////////////////////////////////////////////////
