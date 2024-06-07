@@ -329,14 +329,14 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function bound(uint256 value, uint256 min, uint256 max) internal pure returns (uint256) {
-        uint256 range = max - min + 1;
-        return min + (value % range);
+    function bound(uint256 value, uint256 _min, uint256 _max) internal pure returns (uint256) {
+        uint256 range = _max - _min + 1;
+        return _min + (value % range);
     }
 
-    function bound(int256 value, int256 min, int256 max) internal pure returns (int256) {
-        int256 range = max - min + 1;
-        return min + (value % range);
+    function bound(int256 value, int256 _min, int256 _max) internal pure returns (int256) {
+        int256 range = _max - _min + 1;
+        return _min + Math.abs(value % range);
     }
 
     function max(uint256 a, uint256 b) internal pure returns (uint256) {
