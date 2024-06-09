@@ -654,22 +654,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
-        bool safeMode;
-        // check if the price has deviated too much recently.
-        {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-            uint256 medianData = s_miniMedian;
-            int24 medianTick = (int24(
-                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
-            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
-
-            // If ticks have recently deviated more than +/- 20%, enforce covered mints
-            if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
-                safeMode = true;
-                if (tickLimitLow > tickLimitHigh) {
-                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-                }
-            }
+        bool safeMode = isSafeMode();
+        // if safeMode, enforce covered deployment
+        if (safeMode && (tickLimitLow > tickLimitHigh)) {
+            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
         }
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
@@ -978,6 +966,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             LeftRightSigned paidAmounts
         )
     {
+        {
+            bool safeMode = isSafeMode();
+            // if safeMode, enforce covered at assignment
+            if (safeMode && (tickLimitLow > tickLimitHigh)) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -1071,6 +1067,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Perform the specified delegation from `msg.sender` to `liquidatee`
         // Works like a transfer, so the liquidator must possess all the tokens they are delegating, resulting in no net supply change
         // If not enough tokens are delegated for the positions of `liquidatee` to be closed, the liquidation will fail
+        // TODO: since all options are closed using the covered flag, we could compute the delegation amounts directly here.
         s_collateralToken0.delegate(msg.sender, liquidatee, delegations.rightSlot());
         s_collateralToken1.delegate(msg.sender, liquidatee, delegations.leftSlot());
 
@@ -1365,6 +1362,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
         }
+    }
+
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    function isSafeMode() internal returns (bool safeMode) {
+        // check if the price has deviated too much recently.
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        uint256 medianData = s_miniMedian;
+        int24 medianTick = (int24(
+            uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+        ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
+
+        // If ticks have recently deviated more than +/- 20%, enforce covered mints
+        if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
+            safeMode = true;
+        }
+
+        return (safeMode);
     }
 
     /*//////////////////////////////////////////////////////////////
