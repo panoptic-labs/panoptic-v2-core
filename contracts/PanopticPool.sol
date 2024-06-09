@@ -1307,6 +1307,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return _checkCrossBalances(account, atTick, positionBalanceArray, portfolioPremium, buffer);
     }
 
+    /// @notice Check whether a the balances of an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
+    /// @param account The account to check solvency for
+    /// @param atTick The tick to check solvency at
+    /// @param positionBalanceArray A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
+    /// @param portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot
+    /// @param buffer The buffer to apply to the collateral requirement
+    /// @return Whether the account is solvent at the given tick
     function _checkCrossBalances(
         address account,
         int24 atTick,
