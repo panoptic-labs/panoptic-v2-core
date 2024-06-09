@@ -937,7 +937,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         )
             if (
                 !_checkCrossBalances(user, currentTick, positionBalanceArray, premia, buffer) ||
-                !_checkCrossBalances(user, slowOracleTick, positionBalanceArray, premia, buffer)
+                !_checkCrossBalances(user, slowOracleTick, positionBalanceArray, premia, buffer) ||
+                !_checkCrossBalances(user, fastOracleTick, positionBalanceArray, premia, buffer)
             ) revert Errors.NotEnoughCollateral();
     }
 
@@ -1051,7 +1052,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 revert Errors.NotMarginCalled();
 
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            // TODO check with currentTick as well, do conservative collateral checks if outside
+            // check with currentTick as well, do conservative collateral checks if outside
             if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
                 if (
                     !_checkCrossBalances(
