@@ -1179,8 +1179,10 @@ contract FuzzHelpers is PropertiesAsserts {
         try this.sfpm_mint_sim() {} catch (bytes memory results) {
             emit LogBytes("r", results);
             assembly ("memory-safe") {
-                results := mload(add(results, 0x04))
+                results := add(results, 0x04)
             }
+
+            emit LogBytes("results", results);
 
             ($collectedByLeg, $totalSwapped) = abi.decode(
                 results,
@@ -1189,7 +1191,7 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function sfpm_mint_sim() public {
+    function sfpm_mint_sim() external {
         hevm.prank(address(panopticPool));
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
             .mintTokenizedPosition(
