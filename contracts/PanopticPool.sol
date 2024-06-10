@@ -1036,8 +1036,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightSigned premia;
+        int24 currentTick;
         {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+            (, currentTick, , , , , ) = s_univ3pool.slot0();
 
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
@@ -1112,6 +1113,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
             // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
             address _liquidatee = liquidatee;
+            int24 _currentTick = currentTick;
             TokenId[] memory _positionIdList = positionIdList;
             int256 deltaBonus0;
             int256 deltaBonus1;
@@ -1122,7 +1124,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 collateralRemaining,
                 s_collateralToken0,
                 s_collateralToken1,
-                Math.getSqrtRatioAtTick(currentTick),
+                Math.getSqrtRatioAtTick(_currentTick),
                 s_settledTokens
             );
 
