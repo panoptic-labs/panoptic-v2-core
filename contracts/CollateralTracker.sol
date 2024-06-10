@@ -1426,7 +1426,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         required += c3;
                     }
                     // cannot require more than the notional value of that position
-                    required = Math.max(required, amountMoved);
+                    required = Math.min(required, amountMoved);
                 }
             }
         }
