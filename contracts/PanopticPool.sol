@@ -1074,7 +1074,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         int256 liquidationBonus0;
         int256 liquidationBonus1;
-        int24 finalTick;
         {
             LeftRightSigned netExchanged;
             LeftRightSigned[4][] memory premiasByLeg;
@@ -1091,8 +1090,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList
             );
 
-            (, finalTick, , , , , ) = s_univ3pool.slot0();
-
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
             (liquidationBonus0, liquidationBonus1, collateralRemaining) = PanopticMath
@@ -1100,7 +1097,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(twapTick),
-                    Math.getSqrtRatioAtTick(finalTick),
+                    Math.getSqrtRatioAtTick(currentTick),
                     netExchanged,
                     premia
                 );
@@ -1116,7 +1113,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
             address _liquidatee = liquidatee;
             TokenId[] memory _positionIdList = positionIdList;
-            int24 _finalTick = finalTick;
             int256 deltaBonus0;
             int256 deltaBonus1;
             (deltaBonus0, deltaBonus1) = PanopticMath.haircutPremia(
@@ -1126,7 +1122,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 collateralRemaining,
                 s_collateralToken0,
                 s_collateralToken1,
-                Math.getSqrtRatioAtTick(_finalTick),
+                Math.getSqrtRatioAtTick(currentTick),
                 s_settledTokens
             );
 
@@ -1156,8 +1152,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             !_checkSolvencyAtTick(
                 msg.sender,
                 positionIdListLiquidator,
-                finalTick,
-                finalTick,
+                currentTick,
+                currentTick,
                 BP_DECREASE_BUFFER
             )
         ) revert Errors.NotEnoughCollateral();
