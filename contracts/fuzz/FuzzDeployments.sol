@@ -293,23 +293,40 @@ contract FuzzDeployments is FuzzHelpers {
 
         $tokenIdActive = userPositions[msg.sender][userPositions[msg.sender].length - 1];
 
+        $netTokenTransfers0 = 0;
+        $netTokenTransfers1 = 0;
+
+        // and check if should revert due to 0 liquidity
         write_mintburn_transfer_amts();
 
         // assertWithMsg(false, "yahoo(2)!");
 
-        bool shouldRevert = $netTokenTransfers0 > int256(USDC.balanceOf(address(panopticPool))) ||
-            $netTokenTransfers1 > int256(WETH.balanceOf(address(panopticPool)));
+        // pool has insufficient tokens to mint the option
+        $shouldRevert = $shouldRevert = $shouldRevert
+            ? $shouldRevert
+            : $netTokenTransfers0 > int256(USDC.balanceOf(address(panopticPool))) ||
+                $netTokenTransfers1 > int256(WETH.balanceOf(address(panopticPool)));
+
+        // position has already been minted
+        for (uint256 i = 0; i < userPositions[msg.sender].length - 1; ++i) {
+            $shouldRevert = $shouldRevert
+                ? $shouldRevert
+                : TokenId.unwrap($tokenIdActive) == TokenId.unwrap(userPositions[msg.sender][i]);
+        }
 
         emit LogInt256("Net token transfers 0", $netTokenTransfers0);
         emit LogInt256("Net token transfers 1", $netTokenTransfers1);
         emit LogInt256("pool balance 0", int256(USDC.balanceOf(address(panopticPool))));
         emit LogInt256("pool balance 1", int256(WETH.balanceOf(address(panopticPool))));
 
+        quote_sfpm_mint();
+        emit LogInt256("$totalSwapped.rs", $totalSwapped.rightSlot());
+        emit LogInt256("$totalSwapped.ls", $totalSwapped.leftSlot());
         hevm.prank(msg.sender);
         try
             panopticPool.mintOptions(
                 userPositions[msg.sender],
-                uint128(positionSize),
+                uint128($positionSizeActive),
                 type(uint64).max,
                 TickMath.MAX_TICK,
                 TickMath.MIN_TICK
@@ -324,7 +341,7 @@ contract FuzzDeployments is FuzzHelpers {
                     !distributions[0] &&
                     !distributions[1] &&
                     $numLegs == 1 &&
-                    !shouldRevert &&
+                    !$shouldRevert &&
                     bytes4(reason) != Errors.TransferFailed.selector &&
                     keccak256(reason) !=
                     keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))),

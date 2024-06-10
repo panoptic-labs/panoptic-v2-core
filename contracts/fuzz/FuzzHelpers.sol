@@ -242,6 +242,13 @@ contract FuzzHelpers is PropertiesAsserts {
         bytes
     );
 
+    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned);
+
+    struct SFPMMintResults {
+        LeftRightUnsigned[4] collectedByLeg;
+        LeftRightSigned totalSwapped;
+    }
+
     struct BurnSimulationResults {
         uint256 delegated0;
         uint256 delegated1;
@@ -314,6 +321,9 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256[4] $riskPartners;
     uint256[4] $isLongs;
 
+    LeftRightUnsigned[4] $collectedByLeg;
+    LeftRightSigned $totalSwapped;
+
     TokenId $tokenIdActive;
     uint128 $positionSizeActive;
 
@@ -321,6 +331,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     int256 $netTokenTransfers0;
     int256 $netTokenTransfers1;
+
+    bool $shouldRevert;
 
     int24 $fastOracleTick;
 
@@ -1139,10 +1151,19 @@ contract FuzzHelpers is PropertiesAsserts {
                 $positionSizeActive
             );
 
+            emit LogInt256("liquidityChunk.tickLower()", liquidityChunk.tickLower());
+            emit LogInt256("liquidityChunk.tickUpper()", liquidityChunk.tickUpper());
+            emit LogUint256("liquidityChunk.liquidity()", liquidityChunk.liquidity());
+
             (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
                 currentTick,
                 liquidityChunk
             );
+
+            emit LogUint256("amount0", amount0);
+            emit LogUint256("amount1", amount1);
+
+            $shouldRevert = liquidityChunk.liquidity() == 0;
 
             if ($tokenIdActive.isLong(i) == 0) {
                 $netTokenTransfers0 += int256(amount0);
@@ -1152,6 +1173,33 @@ contract FuzzHelpers is PropertiesAsserts {
                 $netTokenTransfers0 -= int256(amount1);
             }
         }
+    }
+
+    function quote_sfpm_mint() internal {
+        try this.sfpm_mint_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := mload(add(results, 0x04))
+            }
+
+            ($collectedByLeg, $totalSwapped) = abi.decode(
+                results,
+                (LeftRightUnsigned[4], LeftRightSigned)
+            );
+        }
+    }
+
+    function sfpm_mint_sim() public {
+        hevm.prank(address(panopticPool));
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+            .mintTokenizedPosition(
+                $tokenIdActive,
+                $positionSizeActive,
+                TickMath.MAX_TICK,
+                TickMath.MIN_TICK
+            );
+
+        revert SFPMMintResError(collectedByLeg, totalSwapped);
     }
 
     ////////////////////////////////////////////////////
