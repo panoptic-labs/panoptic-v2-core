@@ -872,17 +872,61 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
-        IUniswapV3Pool _univ3pool = s_univ3pool;
         (
-            ,
             int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            uint256 _medianData
+        ) = _getOracleTicks();
 
-        ) = _univ3pool.slot0();
-        int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        medianData = _medianData;
+
+        uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
+        LeftRightSigned premia;
+        {
+            (premia, positionBalanceArray) = _calculateAccumulatedPremia(
+                user,
+                positionIdList,
+                COMPUTE_ALL_PREMIA,
+                ONLY_AVAILABLE_PREMIUM,
+                currentTick
+            );
+
+            bool solventAtFast = _checkCrossBalances(
+                user,
+                fastOracleTick,
+                positionBalanceArray,
+                premia,
+                buffer
+            );
+            if (!solventAtFast) revert Errors.NotEnoughCollateral();
+        }
+        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
+        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
+        if (
+            Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA ||
+            Math.abs(int256(fastOracleTick) - currentTick) > MAX_SLOW_FAST_DELTA ||
+            Math.abs(currentTick - slowOracleTick) > MAX_SLOW_FAST_DELTA
+        )
+            if (
+                !_checkCrossBalances(user, currentTick, positionBalanceArray, premia, buffer) ||
+                !_checkCrossBalances(user, slowOracleTick, positionBalanceArray, premia, buffer) ||
+                !_checkCrossBalances(user, fastOracleTick, positionBalanceArray, premia, buffer)
+            ) revert Errors.NotEnoughCollateral();
+    }
+
+    function _getOracleTicks()
+        internal
+        view
+        returns (int24 currentTick, int24 fastOracleTick, int24 slowOracleTick, uint256 medianData)
+    {
+        IUniswapV3Pool _univ3pool = s_univ3pool;
+        uint16 observationIndex;
+        uint16 observationCardinality;
+
+        (, currentTick, observationIndex, observationCardinality, , , ) = _univ3pool.slot0();
+
+        fastOracleTick = PanopticMath.computeMedianObservedPrice(
             _univ3pool,
             observationIndex,
             observationCardinality,
@@ -890,7 +934,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             FAST_ORACLE_PERIOD
         );
 
-        int24 slowOracleTick;
         if (SLOW_ORACLE_UNISWAP_MODE) {
             slowOracleTick = PanopticMath.computeMedianObservedPrice(
                 _univ3pool,
@@ -908,38 +951,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 _univ3pool
             );
         }
-
-        uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
-        LeftRightSigned premia;
-        (premia, positionBalanceArray) = _calculateAccumulatedPremia(
-            user,
-            positionIdList,
-            COMPUTE_ALL_PREMIA,
-            ONLY_AVAILABLE_PREMIUM,
-            currentTick
-        );
-
-        bool solventAtFast = _checkCrossBalances(
-            user,
-            fastOracleTick,
-            positionBalanceArray,
-            premia,
-            buffer
-        );
-        if (!solventAtFast) revert Errors.NotEnoughCollateral();
-
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
-        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
-        if (
-            Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA ||
-            Math.abs(int256(fastOracleTick) - currentTick) > MAX_SLOW_FAST_DELTA ||
-            Math.abs(currentTick - slowOracleTick) > MAX_SLOW_FAST_DELTA
-        )
-            if (
-                !_checkCrossBalances(user, currentTick, positionBalanceArray, premia, buffer) ||
-                !_checkCrossBalances(user, slowOracleTick, positionBalanceArray, premia, buffer) ||
-                !_checkCrossBalances(user, fastOracleTick, positionBalanceArray, premia, buffer)
-            ) revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns and handles the exercise of options.
@@ -1049,7 +1060,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick
             );
 
-            if (_checkCrossBalances(liquidatee, twapTick, positionBalanceArray, premia, NO_BUFFER))
+            tokenData0 = s_collateralToken0.getAccountMarginDetails(
+                liquidatee,
+                twapTick,
+                positionBalanceArray,
+                premia.rightSlot()
+            );
+            tokenData1 = s_collateralToken1.getAccountMarginDetails(
+                liquidatee,
+                twapTick,
+                positionBalanceArray,
+                premia.leftSlot()
+            );
+
+            if (_checkSolvencyCross(tokenData0, tokenData1, twapTick, NO_BUFFER))
                 revert Errors.NotMarginCalled();
 
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
@@ -1333,6 +1357,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             portfolioPremium.leftSlot()
         );
 
+        return _checkSolvencyCross(tokenData0, tokenData1, atTick, buffer);
+    }
+
+    function _checkSolvencyCross(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        int24 atTick,
+        uint256 buffer
+    ) internal view returns (bool) {
         (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
             tokenData0,
             tokenData1,
