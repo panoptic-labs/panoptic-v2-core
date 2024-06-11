@@ -574,9 +574,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets -= uint128(assets);
-        }
+        s_poolAssets -= uint128(assets);
 
         // reverts if account is not solvent/eligible to withdraw
         s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
