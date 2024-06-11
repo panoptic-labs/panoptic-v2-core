@@ -1159,7 +1159,14 @@ contract FuzzDeployments is FuzzHelpers {
                 }
             }
 
-            try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient, new TokenId[](0)) {
+            try
+                collToken.withdraw(
+                    ct_s_poolAssets + amount_over,
+                    owner,
+                    recipient,
+                    new TokenId[](0)
+                )
+            {
                 assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
             } catch {
                 if (
@@ -1194,7 +1201,10 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(owner);
             // every other attempt, make it a non-owner call:
             if (block.number % 2 == 0) {
-                collToken.approve(recipient, collToken.convertToShares(ct_s_poolAssets) + amount_over);
+                collToken.approve(
+                    recipient,
+                    collToken.convertToShares(ct_s_poolAssets) + amount_over
+                );
                 hevm.prank(recipient);
             }
 
@@ -1264,7 +1274,9 @@ contract FuzzDeployments is FuzzHelpers {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
 
-            try collToken.withdraw(owners_assets + amount_over, owner, recipient, new TokenId[](0)) {
+            try
+                collToken.withdraw(owners_assets + amount_over, owner, recipient, new TokenId[](0))
+            {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
         } else {
@@ -1318,12 +1330,17 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function invariant_never_allow_pool_utilisation_over_100p() public {
-        (,,int256 collToken0PU) = collToken0.getPoolData();
-        assertWithMsg(collToken0PU <= 10000, "collToken0 pool utilisation exceeded 10k bps <=> 100%");
+        (, , int256 collToken0PU) = collToken0.getPoolData();
+        assertWithMsg(
+            collToken0PU <= 10000,
+            "collToken0 pool utilisation exceeded 10k bps <=> 100%"
+        );
 
-
-        (,,int256 collToken1PU) = collToken1.getPoolData();
-        assertWithMsg(collToken1PU <= 10000, "collToken1 pool utilisation exceeded 10k bps <=> 100%");
+        (, , int256 collToken1PU) = collToken1.getPoolData();
+        assertWithMsg(
+            collToken1PU <= 10000,
+            "collToken1 pool utilisation exceeded 10k bps <=> 100%"
+        );
     }
 
     /////////////////////////////////////////////////////////////
