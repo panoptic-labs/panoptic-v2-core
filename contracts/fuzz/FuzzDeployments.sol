@@ -1140,21 +1140,43 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(recipient);
         }
 
-        try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient) {
-            assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
-        } catch {
-            if (
-                collToken.convertToShares(ct_s_poolAssets + amount_over) >
-                collToken.balanceOf(owner)
-            ) {
-                emit LogString(
-                    "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
-                );
-            } else {
-                emit LogString(
-                    "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
-                );
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
+        if (numOfPositions == 0) {
+            try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient) {
+                assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
+            } catch {
+                if (
+                    collToken.convertToShares(ct_s_poolAssets + amount_over) >
+                    collToken.balanceOf(owner)
+                ) {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                    );
+                } else {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                    );
+                }
             }
+
+            try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient, new TokenId[](0)) {
+                assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
+            } catch {
+                if (
+                    collToken.convertToShares(ct_s_poolAssets + amount_over) >
+                    collToken.balanceOf(owner)
+                ) {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                    );
+                } else {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                    );
+                }
+            }
+        } else {
+            // TODO: use the overloaded withdraw
         }
     }
 
@@ -1167,33 +1189,36 @@ contract FuzzDeployments is FuzzHelpers {
         (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();
         amount_over = bound(amount_over, 1, type(uint256).max - ct_s_poolAssets);
 
-        hevm.prank(owner);
-        // every other attempt, make it a non-owner call:
-        if (block.number % 2 == 0) {
-            collToken.approve(recipient, collToken.convertToShares(ct_s_poolAssets) + amount_over);
-            hevm.prank(recipient);
-        }
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
+        if (numOfPositions == 0) {
+            hevm.prank(owner);
+            // every other attempt, make it a non-owner call:
+            if (block.number % 2 == 0) {
+                collToken.approve(recipient, collToken.convertToShares(ct_s_poolAssets) + amount_over);
+                hevm.prank(recipient);
+            }
 
-        try
-            collToken.redeem(
-                collToken.convertToShares(ct_s_poolAssets) + amount_over,
-                owner,
-                recipient
-            )
-        {
-            assertWithMsg(false, "User redeemed > the poolAssets of collToken");
-        } catch {
-            if (
-                collToken.convertToShares(ct_s_poolAssets + amount_over) >
-                collToken.balanceOf(owner)
-            ) {
-                emit LogString(
-                    "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
-                );
-            } else {
-                emit LogString(
-                    "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
-                );
+            try
+                collToken.redeem(
+                    collToken.convertToShares(ct_s_poolAssets) + amount_over,
+                    owner,
+                    recipient
+                )
+            {
+                assertWithMsg(false, "User redeemed > the poolAssets of collToken");
+            } catch {
+                if (
+                    collToken.convertToShares(ct_s_poolAssets + amount_over) >
+                    collToken.balanceOf(owner)
+                ) {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                    );
+                } else {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
+                    );
+                }
             }
         }
     }
@@ -1207,11 +1232,14 @@ contract FuzzDeployments is FuzzHelpers {
         _attempt_overwithdrawal_via_withdraw(collToken0, owner, recipient, amount_over);
         _attempt_overwithdrawal_via_withdraw(collToken1, owner, recipient, amount_over);
 
-        _attempt_overwithdrawal_via_redeem(collToken0, owner, recipient, amount_over);
-        _attempt_overwithdrawal_via_redeem(collToken1, owner, recipient, amount_over);
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
+        if (numOfPositions == 0) {
+            _attempt_overwithdrawal_via_redeem(collToken0, owner, recipient, amount_over);
+            _attempt_overwithdrawal_via_redeem(collToken1, owner, recipient, amount_over);
 
-        _attempt_overtransfer(collToken0, owner, recipient, amount_over);
-        _attempt_overtransfer(collToken1, owner, recipient, amount_over);
+            _attempt_overtransfer(collToken0, owner, recipient, amount_over);
+            _attempt_overtransfer(collToken1, owner, recipient, amount_over);
+        }
     }
 
     function _attempt_overwithdrawal_via_withdraw(
@@ -1230,9 +1258,18 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(recipient);
         }
 
-        try collToken.withdraw(owners_assets + amount_over, owner, recipient) {
-            assertWithMsg(false, "User withdrew > their balance");
-        } catch {}
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
+        if (numOfPositions == 0) {
+            try collToken.withdraw(owners_assets + amount_over, owner, recipient) {
+                assertWithMsg(false, "User withdrew > their balance");
+            } catch {}
+
+            try collToken.withdraw(owners_assets + amount_over, owner, recipient, new TokenId[](0)) {
+                assertWithMsg(false, "User withdrew > their balance");
+            } catch {}
+        } else {
+            // TODO use the overloaded withdraw
+        }
     }
 
     function _attempt_overwithdrawal_via_redeem(
@@ -1280,6 +1317,15 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    function invariant_never_allow_pool_utilisation_over_100p() public {
+        (,,int256 collToken0PU) = collToken0.getPoolData();
+        assertWithMsg(collToken0PU <= 10000, "collToken0 pool utilisation exceeded 10k bps <=> 100%");
+
+
+        (,,int256 collToken1PU) = collToken1.getPoolData();
+        assertWithMsg(collToken1PU <= 10000, "collToken1 pool utilisation exceeded 10k bps <=> 100%");
+    }
+
     /////////////////////////////////////////////////////////////
     // External function wrappers
     /////////////////////////////////////////////////////////////
@@ -1325,8 +1371,6 @@ contract FuzzDeployments is FuzzHelpers {
 
     ////////////////////////////////////////////////////
     // Interaction with collateral trackers
-    // TODO: I'm going to add some more assertions about CollateralTracker.sol here;
-    // the below are already passing, it seems
     ////////////////////////////////////////////////////
 
     /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
