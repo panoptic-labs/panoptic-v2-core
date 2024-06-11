@@ -908,57 +908,61 @@ contract FuzzDeployments is FuzzHelpers {
     // System Invariants
     /////////////////////////////////////////////////////////////
 
-    /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open positions is zero
-    /// @custom:property PANO-SYS-002 Users can't withdraw collateral with open positions
+    /// @custom:property PANO-SYS-001 The max withdrawal or redemption amount of users with open positions is zero, excluding the overloaded withdraw that takes in a positionId list
+    /// @custom:property PANO-SYS-002 Users can't withdraw or redeem collateral with open positions, excluding the overloaded withdraw that takes in a positionId list
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal_via_withdrawal(uint256 fuzzNumerator, uint256 fuzzDenominator, address receiver) public {
-        // If user has positions open, they cannot remove collateral
+    function invariant_collateral_removal_via_withdrawal_or_redemption(uint256 fuzzNumerator, uint256 fuzzDenominator, address recipient) public {
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
         emit LogUint256("Positions opened for user", numOfPositions);
 
         if (numOfPositions > 0) {
-            uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-            uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
-            emit LogUint256("Balance in token0", bal0);
-            emit LogUint256("Balance in token1", bal1);
+            uint256 shareBal0 = collToken0.balanceOf(msg.sender);
+            uint256 shareBal1 = collToken1.balanceOf(msg.sender);
+            uint assetBal0 = collToken0.convertToAssets(shareBal0);
+            uint assetBal1 = collToken1.convertToAssets(shareBal1);
 
-            if (fuzzNumerator > fuzzDenominator) {
-                (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
-            }
+            assertWithMsg(
+                collToken0.maxWithdraw(msg.sender) == 0 && collToken1.maxWithdraw(msg.sender) == 0,
+                "It is possible to withdraw assets when the user has open positions"
+            );
+            assertWithMsg(
+                collToken0.maxRedeem(msg.sender) == 0 && collToken1.maxRedeem(msg.sender) == 0,
+                "It is possible to redeem assets when the user has open positions"
+            );
+
+            // fuzz a fraction of the total balance to try and withdraw
+            if (fuzzNumerator > fuzzDenominator) (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
+
+            // attempt a full withdrawal every 3rd block, and a self-withdrawal every 5th block, to ensure we're testing those cases
+            if (block.number % 3 == 0) fuzzNumerator = fuzzDenominator;
+            if (block.number % 5 == 0) recipient = msg.sender;
+
             // TODO: i don't think we have to care about overflows here with how bal0 / bal1 get generated, but check that.
-            uint256 fuzzedAmtToWithdraw0 = (bal0 * fuzzNumerator) / fuzzDenominator;
-            uint256 fuzzedAmtToWithdraw1 = (bal1 * fuzzNumerator) / fuzzDenominator;
+            uint256 fuzzedSharesToRedeem0 = (shareBal0 * fuzzNumerator) / fuzzDenominator;
+            uint256 fuzzedSharesToRedeem1 = (shareBal1 * fuzzNumerator) / fuzzDenominator;
 
-            assertWithMsg(
-                collToken0.maxWithdraw(msg.sender) == 0,
-                "It is possible to withdraw assets when the user has open positions"
-            );
-            assertWithMsg(
-                collToken1.maxWithdraw(msg.sender) == 0,
-                "It is possible to withdraw assets when the user has open positions"
-            );
+            uint256 fuzzedAssetsToWithdraw0 = (assetBal0 * fuzzNumerator) / fuzzDenominator;
+            uint256 fuzzedAssetsToWithdraw1 = (assetBal1 * fuzzNumerator) / fuzzDenominator;
 
-            // attempt a full withdrawal every 4th block, to ensure we're testing that case too
-            if (block.number % 4 == 0) {
-                fuzzedAmtToWithdraw0 = bal0;
-                fuzzedAmtToWithdraw1 = bal1;
-            }
-
-            // withdraw to self every 4th block, in case that makes a difference:
-            if (block.number % 4 == 0) {
-                receiver = msg.sender;
-            }
-
-            if (fuzzedAmtToWithdraw0 > 0) {
-                try collToken0.withdraw(fuzzedAmtToWithdraw0, receiver, msg.sender) {
+            if (fuzzedAssetsToWithdraw0 > 0) {
+                try collToken0.redeem(fuzzedSharesToRedeem0, recipient, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
-                } catch {}
-            }
-            if (fuzzedAmtToWithdraw1 > 0) {
-                try collToken1.withdraw(fuzzedAmtToWithdraw1, receiver, msg.sender) {
+                } catch { }
+
+                try collToken0.withdraw(fuzzedAssetsToWithdraw0, recipient, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
-                } catch {}
+                } catch { }
+            }
+
+            if (fuzzedAssetsToWithdraw1 > 0) {
+                try collToken1.redeem(fuzzedSharesToRedeem1, recipient, msg.sender) {
+                    assertWithMsg(false, "Collateral could be removed with open positions");
+                } catch { }
+
+                try collToken1.withdraw(fuzzedAssetsToWithdraw1, recipient, msg.sender) {
+                    assertWithMsg(false, "Collateral could be removed with open positions");
+                } catch { }
             }
         }
     }
@@ -967,44 +971,36 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-004 Users can't transfer collateral with open positions
     /// @custom:precondition The user has a position open
     function invariant_collateral_removal_via_transfer(uint256 fuzzNumerator, uint256 fuzzDenominator, address recipient) public {
-        // If user has positions open, they cannot remove collateral
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
         emit LogUint256("Positions opened for user", numOfPositions);
 
         if (numOfPositions > 0) {
-            uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-            uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
-            emit LogUint256("Balance in token0", bal0);
-            emit LogUint256("Balance in token1", bal1);
+            // NOTE: transferring the actual balance of shares, not a converted amount to assets
+            uint256 bal0 = collToken0.balanceOf(msg.sender);
+            uint256 bal1 = collToken1.balanceOf(msg.sender);
 
-            if (fuzzNumerator > fuzzDenominator) {
-                (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
-            }
+            if (fuzzNumerator > fuzzDenominator) (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
             // TODO: i don't think we have to care about overflows here with how bal0 / bal1 get generated, but check that.
             uint256 fuzzedAmtToTransfer0 = (bal0 * fuzzNumerator) / fuzzDenominator;
             uint256 fuzzedAmtToTransfer1 = (bal1 * fuzzNumerator) / fuzzDenominator;
 
-            assertWithMsg(
-                collToken0.allowance(msg.sender, recipient) == 0,
-                "It is possible to transfer collateral assets when the user has open positions"
-            );
-            assertWithMsg(
-                collToken1.allowance(msg.sender, recipient) == 0,
-                "It is possible to transfer collateral assets when the user has open positions"
-            );
-
             // attempt a full withdrawal every 4th block, to ensure we're testing that case too
-            if (block.number % 4 == 0) {
-                fuzzedAmtToTransfer0 = bal0;
-                fuzzedAmtToTransfer1 = bal1;
-            }
+            if (block.number % 4 == 0) (fuzzedAmtToTransfer0, fuzzedAmtToTransfer1) = (bal0, bal1);
 
             if (fuzzedAmtToTransfer0 > 0) {
                 try collToken0.transfer(recipient, fuzzedAmtToTransfer0) {
                     assertWithMsg(
                         false,
                         "Collateral could be removed via transfer with open positions"
+                    );
+                } catch {}
+                collToken0.approve(recipient, fuzzedAmtToTransfer0);
+                hevm.prank(recipient);
+                try collToken0.transferFrom(msg.sender, recipient, fuzzedAmtToTransfer0) {
+                    assertWithMsg(
+                        false,
+                        "Collateral could be removed via transferFrom with open positions"
                     );
                 } catch {}
             }
@@ -1015,11 +1011,24 @@ contract FuzzDeployments is FuzzHelpers {
                         "Collateral could be removed via transfer with open positions"
                     );
                 } catch {}
+                collToken1.approve(recipient, fuzzedAmtToTransfer1);
+                hevm.prank(recipient);
+                try collToken1.transferFrom(msg.sender, recipient, fuzzedAmtToTransfer1) {
+                    assertWithMsg(
+                        false,
+                        "Collateral could be removed via transferFrom with open positions"
+                    );
+                } catch {}
             }
         }
     }
 
-    /// @custom:property PANO-SYS-003 Users can't have an open position but no collateral
+    /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
+    function invariant_collateral_overremoval_with_open_positions() public {
+        // TODO
+    }
+
+    /// @custom:property PANO-SYS-006 Users can't have an open position but no collateral
     /// @custom:precondition The user has a position open
     function invariant_collateral_for_positions() public {
         // If user has positions open, the collateral must be greater than zero
@@ -1056,7 +1065,7 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    /// @custom:property PANO-SYS-004 The owed premia is not less than the available premia
+    /// @custom:property PANO-SYS-007 The owed premia is not less than the available premia
     /// @custom:precondition The user has a position open
     function invariant_unsettled_premium() public {
         // Owed premia
@@ -1075,6 +1084,138 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("Sender:", msg.sender);
         assertWithMsg(p0o >= p0a, "Token 0 owed premia is less than available premia");
         assertWithMsg(p1o >= p1a, "Token 1 owed premia is less than available premia");
+    }
+
+    /// @custom:property PANO-SYS-008 The Collateral Tracker's internal accounting always shows it has less than or equal to its true balance of the underlying token
+    function invariant_never_overcount_underlying_token() public {
+        (uint256 ct0_s_poolAssets,,) = collToken0.getPoolData();
+        assertWithMsg(
+            ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)),
+            "CollateralTracker0 has overcounted its token0 assets"
+        );
+
+        (uint256 ct1_s_poolAssets,,) = collToken0.getPoolData();
+        assertWithMsg(
+            ct1_s_poolAssets <= IERC20(collToken1.asset()).balanceOf(address(panopticPool)),
+            "CollateralTracker1 has overcounted its token1 assets"
+        );
+    }
+
+    /// @custom:property PANO-SYS-009 No user can ever withdraw greater than the Collateral Tracker's internally-accounted poolAssets
+    function invariant_no_withdrawal_gt_pool_assets(address owner, address recipient, uint256 amount_over) public {
+        _attempt_withdrawal_gt_pool_assets_via_withdraw(collToken0, owner, recipient, amount_over);
+        _attempt_withdrawal_gt_pool_assets_via_withdraw(collToken1, owner, recipient, amount_over);
+
+        _attempt_withdrawal_gt_pool_assets_via_redeem(collToken0, owner, recipient, amount_over);
+        _attempt_withdrawal_gt_pool_assets_via_redeem(collToken1, owner, recipient, amount_over);
+    }
+
+    function _attempt_withdrawal_gt_pool_assets_via_withdraw(CollateralTracker collToken, address owner, address recipient, uint256 amount_over) internal {
+        (uint256 ct_s_poolAssets,,) = collToken.getPoolData();
+        amount_over = bound(amount_over, 1, type(uint256).max - ct_s_poolAssets);
+
+        hevm.prank(owner);
+        // every other attempt, make it a non-owner call:
+        if (block.number % 2 == 0) {
+            collToken.approve(recipient, collToken.convertToShares(ct_s_poolAssets + amount_over));
+            hevm.prank(recipient);
+        }
+
+        try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient) {
+            assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
+        } catch {
+            if (collToken.convertToShares(ct_s_poolAssets + amount_over) > collToken.balanceOf(owner)) {
+                emit LogString("invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal");
+            } else {
+                emit LogString("invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets");
+            }
+        }
+    }
+
+    function _attempt_withdrawal_gt_pool_assets_via_redeem(CollateralTracker collToken, address owner, address recipient, uint256 amount_over) internal {
+        (uint256 ct_s_poolAssets,,) = collToken.getPoolData();
+        amount_over = bound(amount_over, 1, type(uint256).max - ct_s_poolAssets);
+
+        hevm.prank(owner);
+        // every other attempt, make it a non-owner call:
+        if (block.number % 2 == 0) {
+            collToken.approve(recipient, collToken.convertToShares(ct_s_poolAssets) + amount_over);
+            hevm.prank(recipient);
+        }
+
+        try collToken.redeem(collToken.convertToShares(ct_s_poolAssets) + amount_over, owner, recipient) {
+            assertWithMsg(false, "User redeemed > the poolAssets of collToken");
+        } catch {
+            if (collToken.convertToShares(ct_s_poolAssets + amount_over) > collToken.balanceOf(owner)) {
+                emit LogString("invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal");
+            } else {
+                emit LogString("invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)");
+            }
+        }
+    }
+
+    /// @custom:property PANO-SYS-010 No user can ever withdraw, redeem, nor transfer an amount greater than their own balance
+    function invariant_never_allow_overremoval(address owner, address recipient, uint256 amount_over) public {
+        _attempt_overwithdrawal_via_withdraw(collToken0, owner, recipient, amount_over);
+        _attempt_overwithdrawal_via_withdraw(collToken1, owner, recipient, amount_over);
+
+        _attempt_overwithdrawal_via_redeem(collToken0, owner, recipient, amount_over);
+        _attempt_overwithdrawal_via_redeem(collToken1, owner, recipient, amount_over);
+
+        _attempt_overtransfer(collToken0, owner, recipient, amount_over);
+        _attempt_overtransfer(collToken1, owner, recipient, amount_over);
+    }
+
+    function _attempt_overwithdrawal_via_withdraw(CollateralTracker collToken, address owner, address recipient, uint256 amount_over) internal {
+        uint256 owners_assets = collToken.convertToAssets(collToken.balanceOf(owner));
+        amount_over = bound(amount_over, 1, type(uint256).max - owners_assets);
+
+        hevm.prank(owner);
+        // every other attempt, make it a non-owner call:
+        if (block.number % 2 == 0) {
+            collToken.approve(recipient, collToken.convertToShares(owners_assets) + amount_over);
+            hevm.prank(recipient);
+        }
+
+        try collToken.withdraw(owners_assets + amount_over, owner, recipient) {
+            assertWithMsg(false, "User withdrew > their balance");
+        } catch { }
+    }
+
+    function _attempt_overwithdrawal_via_redeem(CollateralTracker collToken, address owner, address recipient, uint256 amount_over) internal {
+        uint256 owners_shares = collToken.balanceOf(owner);
+        amount_over = bound(amount_over, 1, type(uint256).max - owners_shares);
+
+        hevm.prank(owner);
+        // every other attempt, make it a non-owner call:
+        if (block.number % 2 == 0) {
+            collToken.approve(recipient, owners_shares + amount_over);
+            hevm.prank(recipient);
+        }
+
+        try collToken.redeem(owners_shares + amount_over, owner, recipient) {
+            assertWithMsg(false, "User redeemed > their balance");
+        } catch { }
+    }
+
+    function _attempt_overtransfer(CollateralTracker collToken, address owner, address recipient, uint256 amount_over) internal {
+        uint256 owners_shares = collToken.balanceOf(owner);
+        amount_over = bound(amount_over, 1, type(uint256).max - owners_shares);
+        hevm.prank(owner);
+        // every other attempt, make it a owner call:
+        if (block.number % 2 == 0) {
+            try collToken.transfer(recipient, owners_shares + amount_over) {
+                assertWithMsg(false, "User transferred > their balance");
+            } catch { }
+        // every other attempt, make it a non-owner call:
+        } else {
+            collToken.approve(recipient, owners_shares + amount_over);
+            hevm.prank(recipient);
+            try collToken.transferFrom(owner, recipient, owners_shares + amount_over) {
+                assertWithMsg(false, "User transferFromed > their balance");
+            } catch { }
+        }
+
     }
 
     /////////////////////////////////////////////////////////////
@@ -1182,67 +1323,127 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-WIT-001 The Panoptic pool balance must decrease by the withdrawn amount when a withdrawal is made
     /// @custom:property PANO-WIT-002 The user balance must increase by the withdrawn amount when a withdrawal is made
-    function withdraw_from_ct(bool token0, uint256 amount) public {
-        address withdrawer = msg.sender;
-
-        uint256 bal0 = IERC20(collToken0.asset()).balanceOf(withdrawer);
-        uint256 bal1 = IERC20(collToken1.asset()).balanceOf(withdrawer);
-
-        uint256 pool_bal0 = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
-        uint256 pool_bal1 = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
-
-        if (token0) {
-            amount = bound(amount, 1, collToken0.convertToAssets(collToken0.balanceOf(withdrawer)));
-            hevm.prank(withdrawer);
-            // TODO
-            /* try collToken0.withdraw(amount, withdrawer, withdrawer) {
-                assertWithMsg(withdrawer has a balance += amount, "Could not withdraw full assets");
-            } catch (bytes memory reason) {
-
-            } */
-
-            uint256 pool_bal0_after = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
-            assertWithMsg(
-                pool_bal0 - pool_bal0_after == amount,
-                "Pool token0 balance incorrect after withdrawal"
-            );
-            uint256 bal0_after = IERC20(collToken0.asset()).balanceOf(withdrawer);
-            assertWithMsg(
-                bal0_after - bal0 == amount,
-                "User token0 balance incorrect after deposit"
-            );
+    function withdraw_from_ct(bool token0, bool via_redeem, uint256 shares, address withdrawer) public {
+        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+        if (numOfPositions > 0) {
+            if (token0) {
+                emit LogString("Attempting to withdraw token0 with open positions");
+                _withdraw_with_open_positions_and_check(collToken0, shares, withdrawer);
+            } else {
+                emit LogString("Attempting to withdraw token1 with open positions");
+                _withdraw_with_open_positions_and_check(collToken1, shares, withdrawer);
+            }
         } else {
-            amount = bound(amount, 1, collToken1.convertToAssets(collToken1.balanceOf(withdrawer)));
-            hevm.prank(withdrawer);
-            // TODO
-            /* try collToken1.withdraw(amount, withdrawer, withdrawer) {
-                assertWithMsg(withdrawer has a balance += amount, "Could not withdraw full assets");
-            } catch (bytes memory reason) {
-
-            } */
-
-            uint256 pool_bal1_after = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
-            assertWithMsg(
-                pool_bal1 - pool_bal1_after == amount,
-                "Pool token1 balance incorrect after withdrawal"
-            );
-            uint256 bal1_after = IERC20(collToken1.asset()).balanceOf(withdrawer);
-            assertWithMsg(
-                bal1_after - bal1 == amount,
-                "User token0 balance incorrect after deposit"
-            );
+            if (token0) {
+                emit LogString("Attempting to withdraw/redeem token0 without open positions");
+                _regular_withdraw_and_check(collToken0, via_redeem, shares, withdrawer);
+            } else {
+                emit LogString("Attempting to withdraw/redeem token1 without open positions");
+                _regular_withdraw_and_check(collToken1, via_redeem, shares, withdrawer);
+            }
         }
     }
 
-    function redeem_from_ct(bool token0, uint256 amount) public {
-        if (token0) {
-            amount = bound(amount, 1, collToken0.balanceOf(msg.sender));
-            hevm.prank(msg.sender);
-            collToken0.redeem(amount, msg.sender, msg.sender);
+    function _regular_withdraw_and_check(CollateralTracker collToken, bool via_redeem, uint256 shares, address withdrawer) internal {
+        uint256 withdrawer_assets_before = IERC20(collToken.asset()).balanceOf(withdrawer);
+        uint256 pool_assets_before = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 withdrawer_shares_before = collToken.balanceOf(withdrawer);
+
+        uint256 shares_to_withdraw = bound(shares, 1, collToken.balanceOf(withdrawer));
+        uint256 assets_to_withdraw = collToken.convertToAssets(shares_to_withdraw);
+
+        hevm.prank(withdrawer);
+        if (via_redeem) {
+            try collToken.redeem(shares_to_withdraw, withdrawer, withdrawer) {
+                uint256 pool_assets_after = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+                uint256 withdrawer_assets_after = IERC20(collToken.asset()).balanceOf(withdrawer);
+                uint256 withdrawer_shares_after = collToken.balanceOf(withdrawer);
+                assertWithMsg(pool_assets_before - pool_assets_after == assets_to_withdraw, "Pool asset balance incorrect after redemption");
+                assertWithMsg(withdrawer_assets_after - withdrawer_assets_before == assets_to_withdraw, "User balance incorrect after deposit");
+                assertWithMsg(withdrawer_shares_after - withdrawer_shares_before == shares_to_withdraw, "User share balance incorrect after redemption");
+            } catch { }
         } else {
-            amount = bound(amount, 1, collToken1.balanceOf(msg.sender));
-            hevm.prank(msg.sender);
-            collToken1.redeem(amount, msg.sender, msg.sender);
+            try collToken.withdraw(assets_to_withdraw, withdrawer, withdrawer) {
+                uint256 pool_assets_after = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+                uint256 withdrawer_assets_after = IERC20(collToken.asset()).balanceOf(withdrawer);
+                uint256 withdrawer_shares_after = collToken.balanceOf(withdrawer);
+                assertWithMsg(pool_assets_before - pool_assets_after == assets_to_withdraw, "Pool asset balance incorrect after redemption");
+                assertWithMsg(withdrawer_assets_after - withdrawer_assets_before == assets_to_withdraw, "User balance incorrect after deposit");
+                assertWithMsg(withdrawer_shares_after - withdrawer_shares_before == shares_to_withdraw, "User share balance incorrect after redemption");
+            } catch { }
+        }
+    }
+
+    function _withdraw_with_open_positions_and_check(CollateralTracker collToken, uint256 shares, address withdrawer) internal {
+        /*
+        // TODO: check whether current positions are solvent; assertFalse if not
+        // reproduce some of _validateSolvency to do this
+
+        // then, attempt withdrawal, and assert assets & shares were deducted/incremented appropriately:
+        uint256 withdrawer_assets_bal = IERC20(collToken.asset()).balanceOf(withdrawer);
+        uint256 pool_assets_bal = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 withdrawer_shares = collToken.balanceOf(withdrawer);
+
+        // TODO: do we need to scale this down such that we're in-bounds for the actual collateral requirements of open positions?
+        uint256 shares_to_withdraw = bound(shares, 1, collToken.balanceOf(withdrawer));
+        uint256 assets_to_withdraw = collToken.convertToAssets(shares_to_withdraw);
+
+        hevm.prank(withdrawer);
+
+        try collToken.withdraw(assets_to_withdraw, withdrawer, withdrawer) {
+            // assert assets & shares were deducted/incremented appropriately:
+            uint256 pool_assets_bal_after = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+            uint256 withdrawer_bal_after = IERC20(collToken.asset()).balanceOf(withdrawer);
+            uint256 withdrawer_shares_after = collToken.balanceOf(withdrawer);
+            assertWithMsg(pool_assets_bal - pool_assets_bal_after == assets_to_withdraw, "Pool asset balance incorrect after redemption");
+            assertWithMsg(withdrawer_bal_after - withdrawer_bal == assets_to_withdraw, "User balance incorrect after deposit");
+            assertWithMsg(withdrawer_shares_after - withdrawer_shares == shares_to_withdraw, "User share balance incorrect after redemption");
+
+            // TODO: then, show we are still solvent:
+            // TODO
+        } catch { }
+         */
+    }
+
+    function transfer_ct_shares(bool token0, uint256 shares,  address sender, address recipient, bool transfer_from_sender) public {
+        if (token0) {
+            emit LogString("Attempting to transfer/transferFrom token0");
+            _transfer_and_check(collToken0, shares, sender, recipient, transfer_from_sender);
+        } else {
+            emit LogString("Attempting to transfer/transferFrom token1");
+            _transfer_and_check(collToken1, shares, sender, recipient, transfer_from_sender);
+        }
+    }
+
+    function _transfer_and_check(CollateralTracker collToken, uint256 shares, address sender, address recipient, bool transfer_from_sender) internal {
+        uint256 sender_shares = collToken.balanceOf(sender);
+        uint256 recipient_shares = collToken.balanceOf(recipient);
+
+        uint256 shares_to_transfer = bound(shares, 1, collToken.balanceOf(sender));
+
+        hevm.prank(sender);
+        if (transfer_from_sender) {
+            try collToken.transfer(recipient, shares_to_transfer) {
+                uint sender_shares_after = collToken.balanceOf(sender);
+                uint recipient_shares_after = collToken.balanceOf(recipient);
+                assertWithMsg(sender_shares_after - sender_shares == shares_to_transfer, "Sender shares balance incorrect after transfer");
+                assertWithMsg(recipient_shares_after - recipient_shares == shares_to_transfer, "Recipient shares balance incorrect after transfer");
+            } catch {
+                // Loudly error for any reversion reason other than having open positions
+                uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+                if (numOfPositions == 0) assertWithMsg(false, "unknown reversion when trying to transfer");
+            }
+        } else {
+            collToken.approve(recipient, shares_to_transfer);
+            try collToken.transferFrom(sender, recipient, shares_to_transfer) {
+                uint sender_shares_after = collToken.balanceOf(sender);
+                uint recipient_shares_after = collToken.balanceOf(recipient);
+                assertWithMsg(sender_shares_after - sender_shares == shares_to_transfer, "Sender shares balance incorrect after transfer");
+                assertWithMsg(recipient_shares_after - recipient_shares == shares_to_transfer, "Recipient shares balance incorrect after transfer");
+            } catch {
+                uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+                if (numOfPositions == 0) assertWithMsg(false, "unknown reversion when trying to transfer");
+            }
         }
     }
 
