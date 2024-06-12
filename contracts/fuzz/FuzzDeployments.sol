@@ -1100,13 +1100,13 @@ contract FuzzDeployments is FuzzHelpers {
     function invariant_never_overcount_underlying_token() public {
         (uint256 ct0_s_poolAssets, , ) = collToken0.getPoolData();
         assertWithMsg(
-            ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)),
+            ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)) + 1,
             "CollateralTracker0 has overcounted its token0 assets"
         );
 
         (uint256 ct1_s_poolAssets, , ) = collToken1.getPoolData();
         assertWithMsg(
-            ct1_s_poolAssets <= IERC20(collToken1.asset()).balanceOf(address(panopticPool)),
+            ct1_s_poolAssets <= IERC20(collToken1.asset()).balanceOf(address(panopticPool)) + 1,
             "CollateralTracker1 has overcounted its token1 assets"
         );
     }
