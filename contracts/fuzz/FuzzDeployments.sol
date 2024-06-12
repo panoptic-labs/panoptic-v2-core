@@ -1104,7 +1104,7 @@ contract FuzzDeployments is FuzzHelpers {
             "CollateralTracker0 has overcounted its token0 assets"
         );
 
-        (uint256 ct1_s_poolAssets, , ) = collToken0.getPoolData();
+        (uint256 ct1_s_poolAssets, , ) = collToken1.getPoolData();
         assertWithMsg(
             ct1_s_poolAssets <= IERC20(collToken1.asset()).balanceOf(address(panopticPool)),
             "CollateralTracker1 has overcounted its token1 assets"
@@ -1534,11 +1534,14 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 shares,
         address withdrawer
     ) internal {
-        /*
-        // TODO: check whether current positions are solvent; assertFalse if not
-        // reproduce some of _validateSolvency to do this
 
-        // then, attempt withdrawal, and assert assets & shares were deducted/incremented appropriately:
+        // check whether current positions are solvent; assertFalse if not
+        TokenId[] memory withdrawers_open_positions = userPositions[withdrawer];
+        try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawers_open_positions) { } catch {
+            assertWithMsg(false, "User is not solvent even prior to withdrawing-with-open-positions");
+        }
+
+        // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately:
         uint256 withdrawer_assets_bal = IERC20(collToken.asset()).balanceOf(withdrawer);
         uint256 pool_assets_bal = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawer_shares = collToken.balanceOf(withdrawer);
@@ -1555,13 +1558,15 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 withdrawer_bal_after = IERC20(collToken.asset()).balanceOf(withdrawer);
             uint256 withdrawer_shares_after = collToken.balanceOf(withdrawer);
             assertWithMsg(pool_assets_bal - pool_assets_bal_after == assets_to_withdraw, "Pool asset balance incorrect after redemption");
-            assertWithMsg(withdrawer_bal_after - withdrawer_bal == assets_to_withdraw, "User balance incorrect after deposit");
+            assertWithMsg(withdrawer_bal_after - withdrawer_assets_bal == assets_to_withdraw, "User balance incorrect after deposit");
             assertWithMsg(withdrawer_shares_after - withdrawer_shares == shares_to_withdraw, "User share balance incorrect after redemption");
 
-            // TODO: then, show we are still solvent:
-            // TODO
+            // show we are still solvent:
+            try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawers_open_positions) { } catch {
+                assertWithMsg(false, "User is not solvent after seemingly legal withdrawal-with-open-positions");
+            }
+
         } catch { }
-         */
     }
 
     function transfer_ct_shares(
