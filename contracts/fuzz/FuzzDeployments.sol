@@ -1332,6 +1332,36 @@ contract FuzzDeployments is FuzzHelpers {
     // Liquidation
     ////////////////////////////////////////////////////
 
+    function log_bound(uint256 x) public {
+        uint256 out = boundLog(x, 0, type(uint256).max);
+        emit LogUint256("full-range", out);
+        assertWithMsg((out <= type(uint256).max) && (out >= 0), "within bounds");
+
+        out = boundLog(x, 0, 2 ** 15);
+        emit LogUint256("0-15", out);
+        assertWithMsg((out <= 2 ** 15) && (out >= 0), "within bounds");
+
+        out = boundLog(x, 2 ** 32, 2 ** 224);
+        emit LogUint256("32-224", out);
+        assertWithMsg((out <= 2 ** 224) && (out >= 2 ** 32), "within bounds");
+
+        out = boundLog(x, 2 ** 100, 2 ** 114);
+        emit LogUint256("100-114", out);
+        assertWithMsg((out <= 2 ** 114) && (out >= 2 ** 100), "within bounds");
+
+        out = boundLog(x, 2 ** 128, 2 ** 129);
+        emit LogUint256("128-129", out);
+        assertWithMsg((out <= 2 ** 129) && (out >= 2 ** 128), "within bounds");
+
+        out = boundLog(x, 2 ** 254, type(uint256).max);
+        emit LogUint256("254-256", out);
+        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 254), "within bounds");
+
+        out = boundLog(x, 2 ** 255, type(uint256).max);
+        emit LogUint256("255-256", out);
+        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 255), "within bounds");
+    }
+
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
@@ -1610,8 +1640,12 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogUint256("balanceBefore1", canaryBalances.leftSlot());
             emit LogUint256("balanceAfter0", c0a);
             emit LogUint256("balanceAfter1", c1a);
-            //assertWithMsg(c0a < canaryBalances.rightSlot(), "protocol loss token0");
-            //assertWithMsg(c1a < canaryBalances.leftSlot(), "protocol loss token1");
+            assertWithMsg(
+                (c0a < canaryBalances.rightSlot()) && (c1a < canaryBalances.leftSlot()),
+                "protocol loss BOTH tokens"
+            );
+            assertWithMsg(c0a < canaryBalances.rightSlot(), "protocol loss token0");
+            assertWithMsg(c1a < canaryBalances.leftSlot(), "protocol loss token1");
         }
     }
 
