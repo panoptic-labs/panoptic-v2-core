@@ -26,3 +26,4 @@ out
 docs
 
 crytic-export
+contracts/fuzz/corpus

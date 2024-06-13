@@ -450,6 +450,68 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions($posIdList[0], new TokenId[](0), 0, 0);
     }
 
+    function test_success_MintTiny() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                int24(-665450),
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+        console2.log("mint");
+        pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
+
+        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pp
+            .calculateAccumulatedFeesBatch(Bob, false, $posIdList);
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+        console2.log("check post-mint");
+        console2.log("ct0");
+
+        LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            positionBalanceArray,
+            0
+        );
+        console2.log("ct1");
+        LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            positionBalanceArray,
+            0
+        );
+        (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+            tokenData0,
+            tokenData1,
+            0,
+            currentTick
+        );
+
+        console2.log("tokenData0.r", tokenData0.rightSlot());
+        console2.log("tokenData0.l", tokenData0.leftSlot());
+        console2.log("tokenData1.r", tokenData1.rightSlot());
+        console2.log("tokenData1.l", tokenData1.leftSlot());
+        assertTrue(required0 > 0, "zero collateral requirement");
+        assertTrue(required0 <= balance0, "account is solvent");
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), int24(887272), int24(-887272));
+    }
+
     function test_success_settleLongPremium() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);

@@ -231,6 +231,8 @@ contract FuzzDeployments is FuzzHelpers {
 
         $numLegs = bound(numLegs, 1, 4);
 
+        $posIdListOld = userPositions[msg.sender];
+
         userPositions[msg.sender].push(TokenId.wrap(poolId));
 
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
@@ -319,9 +321,117 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("pool balance 0", int256(USDC.balanceOf(address(panopticPool))));
         emit LogInt256("pool balance 1", int256(WETH.balanceOf(address(panopticPool))));
 
+        // get SFPM swapped/premium collect amounts and expected fast/slow oracle ticks post-mint
         quote_sfpm_mint();
         emit LogInt256("$totalSwapped.rs", $totalSwapped.rightSlot());
         emit LogInt256("$totalSwapped.ls", $totalSwapped.leftSlot());
+
+        ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(
+            $tokenIdActive,
+            $positionSizeActive
+        );
+
+        // intrinsic val
+        $colDelta0 = -($totalSwapped.rightSlot() -
+            ($shortAmounts.rightSlot() - $longAmounts.rightSlot()));
+        $colDelta1 = -($totalSwapped.leftSlot() -
+            ($shortAmounts.leftSlot() - $longAmounts.leftSlot()));
+
+        // ITM spread + commission
+        $colDelta0 -=
+            (Math.abs($colDelta0) * int256(uint256(pool.fee())) * 2) /
+            (10_000 * 100) +
+            (($shortAmounts.rightSlot() + $longAmounts.rightSlot()) * 10) /
+            10_000;
+        $colDelta1 -=
+            (Math.abs($colDelta1) * int256(uint256(pool.fee())) * 2) /
+            (10_000 * 100) +
+            (($shortAmounts.leftSlot() + $longAmounts.leftSlot()) * 10) /
+            10_000;
+
+        ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
+            msg.sender,
+            false,
+            $posIdListOld
+        );
+
+        $posBalanceArray.push([TokenId.unwrap($tokenIdActive), $positionSizeActive]);
+
+        if (
+            !($colDelta0 > int256(uint256($tokenData0.rightSlot())) ||
+                $colDelta1 > int256(uint256($tokenData1.rightSlot())))
+        ) {
+            $tokenData0 = collToken0.getAccountMarginDetails(
+                msg.sender,
+                $fastOracleTick,
+                $posBalanceArray,
+                $premia0
+            );
+            $tokenData1 = collToken1.getAccountMarginDetails(
+                msg.sender,
+                $fastOracleTick,
+                $posBalanceArray,
+                $premia1
+            );
+
+            $balance0ExpectedP = uint256(int256(uint256($tokenData0.rightSlot())) - $colDelta0);
+
+            $balance1ExpectedP = uint256(int256(uint256($tokenData1.rightSlot())) - $colDelta1);
+
+            $balanceCross =
+                Math.mulDiv(
+                    $balance0ExpectedP,
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                ) +
+                Math.mulDiv96($balance1ExpectedP, TickMath.getSqrtRatioAtTick($fastOracleTick));
+
+            $thresholdCross =
+                Math.mulDivRoundingUp(
+                    uint256($tokenData1.leftSlot()),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                ) +
+                Math.mulDiv96RoundingUp(
+                    $tokenData0.leftSlot(),
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                );
+            $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+
+            if (Math.abs(int256($slowOracleTick) - $fastOracleTick) > 1800) {
+                $tokenData0 = collToken0.getAccountMarginDetails(
+                    msg.sender,
+                    $slowOracleTick,
+                    $posBalanceArray,
+                    $premia0
+                );
+                $tokenData1 = collToken1.getAccountMarginDetails(
+                    msg.sender,
+                    $slowOracleTick,
+                    $posBalanceArray,
+                    $premia1
+                );
+
+                $thresholdCross =
+                    Math.mulDivRoundingUp(
+                        uint256($tokenData1.leftSlot()),
+                        2 ** 96,
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    ) +
+                    Math.mulDiv96RoundingUp(
+                        $tokenData0.leftSlot(),
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    );
+
+                $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+            }
+        } else {
+            $shouldRevert = true;
+        }
+
+        $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
+        $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
+
         hevm.prank(msg.sender);
         try
             panopticPool.mintOptions(
@@ -345,12 +455,34 @@ contract FuzzDeployments is FuzzHelpers {
                     bytes4(reason) != Errors.TransferFailed.selector &&
                     keccak256(reason) !=
                     keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))),
-                "failed"
+                "mintOptions: unexpected revert"
             );
 
             // reverse test state changes (i.e. positionidlist)
             revert();
         }
+
+        emit LogInt256("Balance 0 expected", $balance0Origin + $colDelta0);
+        emit LogInt256("deltaE0", $colDelta0);
+        emit LogUint256("Balance 0", collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
+        assertWithMsg(
+            Math.abs(
+                int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender))) -
+                    int256($balance0Origin + $colDelta0)
+            ) <= 10,
+            "Balance 0 mismatch"
+        );
+
+        emit LogInt256("Balance 1 expected", $balance1Origin + $colDelta1);
+        emit LogInt256("deltaE1", $colDelta1);
+        emit LogUint256("Balance 1", collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
+        assertWithMsg(
+            Math.abs(
+                int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))) -
+                    int256($balance1Origin + $colDelta1)
+            ) <= 10,
+            "Balance 1 mismatch"
+        );
     }
 
     function perform_swap(uint160 target_sqrt_price) public {

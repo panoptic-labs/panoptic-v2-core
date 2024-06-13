@@ -242,7 +242,7 @@ contract FuzzHelpers is PropertiesAsserts {
         bytes
     );
 
-    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned);
+    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24, int24);
 
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
@@ -332,9 +332,35 @@ contract FuzzHelpers is PropertiesAsserts {
     int256 $netTokenTransfers0;
     int256 $netTokenTransfers1;
 
+    LeftRightSigned $shortAmounts;
+    LeftRightSigned $longAmounts;
+
+    int256 $colDelta0;
+    int256 $colDelta1;
+
+    int128 $premia0;
+    int128 $premia1;
+
+    uint256 $balanceCross;
+    uint256 $thresholdCross;
+
+    uint256 $balance0ExpectedP;
+    uint256 $balance1ExpectedP;
+
+    int256 $balance0Origin;
+    int256 $balance1Origin;
+
+    LeftRightUnsigned $tokenData0;
+    LeftRightUnsigned $tokenData1;
+
+    TokenId[] $posIdListOld;
+
+    uint256[2][] $posBalanceArray;
+
     bool $shouldRevert;
 
     int24 $fastOracleTick;
+    int24 $slowOracleTick;
 
     int24 $tickLower;
     int24 $tickUpper;
@@ -1182,11 +1208,9 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
 
-            emit LogBytes("results", results);
-
-            ($collectedByLeg, $totalSwapped) = abi.decode(
+            ($collectedByLeg, $totalSwapped, $fastOracleTick, $slowOracleTick) = abi.decode(
                 results,
-                (LeftRightUnsigned[4], LeftRightSigned)
+                (LeftRightUnsigned[4], LeftRightSigned, int24, int24)
             );
         }
     }
@@ -1201,7 +1225,17 @@ contract FuzzHelpers is PropertiesAsserts {
                 TickMath.MIN_TICK
             );
 
-        revert SFPMMintResError(collectedByLeg, totalSwapped);
+        (int24 slowTick, ) = panopticHelper.computeInternalMedian(
+            60,
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            pool
+        );
+        revert SFPMMintResError(
+            collectedByLeg,
+            totalSwapped,
+            panopticHelper.computeMedianObservedPrice(pool, 3, 1),
+            slowTick
+        );
     }
 
     ////////////////////////////////////////////////////
