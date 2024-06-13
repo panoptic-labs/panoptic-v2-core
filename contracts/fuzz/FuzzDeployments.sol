@@ -572,6 +572,72 @@ contract FuzzDeployments is FuzzHelpers {
         log_tokenid_leg(out, 1);
     }
 
+    function getProperSize(
+        TokenId tokenId,
+        address minter,
+        uint256 posSize
+    ) internal returns (uint256) {
+        (, currentTick, , , , , ) = pool.slot0();
+
+        emit LogInt256("pre-mint Tick", currentTick);
+
+        uint256[2][] memory positionBalance = new uint256[2][](1);
+
+        positionBalance[0][0] = TokenId.unwrap(tokenId);
+        positionBalance[0][1] = type(uint48).max;
+
+        LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
+            minter,
+            currentTick,
+            positionBalance,
+            0
+        );
+        LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(
+            minter,
+            currentTick,
+            positionBalance,
+            0
+        );
+
+        emit LogUint256("tokenData0-bal", tokenData0.rightSlot());
+        emit LogUint256("tokenData0-req", tokenData0.leftSlot());
+        emit LogUint256("tokenData1-bal", tokenData1.rightSlot());
+        emit LogUint256("tokenData1-req", tokenData1.leftSlot());
+        (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+            tokenData0,
+            tokenData1,
+            0,
+            currentTick
+        );
+        emit LogUint256("balance0", balance0);
+        emit LogUint256("required0", required0);
+        (uint256 balance1, uint256 required1) = PanopticMath.convertCollateralData(
+            tokenData0,
+            tokenData1,
+            1,
+            currentTick
+        );
+        emit LogUint256("balance1", balance1);
+        emit LogUint256("required1", required1);
+        emit LogUint256(
+            "amountsMoved0",
+            PanopticMath.getAmountsMoved(tokenId, type(uint48).max, 0).rightSlot()
+        );
+        emit LogUint256(
+            "amountsMoved1",
+            PanopticMath.getAmountsMoved(tokenId, type(uint48).max, 0).leftSlot()
+        );
+        assertWithMsg(required0 > 10, "required is nonzero!");
+        uint256 size = (required0 * balance0) / type(uint48).max;
+        posSize = bound(posSize, (size * 10) / 100, (size * 200) / 100);
+
+        require(posSize > 0);
+
+        emit LogUint256("positionSize", posSize);
+
+        return posSize;
+    }
+
     ////////////////////////////////////////////////////
     // Minting
     ////////////////////////////////////////////////////
@@ -594,6 +660,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(minter));
         emit LogUint256("User collateral 1", userCollateral1);
 
+        require((userCollateral0 > 0) || (userCollateral1 > 0));
         uint256 positionsOpened = panopticPool.numberOfPositions(minter);
         emit LogUint256("Positions opened for user", positionsOpened);
         emit LogUint256("Positions opened for user - internal", userPositions[minter].length);
@@ -608,44 +675,7 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory lastPos = new TokenId[](1);
         lastPos[0] = tokenid;
 
-        {
-            (, currentTick, , , , , ) = pool.slot0();
-
-            emit LogInt256("pre-mint Tick", currentTick);
-
-            uint256[2][] memory positionBalance = new uint256[2][](1);
-
-            positionBalance[0][0] = TokenId.unwrap(tokenid);
-            positionBalance[0][1] = 1e6;
-
-            LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
-                minter,
-                currentTick,
-                positionBalance,
-                0
-            );
-            LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(
-                minter,
-                currentTick,
-                positionBalance,
-                0
-            );
-
-            (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
-                tokenData0,
-                tokenData1,
-                0,
-                currentTick
-            );
-            emit LogUint256("balance0", balance0);
-            emit LogUint256("required0", required0);
-
-            uint256 size = (required0 * balance0) / 1e6;
-            posSize = bound(posSize, (size * 10) / 100, (size * 200) / 100);
-
-            require(posSize > 0);
-        }
-        emit LogUint256("positionSize", posSize);
+        posSize = getProperSize(tokenid, minter, posSize);
 
         emit LogInt256("Balance before", int256(_get_assets_in_token0(minter, currentTick)));
 
@@ -928,7 +958,7 @@ contract FuzzDeployments is FuzzHelpers {
                 "mint_strategy_undefined - tokenIdLongs",
                 uint256(TokenId.unwrap(tokenIdLongs))
             );
-            _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, false, 0);
+            _mint_option(seller, tokenIdLongs, (12 * posSize) / 10, false, 0);
         }
         _mint_option(minter, tokenId_undefined, posSize, is_covered, effLiqLimit);
     }
@@ -1094,7 +1124,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         if (spread.countLongs() > 0) {
             TokenId tokenIdLongs = _generate_long_only_tokenid(spread);
-            _mint_option(seller, tokenIdLongs, (15 * posSize) / 10, false, 0);
+            _mint_option(seller, tokenIdLongs, (12 * posSize) / 10, false, 0);
             emit LogUint256(
                 "mint_strategy_defined - tokenIdLongs",
                 uint256(TokenId.unwrap(tokenIdLongs))
