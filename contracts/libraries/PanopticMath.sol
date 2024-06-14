@@ -588,8 +588,9 @@ library PanopticMath {
 
         // effective strike price of the option (avg. price over LP range)
         // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
-        uint160 geometricMeanPriceX96 = uint160(
-            Math.mulDiv96(Math.getSqrtRatioAtTick(tickLower), Math.getSqrtRatioAtTick(tickUpper))
+        uint256 geometricMeanPriceX96 = Math.mulDiv96(
+            Math.getSqrtRatioAtTick(tickLower),
+            Math.getSqrtRatioAtTick(tickUpper)
         );
 
         if (tokenId.asset(legIndex) == 0) {
