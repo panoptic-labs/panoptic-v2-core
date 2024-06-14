@@ -1397,7 +1397,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_335,
+            258_334,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1496,7 +1496,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            516_671,
+            516_670,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -1622,7 +1622,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_007,
+            275_006,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -1672,7 +1672,7 @@ contract Misctest is Test, PositionUtils {
             // @TODO might have to tweak this if rounding is changed upstream
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(104) : int256(105),
+                i == 0 ? int256(107) : int256(108),
                 "Buyer paid premium twice"
             );
 
@@ -1808,7 +1808,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_999,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1855,7 +1855,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_333,
+            533_332,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -1887,7 +1887,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_000,
+            274_999,
             "Incorrect Charlie Delta 0"
         );
         assertEq(

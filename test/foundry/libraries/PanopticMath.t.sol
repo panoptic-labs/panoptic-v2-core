@@ -768,6 +768,30 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
+    function test_Success_convert0to1RoundingUp_PriceX192_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does not overflow
+        unchecked {
+            uint256 mm = mulmod(priceX192, amount, type(uint256).max);
+            uint256 prod0 = priceX192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 192);
+        }
+
+        assertEq(
+            harness.convert0to1RoundingUp(amount, sqrtPrice),
+            FullMath.mulDivRoundingUp(amount, priceX192, 2 ** 192)
+        );
+    }
+
     function test_Fail_convert0to1_PriceX192_Uint_overflow(
         uint256 amount,
         uint256 sqrtPriceSeed
@@ -788,6 +812,28 @@ contract PanopticMathTest is Test, PositionUtils {
 
         vm.expectRevert();
         harness.convert0to1(amount, sqrtPrice);
+    }
+
+    function test_Fail_convert0to1RoundingUp_PriceX192_Uint_overflow(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does overflow
+        unchecked {
+            uint256 mm = mulmod(priceX192, amount, type(uint256).max);
+            uint256 prod0 = priceX192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) >= 2 ** 192);
+        }
+
+        vm.expectRevert();
+        harness.convert0to1RoundingUp(amount, sqrtPrice);
     }
 
     function test_Success_convert0to1_PriceX192_Int(int256 amount, uint256 sqrtPriceSeed) public {
@@ -880,6 +926,30 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(
             harness.convert1to0(amount, sqrtPrice),
             FullMath.mulDiv(amount, 2 ** 192, priceX192)
+        );
+    }
+
+    function test_Success_convert1to0RoundingUp_PriceX192_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does not overflow
+        unchecked {
+            uint256 mm = mulmod(amount, 2 ** 192, type(uint256).max);
+            uint256 prod0 = 2 ** 192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX192);
+        }
+
+        assertEq(
+            harness.convert1to0RoundingUp(amount, sqrtPrice),
+            FullMath.mulDivRoundingUp(amount, 2 ** 192, priceX192)
         );
     }
 
@@ -999,6 +1069,30 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
+    function test_Success_convert0to1RoundingUp_PriceX128_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
+        );
+
+        uint256 priceX128 = FullMath.mulDiv(sqrtPrice, sqrtPrice, 2 ** 64);
+
+        // make sure the final result does not overflow
+        unchecked {
+            uint256 mm = mulmod(priceX128, amount, type(uint256).max);
+            uint256 prod0 = priceX128 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 128);
+        }
+
+        assertEq(
+            harness.convert0to1RoundingUp(amount, sqrtPrice),
+            FullMath.mulDivRoundingUp(amount, priceX128, 2 ** 128)
+        );
+    }
+
     function test_Fail_convert0to1_PriceX128_Uint_overflow(
         uint256 amount,
         uint256 sqrtPriceSeed
@@ -1019,6 +1113,28 @@ contract PanopticMathTest is Test, PositionUtils {
 
         vm.expectRevert();
         harness.convert0to1(amount, sqrtPrice);
+    }
+
+    function test_Fail_convert0to1RoundingUp_PriceX128_Uint_overflow(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
+        );
+
+        uint256 priceX128 = FullMath.mulDiv(sqrtPrice, sqrtPrice, 2 ** 64);
+
+        // make sure the final result does overflow
+        unchecked {
+            uint256 mm = mulmod(priceX128, amount, type(uint256).max);
+            uint256 prod0 = priceX128 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) >= 2 ** 128);
+        }
+
+        vm.expectRevert();
+        harness.convert0to1RoundingUp(amount, sqrtPrice);
     }
 
     function test_Success_convert0to1_PriceX128_Int(int256 amount, uint256 sqrtPriceSeed) public {
@@ -1115,6 +1231,30 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
+    function test_Success_convert1to0RoundingUp_PriceX128_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
+        );
+
+        uint256 priceX128 = FullMath.mulDiv(sqrtPrice, sqrtPrice, 2 ** 64);
+
+        // make sure the final result does not overflow
+        unchecked {
+            uint256 mm = mulmod(2 ** 128, amount, type(uint256).max);
+            uint256 prod0 = 2 ** 128 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX128);
+        }
+
+        assertEq(
+            harness.convert1to0RoundingUp(amount, sqrtPrice),
+            FullMath.mulDivRoundingUp(amount, 2 ** 128, priceX128)
+        );
+    }
+
     function test_Success_convert1to0_PriceX128_Int(int256 amount, uint256 sqrtPriceSeed) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
@@ -1193,22 +1333,16 @@ contract PanopticMathTest is Test, PositionUtils {
         // set amount 0
         uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
 
-        // get amount 1
-        // construct liq object
-        LiquidityChunk liquidityAmounts = Math.getLiquidityForAmount0(
-            tickLower,
-            tickUpper,
-            amount0
+        uint256 amount1 = PanopticMath.convert0to1RoundingUp(
+            amount0,
+            TickMath.getSqrtRatioAtTick(strike)
         );
-        // set amount 1
-        uint256 intermediateAmount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
-        vm.assume(intermediateAmount1 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
-        uint128 amount1 = intermediateAmount1.toUint128();
+        vm.assume(amount1 < 2 ** 128);
 
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
             .toRightSlot(amount0)
-            .toLeftSlot(amount1);
+            .toLeftSlot(uint128(amount1));
 
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
             tokenId,
@@ -1279,21 +1413,15 @@ contract PanopticMathTest is Test, PositionUtils {
         // set amount 1
         uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
 
-        // get amount 0
-        // construct liq object
-        LiquidityChunk liquidityAmounts = Math.getLiquidityForAmount1(
-            tickLower,
-            tickUpper,
-            amount1
+        uint256 amount0 = PanopticMath.convert1to0RoundingUp(
+            amount1,
+            TickMath.getSqrtRatioAtTick(strike)
         );
-        // set amount 1
-        uint256 intermediateAmount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
-        vm.assume(intermediateAmount0 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
-        uint128 amount0 = intermediateAmount0.toUint128();
+        vm.assume(amount0 < 2 ** 128);
 
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0)
+            .toRightSlot(uint128(amount0))
             .toLeftSlot(amount1);
 
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
