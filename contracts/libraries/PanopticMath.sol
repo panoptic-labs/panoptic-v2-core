@@ -626,17 +626,25 @@ library PanopticMath {
         uint128 amount0;
         uint128 amount1;
 
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
+
+        // effective strike price of the option (avg. price over LP range)
+        // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
+        uint160 geometricMeanSqrtPriceX96 = uint160(
+            Math.mulDiv96(Math.getSqrtRatioAtTick(tickLower), Math.getSqrtRatioAtTick(tickUpper))
+        );
+
         if (tokenId.asset(legIndex) == 0) {
             amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
             amount1 = PanopticMath
-                .convert0to1RoundingUp(amount0, Math.getSqrtRatioAtTick(tokenId.strike(legIndex)))
+                .convert0to1RoundingUp(amount0, geometricMeanSqrtPriceX96)
                 .toUint128();
         } else {
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
             amount0 = PanopticMath
-                .convert1to0RoundingUp(amount1, Math.getSqrtRatioAtTick(tokenId.strike(legIndex)))
+                .convert1to0RoundingUp(amount1, geometricMeanSqrtPriceX96)
                 .toUint128();
         }
 
