@@ -595,13 +595,11 @@ library PanopticMath {
         if (tokenId.asset(legIndex) == 0) {
             amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount1 = Math.mulDiv96RoundingUp(uint256(amount0), geometricMeanPriceX96).toUint128();
+            amount1 = Math.mulDiv96RoundingUp(amount0, geometricMeanPriceX96).toUint128();
         } else {
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount0 = Math
-                .mulDivRoundingUp(uint256(amount1), 2 ** 96, geometricMeanPriceX96)
-                .toUint128();
+            amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
         }
 
         return LeftRightUnsigned.wrap(0).toRightSlot(amount0).toLeftSlot(amount1);
