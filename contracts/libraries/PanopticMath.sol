@@ -15,6 +15,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -505,23 +506,6 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
-    function convert0to1RoundingUp(
-        uint256 amount,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint256) {
-        unchecked {
-            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
-            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
-            if (sqrtPriceX96 < type(uint128).max) {
-                return Math.mulDiv192RoundingUp(amount, uint256(sqrtPriceX96) ** 2);
-            } else {
-                return Math.mulDiv128RoundingUp(amount, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
-            }
-        }
-    }
-
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
@@ -534,31 +518,6 @@ library PanopticMath {
                 return Math.mulDiv(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
             } else {
                 return Math.mulDiv(amount, 2 ** 128, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
-            }
-        }
-    }
-
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token1 to convert into token0
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
-    /// @return The converted `amount` of token1 represented in terms of token0
-    function convert1to0RoundingUp(
-        uint256 amount,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint256) {
-        unchecked {
-            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
-            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
-            if (sqrtPriceX96 < type(uint128).max) {
-                return Math.mulDivRoundingUp(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
-            } else {
-                return
-                    Math.mulDivRoundingUp(
-                        amount,
-                        2 ** 128,
-                        Math.mulDiv64(sqrtPriceX96, sqrtPriceX96)
-                    );
             }
         }
     }
@@ -630,21 +589,19 @@ library PanopticMath {
 
         // effective strike price of the option (avg. price over LP range)
         // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
-        uint160 geometricMeanSqrtPriceX96 = uint160(
+        uint160 geometricMeanPriceX96 = uint160(
             Math.mulDiv96(Math.getSqrtRatioAtTick(tickLower), Math.getSqrtRatioAtTick(tickUpper))
         );
 
         if (tokenId.asset(legIndex) == 0) {
             amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount1 = PanopticMath
-                .convert0to1RoundingUp(amount0, geometricMeanSqrtPriceX96)
-                .toUint128();
+            amount1 = Math.mulDiv96RoundingUp(uint256(amount0), geometricMeanPriceX96).toUint128();
         } else {
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount0 = PanopticMath
-                .convert1to0RoundingUp(amount1, geometricMeanSqrtPriceX96)
+            amount0 = Math
+                .mulDivRoundingUp(uint256(amount1), 2 ** 96, geometricMeanPriceX96)
                 .toUint128();
         }
 
