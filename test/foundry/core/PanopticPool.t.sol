@@ -7372,8 +7372,8 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        editCollateral(ct0, Alice, 1);
-        editCollateral(ct1, Alice, 1);
+        editCollateral(ct0, Alice, 2);
+        editCollateral(ct1, Alice, 2);
 
         vm.expectRevert(Errors.InputListFail.selector);
         pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), posIdList);

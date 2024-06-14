@@ -1282,7 +1282,11 @@ contract PanopticMathTest is Test, PositionUtils {
         uint256 amount0 = Math.mulDivRoundingUp(
             uint256(amount1),
             2 ** 96,
-            Math.mulDiv96(Math.getSqrtRatioAtTick(tickLower), Math.getSqrtRatioAtTick(tickUpper))
+            Math.mulDiv(
+                Math.getSqrtRatioAtTick(tickLower),
+                Math.getSqrtRatioAtTick(tickUpper),
+                2 ** 96
+            )
         );
         vm.assume(amount0 < 2 ** 128);
 
