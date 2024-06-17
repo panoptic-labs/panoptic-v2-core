@@ -853,6 +853,36 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.withdraw(maxAssets + 1, Bob, Bob, new TokenId[](0));
     }
 
+    function test_Fail_removeGtAvailableCollateral() public {
+        // initalize world state
+        _initWorld(0);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+
+        collateralToken0.deposit(1000, Bob);
+
+        collateralToken0.setPoolAssets(collateralToken0._availableAssets() - 500);
+        collateralToken0.setInAMM(500);
+
+        uint256 bal = collateralToken0.balanceOf(Bob);
+        uint256 assets = collateralToken0.convertToAssets(bal);
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.redeem(bal, Bob, Bob);
+
+        vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
+        collateralToken0.withdraw(assets, Bob, Bob);
+
+        // no erc4626 maxWithdraw check, so s_poolAssets math underflows instead
+        vm.expectRevert(stdError.arithmeticError);
+        collateralToken0.withdraw(assets, Bob, Bob, new TokenId[](0));
+    }
+
     function test_Success_withdraw_OnBehalf(uint256 x, uint104 assets) public {
         _initWorld(x);
 
