@@ -943,7 +943,6 @@ contract FuzzDeployments is FuzzHelpers {
             if (block.number % 3 == 0) fuzzNumerator = fuzzDenominator;
             if (block.number % 5 == 0) recipient = msg.sender;
 
-            // TODO: i don't think we have to care about overflows here with how bal0 / bal1 get generated, but check that.
             uint256 fuzzedSharesToRedeem0 = (shareBal0 * fuzzNumerator) / fuzzDenominator;
             uint256 fuzzedSharesToRedeem1 = (shareBal1 * fuzzNumerator) / fuzzDenominator;
 
@@ -991,7 +990,7 @@ contract FuzzDeployments is FuzzHelpers {
 
             if (fuzzNumerator > fuzzDenominator)
                 (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
-            // TODO: i don't think we have to care about overflows here with how bal0 / bal1 get generated, but check that.
+
             uint256 fuzzedAmtToTransfer0 = (bal0 * fuzzNumerator) / fuzzDenominator;
             uint256 fuzzedAmtToTransfer1 = (bal1 * fuzzNumerator) / fuzzDenominator;
 
@@ -1034,8 +1033,42 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
-    function invariant_collateral_overremoval_with_open_positions() public {
-        // TODO
+    function invariant_collateral_overremoval_with_open_positions(CollateralTracker collToken) public {
+        _attempt_collateral_overremoval(collToken0, msg.sender, true);
+        _attempt_collateral_overremoval(collToken1, msg.sender, false);
+    }
+
+    function _attempt_collateral_overremoval(CollateralTracker collToken, address withdrawer, bool token0Or1) public {
+        (, int24 curTick, , , , , ) = pool.slot0();
+        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool.calculateAccumulatedFeesBatch(
+            withdrawer,
+            false,
+            userPositions[withdrawer]
+        );
+        // TODO: how to use this properly?
+        (LeftRightUnsigned tokenData) = collToken.getAccountMarginDetails(
+            withdrawer,
+            curTick,
+            positions,
+            token0Or1 ? premium0 : premium1
+        );
+        uint256 marginCallThreshold = tokenData.leftSlot();
+        uint256 bal = collToken.balanceOf(withdrawer);
+        uint amountToMarginCallThreshold = (bal - marginCallThreshold);
+        uint amountOver;
+        amountOver = bound(amountOver, 1, bal - amountToMarginCallThreshold);
+
+        // assert is-solvent
+        TokenId[] memory withdrawers_open_positions = userPositions[withdrawer];
+        try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawers_open_positions) {
+            // then, assert we get a revert when trying to withdraw too much:
+            try collToken.withdraw(amountToMarginCallThreshold + amountOver, withdrawer, withdrawer, withdrawers_open_positions) {
+                assertWithMsg(false, "User was able to withdraw too much");
+            } catch {}
+        } catch {
+            // Do nothing: the msg.sender we were passed was not solvent prior
+            // to withdrawal attempt, so nothing to check for this invariant this time around
+        }
     }
 
     /// @custom:property PANO-SYS-006 Users can't have an open position but no collateral
@@ -1154,7 +1187,7 @@ contract FuzzDeployments is FuzzHelpers {
                     );
                 } else {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -1178,12 +1211,28 @@ contract FuzzDeployments is FuzzHelpers {
                     );
                 } else {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
         } else {
-            // TODO: use the overloaded withdraw
+            TokenId[] memory withdrawers_open_positions = userPositions[owner];
+            try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient, withdrawers_open_positions) {
+                assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
+            } catch {
+                if (
+                    collToken.convertToShares(ct_s_poolAssets + amount_over) >
+                    collToken.balanceOf(owner)
+                ) {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                    );
+                } else {
+                    emit LogString(
+                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                    );
+                }
+            }
         }
     }
 
@@ -1226,7 +1275,7 @@ contract FuzzDeployments is FuzzHelpers {
                     );
                 } else {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succceeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
+                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
                     );
                 }
             }
@@ -1280,7 +1329,10 @@ contract FuzzDeployments is FuzzHelpers {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
         } else {
-            // TODO use the overloaded withdraw
+            TokenId[] memory withdrawers_open_positions = userPositions[owner];
+            try collToken.withdraw(owners_assets + amount_over, owner, recipient, withdrawers_open_positions) {
+                assertWithMsg(false, "User withdrew > their balance");
+            } catch {}
         }
     }
 
@@ -1556,7 +1608,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         hevm.prank(withdrawer);
 
-        try collToken.withdraw(assets_to_withdraw, withdrawer, withdrawer) {
+        try collToken.withdraw(assets_to_withdraw, withdrawer, withdrawer, withdrawers_open_positions) {
             // assert assets & shares were deducted/incremented appropriately:
             uint256 pool_assets_bal_after = IERC20(collToken.asset()).balanceOf(
                 address(panopticPool)
