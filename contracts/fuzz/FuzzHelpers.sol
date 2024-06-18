@@ -350,6 +350,17 @@ contract FuzzHelpers is PropertiesAsserts {
     int256 $balance0Origin;
     int256 $balance1Origin;
 
+    int256 $balance0Final;
+    int256 $balance1Final;
+
+    uint256 $totalAssets0;
+    uint256 $totalAssets1;
+    uint256 $totalSupply0;
+    uint256 $totalSupply1;
+
+    int256 $commission0;
+    int256 $commission1;
+
     LeftRightUnsigned $tokenData0;
     LeftRightUnsigned $tokenData1;
 

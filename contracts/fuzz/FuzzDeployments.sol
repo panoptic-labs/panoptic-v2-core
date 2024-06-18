@@ -309,11 +309,14 @@ contract FuzzDeployments is FuzzHelpers {
             : $netTokenTransfers0 > int256(USDC.balanceOf(address(panopticPool))) ||
                 $netTokenTransfers1 > int256(WETH.balanceOf(address(panopticPool)));
 
+        emit LogBool("should revert due to insufficient pool tokens", $shouldRevert);
+
         // position has already been minted
         for (uint256 i = 0; i < userPositions[msg.sender].length - 1; ++i) {
             $shouldRevert = $shouldRevert
                 ? $shouldRevert
                 : TokenId.unwrap($tokenIdActive) == TokenId.unwrap(userPositions[msg.sender][i]);
+            emit LogBool("should revert due to position already minted", $shouldRevert);
         }
 
         emit LogInt256("Net token transfers 0", $netTokenTransfers0);
@@ -334,20 +337,25 @@ contract FuzzDeployments is FuzzHelpers {
         // intrinsic val
         $colDelta0 = -($totalSwapped.rightSlot() -
             ($shortAmounts.rightSlot() - $longAmounts.rightSlot()));
+        emit LogInt256("intrinsicDelta0", $colDelta0);
         $colDelta1 = -($totalSwapped.leftSlot() -
             ($shortAmounts.leftSlot() - $longAmounts.leftSlot()));
+        emit LogInt256("intrinsicDelta1", $colDelta1);
 
         // ITM spread + commission
-        $colDelta0 -=
+        $commission0 =
             (Math.abs($colDelta0) * int256(uint256(pool.fee())) * 2) /
             (10_000 * 100) +
             (($shortAmounts.rightSlot() + $longAmounts.rightSlot()) * 10) /
             10_000;
-        $colDelta1 -=
+        $commission1 =
             (Math.abs($colDelta1) * int256(uint256(pool.fee())) * 2) /
             (10_000 * 100) +
             (($shortAmounts.leftSlot() + $longAmounts.leftSlot()) * 10) /
             10_000;
+
+        $colDelta0 -= $commission0;
+        $colDelta1 -= $commission1;
 
         ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
             msg.sender,
@@ -357,34 +365,61 @@ contract FuzzDeployments is FuzzHelpers {
 
         $posBalanceArray.push([TokenId.unwrap($tokenIdActive), $positionSizeActive]);
 
+        $tokenData0 = collToken0.getAccountMarginDetails(
+            msg.sender,
+            $fastOracleTick,
+            $posBalanceArray,
+            $premia0
+        );
+        $tokenData1 = collToken1.getAccountMarginDetails(
+            msg.sender,
+            $fastOracleTick,
+            $posBalanceArray,
+            $premia1
+        );
+
+        $totalAssets0 = collToken0.totalAssets();
+        $totalAssets1 = collToken1.totalAssets();
+        $totalSupply0 = collToken0.totalSupply();
+        $totalSupply1 = collToken1.totalSupply();
         if (
-            !($colDelta0 > int256(uint256($tokenData0.rightSlot())) ||
-                $colDelta1 > int256(uint256($tokenData1.rightSlot())))
+            !(-$colDelta0 > int256(uint256($tokenData0.rightSlot())) ||
+                -$colDelta1 > int256(uint256($tokenData1.rightSlot())))
         ) {
-            $tokenData0 = collToken0.getAccountMarginDetails(
-                msg.sender,
-                $fastOracleTick,
-                $posBalanceArray,
-                $premia0
+            $balance0ExpectedP = Math.mulDiv(
+                uint256(
+                    int256(collToken0.balanceOf(msg.sender)) +
+                        ($colDelta0 * int256($totalSupply0)) /
+                        int256($totalAssets0)
+                ),
+                uint256(int256($totalAssets0) + $colDelta0 + $commission0),
+                uint256(
+                    int256($totalSupply0) +
+                        ($colDelta0 * int256($totalSupply0)) /
+                        int256($totalAssets0)
+                )
             );
-            $tokenData1 = collToken1.getAccountMarginDetails(
-                msg.sender,
-                $fastOracleTick,
-                $posBalanceArray,
-                $premia1
+            $balance1ExpectedP = Math.mulDiv(
+                uint256(
+                    int256(collToken1.balanceOf(msg.sender)) +
+                        ($colDelta1 * int256($totalSupply1)) /
+                        int256($totalAssets1)
+                ),
+                uint256(int256($totalAssets1) + $colDelta1 + $commission1),
+                uint256(
+                    int256($totalSupply1) +
+                        ($colDelta1 * int256($totalSupply1)) /
+                        int256($totalAssets1)
+                )
             );
-
-            $balance0ExpectedP = uint256(int256(uint256($tokenData0.rightSlot())) - $colDelta0);
-
-            $balance1ExpectedP = uint256(int256(uint256($tokenData1.rightSlot())) - $colDelta1);
 
             $balanceCross =
                 Math.mulDiv(
-                    $balance0ExpectedP,
+                    $balance1ExpectedP,
                     2 ** 96,
                     TickMath.getSqrtRatioAtTick($fastOracleTick)
                 ) +
-                Math.mulDiv96($balance1ExpectedP, TickMath.getSqrtRatioAtTick($fastOracleTick));
+                Math.mulDiv96($balance0ExpectedP, TickMath.getSqrtRatioAtTick($fastOracleTick));
 
             $thresholdCross =
                 Math.mulDivRoundingUp(
@@ -396,7 +431,22 @@ contract FuzzDeployments is FuzzHelpers {
                     $tokenData0.leftSlot(),
                     TickMath.getSqrtRatioAtTick($fastOracleTick)
                 );
-            $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+            $shouldRevert = $shouldRevert
+                ? $shouldRevert
+                : ($thresholdCross * 13_333) / 10_000 > $balanceCross;
+
+            // emit LogUint256("origBal0", $balance0Origin);
+            // emit LogUint256("origBal1",$balance1Origin);
+            emit LogInt256("colDelta0", $colDelta0);
+            emit LogInt256("colDelta1", $colDelta1);
+            emit LogUint256("bal0", $balance0ExpectedP);
+            emit LogUint256("bal1", $balance1ExpectedP);
+            emit LogUint256("req0", uint256($tokenData0.leftSlot()));
+            emit LogUint256("req1", uint256($tokenData1.leftSlot()));
+            emit LogUint256("balCross", $balanceCross);
+            emit LogUint256("thresholdCross", $thresholdCross);
+            emit LogInt256("fast tick", $fastOracleTick);
+            emit LogBool("revert due to collateral shortfall at fast oracle tick", $shouldRevert);
 
             if (Math.abs(int256($slowOracleTick) - $fastOracleTick) > 1800) {
                 $tokenData0 = collToken0.getAccountMarginDetails(
@@ -412,6 +462,14 @@ contract FuzzDeployments is FuzzHelpers {
                     $premia1
                 );
 
+                $balanceCross =
+                    Math.mulDiv(
+                        $balance1ExpectedP,
+                        2 ** 96,
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    ) +
+                    Math.mulDiv96($balance0ExpectedP, TickMath.getSqrtRatioAtTick($slowOracleTick));
+
                 $thresholdCross =
                     Math.mulDivRoundingUp(
                         uint256($tokenData1.leftSlot()),
@@ -424,9 +482,24 @@ contract FuzzDeployments is FuzzHelpers {
                     );
 
                 $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+
+                emit LogUint256("thresholdCross", $thresholdCross);
+                emit LogUint256("req0", uint256($tokenData0.leftSlot()));
+                emit LogUint256("req1", uint256($tokenData1.leftSlot()));
+                emit LogInt256("slow tick", $slowOracleTick);
+                emit LogBool(
+                    "revert due to collateral shortfall at slow oracle tick",
+                    $shouldRevert
+                );
             }
         } else {
             $shouldRevert = true;
+
+            emit LogUint256("$tokenData0.rightSlot()", $tokenData0.rightSlot());
+            emit LogUint256("$tokenData1.rightSlot()", $tokenData1.rightSlot());
+            emit LogInt256("$colDelta0", $colDelta0);
+            emit LogInt256("$colDelta1", $colDelta1);
+            emit LogBool("revert due to insufficient collateral to cover delta", $shouldRevert);
         }
 
         $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
@@ -442,7 +515,7 @@ contract FuzzDeployments is FuzzHelpers {
                 TickMath.MIN_TICK
             )
         {
-            // assertWithMsg(false, "yahoo!");
+            assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
@@ -462,25 +535,26 @@ contract FuzzDeployments is FuzzHelpers {
             revert();
         }
 
+        $balance0Final = int256(
+            Math.mulDiv(collToken0.balanceOf(msg.sender), $totalAssets0, $totalSupply0)
+        );
+        $balance1Final = int256(
+            Math.mulDiv(collToken1.balanceOf(msg.sender), $totalAssets1, $totalSupply1)
+        );
+
         emit LogInt256("Balance 0 expected", $balance0Origin + $colDelta0);
         emit LogInt256("deltaE0", $colDelta0);
-        emit LogUint256("Balance 0", collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
+        emit LogInt256("Balance 0", $balance0Final);
         assertWithMsg(
-            Math.abs(
-                int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender))) -
-                    int256($balance0Origin + $colDelta0)
-            ) <= 10,
+            Math.abs(int256($balance0Final) - int256($balance0Origin + $colDelta0)) <= 10,
             "Balance 0 mismatch"
         );
 
         emit LogInt256("Balance 1 expected", $balance1Origin + $colDelta1);
         emit LogInt256("deltaE1", $colDelta1);
-        emit LogUint256("Balance 1", collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
+        emit LogInt256("Balance 1", $balance1Final);
         assertWithMsg(
-            Math.abs(
-                int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))) -
-                    int256($balance1Origin + $colDelta1)
-            ) <= 10,
+            Math.abs(int256($balance1Final) - int256($balance1Origin + $colDelta1)) <= 10,
             "Balance 1 mismatch"
         );
     }

@@ -20,6 +20,8 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
+import {PropertiesAsserts} from "./fuzz/PropertiesHelper.sol";
+
 /// @title The Panoptic Pool: Create permissionless options on top of a concentrated liquidity AMM like Uniswap v3.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
@@ -857,7 +859,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData) {
+    ) internal returns (uint256 medianData) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -910,10 +912,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
         if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
-            if (
-                !_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer) ||
-                !_checkSolvencyAtTick(user, positionIdList, currentTick, currentTick, buffer)
-            ) revert Errors.NotEnoughCollateral();
+            if (!_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer))
+                revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns and handles the exercise of options.
@@ -1264,7 +1264,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick,
         int24 atTick,
         uint256 buffer
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         (
             LeftRightSigned portfolioPremium,
             uint256[2][] memory positionBalanceArray
@@ -1282,6 +1282,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionBalanceArray,
             portfolioPremium.rightSlot()
         );
+
+        emit PropertiesAsserts.LogUint256("tokenData0.rightSlot()", tokenData0.rightSlot());
+        emit PropertiesAsserts.LogUint256("tokenData0.leftSlot()", tokenData0.leftSlot());
         LeftRightUnsigned tokenData1 = s_collateralToken1.getAccountMarginDetails(
             account,
             atTick,
@@ -1289,11 +1292,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
             portfolioPremium.leftSlot()
         );
 
+        emit PropertiesAsserts.LogUint256("tokenData1.rightSlot()", tokenData1.rightSlot());
+        emit PropertiesAsserts.LogUint256("tokenData1.leftSlot()", tokenData1.leftSlot());
         (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
             tokenData0,
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
         );
+
+        emit PropertiesAsserts.LogUint256("balanceCross", balanceCross);
+        emit PropertiesAsserts.LogUint256("thresholdCross", thresholdCross);
+        emit PropertiesAsserts.LogInt256("atTick", atTick);
 
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         unchecked {
