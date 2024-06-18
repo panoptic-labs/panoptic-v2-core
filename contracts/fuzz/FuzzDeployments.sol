@@ -1033,20 +1033,23 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
-    function invariant_collateral_overremoval_with_open_positions(CollateralTracker collToken) public {
+    function invariant_collateral_overremoval_with_open_positions(
+        CollateralTracker collToken
+    ) public {
         _attempt_collateral_overremoval(collToken0, msg.sender, true);
         _attempt_collateral_overremoval(collToken1, msg.sender, false);
     }
 
-    function _attempt_collateral_overremoval(CollateralTracker collToken, address withdrawer, bool token0Or1) public {
+    function _attempt_collateral_overremoval(
+        CollateralTracker collToken,
+        address withdrawer,
+        bool token0Or1
+    ) public {
         (, int24 curTick, , , , , ) = pool.slot0();
-        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool.calculateAccumulatedFeesBatch(
-            withdrawer,
-            false,
-            userPositions[withdrawer]
-        );
+        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
+            .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
         // TODO: how to use this properly?
-        (LeftRightUnsigned tokenData) = collToken.getAccountMarginDetails(
+        LeftRightUnsigned tokenData = collToken.getAccountMarginDetails(
             withdrawer,
             curTick,
             positions,
@@ -1062,7 +1065,14 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory withdrawers_open_positions = userPositions[withdrawer];
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawers_open_positions) {
             // then, assert we get a revert when trying to withdraw too much:
-            try collToken.withdraw(amountToMarginCallThreshold + amountOver, withdrawer, withdrawer, withdrawers_open_positions) {
+            try
+                collToken.withdraw(
+                    amountToMarginCallThreshold + amountOver,
+                    withdrawer,
+                    withdrawer,
+                    withdrawers_open_positions
+                )
+            {
                 assertWithMsg(false, "User was able to withdraw too much");
             } catch {}
         } catch {
@@ -1217,7 +1227,14 @@ contract FuzzDeployments is FuzzHelpers {
             }
         } else {
             TokenId[] memory withdrawers_open_positions = userPositions[owner];
-            try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient, withdrawers_open_positions) {
+            try
+                collToken.withdraw(
+                    ct_s_poolAssets + amount_over,
+                    owner,
+                    recipient,
+                    withdrawers_open_positions
+                )
+            {
                 assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
             } catch {
                 if (
@@ -1330,7 +1347,14 @@ contract FuzzDeployments is FuzzHelpers {
             } catch {}
         } else {
             TokenId[] memory withdrawers_open_positions = userPositions[owner];
-            try collToken.withdraw(owners_assets + amount_over, owner, recipient, withdrawers_open_positions) {
+            try
+                collToken.withdraw(
+                    owners_assets + amount_over,
+                    owner,
+                    recipient,
+                    withdrawers_open_positions
+                )
+            {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
         }
@@ -1608,7 +1632,14 @@ contract FuzzDeployments is FuzzHelpers {
 
         hevm.prank(withdrawer);
 
-        try collToken.withdraw(assets_to_withdraw, withdrawer, withdrawer, withdrawers_open_positions) {
+        try
+            collToken.withdraw(
+                assets_to_withdraw,
+                withdrawer,
+                withdrawer,
+                withdrawers_open_positions
+            )
+        {
             // assert assets & shares were deducted/incremented appropriately:
             uint256 pool_assets_bal_after = IERC20(collToken.asset()).balanceOf(
                 address(panopticPool)
