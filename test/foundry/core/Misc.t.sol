@@ -1397,7 +1397,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_335,
+            258_334,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1496,7 +1496,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            516_671,
+            516_670,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -1622,7 +1622,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_007,
+            275_006,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -1672,7 +1672,7 @@ contract Misctest is Test, PositionUtils {
             // @TODO might have to tweak this if rounding is changed upstream
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(104) : int256(105),
+                i == 0 ? int256(107) : int256(108),
                 "Buyer paid premium twice"
             );
 
@@ -1808,7 +1808,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_999,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1855,7 +1855,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_333,
+            533_332,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -1887,7 +1887,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_000,
+            274_999,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -2088,6 +2088,65 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
+    }
+
+    function test_success_NotionalRounding() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                int24(-665450),
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
+
+        (, , uint256[2][] memory positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+            Bob,
+            false,
+            $posIdList
+        );
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            positionBalanceArray,
+            0
+        );
+
+        LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            positionBalanceArray,
+            0
+        );
+        (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+            tokenData0,
+            tokenData1,
+            0,
+            currentTick
+        );
+
+        assertTrue(required0 > 0, "zero collateral requirement");
+        assertTrue(required0 <= balance0, "account is solvent");
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), int24(887272), int24(-887272));
     }
 
     function test_success_PremiumRollover() public {

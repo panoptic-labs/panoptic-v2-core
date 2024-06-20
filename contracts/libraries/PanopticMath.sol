@@ -488,7 +488,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -505,7 +505,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
     /// @return The converted `amount` of token1 represented in terms of token0
@@ -522,7 +522,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -545,7 +545,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -581,23 +581,26 @@ library PanopticMath {
         uint128 positionSize,
         uint256 legIndex
     ) internal pure returns (LeftRightUnsigned) {
-        // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-
         uint128 amount0;
         uint128 amount1;
+
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
+
+        // effective strike price of the option (avg. price over LP range)
+        // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
+        uint256 geometricMeanPriceX96 = Math.mulDiv96(
+            Math.getSqrtRatioAtTick(tickLower),
+            Math.getSqrtRatioAtTick(tickUpper)
+        );
+
         if (tokenId.asset(legIndex) == 0) {
             amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount1 = Math
-                .getAmount1ForLiquidity(Math.getLiquidityForAmount0(tickLower, tickUpper, amount0))
-                .toUint128();
+            amount1 = Math.mulDiv96RoundingUp(amount0, geometricMeanPriceX96).toUint128();
         } else {
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount0 = Math
-                .getAmount0ForLiquidity(Math.getLiquidityForAmount1(tickLower, tickUpper, amount1))
-                .toUint128();
+            amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
         }
 
         return LeftRightUnsigned.wrap(0).toRightSlot(amount0).toLeftSlot(amount1);

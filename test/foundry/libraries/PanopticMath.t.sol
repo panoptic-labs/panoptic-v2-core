@@ -1193,22 +1193,22 @@ contract PanopticMathTest is Test, PositionUtils {
         // set amount 0
         uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
 
-        // get amount 1
-        // construct liq object
-        LiquidityChunk liquidityAmounts = Math.getLiquidityForAmount0(
-            tickLower,
-            tickUpper,
-            amount0
+        uint256 amount1 = Math.mulDivRoundingUp(
+            uint256(amount0),
+            Math.mulDiv(
+                Math.getSqrtRatioAtTick(tickLower),
+                Math.getSqrtRatioAtTick(tickUpper),
+                2 ** 96
+            ),
+            2 ** 96
         );
-        // set amount 1
-        uint256 intermediateAmount1 = Math.getAmount1ForLiquidity(liquidityAmounts);
-        vm.assume(intermediateAmount1 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
-        uint128 amount1 = intermediateAmount1.toUint128();
+
+        vm.assume(amount1 < 2 ** 128);
 
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
             .toRightSlot(amount0)
-            .toLeftSlot(amount1);
+            .toLeftSlot(uint128(amount1));
 
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
             tokenId,
@@ -1279,21 +1279,20 @@ contract PanopticMathTest is Test, PositionUtils {
         // set amount 1
         uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
 
-        // get amount 0
-        // construct liq object
-        LiquidityChunk liquidityAmounts = Math.getLiquidityForAmount1(
-            tickLower,
-            tickUpper,
-            amount1
+        uint256 amount0 = Math.mulDivRoundingUp(
+            uint256(amount1),
+            2 ** 96,
+            Math.mulDiv(
+                Math.getSqrtRatioAtTick(tickLower),
+                Math.getSqrtRatioAtTick(tickUpper),
+                2 ** 96
+            )
         );
-        // set amount 1
-        uint256 intermediateAmount0 = Math.getAmount0ForLiquidity(liquidityAmounts);
-        vm.assume(intermediateAmount0 < type(uint128).max); // as sizes above 128 bits are not allowed (reverts in sc)
-        uint128 amount0 = intermediateAmount0.toUint128();
+        vm.assume(amount0 < 2 ** 128);
 
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0)
+            .toRightSlot(uint128(amount0))
             .toLeftSlot(amount1);
 
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
