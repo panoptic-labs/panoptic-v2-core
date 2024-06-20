@@ -247,16 +247,48 @@ contract FuzzDeployments is FuzzHelpers {
 
         for (uint256 i = 0; i < $numLegs; ++i) {
             $tokenTypes[i] = bound(tokenTypes[i], 0, 1);
-            $isLongs[i] = bound(isLongs[i], 0, 0);
+            $isLongs[i] = bound(isLongs[i], 0, 1);
             $assets[i] = bound(assets[i], 0, 1);
             $ratios[i] = bound(ratioSeeds[i], 1, 127);
-            ($widths[i], $strikes[i]) = getValidSW(
-                widthSeeds[i],
-                strikeSeeds[i],
-                uint24(poolTickSpacing),
-                currentTick,
-                distributions[0]
-            );
+
+            if ($isLongs[i] == 0) {
+                ($widths[i], $strikes[i]) = getValidSW(
+                    widthSeeds[i],
+                    strikeSeeds[i],
+                    uint24(poolTickSpacing),
+                    currentTick,
+                    distributions[0]
+                );
+
+                touchedPanopticChunks.push(
+                    ChunkWithTokenType($strikes[i], $widths[i], $tokenTypes[i])
+                );
+            } else {
+                // pick a random chunk -- very likely to fail due to low liquidity
+                if (distributions[0] || touchedPanopticChunks.length == 0) {
+                    ($widths[i], $strikes[i]) = getValidSW(
+                        widthSeeds[i],
+                        strikeSeeds[i],
+                        uint24(poolTickSpacing),
+                        currentTick,
+                        distributions[0]
+                    );
+                }
+                // pick a chunk that has already been interacted with before -- reasonable probability of success
+                else if (distributions[0]) {
+                    ChunkWithTokenType memory __chunk = touchedPanopticChunks[
+                        bound(
+                            uint256(keccak256(abi.encodePacked(positionSize))),
+                            0,
+                            touchedPanopticChunks.length - 1
+                        )
+                    ];
+
+                    $widths[i] = __chunk.width;
+                    $strikes[i] = __chunk.strike;
+                }
+            }
+
             userPositions[msg.sender][userPositions[msg.sender].length - 1] = userPositions[
                 msg.sender
             ][userPositions[msg.sender].length - 1].addLeg(
@@ -277,7 +309,7 @@ contract FuzzDeployments is FuzzHelpers {
         positionSize = uint128(
             distributions[1]
                 ? bound(positionSize, 0, 1_000_000_000 * 2 ** 64)
-                : bound(positionSize, uint256(2 ** 64) / 10, 2 * 2 ** 64)
+                : bound(positionSize, 0, 2 * 2 ** 64)
         );
 
         try this.size_for_collateral_solo(positionSize, userCollateral0, userCollateral1) {} catch (
@@ -300,8 +332,6 @@ contract FuzzDeployments is FuzzHelpers {
 
         // and check if should revert due to 0 liquidity
         write_mintburn_transfer_amts();
-
-        // assertWithMsg(false, "yahoo(2)!");
 
         // pool has insufficient tokens to mint the option
         $shouldRevert = $shouldRevert = $shouldRevert
@@ -343,16 +373,28 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("intrinsicDelta1", $colDelta1);
 
         // ITM spread + commission
-        $commission0 =
-            (Math.abs($colDelta0) * int256(uint256(pool.fee())) * 2) /
-            (10_000 * 100) +
-            (($shortAmounts.rightSlot() + $longAmounts.rightSlot()) * 10) /
-            10_000;
-        $commission1 =
-            (Math.abs($colDelta1) * int256(uint256(pool.fee())) * 2) /
-            (10_000 * 100) +
-            (($shortAmounts.leftSlot() + $longAmounts.leftSlot()) * 10) /
-            10_000;
+        $commission0 = int256(
+            Math.unsafeDivRoundingUp(
+                (uint256(Math.abs($colDelta0)) * pool.fee() * 2),
+                (10_000 * 100)
+            ) +
+                Math.unsafeDivRoundingUp(
+                    (uint256(uint128($shortAmounts.rightSlot())) +
+                        uint128($longAmounts.rightSlot())) * 10,
+                    10_000
+                )
+        );
+        $commission1 = int256(
+            Math.unsafeDivRoundingUp(
+                (uint256(Math.abs($colDelta1)) * pool.fee() * 2),
+                (10_000 * 100)
+            ) +
+                Math.unsafeDivRoundingUp(
+                    (uint256(uint128($shortAmounts.leftSlot())) +
+                        uint128($longAmounts.leftSlot())) * 10,
+                    10_000
+                )
+        );
 
         $colDelta0 -= $commission0;
         $colDelta1 -= $commission1;
@@ -515,21 +557,16 @@ contract FuzzDeployments is FuzzHelpers {
                 TickMath.MIN_TICK
             )
         {
+            // already working
+            // for (uint256 i = 0; i < $numLegs; ++i) {
+            //     assertWithMsg($isLongs[i] != 1, "success!");
+            // }
+
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
-            assertWithMsg(
-                !(positionSize != 0 &&
-                    !distributions[0] &&
-                    !distributions[1] &&
-                    $numLegs == 1 &&
-                    !$shouldRevert &&
-                    bytes4(reason) != Errors.TransferFailed.selector &&
-                    keccak256(reason) !=
-                    keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))),
-                "mintOptions: unexpected revert"
-            );
+            assertWithMsg($shouldRevert, "mintOptions: unexpected revert");
 
             // reverse test state changes (i.e. positionidlist)
             revert();

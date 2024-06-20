@@ -242,7 +242,7 @@ contract FuzzHelpers is PropertiesAsserts {
         bytes
     );
 
-    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24, int24);
+    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool);
 
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
@@ -285,8 +285,8 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     struct ChunkWithTokenType {
-        int24 tickLower;
-        int24 tickUpper;
+        int24 strike;
+        int24 width;
         uint256 tokenType;
     }
 
@@ -383,9 +383,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
     mapping(address => TokenId[]) userPositions;
 
-    mapping(address => mapping(TokenId => LeftRightUnsigned)) userBalance;
+    mapping(address => mapping(TokenId => LeftRightUnsigned)) $userBalance;
 
-    mapping(bytes32 chunk => LeftRightUnsigned removedAndNet) panopticChunkLiquidity;
+    mapping(bytes32 chunk => LeftRightUnsigned removedAndNet) $panopticChunkLiquidity;
 
     ChunkWithTokenType[] touchedPanopticChunks;
 
@@ -1218,35 +1218,47 @@ contract FuzzHelpers is PropertiesAsserts {
             assembly ("memory-safe") {
                 results := add(results, 0x04)
             }
+            bool sRevert;
+            ($collectedByLeg, $totalSwapped, $fastOracleTick, $slowOracleTick, sRevert) = abi
+                .decode(results, (LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool));
 
-            ($collectedByLeg, $totalSwapped, $fastOracleTick, $slowOracleTick) = abi.decode(
-                results,
-                (LeftRightUnsigned[4], LeftRightSigned, int24, int24)
-            );
+            $shouldRevert = $shouldRevert || sRevert;
         }
     }
 
     function sfpm_mint_sim() external {
         hevm.prank(address(panopticPool));
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
-            .mintTokenizedPosition(
+        try
+            sfpm.mintTokenizedPosition(
                 $tokenIdActive,
                 $positionSizeActive,
                 TickMath.MAX_TICK,
                 TickMath.MIN_TICK
+            )
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+            (int24 slowTick, ) = panopticHelper.computeInternalMedian(
+                60,
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+                pool
             );
-
-        (int24 slowTick, ) = panopticHelper.computeInternalMedian(
-            60,
-            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-            pool
-        );
-        revert SFPMMintResError(
-            collectedByLeg,
-            totalSwapped,
-            panopticHelper.computeMedianObservedPrice(pool, 3, 1),
-            slowTick
-        );
+            revert SFPMMintResError(
+                collectedByLeg,
+                totalSwapped,
+                panopticHelper.computeMedianObservedPrice(pool, 3, 1),
+                slowTick,
+                false
+            );
+        } catch {
+            LeftRightUnsigned[4] memory collectedByLeg;
+            LeftRightSigned totalSwapped;
+            revert SFPMMintResError(
+                collectedByLeg,
+                totalSwapped,
+                panopticHelper.computeMedianObservedPrice(pool, 3, 1),
+                0,
+                true
+            );
+        }
     }
 
     ////////////////////////////////////////////////////
