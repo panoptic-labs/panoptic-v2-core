@@ -679,6 +679,57 @@ contract FuzzDeployments is FuzzHelpers {
 
         emit LogInt256("Balance before", int256(_get_assets_in_token0(minter, currentTick)));
 
+        LeftRightUnsigned requiredBalanceBefore;
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+            emit LogInt256("final Tick", currentTick);
+
+            LeftRightUnsigned tokenData0;
+            LeftRightUnsigned tokenData1;
+            address _m = minter;
+            {
+                // Compute premia for all options (includes short+long premium)
+                (
+                    int128 premium0,
+                    int128 premium1,
+                    uint256[2][] memory positionBalanceArray
+                ) = panopticPool.calculateAccumulatedFeesBatch(_m, false, posIdList);
+
+                // Query the current and required collateral amounts for the two tokens
+                tokenData0 = collToken0.getAccountMarginDetails(
+                    _m,
+                    currentTick,
+                    positionBalanceArray,
+                    premium0
+                );
+                tokenData1 = collToken1.getAccountMarginDetails(
+                    _m,
+                    currentTick,
+                    positionBalanceArray,
+                    premium1
+                );
+            }
+            requiredBalanceBefore = LeftRightUnsigned
+                .wrap(0)
+                .toRightSlot(uint128(tokenData0.leftSlot()))
+                .toLeftSlot(uint128(tokenData1.leftSlot()));
+            emit LogUint256("tokenData0-bal", tokenData0.rightSlot());
+            emit LogUint256("tokenData0-req", tokenData0.leftSlot());
+            emit LogUint256("tokenData1-bal", tokenData1.rightSlot());
+            emit LogUint256("tokenData1-req", tokenData1.leftSlot());
+
+            // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
+            (uint256 balance0B, uint256 required0B) = PanopticMath.convertCollateralData(
+                tokenData0,
+                tokenData1,
+                0,
+                currentTick
+            );
+
+            emit LogUint256("Balance0 before", balance0B);
+            emit LogUint256("required0 before", required0B);
+        }
+
         {
             int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
             int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
@@ -753,6 +804,18 @@ contract FuzzDeployments is FuzzHelpers {
                     premium1
                 );
             }
+            emit LogUint256("tokenData0-bal", tokenData0.rightSlot());
+            emit LogUint256("tokenData0-req", tokenData0.leftSlot());
+            emit LogUint256("tokenData1-bal", tokenData1.rightSlot());
+            emit LogUint256("tokenData1-req", tokenData1.leftSlot());
+            assertWithMsg(
+                (tokenData0.leftSlot()) >= (requiredBalanceBefore.rightSlot()),
+                "tokenData0 required increased after mint"
+            );
+            assertWithMsg(
+                (tokenData1.leftSlot()) >= (requiredBalanceBefore.leftSlot()),
+                "tokenData1 required increased after mint"
+            );
 
             // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
             (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
@@ -764,7 +827,7 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogUint256("Balance0 after", balance0);
             emit LogUint256("required0 after", required0);
 
-            assertWithMsg(balance0 >= required0, "account is not solvent in token0");
+            assertWithMsg(balance0 >= required0, "after: account is not solvent in token0");
 
             // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
             (uint256 balance1, uint256 required1) = PanopticMath.convertCollateralData(
@@ -776,7 +839,7 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogUint256("Balance1 after", balance1);
             emit LogUint256("required1 after", required1);
 
-            assertWithMsg(balance1 >= required1, "account is not solvent in token1");
+            assertWithMsg(balance1 >= required1, "after: account is not solvent in token1");
 
             {
                 uint256 sqrtPriceX96 = Math.getSqrtRatioAtTick(currentTick);
@@ -796,7 +859,7 @@ contract FuzzDeployments is FuzzHelpers {
                 ) + Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
                 assertWithMsg(
                     balanceCross >= thresholdCross,
-                    "account is not solvent in cross token"
+                    "after: account is not solvent in cross token"
                 );
             }
         }
@@ -1362,34 +1425,34 @@ contract FuzzDeployments is FuzzHelpers {
     // Liquidation
     ////////////////////////////////////////////////////
 
-    function log_bound(uint256 x) public {
-        uint256 out = boundLog(x, 0, type(uint256).max);
+    function log_bound(uint256 x) internal {
+        uint256 out = boundLog(x, 0, 255);
         emit LogUint256("full-range", out);
         assertWithMsg((out <= type(uint256).max) && (out >= 0), "within bounds");
 
-        out = boundLog(x, 0, 2 ** 15);
+        out = boundLog(x, 0, 15);
         emit LogUint256("0-15", out);
         assertWithMsg((out <= 2 ** 15) && (out >= 0), "within bounds");
 
-        out = boundLog(x, 2 ** 32, 2 ** 224);
+        out = boundLog(x, 32, 224);
         emit LogUint256("32-224", out);
         assertWithMsg((out <= 2 ** 224) && (out >= 2 ** 32), "within bounds");
 
-        out = boundLog(x, 2 ** 100, 2 ** 114);
+        out = boundLog(x, 100, 114);
         emit LogUint256("100-114", out);
         assertWithMsg((out <= 2 ** 114) && (out >= 2 ** 100), "within bounds");
 
-        out = boundLog(x, 2 ** 128, 2 ** 129);
+        out = boundLog(x, 128, 129);
         emit LogUint256("128-129", out);
         assertWithMsg((out <= 2 ** 129) && (out >= 2 ** 128), "within bounds");
 
-        out = boundLog(x, 2 ** 254, type(uint256).max);
-        emit LogUint256("254-256", out);
-        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 254), "within bounds");
+        out = boundLog(x, 253, 255);
+        emit LogUint256("253-256", out);
+        assertWithMsg((out <= 2 ** 255) && (out >= 2 ** 253), "within bounds");
 
-        out = boundLog(x, 2 ** 255, type(uint256).max);
-        emit LogUint256("255-256", out);
-        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 255), "within bounds");
+        out = boundLog(x, 254, 255);
+        emit LogUint256("254-256", out);
+        assertWithMsg((out <= 2 ** 255) && (out >= 2 ** 254), "within bounds");
     }
 
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold

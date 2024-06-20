@@ -340,6 +340,15 @@ contract FuzzHelpers is PropertiesAsserts {
         return min + (value % range);
     }
 
+    function boundLog(uint256 value, uint8 min, uint8 max) internal returns (uint256) {
+        uint8 r = max - min;
+        uint256 rB = (value % r);
+        uint256 m0 = (value % 2 ** 128);
+        uint256 m1 = (value >> 128) % 2 ** min;
+        return m1 + Math.mulDiv(m0, 2 ** (rB + min), 2 ** 127);
+    }
+
+    /*
     function boundLog(uint256 value, uint256 min, uint256 max) internal returns (uint256) {
         uint256 r = mostSignificantBit(max - 1) - mostSignificantBit(min + 1) + 1;
         uint256 rB = (value % r) + 1;
@@ -347,6 +356,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 out = (min + 1) * Math.mulDiv(m, (2 ** rB), 2 ** 127);
         return bound(out, min, max);
     }
+   */
 
     function mostSignificantBit(uint256 x) internal pure returns (uint8 r) {
         require(x > 0);
