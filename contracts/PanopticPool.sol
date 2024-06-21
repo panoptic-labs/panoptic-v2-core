@@ -1014,10 +1014,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightSigned premia;
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
         {
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                revert Errors.StaleTWAP();
-
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -1039,6 +1035,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionBalanceArray,
                 premia.leftSlot()
             );
+
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
+
+            (, int24 fastOracleTick, , ) = _getOracleTicks();
+            // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
+            /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
+            if (
+                _checkSolvencyCross(tokenData0, tokenData1, twapTick, NO_BUFFER) ||
+                _checkSolvencyCross(tokenData0, tokenData1, currentTick, NO_BUFFER) ||
+                _checkSolvencyCross(tokenData0, tokenData1, fastOracleTick, NO_BUFFER)
+            ) revert Errors.NotMarginCalled();
 
             (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
                 tokenData0,
