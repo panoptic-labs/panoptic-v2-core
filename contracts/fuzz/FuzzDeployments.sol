@@ -1720,7 +1720,7 @@ contract FuzzDeployments is FuzzHelpers {
                     "User balance incorrect after deposit"
                 );
                 assertWithMsg(
-                    withdrawerSharesBefore - withdrawerSharesAfter == shares_to_withdraw,
+                    withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after redemption"
                 );
             } catch {}
@@ -1750,7 +1750,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         // TODO: do we need to scale this down such that we're in-bounds for the actual collateral requirements of open positions?
         uint256 sharesToWithdraw = bound(shares, 1, collToken.balanceOf(withdrawer));
-        uint256 assetsToWithdraw = collToken.convertToAssets(shares_to_withdraw);
+        uint256 assetsToWithdraw = collToken.convertToAssets(sharesToWithdraw);
 
         hevm.prank(withdrawer);
 
