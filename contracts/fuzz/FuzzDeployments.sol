@@ -1854,7 +1854,7 @@ contract FuzzDeployments is FuzzHelpers {
                     "Recipient shares balance incorrect after transfer"
                 );
             } catch {
-                uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+                uint256 numOfPositions = panopticPool.numberOfPositions(sender);
                 if (numOfPositions == 0)
                     assertWithMsg(false, "unknown reversion when trying to transfer");
             }
