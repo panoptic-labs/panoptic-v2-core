@@ -1836,12 +1836,13 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             } catch {
                 // Loudly error for any reversion reason other than having open positions
-                uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+                uint256 numOfPositions = panopticPool.numberOfPositions(sender);
                 if (numOfPositions == 0)
                     assertWithMsg(false, "unknown reversion when trying to transfer");
             }
         } else {
             collToken.approve(recipient, shares_to_transfer);
+            hevm.prank(recipient);
             try collToken.transferFrom(sender, recipient, shares_to_transfer) {
                 uint sender_shares_after = collToken.balanceOf(sender);
                 uint recipient_shares_after = collToken.balanceOf(recipient);
