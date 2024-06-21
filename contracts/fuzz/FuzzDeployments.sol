@@ -1465,7 +1465,8 @@ contract FuzzDeployments is FuzzHelpers {
             revert();
         }
 
-        require(caller != settledAccount);
+        // Need this?
+        //require(caller != settledAccount);
 
         TokenId[] memory settled_positions = userPositions[settledAccount];
 
@@ -1478,16 +1479,112 @@ contract FuzzDeployments is FuzzHelpers {
                 uint256 longIndex = ((i_settled >> 4) % tokenId.countLegs());
                 if (tokenId.isLong(longIndex) == 1) {
                     emit LogUint256("settled leg index", longIndex);
+                    uint128 premium0;
+                    uint128 premium1;
 
-                    uint256 b0 = collToken0.convertToAssets(collToken0.balanceOf(settledAccount));
-                    uint256 b1 = collToken1.convertToAssets(collToken1.balanceOf(settledAccount));
+                    {
+                        (uint128 balance, , ) = panopticPool.optionPositionBalance(
+                            settledAccount,
+                            tokenId
+                        );
+                        uint128 liquidity = PanopticMath
+                            .getLiquidityChunk(tokenId, longIndex, balance)
+                            .liquidity();
 
-                    panopticPool.settleLongPremium(settled_positions, settledAccount, longIndex);
+                        (uint128 optionData0, uint128 optionData1) = panopticPool.optionData(
+                            tokenId,
+                            settledAccount,
+                            longIndex
+                        );
 
-                    uint256 a0 = collToken0.convertToAssets(collToken0.balanceOf(settledAccount));
-                    uint256 a1 = collToken1.convertToAssets(collToken1.balanceOf(settledAccount));
+                        {
+                            (, currentTick, , , , , ) = pool.slot0();
+                            uint128 premiumAccumulator0;
+                            uint128 premiumAccumulator1;
+                            {
+                                uint256 tokenType = tokenId.tokenType(longIndex);
+                                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(longIndex);
+                                (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+                                    address(pool),
+                                    address(panopticPool),
+                                    tokenType,
+                                    tickLower,
+                                    tickUpper,
+                                    currentTick,
+                                    1
+                                );
+                            }
+                            premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
+                            premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
 
-                    assertWithMsg(((a0 <= b0) && (a1 <= b1)), "user balance increased!!");
+                            emit LogUint256("premium0-calc", premium0);
+                            emit LogUint256("premium1-calc", premium1);
+                        }
+                    }
+                    {
+                        address _settledAccount = settledAccount;
+                        uint256 balanceBefore0 = collToken0.convertToAssets(
+                            collToken0.balanceOf(_settledAccount)
+                        );
+                        uint256 balanceBefore1 = collToken1.convertToAssets(
+                            collToken1.balanceOf(_settledAccount)
+                        );
+
+                        LeftRightUnsigned settledBefore;
+                        {
+                            (uint128 s0, uint128 s1, , ) = panopticPool.premiaSettlementData(
+                                tokenId,
+                                longIndex
+                            );
+
+                            settledBefore = LeftRightUnsigned.wrap(0).toRightSlot(s0).toLeftSlot(
+                                s1
+                            );
+                            emit LogUint256("s0", s0);
+                            emit LogUint256("s1", s1);
+                        }
+                        panopticPool.settleLongPremium(
+                            settled_positions,
+                            settledAccount,
+                            longIndex
+                        );
+                        {
+                            (uint128 s0, uint128 s1, , ) = panopticPool.premiaSettlementData(
+                                tokenId,
+                                longIndex
+                            );
+
+                            assertWithMsg(
+                                s0 == (settledBefore.rightSlot() + premium0),
+                                "inconsistent settlement0 accounting!"
+                            );
+                            assertWithMsg(
+                                s1 == (settledBefore.leftSlot() + premium1),
+                                "inconsistent settlement1 accounting!"
+                            );
+                            emit LogUint256("s0", s0);
+                            emit LogUint256("s1", s1);
+                        }
+
+                        uint256 balanceAfter0 = collToken0.convertToAssets(
+                            collToken0.balanceOf(_settledAccount)
+                        );
+                        uint256 balanceAfter1 = collToken1.convertToAssets(
+                            collToken1.balanceOf(_settledAccount)
+                        );
+
+                        assertWithMsg(
+                            ((balanceAfter0 <= balanceBefore0) &&
+                                (balanceAfter1 <= balanceBefore1)),
+                            "user balance increased!!"
+                        );
+
+                        assertWithMsg(
+                            (((balanceBefore0 - balanceAfter0) == premium0) &&
+                                ((balanceBefore1 - balanceAfter1) == premium1)),
+                            "inconsistent premium settlement"
+                        );
+                    }
                 }
             }
         }
