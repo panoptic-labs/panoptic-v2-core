@@ -857,17 +857,43 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
-        IUniswapV3Pool _univ3pool = s_univ3pool;
         (
-            ,
             int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            uint256 _medianData
+        ) = _getOracleTicks();
 
-        ) = _univ3pool.slot0();
-        int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        medianData = _medianData;
+
+        // Check the user's solvency at the fast tick; revert if not solvent
+        bool solventAtFast = _checkSolvencyAtTick(
+            user,
+            positionIdList,
+            currentTick,
+            fastOracleTick,
+            buffer
+        );
+        if (!solventAtFast) revert Errors.NotEnoughCollateral();
+
+        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
+        if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
+            if (!_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer))
+                revert Errors.NotEnoughCollateral();
+    }
+
+    function _getOracleTicks()
+        internal
+        view
+        returns (int24 currentTick, int24 fastOracleTick, int24 slowOracleTick, uint256 medianData)
+    {
+        IUniswapV3Pool _univ3pool = s_univ3pool;
+        uint16 observationIndex;
+        uint16 observationCardinality;
+
+        (, currentTick, observationIndex, observationCardinality, , , ) = _univ3pool.slot0();
+
+        fastOracleTick = PanopticMath.computeMedianObservedPrice(
             _univ3pool,
             observationIndex,
             observationCardinality,
@@ -875,7 +901,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             FAST_ORACLE_PERIOD
         );
 
-        int24 slowOracleTick;
         if (SLOW_ORACLE_UNISWAP_MODE) {
             slowOracleTick = PanopticMath.computeMedianObservedPrice(
                 _univ3pool,
@@ -893,21 +918,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 _univ3pool
             );
         }
-
-        // Check the user's solvency at the fast tick; revert if not solvent
-        bool solventAtFast = _checkSolvencyAtTick(
-            user,
-            positionIdList,
-            currentTick,
-            fastOracleTick,
-            buffer
-        );
-        if (!solventAtFast) revert Errors.NotEnoughCollateral();
-
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
-        if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
-            if (!_checkSolvencyAtTick(user, positionIdList, currentTick, slowOracleTick, buffer))
-                revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns and handles the exercise of options.
