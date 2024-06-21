@@ -1762,7 +1762,7 @@ contract FuzzDeployments is FuzzHelpers {
             );
             assertWithMsg(
                 withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
-                "User share balance incorrect after redemption"
+                "User share balance incorrect after withdawal"
             );
 
             // show we are still solvent:
