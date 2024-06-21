@@ -1455,6 +1455,44 @@ contract FuzzDeployments is FuzzHelpers {
         assertWithMsg((out <= 2 ** 255) && (out >= 2 ** 254), "within bounds");
     }
 
+    function try_settle_long(uint256 i_settled) public {
+        address caller = msg.sender;
+
+        address settledAccount = actors[i_settled % 4];
+
+        if (userPositions[settledAccount].length < 1) {
+            emit LogString("No current positions");
+            revert();
+        }
+
+        require(caller != settledAccount);
+
+        TokenId[] memory settled_positions = userPositions[settledAccount];
+
+        emit LogUint256("settled positions length", settled_positions.length);
+
+        for (uint256 i = 0; i < settled_positions.length; ++i) {
+            TokenId tokenId = settled_positions[i];
+
+            if (tokenId.countLongs() > 0) {
+                uint256 longIndex = ((i_settled >> 4) % tokenId.countLegs());
+                if (tokenId.isLong(longIndex) == 1) {
+                    emit LogUint256("settled leg index", longIndex);
+
+                    uint256 b0 = collToken0.convertToAssets(collToken0.balanceOf(settledAccount));
+                    uint256 b1 = collToken1.convertToAssets(collToken1.balanceOf(settledAccount));
+
+                    panopticPool.settleLongPremium(settled_positions, settledAccount, longIndex);
+
+                    uint256 a0 = collToken0.convertToAssets(collToken0.balanceOf(settledAccount));
+                    uint256 a1 = collToken1.convertToAssets(collToken1.balanceOf(settledAccount));
+
+                    assertWithMsg(((a0 <= b0) && (a1 <= b1)), "user balance increased!!");
+                }
+            }
+        }
+    }
+
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
