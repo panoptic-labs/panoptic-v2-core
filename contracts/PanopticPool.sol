@@ -876,9 +876,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
         // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
         if (
-            Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA ||
-            Math.abs(int256(fastOracleTick) - currentTick) > MAX_SLOW_FAST_DELTA ||
-            Math.abs(currentTick - slowOracleTick) > MAX_SLOW_FAST_DELTA
+            int256(fastOracleTick - slowOracleTick) ** 2 +
+                int256(fastOracleTick - currentTick) ** 2 +
+                int256(currentTick - slowOracleTick) ** 2 >
+            MAX_SLOW_FAST_DELTA ** 2
         ) {
             atTicks = new int24[](3);
             atTicks[0] = fastOracleTick;
