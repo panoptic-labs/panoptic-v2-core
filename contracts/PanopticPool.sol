@@ -654,6 +654,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
+        bool safeMode = isSafeMode();
+        // if safeMode, enforce covered deployment
+        if (safeMode && (tickLimitLow > tickLimitHigh)) {
+            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -950,6 +956,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             LeftRightSigned paidAmounts
         )
     {
+        {
+            bool safeMode = isSafeMode();
+            // if safeMode, enforce covered at assignment
+            if (safeMode && (tickLimitLow > tickLimitHigh)) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -1360,6 +1374,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
         }
+    }
+
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    function isSafeMode() internal view returns (bool safeMode) {
+        // check if the price has deviated too much recently.
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        unchecked {
+            uint256 medianData = s_miniMedian;
+            int24 medianTick = (int24(
+                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
+
+            // If ticks have recently deviated more than +/- 20%, enforce covered mints
+            if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
+                safeMode = true;
+            }
+        }
+        return (safeMode);
     }
 
     /*//////////////////////////////////////////////////////////////
