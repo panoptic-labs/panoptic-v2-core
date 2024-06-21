@@ -332,7 +332,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         if (
             ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
             ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
-        ) revert Errors.NotEnoughCollateral();
+        ) revert Errors.AccountInsolvent();
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -890,7 +890,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         bool solvent = _checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer);
-        if (!solvent) revert Errors.NotEnoughCollateral();
+        if (!solvent) revert Errors.AccountInsolvent();
     }
 
     function _getOracleTicks()

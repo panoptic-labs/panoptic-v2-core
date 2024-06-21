@@ -1651,7 +1651,7 @@ contract Misctest is Test, PositionUtils {
 
             deal(address(ct0), Buyers[i], i ** 15);
             deal(address(ct1), Buyers[i], i ** 15);
-            vm.expectRevert(Errors.NotEnoughCollateral.selector);
+            vm.expectRevert(Errors.AccountInsolvent.selector);
             pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
             vm.revertTo(snap);
         }
@@ -2008,11 +2008,11 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(266262));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.validateCollateralWithdrawable(Bob, $posIdList);
     }
 
-    function test_Fail_WithdrawWithOpenPositions_NotEnoughCollateral() public {
+    function test_Fail_WithdrawWithOpenPositions_AccountInsolvent() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2047,11 +2047,11 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
     }
 
-    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_NotEnoughCollateral() public {
+    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_AccountInsolvent() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2086,7 +2086,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
     }
 
