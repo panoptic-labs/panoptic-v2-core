@@ -656,8 +656,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal returns (uint128) {
         bool safeMode = isSafeMode();
         // if safeMode, enforce covered deployment
-        if (safeMode && (tickLimitLow > tickLimitHigh)) {
-            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+        if (safeMode) {
+            if (tickLimitLow > tickLimitHigh) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
         }
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
@@ -667,7 +669,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
-        return poolUtilizations;
+        if (safeMode) {
+            return uint128(10_000) + uint128(10_000 << 64);
+        } else {
+            return poolUtilizations;
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
