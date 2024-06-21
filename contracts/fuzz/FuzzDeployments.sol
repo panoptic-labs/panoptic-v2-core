@@ -1543,11 +1543,22 @@ contract FuzzDeployments is FuzzHelpers {
                             emit LogUint256("s0", s0);
                             emit LogUint256("s1", s1);
                         }
-                        panopticPool.settleLongPremium(
-                            settled_positions,
-                            settledAccount,
-                            longIndex
-                        );
+
+                        {
+                            TokenId[] memory settled_positions_reorg = userPositions[
+                                settledAccount
+                            ];
+                            settled_positions_reorg[settled_positions.length - 1] = tokenId;
+                            settled_positions_reorg[i] = userPositions[settledAccount][
+                                settled_positions.length - 1
+                            ];
+
+                            panopticPool.settleLongPremium(
+                                settled_positions_reorg,
+                                settledAccount,
+                                longIndex
+                            );
+                        }
                         {
                             (uint128 s0, uint128 s1, , ) = panopticPool.premiaSettlementData(
                                 tokenId,
