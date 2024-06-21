@@ -1425,12 +1425,21 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @custom:property PANO-SYS-012 Users can't deposit more than the maximum allowed amount, 2^104
-    function invariant_never_allow_overdeposit(address depositor, address receiver, uint256 tooLargeDepositAmount) public {
+    function invariant_never_allow_overdeposit(
+        address depositor,
+        address receiver,
+        uint256 tooLargeDepositAmount
+    ) public {
         _attempt_overdeposit(collToken0, depositor, receiver, tooLargeDepositAmount);
         _attempt_overdeposit(collToken1, depositor, receiver, tooLargeDepositAmount);
     }
 
-    function _attempt_overdeposit(CollateralTracker collToken, address depositor, address receiver, uint256 tooLargeDepositAmount) internal {
+    function _attempt_overdeposit(
+        CollateralTracker collToken,
+        address depositor,
+        address receiver,
+        uint256 tooLargeDepositAmount
+    ) internal {
         uint256 maxDeposit = type(uint104).max;
         tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint256).max);
 
@@ -1440,21 +1449,34 @@ contract FuzzDeployments is FuzzHelpers {
         } catch {
             uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
             if (depositorBalance < tooLargeDepositAmount) {
-                emit LogString("Invariant succeeded because user did not have enough assets to overdeposit");
+                emit LogString(
+                    "Invariant succeeded because user did not have enough assets to overdeposit"
+                );
             } else {
                 // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
-                emit LogString("Invariant succeeded, likely because we enforced the max deposit amount correctly");
+                emit LogString(
+                    "Invariant succeeded, likely because we enforced the max deposit amount correctly"
+                );
             }
         }
     }
 
     /// @custom:property PANO-SYS-013 Users can't mint more than the maximum allowed amount, 2^104
-    function invariant_never_allow_overmint(address minter, address receiver, uint256 tooLargeMintAmount) public {
+    function invariant_never_allow_overmint(
+        address minter,
+        address receiver,
+        uint256 tooLargeMintAmount
+    ) public {
         _attempt_overmint(collToken0, minter, receiver, tooLargeMintAmount);
         _attempt_overmint(collToken1, minter, receiver, tooLargeMintAmount);
     }
 
-    function _attempt_overmint(CollateralTracker collToken, address minter, address receiver, uint256 tooLargeMintAmount) internal {
+    function _attempt_overmint(
+        CollateralTracker collToken,
+        address minter,
+        address receiver,
+        uint256 tooLargeMintAmount
+    ) internal {
         uint256 maxMint = type(uint104).max;
         tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint256).max);
 
@@ -1464,21 +1486,36 @@ contract FuzzDeployments is FuzzHelpers {
         } catch {
             uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
             if (minterBalance < collToken.convertToAssets(tooLargeMintAmount)) {
-                emit LogString("Invariant succeeded because user did not have enough assets to overmint");
+                emit LogString(
+                    "Invariant succeeded because user did not have enough assets to overmint"
+                );
             } else {
                 // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
-                emit LogString("Invariant succeeded, likely because we enforced the max mint amount correctly");
+                emit LogString(
+                    "Invariant succeeded, likely because we enforced the max mint amount correctly"
+                );
             }
         }
     }
 
     /// @custom:property PANO-SYS-014 Users can't deposit/mint more than their balance
-    function invariant_no_mint_nor_deposit_over_balance(address depositor, address receiver, uint256 amountOver, bool viaMint) public {
+    function invariant_no_mint_nor_deposit_over_balance(
+        address depositor,
+        address receiver,
+        uint256 amountOver,
+        bool viaMint
+    ) public {
         _attempt_deposit_over_balance(collToken0, depositor, receiver, amountOver, viaMint);
         _attempt_deposit_over_balance(collToken1, depositor, receiver, amountOver, viaMint);
     }
 
-    function _attempt_deposit_over_balance(CollateralTracker collToken, address depositor, address receiver, uint256 amountOver, bool viaMint) internal {
+    function _attempt_deposit_over_balance(
+        CollateralTracker collToken,
+        address depositor,
+        address receiver,
+        uint256 amountOver,
+        bool viaMint
+    ) internal {
         uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
         amountOver = bound(amountOver, 1, type(uint256).max - depositorBalance);
         uint256 tooLargeAmount = depositorBalance + amountOver;
@@ -1487,15 +1524,20 @@ contract FuzzDeployments is FuzzHelpers {
         if (viaMint) {
             uint256 tooLargeShares = collToken.convertToShares(tooLargeAmount);
             try collToken.mint(tooLargeShares, receiver) {
-                assertWithMsg(false, "User minted an amount of shares greater than their balance of the asset");
-            } catch { }
+                assertWithMsg(
+                    false,
+                    "User minted an amount of shares greater than their balance of the asset"
+                );
+            } catch {}
         } else {
             try collToken.deposit(tooLargeAmount, receiver) {
-                assertWithMsg(false, "User deposited an amount greater than their balance of the asset");
-            } catch { }
+                assertWithMsg(
+                    false,
+                    "User deposited an amount greater than their balance of the asset"
+                );
+            } catch {}
         }
     }
-
 
     /////////////////////////////////////////////////////////////
     // External function wrappers
