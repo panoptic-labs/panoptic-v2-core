@@ -1185,7 +1185,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions == 0) {
-            try collToken.withdraw(ct_s_poolAssets + amount_over, owner, recipient) {
+            try collToken.withdraw(ct_s_poolAssets + amount_over, recipient, owner) {
                 assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
             } catch {
                 if (
@@ -1206,8 +1206,8 @@ contract FuzzDeployments is FuzzHelpers {
             try
                 collToken.withdraw(
                     ct_s_poolAssets + amount_over,
-                    owner,
                     recipient,
+                    owner,
                     new TokenId[](0)
                 )
             {
@@ -1232,8 +1232,8 @@ contract FuzzDeployments is FuzzHelpers {
             try
                 collToken.withdraw(
                     ct_s_poolAssets + amount_over,
-                    owner,
                     recipient,
+                    owner,
                     withdrawers_open_positions
                 )
             {
@@ -1280,8 +1280,8 @@ contract FuzzDeployments is FuzzHelpers {
             try
                 collToken.redeem(
                     collToken.convertToShares(ct_s_poolAssets) + amount_over,
-                    owner,
-                    recipient
+                    recipient,
+                    owner
                 )
             {
                 assertWithMsg(false, "User redeemed > the poolAssets of collToken");
@@ -1340,12 +1340,12 @@ contract FuzzDeployments is FuzzHelpers {
 
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions == 0) {
-            try collToken.withdraw(owners_assets + amount_over, owner, recipient) {
+            try collToken.withdraw(owners_assets + amount_over, recipient, owner) {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
 
             try
-                collToken.withdraw(owners_assets + amount_over, owner, recipient, new TokenId[](0))
+                collToken.withdraw(owners_assets + amount_over, recipient, owner, new TokenId[](0))
             {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
@@ -1354,8 +1354,8 @@ contract FuzzDeployments is FuzzHelpers {
             try
                 collToken.withdraw(
                     owners_assets + amount_over,
-                    owner,
                     recipient,
+                    owner,
                     withdrawers_open_positions
                 )
             {
@@ -1368,19 +1368,19 @@ contract FuzzDeployments is FuzzHelpers {
         CollateralTracker collToken,
         address owner,
         address recipient,
-        uint256 amount_over
+        uint256 amountOver
     ) internal {
-        uint256 owners_shares = collToken.balanceOf(owner);
-        amount_over = bound(amount_over, 1, type(uint256).max - owners_shares);
+        uint256 ownersShares = collToken.balanceOf(owner);
+        amountOver = bound(amountOver, 1, type(uint256).max - ownersShares);
 
         hevm.prank(owner);
         // every other attempt, make it a non-owner call:
         if (block.number % 2 == 0) {
-            collToken.approve(recipient, owners_shares + amount_over);
+            collToken.approve(recipient, ownersShares + amountOver);
             hevm.prank(recipient);
         }
 
-        try collToken.redeem(owners_shares + amount_over, owner, recipient) {
+        try collToken.redeem(ownersShares + amountOver, recipient, owner) {
             assertWithMsg(false, "User redeemed > their balance");
         } catch {}
     }
@@ -1389,21 +1389,21 @@ contract FuzzDeployments is FuzzHelpers {
         CollateralTracker collToken,
         address owner,
         address recipient,
-        uint256 amount_over
+        uint256 amountOver
     ) internal {
-        uint256 owners_shares = collToken.balanceOf(owner);
-        amount_over = bound(amount_over, 1, type(uint256).max - owners_shares);
+        uint256 ownersShares = collToken.balanceOf(owner);
+        amountOver = bound(amountOver, 1, type(uint256).max - ownersShares);
         hevm.prank(owner);
         // every other attempt, make it a owner call:
         if (block.number % 2 == 0) {
-            try collToken.transfer(recipient, owners_shares + amount_over) {
+            try collToken.transfer(recipient, ownersShares + amountOver) {
                 assertWithMsg(false, "User transferred > their balance");
             } catch {}
             // every other attempt, make it a non-owner call:
         } else {
-            collToken.approve(recipient, owners_shares + amount_over);
+            collToken.approve(recipient, ownersShares + amountOver);
             hevm.prank(recipient);
-            try collToken.transferFrom(owner, recipient, owners_shares + amount_over) {
+            try collToken.transferFrom(owner, recipient, ownersShares + amountOver) {
                 assertWithMsg(false, "User transferFromed > their balance");
             } catch {}
         }
