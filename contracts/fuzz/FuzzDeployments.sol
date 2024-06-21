@@ -1204,12 +1204,7 @@ contract FuzzDeployments is FuzzHelpers {
             }
 
             try
-                collToken.withdraw(
-                    ct_s_poolAssets + amountOver,
-                    recipient,
-                    owner,
-                    new TokenId[](0)
-                )
+                collToken.withdraw(ct_s_poolAssets + amountOver, recipient, owner, new TokenId[](0))
             {
                 assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
             } catch {
@@ -1344,9 +1339,7 @@ contract FuzzDeployments is FuzzHelpers {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
 
-            try
-                collToken.withdraw(ownersAssets + amountOver, recipient, owner, new TokenId[](0))
-            {
+            try collToken.withdraw(ownersAssets + amountOver, recipient, owner, new TokenId[](0)) {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
         } else {
@@ -1754,18 +1747,9 @@ contract FuzzDeployments is FuzzHelpers {
 
         hevm.prank(withdrawer);
 
-        try
-            collToken.withdraw(
-                assetsToWithdraw,
-                withdrawer,
-                withdrawer,
-                withdrawersOpenPositions
-            )
-        {
+        try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer, withdrawersOpenPositions) {
             // assert assets & shares were deducted/incremented appropriately:
-            uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
-                address(panopticPool)
-            );
+            uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(address(panopticPool));
             uint256 withdrawerAssetsAfter = IERC20(collToken.asset()).balanceOf(withdrawer);
             uint256 withdrawerSharesAfter = collToken.balanceOf(withdrawer);
             assertWithMsg(
