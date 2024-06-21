@@ -1616,7 +1616,7 @@ contract FuzzDeployments is FuzzHelpers {
             return;
         }
         amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, depositor_bal_before / 10));
-        uint256 shares = collToken.previewMint(amount);
+        uint256 shares = collToken.previewDeposit(amount);
 
         hevm.prank(depositor);
         if (via_mint) {
