@@ -1062,15 +1062,15 @@ contract FuzzDeployments is FuzzHelpers {
         amountOver = bound(amountOver, 1, bal - amountToMarginCallThreshold);
 
         // assert is-solvent
-        TokenId[] memory withdrawers_open_positions = userPositions[withdrawer];
-        try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawers_open_positions) {
+        TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
+        try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
             // then, assert we get a revert when trying to withdraw too much:
             try
                 collToken.withdraw(
                     amountToMarginCallThreshold + amountOver,
                     withdrawer,
                     withdrawer,
-                    withdrawers_open_positions
+                    withdrawersOpenPositions
                 )
             {
                 assertWithMsg(false, "User was able to withdraw too much");
