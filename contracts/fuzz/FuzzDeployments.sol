@@ -686,9 +686,9 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
             uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
             hevm.prank(liquidator);
-            deposit_to_ct(true, lb0);
+            deposit_to_ct(true, lb0, false);
             hevm.prank(liquidator);
-            deposit_to_ct(false, lb1);
+            deposit_to_ct(false, lb1, false);
         }
 
         require(liquidatee != liquidator);
@@ -1196,6 +1196,7 @@ contract FuzzDeployments is FuzzHelpers {
                         "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
+                    // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
                         "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
@@ -1220,6 +1221,7 @@ contract FuzzDeployments is FuzzHelpers {
                         "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
+                    // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
                         "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
@@ -1245,6 +1247,7 @@ contract FuzzDeployments is FuzzHelpers {
                         "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
+                    // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
                         "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
@@ -1291,6 +1294,7 @@ contract FuzzDeployments is FuzzHelpers {
                         "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
+                    // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
                         "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
                     );
@@ -1405,6 +1409,7 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    /// @custom:property PANO-SYS-011 The pool can never have a utilisation over 100%
     function invariant_never_allow_pool_utilisation_over_100p() public {
         (, , int256 collToken0PU) = collToken0.getPoolData();
         assertWithMsg(
@@ -1419,11 +1424,78 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
-    // TODO: we revert when you try to deposit / mint (assets > type(uint104).max
-    function invariant_never_allow_overdeposit() public {}
+    /// @custom:property PANO-SYS-012 Users can't deposit more than the maximum allowed amount, 2^104
+    function invariant_never_allow_overdeposit(address depositor, address receiver, uint256 tooLargeDepositAmount) public {
+        _attempt_overdeposit(collToken0, depositor, receiver, tooLargeDepositAmount);
+        _attempt_overdeposit(collToken1, depositor, receiver, tooLargeDepositAmount);
+    }
 
-    // TODO: we revert when you try to deposit / mint (assets > type(uint104).max
-    function invariant_never_allow_overmint() public {}
+    function _attempt_overdeposit(CollateralTracker collToken, address depositor, address receiver, uint256 tooLargeDepositAmount) internal {
+        uint256 maxDeposit = type(uint104).max;
+        tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint256).max);
+
+        hevm.prank(depositor);
+        try collToken.deposit(tooLargeDepositAmount, receiver) {
+            assertWithMsg(false, "Deposit over maximum allowed did not revert");
+        } catch {
+            uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
+            if (depositorBalance < tooLargeDepositAmount) {
+                emit LogString("Invariant succeeded because user did not have enough assets to overdeposit");
+            } else {
+                // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
+                emit LogString("Invariant succeeded, likely because we enforced the max deposit amount correctly");
+            }
+        }
+    }
+
+    /// @custom:property PANO-SYS-013 Users can't mint more than the maximum allowed amount, 2^104
+    function invariant_never_allow_overmint(address minter, address receiver, uint256 tooLargeMintAmount) public {
+        _attempt_overmint(collToken0, minter, receiver, tooLargeMintAmount);
+        _attempt_overmint(collToken1, minter, receiver, tooLargeMintAmount);
+    }
+
+    function _attempt_overmint(CollateralTracker collToken, address minter, address receiver, uint256 tooLargeMintAmount) internal {
+        uint256 maxMint = type(uint104).max;
+        tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint256).max);
+
+        hevm.prank(minter);
+        try collToken.mint(tooLargeMintAmount, receiver) {
+            assertWithMsg(false, "Mint over maximum allowed did not revert");
+        } catch {
+            uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
+            if (minterBalance < collToken.convertToAssets(tooLargeMintAmount)) {
+                emit LogString("Invariant succeeded because user did not have enough assets to overmint");
+            } else {
+                // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
+                emit LogString("Invariant succeeded, likely because we enforced the max mint amount correctly");
+            }
+        }
+    }
+
+    /// @custom:property PANO-SYS-014 Users can't deposit/mint more than their balance
+    function invariant_no_mint_nor_deposit_over_balance(address depositor, address receiver, uint256 amountOver, bool viaMint) public {
+        _attempt_deposit_over_balance(collToken0, depositor, receiver, amountOver, viaMint);
+        _attempt_deposit_over_balance(collToken1, depositor, receiver, amountOver, viaMint);
+    }
+
+    function _attempt_deposit_over_balance(CollateralTracker collToken, address depositor, address receiver, uint256 amountOver, bool viaMint) internal {
+        uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
+        amountOver = bound(amountOver, 1, type(uint256).max - depositorBalance);
+        uint256 tooLargeAmount = depositorBalance + amountOver;
+
+        hevm.prank(depositor);
+        if (viaMint) {
+            uint256 tooLargeShares = collToken.convertToShares(tooLargeAmount);
+            try collToken.mint(tooLargeShares, receiver) {
+                assertWithMsg(false, "User minted an amount of shares greater than their balance of the asset");
+            } catch { }
+        } else {
+            try collToken.deposit(tooLargeAmount, receiver) {
+                assertWithMsg(false, "User deposited an amount greater than their balance of the asset");
+            } catch { }
+        }
+    }
+
 
     /////////////////////////////////////////////////////////////
     // External function wrappers
@@ -1472,55 +1544,60 @@ contract FuzzDeployments is FuzzHelpers {
     // Interaction with collateral trackers
     ////////////////////////////////////////////////////
 
-    // TODO: for all of the below - cache the previewDeposit/Mint/Withdraw before the action, and then
-    // assert afterward that the state-effect of each matched the promise of previewX
-    // consider MEV tax - the mint / redeem previews enforce that, i think, whereas their deposit / withdraw counterparts dont
-
-    /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
-    /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made
+    /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made (or the corresponding amount of assets for a given share value when a mint is made)
+    /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made (or the corresponding amount of assets for a given share value when a mint is made)
+    /// @custom:property PANO-DEP-003 A user's share balance must increase by the amount of shares previewMint returns
     function deposit_to_ct(bool token0, uint256 amount, bool via_mint) public {
         if (token0) {
             emit LogString("Attempting to deposit/mint token0");
-            _deposit_and_check(collToken0, via_mint, shares, withdrawer);
+            _deposit_and_check(collToken0, via_mint, amount, msg.sender);
         } else {
             emit LogString("Attempting to deposit/mint token1");
-            _deposit_and_check(collToken1, via_mint, shares, withdrawer);
+            _deposit_and_check(collToken1, via_mint, amount, msg.sender);
         }
     }
 
     function _deposit_and_check(
-        collToken,
+        CollateralTracker collToken,
         bool via_mint,
-        bool shares,
-        address withdrawer
+        uint256 amount,
+        address depositor
     ) internal {
-        address depositor = msg.sender;
-
-        uint256 bal = IERC20(collToken.asset()).balanceOf(depositor);
-
-        uint256 pool_bal = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 depositor_bal_before = IERC20(collToken.asset()).balanceOf(depositor);
+        uint256 pool_bal_before = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 shares_before = collToken.balanceOf(depositor);
 
         amount = bound(amount, 1, MAX_DEPOSIT);
 
-        if (via_mint) {
-            // TODO: do it via mint
-        } else {
-            // Limit the maximum amount of collateral to deposit
-            if (collToken.convertToAssets(collToken.balanceOf(depositor)) > 10 * MAX_DEPOSIT) {
-                return;
-            }
-            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal / 10));
-            hevm.prank(depositor);
-            collToken.deposit(amount, depositor);
-
-            uint256 pool_bal_after = IERC20(collToken.asset()).balanceOf(address(panopticPool));
-            assertWithMsg(
-                pool_bal_after - pool_bal == amount,
-                "Pool token balance incorrect after deposit"
-            );
-            uint256 bal_after = IERC20(collToken.asset()).balanceOf(depositor);
-            assertWithMsg(bal - bal_after == amount, "User token balance incorrect after deposit");
+        // Limit the maximum amount of collateral to deposit
+        if (collToken.convertToAssets(collToken.balanceOf(depositor)) > 10 * MAX_DEPOSIT) {
+            return;
         }
+        amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, depositor_bal_before / 10));
+        uint256 shares = collToken.previewMint(amount);
+
+        hevm.prank(depositor);
+        if (via_mint) {
+            collToken.mint(shares, depositor);
+        } else {
+            collToken.deposit(amount, depositor);
+        }
+
+        uint256 pool_bal_after = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        assertWithMsg(
+            pool_bal_after - pool_bal_before == amount,
+            "Pool token balance incorrect after deposit"
+        );
+        uint256 depositor_bal_after = IERC20(collToken.asset()).balanceOf(depositor);
+        assertWithMsg(
+            depositor_bal_before - depositor_bal_after == amount,
+            "User token balance incorrect after deposit"
+        );
+        uint256 shares_after = collToken.balanceOf(depositor);
+        assertWithMsg(
+            shares_after - shares_before == shares,
+            "User shares balance incorrect after deposit"
+        );
     }
 
     /// @custom:property PANO-WIT-001 The Panoptic pool balance must decrease by the withdrawn amount when a withdrawal is made
