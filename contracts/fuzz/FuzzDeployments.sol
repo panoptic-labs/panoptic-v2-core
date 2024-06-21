@@ -1420,15 +1420,10 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     // TODO: we revert when you try to deposit / mint (assets > type(uint104).max
-    function invariant_never_allow_overdeposit() public {
-
-    }
+    function invariant_never_allow_overdeposit() public {}
 
     // TODO: we revert when you try to deposit / mint (assets > type(uint104).max
-    function invariant_never_allow_overmint() public {
-
-    }
-
+    function invariant_never_allow_overmint() public {}
 
     /////////////////////////////////////////////////////////////
     // External function wrappers
@@ -1479,8 +1474,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     // TODO: for all of the below - cache the previewDeposit/Mint/Withdraw before the action, and then
     // assert afterward that the state-effect of each matched the promise of previewX
-        // consider MEV tax - the mint / redeem previews enforce that, i think, whereas their deposit / withdraw counterparts dont
-
+    // consider MEV tax - the mint / redeem previews enforce that, i think, whereas their deposit / withdraw counterparts dont
 
     /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
     /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made
@@ -1494,7 +1488,12 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _deposit_and_check(collToken, bool via_mint, bool shares, address withdrawer) internal {
+    function _deposit_and_check(
+        collToken,
+        bool via_mint,
+        bool shares,
+        address withdrawer
+    ) internal {
         address depositor = msg.sender;
 
         uint256 bal = IERC20(collToken.asset()).balanceOf(depositor);
@@ -1520,10 +1519,7 @@ contract FuzzDeployments is FuzzHelpers {
                 "Pool token balance incorrect after deposit"
             );
             uint256 bal_after = IERC20(collToken.asset()).balanceOf(depositor);
-            assertWithMsg(
-                bal - bal_after == amount,
-                "User token balance incorrect after deposit"
-            );
+            assertWithMsg(bal - bal_after == amount, "User token balance incorrect after deposit");
         }
     }
 
