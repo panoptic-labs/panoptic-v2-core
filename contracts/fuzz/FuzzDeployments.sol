@@ -1048,7 +1048,7 @@ contract FuzzDeployments is FuzzHelpers {
         (, int24 curTick, , , , , ) = pool.slot0();
         (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
             .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
-        // TODO: how to use this properly?
+
         LeftRightUnsigned tokenData = collToken.getAccountMarginDetails(
             withdrawer,
             curTick,
@@ -1419,6 +1419,17 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
+    // TODO: we revert when you try to deposit / mint (assets > type(uint104).max
+    function invariant_never_allow_overdeposit() public {
+
+    }
+
+    // TODO: we revert when you try to deposit / mint (assets > type(uint104).max
+    function invariant_never_allow_overmint() public {
+
+    }
+
+
     /////////////////////////////////////////////////////////////
     // External function wrappers
     /////////////////////////////////////////////////////////////
@@ -1466,56 +1477,52 @@ contract FuzzDeployments is FuzzHelpers {
     // Interaction with collateral trackers
     ////////////////////////////////////////////////////
 
+    // TODO: for all of the below - cache the previewDeposit/Mint/Withdraw before the action, and then
+    // assert afterward that the state-effect of each matched the promise of previewX
+        // consider MEV tax - the mint / redeem previews enforce that, i think, whereas their deposit / withdraw counterparts dont
+
+
     /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made
     /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made
-    function deposit_to_ct(bool token0, uint256 amount) public {
+    function deposit_to_ct(bool token0, uint256 amount, bool via_mint) public {
+        if (token0) {
+            emit LogString("Attempting to deposit/mint token0");
+            _deposit_and_check(collToken0, via_mint, shares, withdrawer);
+        } else {
+            emit LogString("Attempting to deposit/mint token1");
+            _deposit_and_check(collToken1, via_mint, shares, withdrawer);
+        }
+    }
+
+    function _deposit_and_check(collToken, bool via_mint, bool shares, address withdrawer) internal {
         address depositor = msg.sender;
 
-        uint256 bal0 = IERC20(collToken0.asset()).balanceOf(depositor);
-        uint256 bal1 = IERC20(collToken1.asset()).balanceOf(depositor);
+        uint256 bal = IERC20(collToken.asset()).balanceOf(depositor);
 
-        uint256 pool_bal0 = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
-        uint256 pool_bal1 = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
+        uint256 pool_bal = IERC20(collToken.asset()).balanceOf(address(panopticPool));
 
         amount = bound(amount, 1, MAX_DEPOSIT);
 
-        if (token0) {
-            // Limit the maximum amount of collateral to deposit
-            if (collToken0.convertToAssets(collToken0.balanceOf(depositor)) > 10 * MAX_DEPOSIT) {
-                return;
-            }
-            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal0 / 10));
-            hevm.prank(depositor);
-            collToken0.deposit(amount, depositor);
-
-            uint256 pool_bal0_after = IERC20(collToken0.asset()).balanceOf(address(panopticPool));
-            assertWithMsg(
-                pool_bal0_after - pool_bal0 == amount,
-                "Pool token0 balance incorrect after deposit"
-            );
-            uint256 bal0_after = IERC20(collToken0.asset()).balanceOf(depositor);
-            assertWithMsg(
-                bal0 - bal0_after == amount,
-                "User token0 balance incorrect after deposit"
-            );
+        if (via_mint) {
+            // TODO: do it via mint
         } else {
             // Limit the maximum amount of collateral to deposit
-            if (collToken1.convertToAssets(collToken1.balanceOf(depositor)) > 10 * MAX_DEPOSIT) {
+            if (collToken.convertToAssets(collToken.balanceOf(depositor)) > 10 * MAX_DEPOSIT) {
                 return;
             }
-            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal1 / 10));
+            amount = bound(amount, MIN_DEPOSIT, min(MAX_DEPOSIT, bal / 10));
             hevm.prank(depositor);
-            collToken1.deposit(amount, depositor);
+            collToken.deposit(amount, depositor);
 
-            uint256 pool_bal1_after = IERC20(collToken1.asset()).balanceOf(address(panopticPool));
+            uint256 pool_bal_after = IERC20(collToken.asset()).balanceOf(address(panopticPool));
             assertWithMsg(
-                pool_bal1_after - pool_bal1 == amount,
-                "Pool token1 balance incorrect after deposit"
+                pool_bal_after - pool_bal == amount,
+                "Pool token balance incorrect after deposit"
             );
-            uint256 bal1_after = IERC20(collToken1.asset()).balanceOf(depositor);
+            uint256 bal_after = IERC20(collToken.asset()).balanceOf(depositor);
             assertWithMsg(
-                bal1 - bal1_after == amount,
-                "User token0 balance incorrect after deposit"
+                bal - bal_after == amount,
+                "User token balance incorrect after deposit"
             );
         }
     }
