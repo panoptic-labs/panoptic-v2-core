@@ -1477,7 +1477,7 @@ contract FuzzDeployments is FuzzHelpers {
         address receiver,
         uint256 tooLargeMintAmount
     ) internal {
-        uint256 maxMint = type(uint104).max;
+        uint256 maxMint = collToken.previewDeposit(type(uint104).max);
         tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint256).max);
 
         hevm.prank(minter);
