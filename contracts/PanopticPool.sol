@@ -1437,6 +1437,30 @@ contract PanopticPool is ERC1155Holder, Multicall {
         twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
     }
 
+    function premiaSettlementData(
+        TokenId tokenId,
+        uint256 leg
+    ) public view returns (uint128, uint128, uint128, uint128) {
+        bytes32 chunkKey = keccak256(
+            abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+        );
+
+        LeftRightUnsigned settled = s_settledTokens[chunkKey];
+        LeftRightUnsigned gross = s_grossPremiumLast[chunkKey];
+
+        return (settled.rightSlot(), settled.leftSlot(), gross.rightSlot(), gross.leftSlot());
+    }
+
+    function optionData(
+        TokenId tokenId,
+        address account,
+        uint256 leg
+    ) public view returns (uint128, uint128) {
+        LeftRightUnsigned legData = s_options[account][tokenId][leg];
+
+        return (legData.rightSlot(), legData.leftSlot());
+    }
+
     /*//////////////////////////////////////////////////////////////
                   PREMIA & PREMIA SPREAD CALCULATIONS
     //////////////////////////////////////////////////////////////*/
