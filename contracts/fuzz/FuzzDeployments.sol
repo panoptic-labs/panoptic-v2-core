@@ -1698,6 +1698,8 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             } catch {}
         } else {
+            // we expect to burn slightly more shares if we're using withdraw:
+            sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
             try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer) {
                 uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
                     address(panopticPool)
@@ -1714,7 +1716,7 @@ contract FuzzDeployments is FuzzHelpers {
                 );
                 assertWithMsg(
                     withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
-                    "User share balance incorrect after redemption"
+                    "User share balance incorrect after withdrawal"
                 );
             } catch {}
         }
@@ -1741,9 +1743,13 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
 
+        // Start with the fuzzed number of shares we're aiming to withdraw:
         // TODO: do we need to scale this down such that we're in-bounds for the actual collateral requirements of open positions?
         uint256 sharesToWithdraw = bound(shares, 1, collToken.balanceOf(withdrawer));
+        // Convert to assets:
         uint256 assetsToWithdraw = collToken.convertToAssets(sharesToWithdraw);
+        // Then get the number of shares we actually expect to be burnt to do the withdraw:
+        sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
 
         hevm.prank(withdrawer);
 
