@@ -1034,32 +1034,23 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
     function invariant_collateral_overremoval_with_open_positions(
-        CollateralTracker collToken
+        CollateralTracker collToken,
+        uint256 amountOver
     ) public {
-        _attempt_collateral_overremoval(collToken0, msg.sender, true);
-        _attempt_collateral_overremoval(collToken1, msg.sender, false);
+        _attempt_collateral_overremoval(collToken0, msg.sender, true, amountOver);
+        _attempt_collateral_overremoval(collToken1, msg.sender, false, amountOver);
     }
 
     function _attempt_collateral_overremoval(
         CollateralTracker collToken,
         address withdrawer,
-        bool token0Or1
+        bool isToken0,
+        uint256 amountOver
     ) public {
-        (, int24 curTick, , , , , ) = pool.slot0();
-        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
-            .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
 
-        LeftRightUnsigned tokenData = collToken.getAccountMarginDetails(
-            withdrawer,
-            curTick,
-            positions,
-            token0Or1 ? premium0 : premium1
-        );
-        uint256 marginCallThreshold = tokenData.leftSlot();
-        uint256 bal = collToken.balanceOf(withdrawer);
-        uint amountToMarginCallThreshold = (bal - marginCallThreshold);
-        uint amountOver;
-        amountOver = bound(amountOver, 1, bal - amountToMarginCallThreshold);
+        uint256 withdrawersAssetsInCT = collToken.convertToAssets(collToken.balanceOf(withdrawer));
+        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(collToken, withdrawer, isToken0, withdrawersAssetsInCT);
+        amountOver = bound(amountOver, 1, withdrawersAssetsInCT - maxAssetsWithdrawable);
 
         // assert is-solvent
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
@@ -1067,7 +1058,7 @@ contract FuzzDeployments is FuzzHelpers {
             // then, assert we get a revert when trying to withdraw too much:
             try
                 collToken.withdraw(
-                    amountToMarginCallThreshold + amountOver,
+                    maxAssetsWithdrawable + amountOver,
                     withdrawer,
                     withdrawer,
                     withdrawersOpenPositions
@@ -1646,14 +1637,14 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 shares,
         address withdrawer
     ) public {
-        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+        uint256 numOfPositions = panopticPool.numberOfPositions(withdrawer);
         if (numOfPositions > 0) {
             if (token0) {
                 emit LogString("Attempting to withdraw token0 with open positions");
-                _withdraw_with_open_positions_and_check(collToken0, shares, withdrawer);
+                _withdraw_with_open_positions_and_check(collToken0, shares, withdrawer, true);
             } else {
                 emit LogString("Attempting to withdraw token1 with open positions");
-                _withdraw_with_open_positions_and_check(collToken1, shares, withdrawer);
+                _withdraw_with_open_positions_and_check(collToken1, shares, withdrawer, false);
             }
         } else {
             if (token0) {
@@ -1673,14 +1664,19 @@ contract FuzzDeployments is FuzzHelpers {
         address withdrawer
     ) internal {
         uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
+        emit LogUint256("withdrawerAssetsBefore", withdrawerAssetsBefore);
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        emit LogUint256("poolAssetsBefore", poolAssetsBefore);
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
+        emit LogUint256("withdrawerSharesBefore", withdrawerSharesBefore);
 
         uint256 sharesToWithdraw = bound(shares, 1, collToken.balanceOf(withdrawer));
+        emit LogUint256("sharesToWithdraw", sharesToWithdraw);
         uint256 assetsToWithdraw = collToken.convertToAssets(sharesToWithdraw);
+        emit LogUint256("assetsToWithdraw", assetsToWithdraw);
 
-        hevm.prank(withdrawer);
         if (viaRedeem) {
+            hevm.prank(withdrawer);
             try collToken.redeem(sharesToWithdraw, withdrawer, withdrawer) {
                 uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
                     address(panopticPool)
@@ -1699,10 +1695,14 @@ contract FuzzDeployments is FuzzHelpers {
                     withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after redemption"
                 );
-            } catch {}
+            } catch {
+                assertWithMsg(false, "Failed to withdraw for unknown reason");
+            }
         } else {
             // we expect to burn slightly more shares if we're using withdraw:
             sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
+            emit LogUint256("sharesToWithdraw", sharesToWithdraw);
+            hevm.prank(withdrawer);
             try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer) {
                 uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
                     address(panopticPool)
@@ -1721,14 +1721,17 @@ contract FuzzDeployments is FuzzHelpers {
                     withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after withdrawal"
                 );
-            } catch {}
+            } catch {
+                assertWithMsg(false, "Failed to redeem for unknown reason");
+            }
         }
     }
 
     function _withdraw_with_open_positions_and_check(
         CollateralTracker collToken,
         uint256 shares,
-        address withdrawer
+        address withdrawer,
+        bool isToken0
     ) internal {
         // check whether current positions are solvent; assertFalse if not
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
@@ -1741,18 +1744,26 @@ contract FuzzDeployments is FuzzHelpers {
             );
         }
 
-        // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately:
+        // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately
         uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
+        emit LogUint256("withdrawerAssetsBefore", withdrawerAssetsBefore);
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        emit LogUint256("poolAssetsBefore", poolAssetsBefore);
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
+        emit LogUint256("withdrawerSharesBefore", withdrawerSharesBefore);
 
-        // Start with the fuzzed number of shares we're aiming to withdraw:
-        // TODO: do we need to scale this down such that we're in-bounds for the actual collateral requirements of open positions?
-        uint256 sharesToWithdraw = bound(shares, 1, collToken.balanceOf(withdrawer));
-        // Convert to assets:
-        uint256 assetsToWithdraw = collToken.convertToAssets(sharesToWithdraw);
-        // Then get the number of shares we actually expect to be burnt to do the withdraw:
-        sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
+        // 1. Figure out how many assets we can legally withdraw:
+        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(collToken, withdrawer, isToken0, collToken.convertToAssets(withdrawerSharesBefore));
+        emit LogUint256("maxAssetsWithdrawable", maxAssetsWithdrawable);
+        // 2. Convert to shares:
+        uint256 maxBurnableShares = collToken.previewWithdraw(maxAssetsWithdrawable);
+        emit LogUint256("maxBurnableShares", maxBurnableShares);
+        // 3. Bound the fuzzed shares-to-withdraw to maxBurnableShares:
+        uint256 sharesToBurn = bound(shares, 1, maxBurnableShares);
+        emit LogUint256("sharesToBurn", sharesToBurn);
+        // 4. Convert to assets:
+        uint256 assetsToWithdraw = collToken.convertToAssets(sharesToBurn);
+        emit LogUint256("assetsToWithdraw", assetsToWithdraw);
 
         hevm.prank(withdrawer);
 
@@ -1770,7 +1781,7 @@ contract FuzzDeployments is FuzzHelpers {
                 "User balance incorrect after deposit"
             );
             assertWithMsg(
-                withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
+                withdrawerSharesBefore - withdrawerSharesAfter == sharesToBurn,
                 "User share balance incorrect after withdrawal"
             );
 
@@ -1783,7 +1794,24 @@ contract FuzzDeployments is FuzzHelpers {
                     "User is not solvent after seemingly legal withdrawal-with-open-positions"
                 );
             }
-        } catch {}
+        } catch {
+            assertWithMsg(false, "Failed to withdraw for unknown reason");
+        }
+    }
+
+    function _get_assets_withdrawable(CollateralTracker collToken, address withdrawer, bool isToken0, uint256 withdrawerAsssetsInCT) internal  returns (uint256) {
+        (, int24 curTick, , , , , ) = pool.slot0();
+        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
+            .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
+        LeftRightUnsigned tokenData = collToken.getAccountMarginDetails(
+            withdrawer,
+            curTick,
+            positions,
+            isToken0 ? premium0 : premium1
+        );
+        uint256 marginCallThreshold = tokenData.leftSlot();
+        emit LogUint256("marginCallThreshold", marginCallThreshold);
+        return withdrawerAsssetsInCT - marginCallThreshold;
     }
 
     function transfer_ct_shares(
