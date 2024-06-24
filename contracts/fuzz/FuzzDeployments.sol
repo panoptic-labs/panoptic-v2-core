@@ -1419,12 +1419,11 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-SYS-012 Users can't deposit more than the maximum allowed amount, 2^104
     function invariant_never_allow_overdeposit(
-        address depositor,
         address receiver,
         uint256 tooLargeDepositAmount
     ) public {
-        _attempt_overdeposit(collToken0, depositor, receiver, tooLargeDepositAmount);
-        _attempt_overdeposit(collToken1, depositor, receiver, tooLargeDepositAmount);
+        _attempt_overdeposit(collToken0, msg.sender, receiver, tooLargeDepositAmount);
+        _attempt_overdeposit(collToken1, msg.sender, receiver, tooLargeDepositAmount);
     }
 
     function _attempt_overdeposit(
@@ -1435,6 +1434,11 @@ contract FuzzDeployments is FuzzHelpers {
     ) internal {
         uint256 maxDeposit = type(uint104).max;
         tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint256).max);
+
+        // every other block, deposit to self:
+        if (block.number % 2 == 0) {
+            receiver = depositor;
+        }
 
         hevm.prank(depositor);
         try collToken.deposit(tooLargeDepositAmount, receiver) {
@@ -1493,13 +1497,12 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-SYS-014 Users can't deposit/mint more than their balance
     function invariant_no_mint_nor_deposit_over_balance(
-        address depositor,
         address receiver,
         uint256 amountOver,
         bool viaMint
     ) public {
-        _attempt_deposit_over_balance(collToken0, depositor, receiver, amountOver, viaMint);
-        _attempt_deposit_over_balance(collToken1, depositor, receiver, amountOver, viaMint);
+        _attempt_deposit_over_balance(collToken0, msg.sender, receiver, amountOver, viaMint);
+        _attempt_deposit_over_balance(collToken1, msg.sender, receiver, amountOver, viaMint);
     }
 
     function _attempt_deposit_over_balance(
@@ -1512,10 +1515,10 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
         amountOver = bound(amountOver, 1, type(uint256).max - depositorBalance);
         uint256 tooLargeAmount = depositorBalance + amountOver;
+        uint256 tooLargeShares = collToken.convertToShares(tooLargeAmount);
 
         hevm.prank(depositor);
         if (viaMint) {
-            uint256 tooLargeShares = collToken.convertToShares(tooLargeAmount);
             try collToken.mint(tooLargeShares, receiver) {
                 assertWithMsg(
                     false,
