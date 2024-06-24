@@ -13,7 +13,7 @@ sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
 testMode: assertion
 seqLen: 500
 testLimit: 300000
-shrinkLimit: 100
+shrinkLimit: 0
 workers: 32
 corpusDir: contracts/fuzz/corpus
 #rpcBlock: 19582800

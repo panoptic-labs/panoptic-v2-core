@@ -223,7 +223,7 @@ contract FuzzDeployments is FuzzHelpers {
         int256[4] memory strikeSeeds,
         uint256[4] memory ratioSeeds,
         uint256[4] memory assets,
-        bool[2] memory distributions,
+        bool[4] memory distributions,
         uint256 positionSize,
         uint256 numLegs
     ) public {
@@ -264,8 +264,8 @@ contract FuzzDeployments is FuzzHelpers {
                     ChunkWithTokenType($strikes[i], $widths[i], $tokenTypes[i])
                 );
             } else {
-                // pick a random chunk -- very likely to fail due to low liquidity
-                if (distributions[0] || touchedPanopticChunks.length == 0) {
+                // pick a random chunk -- very likely to fail due to no liquidity
+                if (distributions[2] || touchedPanopticChunks.length == 0) {
                     ($widths[i], $strikes[i]) = getValidSW(
                         widthSeeds[i],
                         strikeSeeds[i],
@@ -275,7 +275,7 @@ contract FuzzDeployments is FuzzHelpers {
                     );
                 }
                 // pick a chunk that has already been interacted with before -- reasonable probability of success
-                else if (distributions[0]) {
+                else if (distributions[3]) {
                     ChunkWithTokenType memory __chunk = touchedPanopticChunks[
                         bound(
                             uint256(keccak256(abi.encodePacked(positionSize))),
@@ -286,6 +286,56 @@ contract FuzzDeployments is FuzzHelpers {
 
                     $widths[i] = __chunk.width;
                     $strikes[i] = __chunk.strike;
+                }
+                // pick a chunk with some liquidity and reverse the position size to it
+                else {
+                    bool found;
+                    // look through all chunks starting at a random index until one with liquidity is found
+                    for (
+                        uint256 j = 0;
+                        i <
+                        bound(
+                            uint256(keccak256(abi.encodePacked(positionSize))),
+                            0,
+                            touchedPanopticChunks.length - 1
+                        );
+                        j++
+                    ) {
+                        ChunkWithTokenType memory __chunk = touchedPanopticChunks[j];
+
+                        ($tickLower, $tickUpper) = PanopticMath.getTicks(
+                            __chunk.strike,
+                            __chunk.width,
+                            poolTickSpacing
+                        );
+
+                        if (
+                            sfpm
+                                .getAccountLiquidity(
+                                    address(pool),
+                                    address(panopticPool),
+                                    __chunk.tokenType,
+                                    $tickLower,
+                                    $tickUpper
+                                )
+                                .rightSlot() > 0
+                        ) {
+                            $widths[i] = __chunk.width;
+                            $strikes[i] = __chunk.strike;
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        ($widths[i], $strikes[i]) = getValidSW(
+                            widthSeeds[i],
+                            strikeSeeds[i],
+                            uint24(poolTickSpacing),
+                            currentTick,
+                            distributions[0]
+                        );
+                    }
                 }
             }
 
@@ -327,17 +377,19 @@ contract FuzzDeployments is FuzzHelpers {
 
         $tokenIdActive = userPositions[msg.sender][userPositions[msg.sender].length - 1];
 
-        $netTokenTransfers0 = 0;
-        $netTokenTransfers1 = 0;
+        $maxTransfer0 = 0;
+        $maxTransfer1 = 0;
 
         // and check if should revert due to 0 liquidity
         write_mintburn_transfer_amts();
 
+        $shouldRevert = false;
+
         // pool has insufficient tokens to mint the option
-        $shouldRevert = $shouldRevert = $shouldRevert
+        $shouldRevert = $shouldRevert
             ? $shouldRevert
-            : $netTokenTransfers0 > int256(USDC.balanceOf(address(panopticPool))) ||
-                $netTokenTransfers1 > int256(WETH.balanceOf(address(panopticPool)));
+            : $maxTransfer0 > int256(USDC.balanceOf(address(panopticPool))) ||
+                $maxTransfer1 > int256(WETH.balanceOf(address(panopticPool)));
 
         emit LogBool("should revert due to insufficient pool tokens", $shouldRevert);
 
@@ -349,8 +401,8 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogBool("should revert due to position already minted", $shouldRevert);
         }
 
-        emit LogInt256("Net token transfers 0", $netTokenTransfers0);
-        emit LogInt256("Net token transfers 1", $netTokenTransfers1);
+        emit LogInt256("Net token transfers 0", $maxTransfer0);
+        emit LogInt256("Net token transfers 1", $maxTransfer1);
         emit LogInt256("pool balance 0", int256(USDC.balanceOf(address(panopticPool))));
         emit LogInt256("pool balance 1", int256(WETH.balanceOf(address(panopticPool))));
 

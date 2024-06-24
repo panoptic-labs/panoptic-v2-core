@@ -329,8 +329,13 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256 $numLegs;
 
+    uint256 $netLiquidity;
+
     int256 $netTokenTransfers0;
     int256 $netTokenTransfers1;
+
+    int256 $maxTransfer0;
+    int256 $maxTransfer1;
 
     LeftRightSigned $shortAmounts;
     LeftRightSigned $longAmounts;
@@ -1063,6 +1068,8 @@ contract FuzzHelpers is PropertiesAsserts {
     ) public returns (uint256) {
         // position size * 2**128 / colReq
         uint256 sizeMultiplierX128;
+
+        uint256 size_long = type(uint256).max;
         for (uint256 i = 0; i < $numLegs; i++) {
             emit LogInt256("$strikes[i]", $strikes[i]);
             emit LogInt256("$widths[i]", $widths[i]);
@@ -1105,6 +1112,33 @@ contract FuzzHelpers is PropertiesAsserts {
                 ) * 13_333) / 10_000) * $ratios[i]
             );
             emit LogUint256("2", 2);
+
+            $netLiquidity = sfpm
+                .getAccountLiquidity(
+                    address(pool),
+                    address(panopticPool),
+                    $tokenTypes[i],
+                    $tickLower,
+                    $tickUpper
+                )
+                .rightSlot();
+
+            if ($netLiquidity > 0) {
+                size_long = Math.min(
+                    size_long,
+                    $assets[i] == 0
+                        ? LiquidityAmounts.getAmount0ForLiquidity(
+                            Math.getSqrtRatioAtTick($tickLower),
+                            Math.getSqrtRatioAtTick($tickUpper),
+                            uint128(Math.mulDiv($netLiquidity, multiplierX64, 2 ** 64) / $ratios[i])
+                        )
+                        : LiquidityAmounts.getAmount1ForLiquidity(
+                            Math.getSqrtRatioAtTick($tickLower),
+                            Math.getSqrtRatioAtTick($tickUpper),
+                            uint128(Math.mulDiv($netLiquidity, multiplierX64, 2 ** 64) / $ratios[i])
+                        )
+                );
+            }
 
             if (
                 $isLongs[i] == 0 &&
@@ -1177,7 +1211,8 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("sizeMultiplierX128", sizeMultiplierX128);
 
         // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
-        return Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128);
+        // or, bound it to the long position size (based on available liq)
+        return Math.min(size_long, Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
     }
 
     function write_mintburn_transfer_amts() internal {
@@ -1200,7 +1235,7 @@ contract FuzzHelpers is PropertiesAsserts {
             emit LogUint256("amount0", amount0);
             emit LogUint256("amount1", amount1);
 
-            $shouldRevert = liquidityChunk.liquidity() == 0;
+            $shouldRevert = $shouldRevert ? $shouldRevert : liquidityChunk.liquidity() == 0;
 
             if ($tokenIdActive.isLong(i) == 0) {
                 $netTokenTransfers0 += int256(amount0);
@@ -1209,6 +1244,9 @@ contract FuzzHelpers is PropertiesAsserts {
                 $netTokenTransfers0 -= int256(amount0);
                 $netTokenTransfers0 -= int256(amount1);
             }
+
+            $maxTransfer0 = Math.max($maxTransfer0, $netTokenTransfers0);
+            $maxTransfer1 = Math.max($maxTransfer1, $netTokenTransfers1);
         }
     }
 
