@@ -1793,6 +1793,9 @@ contract FuzzDeployments is FuzzHelpers {
         address recipient,
         bool transferFromSender
     ) public {
+        if (sender == recipient) {
+            return;
+        }
         if (token0) {
             emit LogString("Attempting to transfer/transferFrom token0");
             _transfer_and_check(collToken0, shares, sender, recipient, transferFromSender);
@@ -1812,7 +1815,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 senderSharesBefore = collToken.balanceOf(sender);
         uint256 recipientSharesBefore = collToken.balanceOf(recipient);
 
-        uint256 sharesToTransfer = bound(shares, 1, collToken.balanceOf(sender));
+        uint256 sharesToTransfer = bound(shares, 1, senderSharesBefore);
 
         hevm.prank(sender);
         if (transferFromSender) {
