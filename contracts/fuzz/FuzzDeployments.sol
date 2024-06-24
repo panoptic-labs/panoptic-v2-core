@@ -1047,9 +1047,13 @@ contract FuzzDeployments is FuzzHelpers {
         bool isToken0,
         uint256 amountOver
     ) public {
-
         uint256 withdrawersAssetsInCT = collToken.convertToAssets(collToken.balanceOf(withdrawer));
-        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(collToken, withdrawer, isToken0, withdrawersAssetsInCT);
+        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
+            collToken,
+            withdrawer,
+            isToken0,
+            withdrawersAssetsInCT
+        );
         amountOver = bound(amountOver, 1, withdrawersAssetsInCT - maxAssetsWithdrawable);
 
         // assert is-solvent
@@ -1753,7 +1757,12 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("withdrawerSharesBefore", withdrawerSharesBefore);
 
         // 1. Figure out how many assets we can legally withdraw:
-        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(collToken, withdrawer, isToken0, collToken.convertToAssets(withdrawerSharesBefore));
+        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
+            collToken,
+            withdrawer,
+            isToken0,
+            collToken.convertToAssets(withdrawerSharesBefore)
+        );
         emit LogUint256("maxAssetsWithdrawable", maxAssetsWithdrawable);
         // 2. Convert to shares:
         uint256 maxBurnableShares = collToken.previewWithdraw(maxAssetsWithdrawable);
@@ -1799,7 +1808,12 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _get_assets_withdrawable(CollateralTracker collToken, address withdrawer, bool isToken0, uint256 withdrawerAsssetsInCT) internal  returns (uint256) {
+    function _get_assets_withdrawable(
+        CollateralTracker collToken,
+        address withdrawer,
+        bool isToken0,
+        uint256 withdrawerAsssetsInCT
+    ) internal returns (uint256) {
         (, int24 curTick, , , , , ) = pool.slot0();
         (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
             .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
