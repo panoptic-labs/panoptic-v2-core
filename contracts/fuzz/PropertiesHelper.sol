@@ -42,23 +42,50 @@ abstract contract PropertiesAsserts {
         }
     }
 
-    /// @notice int256 version of assertEq
-    function assertEq(int256 a, int256 b, string memory reason) internal {
-        if (a != b) {
-            string memory aStr = PropertiesLibString.toString(a);
-            string memory bStr = PropertiesLibString.toString(b);
-            bytes memory assertMsg = abi.encodePacked(
-                "Invalid: ",
-                aStr,
-                "!=",
-                bStr,
-                ", reason: ",
-                reason
-            );
-            emit AssertEqFail(string(assertMsg));
-            assert(false);
+    function assertApproxEqAbs(uint256 a, uint256 b, uint256 maxDelta) internal virtual {
+        uint256 delta = a > b ? a - b : b - a;
+
+        if (delta > maxDelta) {
+            emit log("Error: a ~= b not satisfied [uint]");
+            emit log_named_uint("      Left", a);
+            emit log_named_uint("     Right", b);
+            emit log_named_uint(" Max Delta", maxDelta);
+            emit log_named_uint("     Delta", delta);
+            fail();
         }
     }
+
+    // function assertApproxEqAbs(
+    //     uint256 a,
+    //     uint256 b,
+    //     uint256 maxDelta,
+    //     string memory err
+    // ) internal virtual {
+    //     uint256 delta = a > b ? a - b : b - a;
+
+    //     if (delta > maxDelta) {
+    //         emit log_named_string("Error", err);
+    //         assertApproxEqAbs(a, b, maxDelta);
+    //     }
+    // }
+
+    // /// @notice int256 version of assertEq
+    // function assertEq(int256 a, int256 b, string memory reason) internal {
+    //     if (a != b) {
+    //         string memory aStr = PropertiesLibString.toString(a);
+    //         string memory bStr = PropertiesLibString.toString(b);
+    //         bytes memory assertMsg = abi.encodePacked(
+    //             "Invalid: ",
+    //             aStr,
+    //             "!=",
+    //             bStr,
+    //             ", reason: ",
+    //             reason
+    //         );
+    //         emit AssertEqFail(string(assertMsg));
+    //         assert(false);
+    //     }
+    // }
 
     /// @notice asserts that a is not equal to b. Violations are logged using reason.
     function assertNeq(uint256 a, uint256 b, string memory reason) internal {

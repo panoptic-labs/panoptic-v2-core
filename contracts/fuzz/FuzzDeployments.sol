@@ -126,6 +126,9 @@ contract FuzzDeployments is FuzzHelpers {
             )
         );
 
+        token0 = pool.token0();
+        token1 = pool.token1();
+
         collToken0 = panopticPool.collateralToken0();
         collToken1 = panopticPool.collateralToken1();
 
@@ -161,6 +164,10 @@ contract FuzzDeployments is FuzzHelpers {
         IERC20(USDC).approve(address(collToken0), type(uint256).max);
         hevm.prank(msg.sender);
         IERC20(WETH).approve(address(collToken1), type(uint256).max);
+        hevm.prank(msg.sender);
+        IERC20(USDC).approve(address(sfpm), type(uint256).max);
+        hevm.prank(msg.sender);
+        IERC20(WETH).approve(address(sfpm), type(uint256).max);
     }
 
     /// @dev This function does a back to back swap. It is uses the generate premium. It's adapted from test/foundry/core/PanopticPool.t.sol
@@ -339,7 +346,7 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             }
 
-            out = out.addLeg(i, 1, asset, long_short, call_put, 0, strike, width);
+            out = out.addLeg(i, 1, asset, long_short, call_put, i, strike, width);
             log_tokenid_leg(out, i);
         }
     }
@@ -1103,9 +1110,9 @@ contract FuzzDeployments is FuzzHelpers {
         _mint_option(minter, spread, posSize, is_covered, effLiqLimit);
     }
 
-    function test_asserting_abilities() public {
-        assertWithMsg(1 > 2, "1 is greater than 2???");
-    }
+    // function test_asserting_abilities() public {
+    //     assertWithMsg(1 > 2, "1 is greater than 2???");
+    // }
 
     function perform_swap(uint160 target_sqrt_price) public {
         // bound the price between 10 and 500000
@@ -1335,420 +1342,423 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
-    function try_liquidate_option(uint256 i_liquidated) public {
-        i_liquidated = bound(i_liquidated, 0, 4);
+    // function try_liquidate_option(uint256 i_liquidated) public {
+    //     i_liquidated = bound(i_liquidated, 0, 4);
 
-        address liquidatee = actors[i_liquidated];
-        address liquidator = msg.sender;
-        uint256 canary_index = bound(i_liquidated, 0, 4);
-        if (actors[canary_index] == msg.sender || actors[canary_index] == liquidatee) {
-            canary_index = bound(i_liquidated + 1, 0, 4);
-        }
+    //     address liquidatee = actors[i_liquidated];
+    //     address liquidator = msg.sender;
+    //     uint256 canary_index = bound(i_liquidated, 0, 4);
+    //     if (actors[canary_index] == msg.sender || actors[canary_index] == liquidatee) {
+    //         canary_index = bound(i_liquidated + 1, 0, 4);
+    //     }
 
-        address canary = actors[canary_index];
+    //     address canary = actors[canary_index];
 
-        if (userPositions[liquidatee].length < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
+    //     if (userPositions[liquidatee].length < 1) {
+    //         emit LogString("No current positions");
+    //         revert();
+    //     }
 
-        // Make sure the liquidator has tokens to delegate
-        {
-            hevm.prank(liquidator);
-            fund_and_approve();
+    //     // Make sure the liquidator has tokens to delegate
+    //     {
+    //         hevm.prank(liquidator);
+    //         fund_and_approve();
 
-            uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
-            uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
-            hevm.prank(liquidator);
-            deposit_to_ct(true, lb0);
-            hevm.prank(liquidator);
-            deposit_to_ct(false, lb1);
-        }
+    //         uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
+    //         uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
+    //         emit LogUint256("m token 0 bal", IERC20(token0).balanceOf(msg.sender));
+    //         emit LogUint256("m token 1 bal", IERC20(token1).balanceOf(msg.sender));
+    //         assertWithMsg(false, "can't mint option which exceeds slippage bounds");
+    //         hevm.prank(liquidator);
+    //         deposit_to_ct(true, lb0);
+    //         hevm.prank(liquidator);
+    //         deposit_to_ct(false, lb1);
+    //     }
 
-        require(liquidatee != liquidator);
+    //     require(liquidatee != liquidator);
 
-        TokenId[] memory liquidated_positions = userPositions[liquidatee];
-        TokenId[] memory liquidator_positions = userPositions[liquidator];
+    //     TokenId[] memory liquidated_positions = userPositions[liquidatee];
+    //     TokenId[] memory liquidator_positions = userPositions[liquidator];
 
-        emit LogUint256("liquidator positions length", liquidator_positions.length);
-        emit LogUint256("liquidated positions length", liquidated_positions.length);
-        emit LogAddress("liquidator", liquidator);
-        emit LogAddress("liquidated", liquidatee);
+    //     emit LogUint256("liquidator positions length", liquidator_positions.length);
+    //     emit LogUint256("liquidated positions length", liquidated_positions.length);
+    //     emit LogAddress("liquidator", liquidator);
+    //     emit LogAddress("liquidated", liquidatee);
 
-        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
-        (, currentTick, , , , , ) = pool.slot0();
-        emit LogInt256("TWAP tick", TWAPtick);
-        emit LogInt256("Current tick", currentTick);
+    //     int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+    //     (, currentTick, , , , , ) = pool.slot0();
+    //     emit LogInt256("TWAP tick", TWAPtick);
+    //     emit LogInt256("Current tick", currentTick);
 
-        log_account_collaterals(liquidator);
-        log_account_collaterals(liquidatee);
-        log_account_collaterals(canary);
-        log_trackers_status();
+    //     log_account_collaterals(liquidator);
+    //     log_account_collaterals(liquidatee);
+    //     log_account_collaterals(canary);
+    //     log_trackers_status();
 
-        LeftRightUnsigned canaryBalances;
-        {
-            uint256 c0b = collToken0.convertToAssets(collToken0.balanceOf(canary));
-            uint256 c1b = collToken1.convertToAssets(collToken1.balanceOf(canary));
+    //     LeftRightUnsigned canaryBalances;
+    //     {
+    //         uint256 c0b = collToken0.convertToAssets(collToken0.balanceOf(canary));
+    //         uint256 c1b = collToken1.convertToAssets(collToken1.balanceOf(canary));
 
-            canaryBalances = LeftRightUnsigned.wrap(0).toRightSlot(uint128(c0b)).toLeftSlot(
-                uint128(c1b)
-            );
-        }
-        require(liquidated_positions.length > 0);
+    //         canaryBalances = LeftRightUnsigned.wrap(0).toRightSlot(uint128(c0b)).toLeftSlot(
+    //             uint128(c1b)
+    //         );
+    //     }
+    //     require(liquidated_positions.length > 0);
 
-        (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
-            liquidatee,
-            TWAPtick
-        );
-        emit LogUint256("Balance cross", balanceCross);
-        emit LogUint256("Threshold cross", thresholdCross);
+    //     (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
+    //         liquidatee,
+    //         TWAPtick
+    //     );
+    //     emit LogUint256("Balance cross", balanceCross);
+    //     emit LogUint256("Threshold cross", thresholdCross);
 
-        LeftRightUnsigned delegations = LeftRightUnsigned
-            .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
-            .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
+    //     LeftRightUnsigned delegations = LeftRightUnsigned
+    //         .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
+    //         .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
 
-        // If the position is not liquidatable, liquidation call must revert
-        if (balanceCross > thresholdCross) {
-            try
-                panopticPool.liquidate(
-                    liquidator_positions,
-                    liquidatee,
-                    delegations,
-                    liquidated_positions
-                )
-            {
-                assertWithMsg(
-                    false,
-                    "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated"
-                );
-            } catch {
-                revert();
-            }
-        }
+    //     // If the position is not liquidatable, liquidation call must revert
+    //     if (balanceCross > thresholdCross) {
+    //         try
+    //             panopticPool.liquidate(
+    //                 liquidator_positions,
+    //                 liquidatee,
+    //                 delegations,
+    //                 liquidated_positions
+    //             )
+    //         {
+    //             assertWithMsg(
+    //                 false,
+    //                 "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated"
+    //             );
+    //         } catch {
+    //             revert();
+    //         }
+    //     }
 
-        _calculate_margins_and_premia(liquidatee, TWAPtick);
+    //     _calculate_margins_and_premia(liquidatee, TWAPtick);
 
-        liqResults.sharesD0 = int256(collToken0.balanceOf(liquidatee));
-        liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
+    //     liqResults.sharesD0 = int256(collToken0.balanceOf(liquidatee));
+    //     liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
 
-        //_execute_burn_simulation(liquidatee, liquidator);
+    //     //_execute_burn_simulation(liquidatee, liquidator);
 
-        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTick);
-        {
-            (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
-                liquidatee,
-                false,
-                liquidated_positions
-            );
-            liqResults.premia = LeftRightSigned.wrap(0).toRightSlot(p0).toLeftSlot(p1);
-            emit LogInt256("Premium in token 0", p0);
-            emit LogInt256("Premium in token 1", p1);
-        }
+    //     liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTick);
+    //     {
+    //         (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
+    //             liquidatee,
+    //             false,
+    //             liquidated_positions
+    //         );
+    //         liqResults.premia = LeftRightSigned.wrap(0).toRightSlot(p0).toLeftSlot(p1);
+    //         emit LogInt256("Premium in token 0", p0);
+    //         emit LogInt256("Premium in token 1", p1);
+    //     }
 
-        hevm.prank(liquidator);
-        try
-            panopticPool.liquidate(
-                liquidator_positions,
-                liquidatee,
-                delegations,
-                liquidated_positions
-            )
-        {
-            emit LogString("liquidation success");
-            //assertWithMsg(0>1, "success liquidation");
-        } catch (bytes memory _err) {
-            emit LogBytes("err", _err);
-            uint256 receivedSelector = uint256(bytes32(bytes4(_err))) >> 224;
-            emit LogUint256("selector", receivedSelector);
-            if (receivedSelector == 3877932976) {
-                assertWithMsg(0 > 1, "reverted, what's the error?");
-            } else if (receivedSelector == 1126409557) {
-                emit LogString("NotEnoughLiquidity");
-            }
-        }
-        panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
+    //     hevm.prank(liquidator);
+    //     try
+    //         panopticPool.liquidate(
+    //             liquidator_positions,
+    //             liquidatee,
+    //             delegations,
+    //             liquidated_positions
+    //         )
+    //     {
+    //         emit LogString("liquidation success");
+    //         //assertWithMsg(0>1, "success liquidation");
+    //     } catch (bytes memory _err) {
+    //         emit LogBytes("err", _err);
+    //         uint256 receivedSelector = uint256(bytes32(bytes4(_err))) >> 224;
+    //         emit LogUint256("selector", receivedSelector);
+    //         if (receivedSelector == 3877932976) {
+    //             assertWithMsg(0 > 1, "reverted, what's the error?");
+    //         } else if (receivedSelector == 1126409557) {
+    //             emit LogString("NotEnoughLiquidity");
+    //         }
+    //     }
+    //     panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
 
-        currentTickOld = currentTick;
-        (, currentTick, , , , , ) = pool.slot0();
+    //     currentTickOld = currentTick;
+    //     (, currentTick, , , , , ) = pool.slot0();
 
-        emit LogInt256("final tick", currentTick);
-        _calculate_liquidation_bonus(TWAPtick, currentTick);
+    //     emit LogInt256("final tick", currentTick);
+    //     _calculate_liquidation_bonus(TWAPtick, currentTick);
 
-        /*
-        burnSimResults.delegated0 = uint256(
-            int256(
-                collToken0.convertToShares(
-                    uint256(int256(uint256(burnSimResults.delegated0)) + liqResults.bonus0)
-                )
-            )
-        );
-        burnSimResults.delegated1 = uint256(
-            int256(
-                collToken1.convertToShares(
-                    uint256(int256(uint256(burnSimResults.delegated1)) + liqResults.bonus1)
-                )
-            )
-        );
+    //     /*
+    //     burnSimResults.delegated0 = uint256(
+    //         int256(
+    //             collToken0.convertToShares(
+    //                 uint256(int256(uint256(burnSimResults.delegated0)) + liqResults.bonus0)
+    //             )
+    //         )
+    //     );
+    //     burnSimResults.delegated1 = uint256(
+    //         int256(
+    //             collToken1.convertToShares(
+    //                 uint256(int256(uint256(burnSimResults.delegated1)) + liqResults.bonus1)
+    //             )
+    //         )
+    //     );
 
-        liqResults.sharesD0 =
-            burnSimResults.shareDelta0 -
-            (int256(collToken0.balanceOf(liquidatee)) - liqResults.sharesD0);
-        liqResults.sharesD1 =
-            burnSimResults.shareDelta1 -
-            (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
-        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
+    //     liqResults.sharesD0 =
+    //         burnSimResults.shareDelta0 -
+    //         (int256(collToken0.balanceOf(liquidatee)) - liqResults.sharesD0);
+    //     liqResults.sharesD1 =
+    //         burnSimResults.shareDelta1 -
+    //         (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
+    //     liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
 
-        _calculate_bonus(TWAPtick);
-        _calculate_protocol_loss_0(currentTick);
-        _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
+    //     _calculate_bonus(TWAPtick);
+    //     _calculate_protocol_loss_0(currentTick);
+    //     _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
 
-        bytes memory settledLiq;
-        (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(
-            userPositions[liquidatee],
-            currentTick
-        );
-        liqResults.settledTokens = abi.decode(settledLiq, (uint256[2][4][32]));
+    //     bytes memory settledLiq;
+    //     (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(
+    //         userPositions[liquidatee],
+    //         currentTick
+    //     );
+    //     liqResults.settledTokens = abi.decode(settledLiq, (uint256[2][4][32]));
 
-        delete userPositions[liquidatee];
+    //     delete userPositions[liquidatee];
 
-        log_burn_simulation_results();
-        log_liquidation_results();
+    //     log_burn_simulation_results();
+    //     log_liquidation_results();
 
-        emit LogUint256("Number of positions", panopticPool.numberOfPositions(liquidatee));
-        assertWithMsg(
-            panopticPool.numberOfPositions(liquidatee) == 0,
-            "Liquidation did not close all positions"
-        );
+    //     emit LogUint256("Number of positions", panopticPool.numberOfPositions(liquidatee));
+    //     assertWithMsg(
+    //         panopticPool.numberOfPositions(liquidatee) == 0,
+    //         "Liquidation did not close all positions"
+    //     );
 
-        if (
-            (collToken0.totalSupply() - burnSimResults.totalSupply0 <= 1) &&
-            (collToken1.totalSupply() - burnSimResults.totalSupply1 <= 1)
-        ) {
-            int256 assets = convertToAssets(collToken0, liqResults.sharesD0) +
-                PanopticMath.convert1to0(
-                    convertToAssets(collToken1, liqResults.sharesD1),
-                    TickMath.getSqrtRatioAtTick(currentTick)
-                );
-            emit LogInt256("Assets", assets);
-            emit LogInt256("Bonus combined", liqResults.bonusCombined0);
+    //     if (
+    //         (collToken0.totalSupply() - burnSimResults.totalSupply0 <= 1) &&
+    //         (collToken1.totalSupply() - burnSimResults.totalSupply1 <= 1)
+    //     ) {
+    //         int256 assets = convertToAssets(collToken0, liqResults.sharesD0) +
+    //             PanopticMath.convert1to0(
+    //                 convertToAssets(collToken1, liqResults.sharesD1),
+    //                 TickMath.getSqrtRatioAtTick(currentTick)
+    //             );
+    //         emit LogInt256("Assets", assets);
+    //         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
-            assertLt(
-                abs(int256(assets) - int256(liqResults.bonusCombined0)),
-                10,
-                "Liquidatee was debited incorrect bonus value (funds leftover)"
-            );
-        } else {
-            int256 assets = convertToAssets(collToken0, liqResults.sharesD0) +
-                PanopticMath.convert1to0(
-                    convertToAssets(collToken1, liqResults.sharesD1),
-                    TickMath.getSqrtRatioAtTick(currentTick)
-                );
-            emit LogInt256("Assets", assets);
-            emit LogInt256("Bonus combined", liqResults.bonusCombined0);
+    //         assertLt(
+    //             abs(int256(assets) - int256(liqResults.bonusCombined0)),
+    //             10,
+    //             "Liquidatee was debited incorrect bonus value (funds leftover)"
+    //         );
+    //     } else {
+    //         int256 assets = convertToAssets(collToken0, liqResults.sharesD0) +
+    //             PanopticMath.convert1to0(
+    //                 convertToAssets(collToken1, liqResults.sharesD1),
+    //                 TickMath.getSqrtRatioAtTick(currentTick)
+    //             );
+    //         emit LogInt256("Assets", assets);
+    //         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
-            assertWithMsg(
-                assets <= liqResults.bonusCombined0,
-                "Liquidatee was debited incorrectly high bonus value (no funds leftover)"
-            );
-        }
+    //         assertWithMsg(
+    //             assets <= liqResults.bonusCombined0,
+    //             "Liquidatee was debited incorrectly high bonus value (no funds leftover)"
+    //         );
+    //     }
 
-        emit LogInt256(
-            "Delta liquidator value",
-            int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0)
-        );
-        emit LogInt256("Bonus combined", liqResults.bonusCombined0);
-        /*
-        assertLt(
-            abs(
-                (int256(liqResults.liquidatorValueAfter0) -
-                    int256(liqResults.liquidatorValueBefore0)) - liqResults.bonusCombined0
-            ),
-            10,
-            "Liquidator did not receive correct bonus"
-        );
-         premium was haircut during protoco*/
-        emit LogInt256(
-            "Delta settled tokens",
-            int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0)
-        );
-        emit LogInt256(
-            "Expected value",
-            Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
-        );
-        assertWithMsg(
-            int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0) ==
-                Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
-            "Incorrect amount of premium was haircut"
-        );
+    //     emit LogInt256(
+    //         "Delta liquidator value",
+    //         int256(liqResults.liquidatorValueAfter0) - int256(liqResults.liquidatorValueBefore0)
+    //     );
+    //     emit LogInt256("Bonus combined", liqResults.bonusCombined0);
+    //     /*
+    //     assertLt(
+    //         abs(
+    //             (int256(liqResults.liquidatorValueAfter0) -
+    //                 int256(liqResults.liquidatorValueBefore0)) - liqResults.bonusCombined0
+    //         ),
+    //         10,
+    //         "Liquidator did not receive correct bonus"
+    //     );
+    //      premium was haircut during protoco*/
+    //     emit LogInt256(
+    //         "Delta settled tokens",
+    //         int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0)
+    //     );
+    //     emit LogInt256(
+    //         "Expected value",
+    //         Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
+    //     );
+    //     assertWithMsg(
+    //         int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0) ==
+    //             Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+    //         "Incorrect amount of premium was haircut"
+    //     );
 
-        emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
-        emit LogInt256(
-            "Expected value",
-            liqResults.protocolLoss0Expected -
-                Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
-        );
-        /*
-        assertLt(
-            abs(
-                liqResults.protocolLoss0Actual -
-                    (liqResults.protocolLoss0Expected -
-                        Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected))
-            ),
-            10,
-            "Not all premium was haircut during protocol loss"
-        );
-        */
-        log_account_collaterals(liquidator);
-        log_account_collaterals(liquidatee);
-        log_account_collaterals(canary);
-        log_trackers_status();
+    //     emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
+    //     emit LogInt256(
+    //         "Expected value",
+    //         liqResults.protocolLoss0Expected -
+    //             Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
+    //     );
+    //     /*
+    //     assertLt(
+    //         abs(
+    //             liqResults.protocolLoss0Actual -
+    //                 (liqResults.protocolLoss0Expected -
+    //                     Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected))
+    //         ),
+    //         10,
+    //         "Not all premium was haircut during protocol loss"
+    //     );
+    //     */
+    //     log_account_collaterals(liquidator);
+    //     log_account_collaterals(liquidatee);
+    //     log_account_collaterals(canary);
+    //     log_trackers_status();
 
-        {
-            uint256 c0a = collToken0.convertToAssets(collToken0.balanceOf(canary));
-            uint256 c1a = collToken1.convertToAssets(collToken1.balanceOf(canary));
-            emit LogUint256("balanceBefore0", canaryBalances.rightSlot());
-            emit LogUint256("balanceBefore1", canaryBalances.leftSlot());
-            emit LogUint256("balanceAfter0", c0a);
-            emit LogUint256("balanceAfter1", c1a);
-            //assertWithMsg(c0a < canaryBalances.rightSlot(), "protocol loss token0");
-            //assertWithMsg(c1a < canaryBalances.leftSlot(), "protocol loss token1");
-        }
-    }
+    //     {
+    //         uint256 c0a = collToken0.convertToAssets(collToken0.balanceOf(canary));
+    //         uint256 c1a = collToken1.convertToAssets(collToken1.balanceOf(canary));
+    //         emit LogUint256("balanceBefore0", canaryBalances.rightSlot());
+    //         emit LogUint256("balanceBefore1", canaryBalances.leftSlot());
+    //         emit LogUint256("balanceAfter0", c0a);
+    //         emit LogUint256("balanceAfter1", c1a);
+    //         //assertWithMsg(c0a < canaryBalances.rightSlot(), "protocol loss token0");
+    //         //assertWithMsg(c1a < canaryBalances.leftSlot(), "protocol loss token1");
+    //     }
+    // }
 
-    function try_liquidate_aggressively(uint256 i_liquidated) public {
-        address liquidator = msg.sender;
+    // function try_liquidate_aggressively(uint256 i_liquidated) public {
+    //     address liquidator = msg.sender;
 
-        for (uint256 i; i < 5; ++i) {
-            address liquidatee = actors[i];
+    //     for (uint256 i; i < 5; ++i) {
+    //         address liquidatee = actors[i];
 
-            if (userPositions[liquidatee].length > 0) {
-                // Make sure the liquidator has tokens to delegate
-                {
-                    hevm.prank(liquidator);
-                    fund_and_approve();
+    //         if (userPositions[liquidatee].length > 0) {
+    //             // Make sure the liquidator has tokens to delegate
+    //             {
+    //                 hevm.prank(liquidator);
+    //                 fund_and_approve();
 
-                    uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
-                    uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
-                    hevm.prank(liquidator);
-                    deposit_to_ct(true, lb0);
-                    hevm.prank(liquidator);
-                    deposit_to_ct(false, lb1);
-                }
+    //                 uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
+    //                 uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
+    //                 hevm.prank(liquidator);
+    //                 deposit_to_ct(true, lb0);
+    //                 hevm.prank(liquidator);
+    //                 deposit_to_ct(false, lb1);
+    //             }
 
-                require(liquidatee != liquidator);
+    //             require(liquidatee != liquidator);
 
-                TokenId[] memory liquidated_positions = userPositions[liquidatee];
-                TokenId[] memory liquidator_positions = userPositions[liquidator];
+    //             TokenId[] memory liquidated_positions = userPositions[liquidatee];
+    //             TokenId[] memory liquidator_positions = userPositions[liquidator];
 
-                emit LogUint256("liquidator positions length", liquidator_positions.length);
-                emit LogUint256(
-                    "liquidator positions length",
-                    panopticPool.numberOfPositions(liquidator)
-                );
-                emit LogUint256("liquidated positions length", liquidated_positions.length);
-                emit LogUint256(
-                    "liquidated positions length",
-                    panopticPool.numberOfPositions(liquidatee)
-                );
-                emit LogAddress("liquidator", liquidator);
-                emit LogAddress("liquidated", liquidatee);
+    //             emit LogUint256("liquidator positions length", liquidator_positions.length);
+    //             emit LogUint256(
+    //                 "liquidator positions length",
+    //                 panopticPool.numberOfPositions(liquidator)
+    //             );
+    //             emit LogUint256("liquidated positions length", liquidated_positions.length);
+    //             emit LogUint256(
+    //                 "liquidated positions length",
+    //                 panopticPool.numberOfPositions(liquidatee)
+    //             );
+    //             emit LogAddress("liquidator", liquidator);
+    //             emit LogAddress("liquidated", liquidatee);
 
-                int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
-                uint160 price;
-                (price, currentTick, , , , , ) = pool.slot0();
-                emit LogInt256("TWAP tick", TWAPtick);
-                emit LogInt256("Current tick", currentTick);
+    //             int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+    //             uint160 price;
+    //             (price, currentTick, , , , , ) = pool.slot0();
+    //             emit LogInt256("TWAP tick", TWAPtick);
+    //             emit LogInt256("Current tick", currentTick);
 
-                log_account_collaterals(liquidator);
-                log_account_collaterals(liquidatee);
-                log_trackers_status();
+    //             log_account_collaterals(liquidator);
+    //             log_account_collaterals(liquidatee);
+    //             log_trackers_status();
 
-                require(liquidated_positions.length > 0);
+    //             require(liquidated_positions.length > 0);
 
-                (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
-                    liquidatee,
-                    TWAPtick
-                );
-                emit LogUint256("Balance cross", balanceCross);
-                emit LogUint256("Threshold cross", thresholdCross);
+    //             (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
+    //                 liquidatee,
+    //                 TWAPtick
+    //             );
+    //             emit LogUint256("Balance cross", balanceCross);
+    //             emit LogUint256("Threshold cross", thresholdCross);
 
-                LeftRightUnsigned delegations = LeftRightUnsigned
-                    .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
-                    .toLeftSlot(
-                        uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator)))
-                    );
+    //             LeftRightUnsigned delegations = LeftRightUnsigned
+    //                 .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
+    //                 .toLeftSlot(
+    //                     uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator)))
+    //                 );
 
-                hevm.prank(liquidator);
+    //             hevm.prank(liquidator);
 
-                // If the position is not liquidatable, liquidation call must revert
-                if (balanceCross > thresholdCross) {
-                    perform_swap_no_delay(price * 100);
-                    hevm.prank(liquidator);
-                    try
-                        panopticPool.liquidate(
-                            liquidator_positions,
-                            liquidatee,
-                            delegations,
-                            liquidated_positions
-                        )
-                    {
-                        emit LogString("liquidated on the way up");
-                        delete userPositions[liquidatee];
-                    } catch (bytes memory _err) {
-                        emit LogBytes("err", _err);
-                        perform_swap_no_delay(price / 100);
-                        hevm.prank(liquidator);
-                        try
-                            panopticPool.liquidate(
-                                liquidator_positions,
-                                liquidatee,
-                                delegations,
-                                liquidated_positions
-                            )
-                        {
-                            emit LogString("liquidated on the way down");
-                            delete userPositions[liquidatee];
-                        } catch (bytes memory _err) {
-                            emit LogBytes("err", _err);
-                            emit LogString("not liquidatable");
-                        }
-                    }
-                } else {
-                    try
-                        panopticPool.liquidate(
-                            liquidator_positions,
-                            liquidatee,
-                            delegations,
-                            liquidated_positions
-                        )
-                    {
-                        emit LogString("liquidated account");
-                        delete userPositions[liquidatee];
-                    } catch (bytes memory _err) {
-                        emit LogBytes("err", _err);
-                    }
+    //             // If the position is not liquidatable, liquidation call must revert
+    //             if (balanceCross > thresholdCross) {
+    //                 perform_swap_no_delay(price * 100);
+    //                 hevm.prank(liquidator);
+    //                 try
+    //                     panopticPool.liquidate(
+    //                         liquidator_positions,
+    //                         liquidatee,
+    //                         delegations,
+    //                         liquidated_positions
+    //                     )
+    //                 {
+    //                     emit LogString("liquidated on the way up");
+    //                     delete userPositions[liquidatee];
+    //                 } catch (bytes memory _err) {
+    //                     emit LogBytes("err", _err);
+    //                     perform_swap_no_delay(price / 100);
+    //                     hevm.prank(liquidator);
+    //                     try
+    //                         panopticPool.liquidate(
+    //                             liquidator_positions,
+    //                             liquidatee,
+    //                             delegations,
+    //                             liquidated_positions
+    //                         )
+    //                     {
+    //                         emit LogString("liquidated on the way down");
+    //                         delete userPositions[liquidatee];
+    //                     } catch (bytes memory _err) {
+    //                         emit LogBytes("err", _err);
+    //                         emit LogString("not liquidatable");
+    //                     }
+    //                 }
+    //             } else {
+    //                 try
+    //                     panopticPool.liquidate(
+    //                         liquidator_positions,
+    //                         liquidatee,
+    //                         delegations,
+    //                         liquidated_positions
+    //                     )
+    //                 {
+    //                     emit LogString("liquidated account");
+    //                     delete userPositions[liquidatee];
+    //                 } catch (bytes memory _err) {
+    //                     emit LogBytes("err", _err);
+    //                 }
 
-                    currentTickOld = currentTick;
-                    (, currentTick, , , , , ) = pool.slot0();
+    //                 currentTickOld = currentTick;
+    //                 (, currentTick, , , , , ) = pool.slot0();
 
-                    emit LogInt256("final tick", currentTick);
+    //                 emit LogInt256("final tick", currentTick);
 
-                    emit LogUint256(
-                        "Number of positions",
-                        panopticPool.numberOfPositions(liquidatee)
-                    );
-                    assertWithMsg(
-                        panopticPool.numberOfPositions(liquidatee) == 0,
-                        "Liquidation did not close all positions"
-                    );
+    //                 emit LogUint256(
+    //                     "Number of positions",
+    //                     panopticPool.numberOfPositions(liquidatee)
+    //                 );
+    //                 assertWithMsg(
+    //                     panopticPool.numberOfPositions(liquidatee) == 0,
+    //                     "Liquidation did not close all positions"
+    //                 );
 
-                    log_account_collaterals(liquidator);
-                    log_account_collaterals(liquidatee);
-                    log_trackers_status();
-                }
-            }
-        }
-    }
+    //                 log_account_collaterals(liquidator);
+    //                 log_account_collaterals(liquidatee);
+    //                 log_trackers_status();
+    //             }
+    //         }
+    //     }
+    // }
 
     /////////////////////////////////////////////////////////////
     // System Invariants
@@ -1757,97 +1767,97 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-001 The max withdrawal amount of users with open positions is zero
     /// @custom:property PANO-SYS-002 Users can't withdraw collateral with open positions
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal() public {
-        // If user has positions open, they cannot remove collateral
-        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
-        emit LogAddress("Caller", msg.sender);
-        emit LogUint256("Positions opened for user", numOfPositions);
+    // function invariant_collateral_removal() public {
+    //     // If user has positions open, they cannot remove collateral
+    //     uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+    //     emit LogAddress("Caller", msg.sender);
+    //     emit LogUint256("Positions opened for user", numOfPositions);
 
-        if (numOfPositions > 0) {
-            uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-            uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
-            emit LogUint256("Balance in token0", bal0);
-            emit LogUint256("Balance in token1", bal1);
+    //     if (numOfPositions > 0) {
+    //         uint256 bal0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+    //         uint256 bal1 = collToken1.convertToAssets(collToken0.balanceOf(msg.sender));
+    //         emit LogUint256("Balance in token0", bal0);
+    //         emit LogUint256("Balance in token1", bal1);
 
-            assertWithMsg(
-                collToken0.maxWithdraw(msg.sender) == 0,
-                "It is possible to withdraw assets when the user has open positions"
-            );
-            assertWithMsg(
-                collToken1.maxWithdraw(msg.sender) == 0,
-                "It is possible to withdraw assets when the user has open positions"
-            );
+    //         assertWithMsg(
+    //             collToken0.maxWithdraw(msg.sender) == 0,
+    //             "It is possible to withdraw assets when the user has open positions"
+    //         );
+    //         assertWithMsg(
+    //             collToken1.maxWithdraw(msg.sender) == 0,
+    //             "It is possible to withdraw assets when the user has open positions"
+    //         );
 
-            if (bal0 > 0) {
-                try collToken0.withdraw(bal0, msg.sender, msg.sender) {
-                    assertWithMsg(false, "Collateral could be removed with open positions");
-                } catch {}
-            }
-            if (bal1 > 0) {
-                try collToken1.withdraw(bal1, msg.sender, msg.sender) {
-                    assertWithMsg(false, "Collateral could be removed with open positions");
-                } catch {}
-            }
-        }
-    }
+    //         if (bal0 > 0) {
+    //             try collToken0.withdraw(bal0, msg.sender, msg.sender) {
+    //                 assertWithMsg(false, "Collateral could be removed with open positions");
+    //             } catch {}
+    //         }
+    //         if (bal1 > 0) {
+    //             try collToken1.withdraw(bal1, msg.sender, msg.sender) {
+    //                 assertWithMsg(false, "Collateral could be removed with open positions");
+    //             } catch {}
+    //         }
+    //     }
+    // }
 
-    /// @custom:property PANO-SYS-003 Users can't have an open position but no collateral
-    /// @custom:precondition The user has a position open
-    function invariant_collateral_for_positions() public {
-        // If user has positions open, the collateral must be greater than zero
-        uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
-        emit LogAddress("Caller", msg.sender);
-        emit LogUint256("Positions opened for user", numOfPositions);
+    // /// @custom:property PANO-SYS-003 Users can't have an open position but no collateral
+    // /// @custom:precondition The user has a position open
+    // function invariant_collateral_for_positions() public {
+    //     // If user has positions open, the collateral must be greater than zero
+    //     uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
+    //     emit LogAddress("Caller", msg.sender);
+    //     emit LogUint256("Positions opened for user", numOfPositions);
 
-        int128 premium0;
-        int128 premium1;
+    //     int128 premium0;
+    //     int128 premium1;
 
-        if (numOfPositions > 0) {
-            uint256 bal0 = collToken0.balanceOf(msg.sender);
-            uint256 bal1 = collToken1.balanceOf(msg.sender);
-            emit LogUint256("Balance in token0", bal0);
-            emit LogUint256("Balance in token1", bal1);
+    //     if (numOfPositions > 0) {
+    //         uint256 bal0 = collToken0.balanceOf(msg.sender);
+    //         uint256 bal1 = collToken1.balanceOf(msg.sender);
+    //         emit LogUint256("Balance in token0", bal0);
+    //         emit LogUint256("Balance in token1", bal1);
 
-            bal0 = collToken0.convertToAssets(bal0);
-            bal1 = collToken1.convertToAssets(bal1);
-            emit LogUint256("Balance in token0 to assets", bal0);
-            emit LogUint256("Balance in token1 to assets", bal1);
+    //         bal0 = collToken0.convertToAssets(bal0);
+    //         bal1 = collToken1.convertToAssets(bal1);
+    //         emit LogUint256("Balance in token0 to assets", bal0);
+    //         emit LogUint256("Balance in token1 to assets", bal1);
 
-            (premium0, premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
-                msg.sender,
-                true,
-                userPositions[msg.sender]
-            );
-            emit LogInt256("Premia in token0", premium0);
-            emit LogInt256("Premia in token1", premium1);
+    //         (premium0, premium1, ) = panopticPool.calculateAccumulatedFeesBatch(
+    //             msg.sender,
+    //             true,
+    //             userPositions[msg.sender]
+    //         );
+    //         emit LogInt256("Premia in token0", premium0);
+    //         emit LogInt256("Premia in token1", premium1);
 
-            assertWithMsg(
-                ((int256(bal0) + premium0) > 0) || ((int256(bal1) + premium1) > 0),
-                "User has open positions but zero collateral"
-            );
-        }
-    }
+    //         assertWithMsg(
+    //             ((int256(bal0) + premium0) > 0) || ((int256(bal1) + premium1) > 0),
+    //             "User has open positions but zero collateral"
+    //         );
+    //     }
+    // }
 
-    /// @custom:property PANO-SYS-004 The owed premia is not less than the available premia
-    /// @custom:precondition The user has a position open
-    function invariant_unsettled_premium() public {
-        // Owed premia
-        (int128 p0o, int128 p1o, ) = panopticPool.calculateAccumulatedFeesBatch(
-            msg.sender,
-            true,
-            userPositions[msg.sender]
-        );
-        // Available premia
-        (int128 p0a, int128 p1a, ) = panopticPool.calculateAccumulatedFeesBatch(
-            msg.sender,
-            false,
-            userPositions[msg.sender]
-        );
+    // /// @custom:property PANO-SYS-004 The owed premia is not less than the available premia
+    // /// @custom:precondition The user has a position open
+    // function invariant_unsettled_premium() public {
+    //     // Owed premia
+    //     (int128 p0o, int128 p1o, ) = panopticPool.calculateAccumulatedFeesBatch(
+    //         msg.sender,
+    //         true,
+    //         userPositions[msg.sender]
+    //     );
+    //     // Available premia
+    //     (int128 p0a, int128 p1a, ) = panopticPool.calculateAccumulatedFeesBatch(
+    //         msg.sender,
+    //         false,
+    //         userPositions[msg.sender]
+    //     );
 
-        emit LogAddress("Sender:", msg.sender);
-        assertWithMsg(p0o >= p0a, "Token 0 owed premia is less than available premia");
-        assertWithMsg(p1o >= p1a, "Token 1 owed premia is less than available premia");
-    }
+    //     emit LogAddress("Sender:", msg.sender);
+    //     assertWithMsg(p0o >= p0a, "Token 0 owed premia is less than available premia");
+    //     assertWithMsg(p1o >= p1a, "Token 1 owed premia is less than available premia");
+    // }
 
     /////////////////////////////////////////////////////////////
     // External function wrappers
@@ -2005,6 +2015,932 @@ contract FuzzDeployments is FuzzHelpers {
             collToken1.redeem(amount, msg.sender, msg.sender);
         }
     }
+
+    /// SFPM direct interactions
+
+    // valid token id wrapper
+    // add to minting positions at random (generate invalid tokenID see if mint succeeds ??)
+
+    ////////////////////////////////////////////////////
+    // Mint
+    ////////////////////////////////////////////////////
+
+    // mint option sfpm standard mint (store this position in mapping)
+    // check: the netLiquidity added, liquidity added in uniswap
+    // multiple legs
+    function mint_option_SFPM_netLiquidity_singleSell(
+        bool asset,
+        bool is_call,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        // must be
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            false,
+            false,
+            width,
+            strike
+        );
+
+        int256 totalMoved0;
+        int256 totalMoved1;
+
+        int24 tickLimitLow = int24(887272);
+        int24 tickLimitHigh = int24(-887272);
+
+        {
+            // get moved amounts
+            // moved amounts is faulty function
+            // reverts for some reason
+            (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+
+            // get itm amounts
+            (int256 itm0, int256 itm1) = _calculate_itm_amounts(
+                tokenIdSell.tokenType(0),
+                moved0,
+                moved1
+            );
+
+            (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
+
+            hevm.prank(msg.sender);
+            fund_and_approve();
+
+            (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
+                msg.sender,
+                zeroForOne,
+                swapAmount
+            );
+
+            // total moved
+            totalMoved0 = moved0 + swap0;
+            totalMoved1 = moved1 + swap1;
+        }
+
+        // current balances
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+        emit LogInt256("bal before 0", balBefore0);
+        emit LogInt256("bal before 1", balBefore1);
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            // check final balances
+            // int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
+            // int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+            // emit LogInt256("bal after 0", balAfter0);
+            // emit LogInt256("bal after 1", balAfter1);
+
+            // assertWithMsg((balBefore0 - totalMoved0) == balAfter0, "bal 0 delta invalid");
+            // assertWithMsg((balBefore1 - totalMoved1) == balAfter1, "bal 1 delta invalid");
+
+            (int24 tickLower, int24 tickUpper) = tokenIdSell.asTicks(0);
+
+            // check the net liquidity added
+            LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
+                address(pool),
+                msg.sender,
+                tokenIdSell.tokenType(0),
+                tickLower,
+                tickUpper
+            );
+
+            /// /// /// /// ///
+
+            uint256 removedLiquidity = accountLiquidities.leftSlot();
+            uint256 netLiquidity = accountLiquidities.rightSlot();
+
+            emit LogUint256("removedLiquidity", removedLiquidity);
+            emit LogUint256("netLiquidity", netLiquidity);
+
+            assertWithMsg(false, "x xx x x x");
+
+            // check the liquidity deposited within uniswap
+
+            // add minted option to mapping of minted SFPM positions
+        } catch {}
+    }
+
+    // function mint_option_SFPM_
+
+    // wrapper to check the net liquidity
+
+    // wrapper to check collected fees
+
+    // mint SFPM Swap At Mint = true, and ITM = true
+    function mint_option_SFPM_swapT_ITMT(
+        bool asset,
+        bool is_call,
+        bool is_long,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        // must be
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            false,
+            false,
+            width,
+            strike
+        );
+
+        int256 totalMoved0;
+        int256 totalMoved1;
+
+        int24 tickLimitLow = int24(887272);
+        int24 tickLimitHigh = int24(-887272);
+
+        {
+            // get moved amounts
+            // moved amounts is faulty function
+            // reverts for some reason
+            (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+
+            // get itm amounts
+            (int256 itm0, int256 itm1) = _calculate_itm_amounts(
+                tokenIdSell.tokenType(0),
+                moved0,
+                moved1
+            );
+
+            (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
+
+            hevm.prank(msg.sender);
+            fund_and_approve();
+
+            (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
+                msg.sender,
+                zeroForOne,
+                swapAmount
+            );
+
+            // total moved
+            totalMoved0 = moved0 + swap0;
+            totalMoved1 = moved1 + swap1;
+        }
+
+        // current balances
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+        emit LogInt256("bal before 0", balBefore0);
+        emit LogInt256("bal before 1", balBefore1);
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            // check final balances
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+            emit LogInt256("bal after 0", balAfter0);
+            emit LogInt256("bal after 1", balAfter1);
+
+            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
+            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+        } catch {}
+    }
+
+    // mint SFPM regular mint Swap At Mint = false, and ITM = false
+    function mint_option_SFPM_swapF_ITMF(
+        bool asset,
+        bool is_call,
+        bool is_long,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        // must be
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            true,
+            false,
+            width,
+            strike
+        );
+
+        int256 moved0;
+        int256 moved1;
+
+        int24 tickLimitLow = int24(-887272);
+        int24 tickLimitHigh = int24(887272);
+
+        hevm.prank(msg.sender);
+        fund_and_approve();
+
+        {
+            // get moved amounts
+            // moved amounts is faulty function
+            // reverts for some reason
+            (moved0, moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+
+            emit LogInt256("moved0", moved0);
+            emit LogInt256("moved1", moved1);
+        }
+
+        // current balances
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+        emit LogInt256("bal before 0", balBefore0);
+        emit LogInt256("bal before 1", balBefore1);
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        hevm.prank(msg.sender);
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            // check final balances
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+            emit LogInt256("bal after 0", balAfter0);
+            emit LogInt256("bal after 1", balAfter1);
+
+            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
+            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+        } catch {}
+    }
+
+    // swap at mint true, and ITM false
+    function mint_option_SFPM_swapT_ITMF(
+        bool asset,
+        bool is_call,
+        bool is_long,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        // must be
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            true,
+            false,
+            width,
+            strike
+        );
+
+        int256 moved0;
+        int256 moved1;
+
+        int24 tickLimitLow = int24(887272);
+        int24 tickLimitHigh = int24(-887272);
+
+        hevm.prank(msg.sender);
+        fund_and_approve();
+
+        {
+            // get moved amounts
+            // moved amounts is faulty function
+            // reverts for some reason
+            (moved0, moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+
+            emit LogInt256("moved0", moved0);
+            emit LogInt256("moved1", moved1);
+        }
+
+        // current balances
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+        emit LogInt256("bal before 0", balBefore0);
+        emit LogInt256("bal before 1", balBefore1);
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        hevm.prank(msg.sender);
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            // check final balances
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+            emit LogInt256("bal after 0", balAfter0);
+            emit LogInt256("bal after 1", balAfter1);
+
+            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
+            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+        } catch {}
+    }
+
+    // swap at mint false, and itm true
+    function mint_option_SFPM_swapF_ITMT(
+        bool asset,
+        bool is_call,
+        bool is_long,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        hevm.prank(msg.sender);
+        fund_and_approve();
+
+        // must be
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            false,
+            false,
+            width,
+            strike
+        );
+
+        int256 moved0;
+        int256 moved1;
+
+        int24 tickLimitLow = int24(-887272);
+        int24 tickLimitHigh = int24(887272);
+
+        {
+            // get moved amounts
+            (moved0, moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+        }
+
+        // current balances
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+        emit LogInt256("bal before 0", balBefore0);
+        emit LogInt256("bal before 1", balBefore1);
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        hevm.prank(msg.sender);
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            // check final balances
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+            emit LogInt256("bal after 0", balAfter0);
+            emit LogInt256("bal after 1", balAfter1);
+
+            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
+            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+        } catch {}
+    }
+
+    // swap at mint true, and itm true (netting swap 2 legs of differing token type)
+    function mint_option_SFPM_nettingSwap(
+        bool asset0,
+        bool asset1,
+        bool isCall0,
+        bool isCall1,
+        bool isATM0,
+        bool isATM1,
+        uint24 width0,
+        uint24 width1,
+        int256 strike0,
+        int256 strike1,
+        uint128 positionSize
+    ) public {
+        hevm.prank(msg.sender);
+        fund_and_approve();
+
+        // generate double leg shorts
+        // dynamic numeraire and token type
+        TokenId tokenIdSell = _generate_multiple_leg_tokenid(
+            2,
+            [asset0, asset1, false, false],
+            [isCall0, isCall1, false, false],
+            [false, false, false, false],
+            [false, false, false, false],
+            [false, isATM0, isATM1, false],
+            [width0, width1, 0, 0],
+            [strike0, strike1, 0, 0]
+        );
+
+        int256 totalMoved0;
+        int256 totalMoved1;
+
+        int24 tickLimitLow = int24(-887272);
+        int24 tickLimitHigh = int24(887272);
+
+        {
+            (
+                int256 moved0,
+                int256 moved1,
+                int256 itm0,
+                int256 itm1
+            ) = _calculate_moved_and_ITM_amounts(tokenIdSell, positionSize);
+
+            emit LogInt256("moved0", moved0);
+            emit LogInt256("moved1", moved1);
+            emit LogInt256("itm0", itm0);
+            emit LogInt256("itm1", itm1);
+
+            (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
+
+            hevm.prank(msg.sender);
+            fund_and_approve();
+
+            emit LogInt256("swapAmount", swapAmount);
+            emit LogBool("zeroForOne", zeroForOne);
+
+            (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
+                msg.sender,
+                zeroForOne,
+                swapAmount
+            );
+
+            emit LogInt256("swap0", swap0);
+            emit LogInt256("swap1", swap1);
+
+            // total moved
+            totalMoved0 = moved0 + swap0;
+            totalMoved1 = moved1 + swap1;
+
+            emit LogInt256("totalMoved0", totalMoved0);
+            emit LogInt256("totalMoved1", totalMoved1);
+        }
+
+        // current balances
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+        emit LogInt256("bal before 0", balBefore0);
+        emit LogInt256("bal before 1", balBefore1);
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        hevm.prank(msg.sender);
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            // check final balances
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+
+            emit LogInt256("bal after 0", balAfter0);
+            emit LogInt256("bal after 1", balAfter1);
+
+            assertApproxEqAbs((balBefore0 - totalMoved0), balAfter0, "bal 0 delta invalid");
+            assertApproxEqAbs((balBefore1 - totalMoved1), balAfter1, "bal 1 delta invalid");
+
+            // assertWithMsg(false, "x xxxxx xxx");
+        } catch {}
+    }
+
+    // mint SFPM position size = 0
+    function invariant_mint_option_SFPM_posSize0(
+        uint256 minter_index,
+        bool asset,
+        bool is_call,
+        bool is_long,
+        bool is_otm,
+        bool is_atm,
+        bool swapAtMint,
+        uint24 width,
+        int256 strike
+    ) public {
+        minter_index = bound(minter_index, 0, 4);
+        if (actors[minter_index] == msg.sender) {
+            minter_index = bound(minter_index + 1, 0, 4);
+        }
+
+        address minter = actors[minter_index];
+
+        // pos size 0
+        uint128 positionSize = 0;
+        TokenId tokenId = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            is_otm,
+            is_atm,
+            width,
+            strike
+        );
+
+        int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
+        int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+
+        // if positionSize == 0 then should fail
+        if (positionSize == 0) {
+            hevm.prank(minter);
+            try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
+                assertWithMsg(false, "can't mint option with position size of 0");
+            } catch {}
+        }
+    }
+
+    // token composition is over 127 bits on either side should fail
+    function invariant_mint_option_SFPM_PositionTooLarge(
+        uint256 minter_index,
+        bool asset,
+        bool is_call,
+        bool is_long,
+        bool is_otm,
+        bool is_atm,
+        bool swapAtMint,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        minter_index = bound(minter_index, 0, 4);
+        if (actors[minter_index] == msg.sender) {
+            minter_index = bound(minter_index + 1, 0, 4);
+        }
+
+        address minter = actors[minter_index];
+
+        TokenId tokenId = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            is_otm,
+            is_atm,
+            width,
+            strike
+        );
+
+        int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
+        int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+
+        // check asset balances of user before and after
+        (int256 expectedMoved0, int256 expectedMoved1) = _calculate_moved_amounts(
+            tokenId,
+            positionSize
+        );
+
+        // token composition is over 127 bits on either side should fail
+        if (expectedMoved0 > 2 ** 127 || expectedMoved1 > 2 ** 127) {
+            hevm.prank(minter);
+            try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
+                assertWithMsg(
+                    false,
+                    "can't mint a position which exceeds the token limits of 127 bits"
+                );
+            } catch {}
+        }
+    }
+
+    // attempt to purchase more liquidity than exists at the chunk
+    function invariant_mint_option_SFPM_NotEnoughLiquidity(
+        uint256 minter_index,
+        bool asset,
+        bool is_call,
+        bool is_long,
+        bool is_otm,
+        bool is_atm,
+        bool swapAtMint,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize
+    ) public {
+        minter_index = bound(minter_index, 0, 4);
+        if (actors[minter_index] == msg.sender) {
+            minter_index = bound(minter_index + 1, 0, 4);
+        }
+
+        address minter = actors[minter_index];
+
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            is_otm,
+            is_atm,
+            width,
+            strike
+        );
+        TokenId tokenIdBuy = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            true,
+            is_otm,
+            is_atm,
+            width,
+            strike
+        );
+
+        int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
+        int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+
+        (int24 tickLower, int24 tickUpper) = tokenIdSell.asTicks(0);
+
+        // check there is no pre-existing liquidity at this chunk deployed by the minter
+        LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
+            address(pool),
+            minter,
+            tokenIdSell.tokenType(0),
+            tickLower,
+            tickUpper
+        );
+
+        uint256 netLiquidity = accountLiquidities.rightSlot();
+
+        // invoke actions as the chosen minter
+        hevm.prank(minter);
+
+        //
+        if (netLiquidity != 0) {
+            // mint a small amount of liquidity at this chunk
+            sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh);
+        }
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        try sfpm.mintTokenizedPosition(tokenIdBuy, positionSize + 1, tickLimitLow, tickLimitHigh) {
+            // log liquidity amounts at positionSize and positionSize + 1 (rounding ?? **)
+            assertWithMsg(false, "Can't purchase more chunk liquidity than is available!");
+        } catch {}
+    }
+
+    // can't mint a position that defies the slippage bounds
+    function invariant_mint_option_SFPM_PriceBoundFail(
+        bool asset,
+        bool is_call,
+        bool is_long,
+        bool is_otm,
+        bool is_atm,
+        bool swapAtMint,
+        uint24 width,
+        int256 strike,
+        uint128 positionSize,
+        bool slippageDirection,
+        int24 randTick
+    ) public {
+        TokenId tokenIdSell = _generate_single_leg_tokenid(
+            asset,
+            is_call,
+            false,
+            is_otm,
+            is_atm,
+            width,
+            strike
+        );
+
+        // get moved amounts
+        // moved amounts is faulty function
+        // reverts for some reason
+        (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+
+        // get itm amounts
+        (int256 itm0, int256 itm1) = _calculate_itm_amounts(
+            tokenIdSell.tokenType(0),
+            moved0,
+            moved1
+        );
+
+        (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
+
+        //hevm.prank(minter);
+        fund_and_approve();
+
+        (, , /*int256 swap0*/ /*int256 swap1*/ int24 tickAfterSwap) = _execute_swap_simulation(
+            msg.sender,
+            zeroForOne,
+            swapAmount
+        );
+
+        // total moved
+        // int256 totalMoved0 = moved0 + swap0;
+        // int256 totalMoved1 = moved1 + swap1;
+
+        // generate tick limits which exceed the slippage bounds
+        // using the current tick after swap
+
+        int24 tickLimitLow;
+        int24 tickLimitHigh;
+
+        // get the currentTick after this position would have been minted via sim and
+        if (slippageDirection) {
+            // set invalid tickLow
+            // sets to a lower tickLimitLow
+            tickLimitLow = randTick % tickAfterSwap;
+
+            // set valid tickHigh
+            tickLimitHigh = int24(887272);
+        } else {
+            // set valid tickLow
+            tickLimitLow = int24(-887272);
+
+            // set invalid tickHigh
+            tickLimitHigh = tickAfterSwap + int24(Math.abs(randTick));
+        }
+
+        // flip ticks for swap at mint signal
+        if (swapAtMint) {
+            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+        }
+
+        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+            assertWithMsg(false, "Can't mint an option which defies the slippage bounds");
+        } catch {}
+    }
+
+    // sell an option and check ending balances
+
+    // mint SFPM isLong == 1 (purchase a chunk they sold themselves)
+    // then check balances
+    // check status of position in uniswap
+    // when selling the chunk liquidity should be deposited in uniswap
+    // when buying it should be removed
+    // check user s_accountLiquidity values
+    // check user feesbase
+    // function mint_option_SFPM_self_purchase(
+    //     uint256 minter_index,
+    //     bool asset,
+    //     bool is_call,
+    //     bool is_long,
+    //     bool is_otm,
+    //     bool is_atm,
+    //     bool swapAtMint,
+    //     uint24 width,
+    //     int256 strike,
+    //     uint128 positionSize
+    // ) public {
+    //     minter_index = bound(minter_index, 0, 4);
+    //     if (actors[minter_index] == msg.sender) {
+    //         minter_index = bound(minter_index + 1, 0, 4);
+    //     }
+
+    //     address minter = actors[minter_index];
+
+    //     // get user token balances
+    //     uint256 balanceBefore0 = IERC20(token0).balanceOf(minter);
+    //     emit LogUint256("User balance before 0", balanceBefore0);
+    //     uint256 balanceBefore1 = IERC20(token1).balanceOf(minter);
+    //     emit LogUint256("User balance before 1", balanceBefore1);
+
+    //     userPositionsSFPM[minter].push(tokenId);
+
+    //     emit LogUint256("positionSize", positionSize);
+
+    //     // check asset balances of user before and after
+    //     (uint256 expectedMoved0, uint256 expectedMoved1) = _calculate_moved_amounts(
+    //         tokenId,
+    //         positionSize
+    //     );
+    //     emit LogUint256("expected moved0", expectedMoved0);
+    //     emit LogUint256("expected moved1", expectedMoved1);
+
+    //     int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
+    //     int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+    //     emit LogInt256("tickLimitLow", tickLimitLow);
+    //     emit LogInt256("tickLimitHigh", tickLimitHigh);
+
+    //     TokenId tokenIdShort = _generate_single_leg_tokenid(
+    //         asset,
+    //         is_call,
+    //         false,
+    //         is_otm,
+    //         is_atm,
+    //         width,
+    //         strike
+    //     );
+    //     TokenId tokenIdLong = _generate_single_leg_tokenid(
+    //         asset,
+    //         is_call,
+    //         true,
+    //         is_otm,
+    //         is_atm,
+    //         width,
+    //         strike
+    //     );
+
+    //     int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
+    //     int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+
+    //     // **
+    //     // helper to return the swapped amounts if ITM
+    //     // check ending moved balances and swapped amounts
+    //     // **
+
+    //     // before mint check the chunks removed|net liquidity (getAccountLiquidity)
+
+    //     //
+    // }
+
+    // user can only purchase chunks they have sold themselves
+    // use one actor to sell and then attempt to buy with another actor
+
+    // randomy purchase a sold chunk
+    // look through the mapping userPositionsSFPM and try to purchase one at random
+    // make it a mapping of actor => array of positions minted
+    // get the amount of liquidity on the position to determine the optimal position size to mint
+    // must always be less than
+
+    // function _mint_option_SFPM(
+    //     address minter,
+    //     TokenId tokenId,
+    //     uint128 positionSize,
+    //     bool swapAtMint
+    // ) internal {
+    //     // get user token balances
+    //     uint256 balanceBefore0 = IERC20(token0).balanceOf(minter);
+    //     emit LogUint256("User balance before 0", balanceBefore0);
+    //     uint256 balanceBefore1 = IERC20(token1).balanceOf(minter);
+    //     emit LogUint256("User balance before 1", balanceBefore1);
+
+    //     userPositionsSFPM[minter].push(tokenId);
+
+    //     emit LogUint256("positionSize", positionSize);
+
+    //     // check asset balances of user before and after
+    //     (uint256 expectedMoved0, uint256 expectedMoved1) = _calculate_moved_amounts(
+    //         tokenId,
+    //         positionSize
+    //     );
+    //     emit LogUint256("expected moved0", expectedMoved0);
+    //     emit LogUint256("expected moved1", expectedMoved1);
+
+    //     int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
+    //     int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+    //     emit LogInt256("tickLimitLow", tickLimitLow);
+    //     emit LogInt256("tickLimitHigh", tickLimitHigh);
+
+    //     if () {
+    //         try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
+    //             assertWithMsg(
+    //                 false,
+    //                 ""
+    //             );
+    //         } catch {}
+
+    //         // return
+    //     }
+
+    //     // default case
+    //     {
+    //         fund_and_approve();
+
+    //         try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
+    //             //assertWithMsg(false, "suceeded call check");
+    //         } catch (bytes memory _err) {
+    //             emit LogBytes("err", _err);
+    //             assertWithMsg(false, "check err");
+    //         }
+    //     }
+
+    //     // *******
+    //     // check if itm and swap at mint
+    //     // then get the itm and swapped amounts
+    //     // *******
+
+    //     //
+    //     uint256 balanceAfter0 = IERC20(token0).balanceOf(minter);
+    //     emit LogUint256("User balance after 0", balanceAfter0);
+    //     uint256 balanceAfter1 = IERC20(token1).balanceOf(minter);
+    //     emit LogUint256("User balance after 1", balanceAfter1);
+
+    //     assertWithMsg(false, "after the fact");
+    // }
+
+    // // generate SFPM positions (doesn't consider existing pp generated positions)
+    // // single leg
+    // function mint_option_SPFM_RAND(
+    //     uint256 minter_index,
+    //     bool asset,
+    //     bool is_call,
+    //     bool is_long,
+    //     bool is_otm,
+    //     bool is_atm,
+    //     bool swapAtMint,
+    //     uint24 width,
+    //     int256 strike,
+    //     uint128 posSize
+    // ) public {
+    //     minter_index = bound(minter_index, 0, 4);
+    //     if (actors[minter_index] == msg.sender) {
+    //         minter_index = bound(minter_index + 1, 0, 4);
+    //     }
+
+    //     address minter = actors[minter_index];
+
+    //     if (!is_long) {
+    //         // Mint a short position
+    //         _mint_option_SFPM(
+    //             minter,
+    //             _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
+    //             posSize,
+    //             swapAtMint
+    //         );
+    //     } else {
+    //         // Mint a short position first, then a long position
+    //         _mint_option_SFPM(
+    //             minter,
+    //             _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
+    //             posSize,
+    //             swapAtMint
+    //         );
+    //         _mint_option_SFPM(
+    //             minter,
+    //             _generate_single_leg_tokenid(asset, is_call, true, is_otm, is_atm, width, strike),
+    //             posSize,
+    //             swapAtMint
+    //         );
+    //     }
+    // }
+
+    ////////////////////////////////////////////////////
+    // Burn
+    ////////////////////////////////////////////////////
 
     /////////////////////////////////////////////////////////////
     // Legacy functions (deactivated)

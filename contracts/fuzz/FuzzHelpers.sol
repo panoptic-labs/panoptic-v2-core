@@ -17,6 +17,8 @@ import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
+import {Constants} from "@libraries/Constants.sol";
+import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -227,6 +229,8 @@ contract PanopticPoolWrapper is PanopticPool {
 }
 
 contract FuzzHelpers is PropertiesAsserts {
+    error SwapSimulationResults(int256, int256, int24);
+
     error SimulationResults(
         LeftRightUnsigned,
         LeftRightUnsigned,
@@ -287,6 +291,8 @@ contract FuzzHelpers is PropertiesAsserts {
     uint64 poolId;
 
     IUniswapV3Pool pool;
+    address token0;
+    address token1;
     uint24 poolFee;
     int24 poolTickSpacing;
     uint160 currentSqrtPriceX96;
@@ -302,6 +308,8 @@ contract FuzzHelpers is PropertiesAsserts {
     SwapperC swapperc;
 
     mapping(address => TokenId[]) userPositions;
+
+    mapping(address => TokenId[]) userPositionsSFPM;
 
     mapping(address => mapping(TokenId => LeftRightUnsigned)) userBalance;
 
@@ -597,6 +605,93 @@ contract FuzzHelpers is PropertiesAsserts {
         return (settledTokens0, abi.encode(settledTokens));
     }
 
+    // given an itm0 and itm1 values return the swapped amounts and swap direction
+    function _compute_swap_amounts(
+        int256 itm0,
+        int256 itm1
+    ) internal returns (int256 swapAmount, bool zeroForOne) {
+        if ((itm0 != 0) && (itm1 != 0)) {
+            (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+
+            int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
+
+            zeroForOne = net0 < 0;
+
+            swapAmount = -net0;
+        } else if (itm0 != 0) {
+            zeroForOne = itm0 < 0;
+            swapAmount = -itm0;
+        } else {
+            zeroForOne = itm1 > 0;
+            swapAmount = -itm1;
+        }
+    }
+
+    function simulate_swap(address recipient, bool zeroForOne, int256 amountSpecified) external {
+        hevm.prank(recipient);
+        IERC20(USDC).approve(address(sfpm), type(uint256).max);
+        hevm.prank(recipient);
+        IERC20(WETH).approve(address(sfpm), type(uint256).max);
+
+        int256 swap0;
+        int256 swap1;
+
+        if (amountSpecified != 0) {
+            hevm.prank(address(sfpm));
+            (int256 amt0, int256 amt1) = pool.swap(
+                recipient,
+                zeroForOne,
+                amountSpecified,
+                zeroForOne
+                    ? Constants.MIN_V3POOL_SQRT_RATIO + 1
+                    : Constants.MAX_V3POOL_SQRT_RATIO - 1,
+                abi.encode(
+                    CallbackLib.CallbackData({
+                        poolFeatures: CallbackLib.PoolFeatures({
+                            token0: token0,
+                            token1: token1,
+                            fee: poolFee
+                        }),
+                        payer: recipient
+                    })
+                )
+            );
+
+            swap0 = amt0;
+            swap1 = amt1;
+        }
+
+        // get current tick after swap
+        (, int24 tickAfterSwap, , , , , ) = pool.slot0();
+
+        revert SwapSimulationResults(swap0, swap1, tickAfterSwap);
+    }
+
+    function _execute_swap_simulation(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) internal returns (int256, int256, int24) {
+        try this.simulate_swap(recipient, zeroForOne, amountSpecified) {
+            assertWithMsg(false, "swap succeeded ??");
+        } catch (bytes memory results) {
+            bytes4 selector = bytes4(results);
+            require(selector == SwapSimulationResults.selector);
+            emit LogBytes("r", results);
+
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+
+            (int256 swap0, int256 swap1, int24 tickAfterSwap) = abi.decode(
+                results,
+                (int256, int256, int24)
+            );
+
+            return (swap0, swap1, tickAfterSwap);
+        }
+    }
+
     function simulate_burning(address who, address liquidator) external {
         require(msg.sender == address(this));
 
@@ -778,6 +873,142 @@ contract FuzzHelpers is PropertiesAsserts {
                     )
             ) - combinedBalance0Premium
         );
+    }
+
+    // for multiple legs
+    function _calculate_moved_amounts(
+        TokenId tokenId,
+        uint128 positionSize
+    ) internal returns (int256, int256) {
+        //
+        int256 moved0;
+        int256 moved1;
+
+        uint128 _positionSize = positionSize;
+        TokenId _tokenId = tokenId;
+
+        // update to latest current tick
+        (, currentTick, , , , , ) = pool.slot0();
+
+        //
+        uint256 numLegs = _tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; leg++) {
+            //asTicks
+            (int24 legLowerTick, int24 legUpperTick) = _tokenId.asTicks(leg);
+            uint160 lowPriceX96 = TickMath.getSqrtRatioAtTick(legLowerTick);
+            uint160 highPriceX96 = TickMath.getSqrtRatioAtTick(legUpperTick);
+
+            //create liquidity chunk object
+            LiquidityChunk currChunk = LiquidityChunkLibrary.createChunk(
+                legLowerTick,
+                legUpperTick,
+                Math.toUint128(
+                    Math.mulDiv(
+                        _positionSize,
+                        Math.mulDiv96(highPriceX96, lowPriceX96),
+                        highPriceX96 - lowPriceX96
+                    )
+                )
+            );
+
+            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                currentTick,
+                currChunk
+            );
+
+            if (_tokenId.isLong(leg) == 1) {
+                moved0 -= int256(amount0);
+                moved1 -= int256(amount1);
+            } else {
+                moved0 += int256(amount0);
+                moved1 += int256(amount1);
+            }
+        }
+
+        return (moved0, moved1);
+    }
+
+    function _calculate_itm_amounts(
+        uint256 tokenType,
+        int256 moved0,
+        int256 moved1
+    ) internal returns (int256 itm0, int256 itm1) {
+        if (tokenType == 0) {
+            itm1 += moved1;
+        } else {
+            // tt = 1
+            itm0 += moved0;
+        }
+    }
+
+    function _calculate_moved_and_ITM_amounts(
+        TokenId tokenId,
+        uint128 positionSize
+    ) internal returns (int256, int256, int256, int256) {
+        //
+        int256 moved0;
+        int256 moved1;
+
+        //
+        int256 itm0;
+        int256 itm1;
+
+        uint128 _positionSize = positionSize;
+        TokenId _tokenId = tokenId;
+
+        // update to latest current tick
+        (, currentTick, , , , , ) = pool.slot0();
+
+        //
+        uint256 numLegs = _tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; leg++) {
+            //asTicks
+            (int24 legLowerTick, int24 legUpperTick) = _tokenId.asTicks(leg);
+            uint160 lowPriceX96 = TickMath.getSqrtRatioAtTick(legLowerTick);
+            uint160 highPriceX96 = TickMath.getSqrtRatioAtTick(legUpperTick);
+
+            //create liquidity chunk object
+            LiquidityChunk currChunk = LiquidityChunkLibrary.createChunk(
+                legLowerTick,
+                legUpperTick,
+                Math.toUint128(
+                    Math.mulDiv(
+                        _positionSize,
+                        Math.mulDiv96(highPriceX96, lowPriceX96),
+                        highPriceX96 - lowPriceX96
+                    )
+                )
+            );
+
+            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                currentTick,
+                currChunk
+            );
+
+            if (_tokenId.isLong(leg) == 1) {
+                moved0 -= int256(amount0);
+                moved1 -= int256(amount1);
+            } else {
+                moved0 += int256(amount0);
+                moved1 += int256(amount1);
+            }
+
+            if (_tokenId.tokenType(leg) == 0) {
+                itm1 += int256(amount1);
+            } else {
+                // tt = 1
+                itm0 += int256(amount0);
+            }
+
+            //
+            emit LogUint256("_tokenId.tokenType(leg)", _tokenId.tokenType(leg));
+
+            // amounts
+            emit LogUint256("amount0", amount0);
+            emit LogUint256("amount1", amount1);
+        }
+
+        return (moved0, moved1, itm0, itm1);
     }
 
     /////////////////////////////////////////////////////////////
