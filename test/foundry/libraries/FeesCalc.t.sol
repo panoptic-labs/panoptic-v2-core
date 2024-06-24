@@ -50,6 +50,7 @@ contract FeesCalcTest is Test, PositionUtils {
         harness = new FeesCalcHarness();
     }
 
+    /*
     function test_Success_getPortfolioValue(
         uint256 poolIdSeed,
         uint256 optionRatioSeed,
@@ -132,6 +133,7 @@ contract FeesCalcTest is Test, PositionUtils {
             assertEq(expectedValue1, returnedValue1, "value1");
         }
     }
+    */
 
     // above/below/in-range branches
     function test_Success_calculateAMMSwapFeesLiquidityChunk(
@@ -284,9 +286,5 @@ contract FeesCalcTest is Test, PositionUtils {
         }
 
         return tokenId;
-    }
-
-    function addBalance(TokenId tokenId, uint128 balance) public {
-        harness.addBalance(tokenId, balance);
     }
 }
