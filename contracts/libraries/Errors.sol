@@ -62,6 +62,9 @@ library Errors {
     /// @notice PanopticPool: there is not enough avaiable liquidity to buy an option
     error NotEnoughLiquidity();
 
+    /// @notice PanopticPool: there is not enough collateral avaiable to withdraw funds
+    error NotEnoughCollateral();
+
     /// @notice PanopticPool: position is still solvent and cannot be liquidated
     error NotMarginCalled();
 
