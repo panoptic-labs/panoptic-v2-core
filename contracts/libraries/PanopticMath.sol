@@ -734,7 +734,7 @@ library PanopticMath {
         TokenId tokenId,
         uint128 positionSize,
         uint256 legIndex
-    ) internal pure returns (LeftRightUnsigned coveredAmounts) {
+    ) internal pure returns (LeftRightSigned coveredAmounts) {
         // compute amounts moved
         LeftRightUnsigned amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
 
@@ -747,11 +747,13 @@ library PanopticMath {
         // if token0
 
         if (tokenId.tokenType(legIndex) == tokenId.isLong(legIndex)) {
-            // if option is a short call or a long put, add amountsMoved0 to right slot
-            coveredAmounts = coveredAmounts.toRightSlot(amountsMoved.rightSlot());
+            // if option is a short call or a long put, add amountsMoved0 to right slot and subtract amountsMoved1 from left slot
+            coveredAmounts = coveredAmounts.toRightSlot(Math.toInt128(amountsMoved.rightSlot()));
+            coveredAmounts = coveredAmounts.toLeftSlot(-Math.toInt128(amountsMoved.leftSlot()));
         } else {
-            // if option is a short put or a long call, add amountsMoved1 to left slot
-            coveredAmounts = coveredAmounts.toLeftSlot(amountsMoved.leftSlot());
+            // if option is a short put or a long call, add amountsMoved1 to left slot and subtract amountsMoved0 from right slot
+            coveredAmounts = coveredAmounts.toLeftSlot(Math.toInt128(amountsMoved.leftSlot()));
+            coveredAmounts = coveredAmounts.toRightSlot(-Math.toInt128(amountsMoved.rightSlot()));
         }
     }
 
