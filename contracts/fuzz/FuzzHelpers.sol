@@ -1223,6 +1223,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 $positionSizeActive
             );
 
+            emit LogUint256("$positionSizeActive", $positionSizeActive);
             emit LogInt256("liquidityChunk.tickLower()", liquidityChunk.tickLower());
             emit LogInt256("liquidityChunk.tickUpper()", liquidityChunk.tickUpper());
             emit LogUint256("liquidityChunk.liquidity()", liquidityChunk.liquidity());
@@ -1235,9 +1236,11 @@ contract FuzzHelpers is PropertiesAsserts {
             emit LogUint256("amount0", amount0);
             emit LogUint256("amount1", amount1);
 
-            $shouldRevert = $shouldRevert ? $shouldRevert : liquidityChunk.liquidity() == 0;
+            emit LogBool("should revert due to 0 liquidity", $shouldRevert);
 
             if ($tokenIdActive.isLong(i) == 0) {
+                $shouldRevert = $shouldRevert ? $shouldRevert : liquidityChunk.liquidity() == 0;
+
                 $netTokenTransfers0 += int256(amount0);
                 $netTokenTransfers1 += int256(amount1);
             } else {

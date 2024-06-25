@@ -380,10 +380,13 @@ contract FuzzDeployments is FuzzHelpers {
         $maxTransfer0 = 0;
         $maxTransfer1 = 0;
 
-        // and check if should revert due to 0 liquidity
-        write_mintburn_transfer_amts();
+        $netTokenTransfers0 = 0;
+        $netTokenTransfers1 = 0;
 
         $shouldRevert = false;
+
+        // and check if should revert due to 0 liquidity
+        write_mintburn_transfer_amts();
 
         // pool has insufficient tokens to mint the option
         $shouldRevert = $shouldRevert
@@ -610,9 +613,9 @@ contract FuzzDeployments is FuzzHelpers {
             )
         {
             // already working
-            // for (uint256 i = 0; i < $numLegs; ++i) {
-            //     assertWithMsg($isLongs[i] != 1, "success!");
-            // }
+            for (uint256 i = 0; i < $numLegs; ++i) {
+                assertWithMsg($isLongs[i] != 1, "success!");
+            }
 
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
