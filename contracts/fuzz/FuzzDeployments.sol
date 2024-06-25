@@ -245,9 +245,12 @@ contract FuzzDeployments is FuzzHelpers {
             1
         );
 
+        assertWithMsg(touchedPanopticChunks.length < 2, "TOO MANY CHUNKS");
+
         for (uint256 i = 0; i < $numLegs; ++i) {
             $tokenTypes[i] = bound(tokenTypes[i], 0, 1);
-            $isLongs[i] = bound(isLongs[i], 0, 1);
+            $isLongs[i] = bound(isLongs[i], 0, 4);
+            $isLongs[i] = $isLongs[i] > 1 ? 0 : $isLongs[i];
             $assets[i] = bound(assets[i], 0, 1);
             $ratios[i] = bound(ratioSeeds[i], 1, 127);
 
@@ -265,7 +268,7 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             } else {
                 // pick a random chunk -- very likely to fail due to no liquidity
-                if (distributions[2] || touchedPanopticChunks.length == 0) {
+                if (touchedPanopticChunks.length == 0) {
                     ($widths[i], $strikes[i]) = getValidSW(
                         widthSeeds[i],
                         strikeSeeds[i],
@@ -275,7 +278,7 @@ contract FuzzDeployments is FuzzHelpers {
                     );
                 }
                 // pick a chunk that has already been interacted with before -- reasonable probability of success
-                else if (distributions[3]) {
+                else if (distributions[3] && false) {
                     ChunkWithTokenType memory __chunk = touchedPanopticChunks[
                         bound(
                             uint256(keccak256(abi.encodePacked(positionSize))),
@@ -292,17 +295,18 @@ contract FuzzDeployments is FuzzHelpers {
                     bool found;
                     // look through all chunks starting at a random index until one with liquidity is found
                     for (
-                        uint256 j = 0;
-                        i <
-                        bound(
-                            uint256(keccak256(abi.encodePacked(positionSize))),
-                            0,
-                            touchedPanopticChunks.length - 1
-                        );
+                        uint256 j = bound(uint256(keccak256(abi.encodePacked(positionSize))), 0, 0);
+                        j < touchedPanopticChunks.length;
                         j++
                     ) {
+                        assertWithMsg(touchedPanopticChunks.length < 4, "TOO MANY CHUNKS");
+                        assertWithMsg(j < 3, "SIG CHUNK2");
+
                         ChunkWithTokenType memory __chunk = touchedPanopticChunks[j];
 
+                        emit LogInt256("chunk strike", __chunk.strike);
+                        emit LogInt256("chunk width", __chunk.width);
+                        emit LogUint256("chunk token type", __chunk.tokenType);
                         ($tickLower, $tickUpper) = PanopticMath.getTicks(
                             __chunk.strike,
                             __chunk.width,
@@ -323,7 +327,11 @@ contract FuzzDeployments is FuzzHelpers {
                             $widths[i] = __chunk.width;
                             $strikes[i] = __chunk.strike;
                             found = true;
+
+                            assertWithMsg(false, "found");
                             break;
+                        } else {
+                            assertWithMsg(j < 3, "SIG CHUNK");
                         }
                     }
 
@@ -366,7 +374,6 @@ contract FuzzDeployments is FuzzHelpers {
             bytes memory reason
         ) {
             emit LogBytes("Reason", reason);
-            // assertWithMsg(!distributions[0], "failed2");
         }
 
         positionSize = uint128(
@@ -618,6 +625,10 @@ contract FuzzDeployments is FuzzHelpers {
             }
 
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
+
+            assertWithMsg(touchedPanopticChunks.length > 0, "unexpected success");
+
+            assertWithMsg(false, "NG");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
@@ -652,18 +663,28 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function perform_swap(uint160 target_sqrt_price) public {
-        // bound the price between 10 and 500000
-        target_sqrt_price = uint160(
-            bound(
-                target_sqrt_price,
-                112028621795169773357271145775104,
-                25054084147398268684193622782902272
-            )
-        );
-
         uint160 price;
 
         (price, , , , , , ) = pool.slot0();
+
+        // bound the price between 10 and 500000 and 50% of the current price
+        target_sqrt_price = uint160(
+            bound(
+                price,
+                uint256(
+                    Math.max(
+                        int256(Math.mulDiv(price, 7_071, 10_000)),
+                        112028621795169773357271145775104
+                    )
+                ),
+                uint256(
+                    Math.min(
+                        int256(Math.mulDiv(price, 14_142, 10_000)),
+                        25054084147398268684193622782902272
+                    )
+                )
+            )
+        );
 
         int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
         emit LogUint256("price before swap", uint256(price));
