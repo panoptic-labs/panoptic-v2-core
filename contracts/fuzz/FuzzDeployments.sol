@@ -1671,7 +1671,11 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
 
-        assetsToWithdraw = bound(assetsToWithdraw, 1, collToken.convertToAssets(collToken.balanceOf(withdrawer)));
+        assetsToWithdraw = bound(
+            assetsToWithdraw,
+            1,
+            collToken.convertToAssets(collToken.balanceOf(withdrawer))
+        );
 
         uint256 sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
 
