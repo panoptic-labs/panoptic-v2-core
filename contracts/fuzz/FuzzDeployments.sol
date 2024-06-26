@@ -988,7 +988,6 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("Positions opened for user", numOfPositions);
 
         if (numOfPositions > 0) {
-            // NOTE: transferring the actual balance of shares, not a converted amount to assets
             uint256 bal0 = collToken0.balanceOf(msg.sender);
             uint256 bal1 = collToken1.balanceOf(msg.sender);
 
@@ -1419,41 +1418,41 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-SYS-012 Users can't deposit more than the maximum allowed amount, 2^104
     function invariant_never_allow_overdeposit(
         address receiver,
-        uint256 tooLargeDepositAmount
+        uint256 tooLargeDepositAmount,
+        bool depositToSelf
     ) public {
-        _attempt_overdeposit(collToken0, msg.sender, receiver, tooLargeDepositAmount);
-        _attempt_overdeposit(collToken1, msg.sender, receiver, tooLargeDepositAmount);
+        _attempt_overdeposit(true, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
+        _attempt_overdeposit(false, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
     }
 
     function _attempt_overdeposit(
-        CollateralTracker collToken,
+        bool isToken0,
         address depositor,
         address receiver,
-        uint256 tooLargeDepositAmount
+        uint256 tooLargeDepositAmount,
+        bool depositToSelf
     ) internal {
+        CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxDeposit = type(uint104).max;
         tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint256).max);
 
-        // every other block, deposit to self:
-        if (block.number % 2 == 0) {
+        if (depositToSelf) {
             receiver = depositor;
         }
+
+        uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
+        uint256 shortfallForDeposit = tooLargeDepositAmount - depositorBalance;
+        isToken0 ? deal_USDC(depositor, shortfallForDeposit, true) : deal_WETH(depositor, shortfallForDeposit);
+        hevm.prank(depositor);
+        IERC20(collToken.asset()).approve(address(collToken), type(uint256).max);
 
         hevm.prank(depositor);
         try collToken.deposit(tooLargeDepositAmount, receiver) {
             assertWithMsg(false, "Deposit over maximum allowed did not revert");
         } catch {
-            uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
-            if (depositorBalance < tooLargeDepositAmount) {
-                emit LogString(
-                    "Invariant succeeded because user did not have enough assets to overdeposit"
-                );
-            } else {
-                // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
-                emit LogString(
-                    "Invariant succeeded, likely because we enforced the max deposit amount correctly"
-                );
-            }
+            emit LogString(
+                "Invariant succeeded, likely because we enforced the max deposit amount correctly"
+            );
         }
     }
 
@@ -1461,36 +1460,42 @@ contract FuzzDeployments is FuzzHelpers {
     function invariant_never_allow_overmint(
         address minter,
         address receiver,
-        uint256 tooLargeMintAmount
+        uint256 tooLargeMintAmount,
+        bool mintToSelf
     ) public {
-        _attempt_overmint(collToken0, minter, receiver, tooLargeMintAmount);
-        _attempt_overmint(collToken1, minter, receiver, tooLargeMintAmount);
+        _attempt_overmint(true, minter, receiver, tooLargeMintAmount, mintToSelf);
+        _attempt_overmint(false, minter, receiver, tooLargeMintAmount, mintToSelf);
     }
 
     function _attempt_overmint(
-        CollateralTracker collToken,
+        bool isToken0,
         address minter,
         address receiver,
-        uint256 tooLargeMintAmount
+        uint256 tooLargeMintAmount,
+        bool mintToSelf
     ) internal {
+        CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxMint = collToken.previewDeposit(type(uint104).max);
         tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint256).max);
 
+        if (mintToSelf) {
+            receiver = minter;
+        }
+
+        uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
+        uint256 shortfallForMint = collToken.previewDeposit(tooLargeMintAmount) - minterBalance;
+        isToken0 ? deal_USDC(minter, shortfallForMint, true) : deal_WETH(minter, shortfallForMint);
+
+        hevm.prank(minter);
+        IERC20(collToken.asset()).approve(address(collToken), type(uint256).max);
         hevm.prank(minter);
         try collToken.mint(tooLargeMintAmount, receiver) {
             assertWithMsg(false, "Mint over maximum allowed did not revert");
         } catch {
             uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
-            if (minterBalance < collToken.convertToAssets(tooLargeMintAmount)) {
-                emit LogString(
-                    "Invariant succeeded because user did not have enough assets to overmint"
-                );
-            } else {
-                // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                 emit LogString(
                     "Invariant succeeded, likely because we enforced the max mint amount correctly"
                 );
-            }
         }
     }
 
