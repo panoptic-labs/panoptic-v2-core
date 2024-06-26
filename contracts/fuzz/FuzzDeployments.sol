@@ -950,20 +950,24 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 fuzzedAssetsToWithdraw1 = (assetBal1 * fuzzNumerator) / fuzzDenominator;
 
             if (fuzzedAssetsToWithdraw0 > 0) {
+                hevm.prank(msg.sender);
                 try collToken0.redeem(fuzzedSharesToRedeem0, recipient, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
 
+                hevm.prank(msg.sender);
                 try collToken0.withdraw(fuzzedAssetsToWithdraw0, recipient, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
             }
 
             if (fuzzedAssetsToWithdraw1 > 0) {
+                hevm.prank(msg.sender);
                 try collToken1.redeem(fuzzedSharesToRedeem1, recipient, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
 
+                hevm.prank(msg.sender);
                 try collToken1.withdraw(fuzzedAssetsToWithdraw1, recipient, msg.sender) {
                     assertWithMsg(false, "Collateral could be removed with open positions");
                 } catch {}
