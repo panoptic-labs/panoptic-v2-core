@@ -1444,7 +1444,9 @@ contract FuzzDeployments is FuzzHelpers {
 
         uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
         uint256 shortfallForDeposit = tooLargeDepositAmount - depositorBalance;
-        isToken0 ? deal_USDC(depositor, shortfallForDeposit, true) : deal_WETH(depositor, shortfallForDeposit);
+        isToken0
+            ? deal_USDC(depositor, shortfallForDeposit, true)
+            : deal_WETH(depositor, shortfallForDeposit);
         hevm.prank(depositor);
         IERC20(collToken.asset()).approve(address(collToken), type(uint256).max);
 
@@ -1495,9 +1497,9 @@ contract FuzzDeployments is FuzzHelpers {
             assertWithMsg(false, "Mint over maximum allowed did not revert");
         } catch {
             uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
-                emit LogString(
-                    "Invariant succeeded, likely because we enforced the max mint amount correctly"
-                );
+            emit LogString(
+                "Invariant succeeded, likely because we enforced the max mint amount correctly"
+            );
         }
     }
 
