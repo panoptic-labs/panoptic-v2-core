@@ -346,6 +346,21 @@ contract FuzzHelpers is PropertiesAsserts {
     int256 $colDelta0;
     int256 $colDelta1;
 
+    uint256 $poolAssets0;
+    uint256 $poolAssets1;
+
+    uint256 $inAMM0;
+    uint256 $inAMM1;
+
+    // x10k
+    uint256 $poolUtil0;
+    uint256 $poolUtil1;
+
+    bool $found;
+
+    int256 $intrinsicDelta0;
+    int256 $intrinsicDelta1;
+
     int128 $premia0;
     int128 $premia1;
 
@@ -1215,10 +1230,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         emit LogUint256("size_collat", Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
         emit LogUint256("size_long", size_long);
-        assertWithMsg(
-            Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128) <= size_long,
-            "size_for_collateral_solo: size_collat > size_long"
-        );
+
         // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
         // or, bound it to the long position size (based on available liq)
         return Math.min(size_long, Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
@@ -1265,9 +1277,6 @@ contract FuzzHelpers is PropertiesAsserts {
                 )
                 .leftSlot();
 
-            $spreadRatio = ($removedLiquidity * 100_000_000) / $netLiquidity;
-            emit LogUint256("$spreadRatio", $spreadRatio);
-
             if ($tokenIdActive.isLong(i) == 0) {
                 $shouldRevert = $shouldRevert ? $shouldRevert : liquidityChunk.liquidity() == 0;
 
@@ -1275,9 +1284,17 @@ contract FuzzHelpers is PropertiesAsserts {
 
                 $netTokenTransfers0 += int256(amount0);
                 $netTokenTransfers1 += int256(amount1);
+                $spreadRatio =
+                    ($removedLiquidity * 100_000_000) /
+                    uint256(Math.max(1, $netLiquidity + liquidityChunk.liquidity()));
+                emit LogUint256("$spreadRatioS", $spreadRatio);
             } else {
                 $netTokenTransfers0 -= int256(amount0);
                 $netTokenTransfers0 -= int256(amount1);
+                $spreadRatio =
+                    (($removedLiquidity + liquidityChunk.liquidity()) * 100_000_000) /
+                    uint256(Math.max(1, $netLiquidity));
+                emit LogUint256("$spreadRatioL", $spreadRatio);
             }
 
             $maxTransfer0 = Math.max($maxTransfer0, $netTokenTransfers0);

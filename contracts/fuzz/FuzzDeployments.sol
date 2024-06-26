@@ -245,8 +245,7 @@ contract FuzzDeployments is FuzzHelpers {
             1
         );
 
-        assertWithMsg(touchedPanopticChunks.length < 2, "TOO MANY CHUNKS");
-
+        $found = false;
         for (uint256 i = 0; i < $numLegs; ++i) {
             $tokenTypes[i] = bound(tokenTypes[i], 0, 1);
             $isLongs[i] = bound(isLongs[i], 0, 4);
@@ -295,13 +294,14 @@ contract FuzzDeployments is FuzzHelpers {
                     bool found;
                     // look through all chunks starting at a random index until one with liquidity is found
                     for (
-                        uint256 j = bound(uint256(keccak256(abi.encodePacked(positionSize))), 0, 0);
+                        uint256 j = bound(
+                            uint256(keccak256(abi.encodePacked(positionSize))),
+                            0,
+                            touchedPanopticChunks.length - 1
+                        );
                         j < touchedPanopticChunks.length;
                         j++
                     ) {
-                        assertWithMsg(touchedPanopticChunks.length < 4, "TOO MANY CHUNKS");
-                        assertWithMsg(j < 3, "SIG CHUNK2");
-
                         ChunkWithTokenType memory __chunk = touchedPanopticChunks[j];
 
                         emit LogInt256("chunk strike", __chunk.strike);
@@ -327,11 +327,8 @@ contract FuzzDeployments is FuzzHelpers {
                             $widths[i] = __chunk.width;
                             $strikes[i] = __chunk.strike;
                             found = true;
-
-                            assertWithMsg(false, "found");
+                            $found = true;
                             break;
-                        } else {
-                            assertWithMsg(j < 3, "SIG CHUNK");
                         }
                     }
 
@@ -434,6 +431,9 @@ contract FuzzDeployments is FuzzHelpers {
             ($shortAmounts.leftSlot() - $longAmounts.leftSlot()));
         emit LogInt256("intrinsicDelta1", $colDelta1);
 
+        $intrinsicDelta0 = $colDelta0;
+        $intrinsicDelta1 = $colDelta1;
+
         // ITM spread + commission
         $commission0 = int256(
             Math.unsafeDivRoundingUp(
@@ -467,7 +467,29 @@ contract FuzzDeployments is FuzzHelpers {
             $posIdListOld
         );
 
-        $posBalanceArray.push([TokenId.unwrap($tokenIdActive), $positionSizeActive]);
+        ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
+        ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
+
+        $poolAssets0 = uint256(int256($poolAssets0) + $colDelta0);
+        $poolAssets1 = uint256(int256($poolAssets1) + $colDelta1);
+        $inAMM0 = uint256(int256($inAMM0) - $shortAmounts.rightSlot() + $longAmounts.rightSlot());
+        $inAMM1 = uint256(int256($inAMM1) - $shortAmounts.leftSlot() + $longAmounts.leftSlot());
+
+        $poolUtil0 = ($inAMM0 * 10_000) / $poolAssets0;
+        $poolUtil1 = ($inAMM1 * 10_000) / $poolAssets1;
+
+        unchecked {
+            $posBalanceArray.push(
+                [
+                    TokenId.unwrap($tokenIdActive),
+                    LeftRightUnsigned.unwrap(
+                        LeftRightUnsigned.wrap(0).toRightSlot($positionSizeActive).toLeftSlot(
+                            uint128($poolUtil0 + uint128($poolUtil1 << 64))
+                        )
+                    )
+                ]
+            );
+        }
 
         $tokenData0 = collToken0.getAccountMarginDetails(
             msg.sender,
@@ -609,6 +631,7 @@ contract FuzzDeployments is FuzzHelpers {
         $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
         $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
 
+        // assert(!($found && $positionSizeActive != 0));
         hevm.prank(msg.sender);
         try
             panopticPool.mintOptions(
@@ -625,14 +648,20 @@ contract FuzzDeployments is FuzzHelpers {
             }
 
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
-
-            assertWithMsg(touchedPanopticChunks.length > 0, "unexpected success");
-
-            assertWithMsg(false, "NG");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
             assertWithMsg($shouldRevert, "mintOptions: unexpected revert");
+
+            for (uint256 i = 0; i < $numLegs; ++i) {
+                assertWithMsg(
+                    !($isLongs[i] == 1 &&
+                        bytes4(reason) != Errors.OptionsBalanceZero.selector &&
+                        bytes4(reason) != Errors.TransferFailed.selector &&
+                        $found),
+                    "failure"
+                );
+            }
 
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -1098,15 +1127,15 @@ contract FuzzDeployments is FuzzHelpers {
         );
         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
         /*
-        assertLt(
-            abs(
-                (int256(liqResults.liquidatorValueAfter0) -
-                    int256(liqResults.liquidatorValueBefore0)) - liqResults.bonusCombined0
-            ),
-            10,
-            "Liquidator did not receive correct bonus"
-        );
-         premium was haircut during protoco*/
+    assertLt(
+        abs(
+            (int256(liqResults.liquidatorValueAfter0) -
+                int256(liqResults.liquidatorValueBefore0)) - liqResults.bonusCombined0
+        ),
+        10,
+        "Liquidator did not receive correct bonus"
+    );
+        premium was haircut during protoco*/
         emit LogInt256(
             "Delta settled tokens",
             int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0)
@@ -1128,16 +1157,16 @@ contract FuzzDeployments is FuzzHelpers {
                 Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
         );
         /*
-        assertLt(
-            abs(
-                liqResults.protocolLoss0Actual -
-                    (liqResults.protocolLoss0Expected -
-                        Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected))
-            ),
-            10,
-            "Not all premium was haircut during protocol loss"
-        );
-        */
+    assertLt(
+        abs(
+            liqResults.protocolLoss0Actual -
+                (liqResults.protocolLoss0Expected -
+                    Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected))
+        ),
+        10,
+        "Not all premium was haircut during protocol loss"
+    );
+    */
         log_account_collaterals(liquidator);
         log_account_collaterals(liquidatee);
         log_account_collaterals(canary);
