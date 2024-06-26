@@ -347,15 +347,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external view {
         _validatePositionList(user, positionIdList, 0);
 
-        LeftRightUnsigned coveredAmounts = PanopticMath.computeCoveredAmounts(
+        LeftRightSigned coveredAmounts = PanopticMath.computeCoveredAmounts(
             s_positionBalance[user],
             positionIdList
         );
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
         if (
-            ct0.convertToAssets(ct0.balanceOf(user)) < coveredAmounts.rightSlot() ||
-            ct1.convertToAssets(ct1.balanceOf(user)) < coveredAmounts.leftSlot()
+            int256(ct0.convertToAssets(ct0.balanceOf(user))) < coveredAmounts.rightSlot() ||
+            int256(ct1.convertToAssets(ct1.balanceOf(user))) < coveredAmounts.leftSlot()
         ) revert Errors.NotEnoughCollateral();
     }
 
