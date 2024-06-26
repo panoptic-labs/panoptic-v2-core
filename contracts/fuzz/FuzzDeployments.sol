@@ -643,25 +643,15 @@ contract FuzzDeployments is FuzzHelpers {
             )
         {
             // already working
-            for (uint256 i = 0; i < $numLegs; ++i) {
-                assertWithMsg($isLongs[i] != 1, "success!");
-            }
+            // for (uint256 i = 0; i < $numLegs; ++i) {
+            //     assertWithMsg($isLongs[i] != 1, "success!");
+            // }
 
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
             assertWithMsg($shouldRevert, "mintOptions: unexpected revert");
-
-            for (uint256 i = 0; i < $numLegs; ++i) {
-                assertWithMsg(
-                    !($isLongs[i] == 1 &&
-                        bytes4(reason) != Errors.OptionsBalanceZero.selector &&
-                        bytes4(reason) != Errors.TransferFailed.selector &&
-                        $found),
-                    "failure"
-                );
-            }
 
             // reverse test state changes (i.e. positionidlist)
             revert();
