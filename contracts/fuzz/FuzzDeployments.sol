@@ -1159,11 +1159,35 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 amountOver,
         bool nonOwnerCall
     ) public {
-        _attempt_withdrawal_gt_pool_assets_via_withdraw(collToken0, owner, recipient, amountOver, nonOwnerCall);
-        _attempt_withdrawal_gt_pool_assets_via_withdraw(collToken1, owner, recipient, amountOver, nonOwnerCall);
+        _attempt_withdrawal_gt_pool_assets_via_withdraw(
+            collToken0,
+            owner,
+            recipient,
+            amountOver,
+            nonOwnerCall
+        );
+        _attempt_withdrawal_gt_pool_assets_via_withdraw(
+            collToken1,
+            owner,
+            recipient,
+            amountOver,
+            nonOwnerCall
+        );
 
-        _attempt_withdrawal_gt_pool_assets_via_redeem(collToken0, owner, recipient, amountOver, nonOwnerCall);
-        _attempt_withdrawal_gt_pool_assets_via_redeem(collToken1, owner, recipient, amountOver, nonOwnerCall);
+        _attempt_withdrawal_gt_pool_assets_via_redeem(
+            collToken0,
+            owner,
+            recipient,
+            amountOver,
+            nonOwnerCall
+        );
+        _attempt_withdrawal_gt_pool_assets_via_redeem(
+            collToken1,
+            owner,
+            recipient,
+            amountOver,
+            nonOwnerCall
+        );
     }
 
     function _attempt_withdrawal_gt_pool_assets_via_withdraw(
@@ -1304,13 +1328,37 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 amountOver,
         bool nonOwnerCall
     ) public {
-        _attempt_overwithdrawal_via_withdraw(collToken0, owner, recipient, amountOver, nonOwnerCall);
-        _attempt_overwithdrawal_via_withdraw(collToken1, owner, recipient, amountOver, nonOwnerCall);
+        _attempt_overwithdrawal_via_withdraw(
+            collToken0,
+            owner,
+            recipient,
+            amountOver,
+            nonOwnerCall
+        );
+        _attempt_overwithdrawal_via_withdraw(
+            collToken1,
+            owner,
+            recipient,
+            amountOver,
+            nonOwnerCall
+        );
 
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions == 0) {
-            _attempt_overwithdrawal_via_redeem(collToken0, owner, recipient, amountOver, nonOwnerCall);
-            _attempt_overwithdrawal_via_redeem(collToken1, owner, recipient, amountOver, nonOwnerCall);
+            _attempt_overwithdrawal_via_redeem(
+                collToken0,
+                owner,
+                recipient,
+                amountOver,
+                nonOwnerCall
+            );
+            _attempt_overwithdrawal_via_redeem(
+                collToken1,
+                owner,
+                recipient,
+                amountOver,
+                nonOwnerCall
+            );
 
             _attempt_overtransfer(collToken0, owner, recipient, amountOver, nonOwnerCall);
             _attempt_overtransfer(collToken1, owner, recipient, amountOver, nonOwnerCall);
