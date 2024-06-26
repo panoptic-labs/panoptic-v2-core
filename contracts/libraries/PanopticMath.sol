@@ -424,7 +424,7 @@ library PanopticMath {
     function computeCoveredAmounts(
         mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned coveredAmounts) {
+    ) external view returns (LeftRightSigned coveredAmounts) {
         uint256 numberOfPositions = positionIdList.length;
         for (uint256 i; i < numberOfPositions; ) {
             TokenId tokenId = positionIdList[i];
@@ -432,7 +432,7 @@ library PanopticMath {
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
                 // Compute the amount of funds that have been removed from the Panoptic Pool
-                LeftRightUnsigned _coveredAmounts = _calculateCoveredAmounts(
+                LeftRightSigned _coveredAmounts = _calculateCoveredAmounts(
                     tokenId,
                     positionSize,
                     leg
