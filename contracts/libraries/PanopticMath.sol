@@ -15,6 +15,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -684,14 +685,17 @@ library PanopticMath {
                 uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
 
                 // convert that bonus to tokens 0 and 1
-                bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
+                bonus0 = int256(Math.mulDiv128(bonusCross, 2 ** 128));
 
-                bonus1 = int256(
-                    PanopticMath.convert0to1(
-                        Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                        sqrtPriceX96Final
-                    )
-                );
+                // bonus1 = int256(
+                //     PanopticMath.convert0to1(
+                //         Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                //         sqrtPriceX96Final
+                //     )
+                // );
+
+                console2.log("bonus0", bonus0);
+                console2.log("bonus1", bonus1);
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
@@ -703,6 +707,11 @@ library PanopticMath {
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
+
+            console2.log("paid0", paid0);
+            console2.log("paid1", paid1);
+            console2.log("balance0", balance0);
+            console2.log("balance1", balance1);
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
@@ -746,6 +755,8 @@ library PanopticMath {
                     );
                 }
             }
+            console2.log("bonus0", bonus0);
+            console2.log("bonus1", bonus1);
 
             paid0 = bonus0 + int256(netExchanged.rightSlot());
             paid1 = bonus1 + int256(netExchanged.leftSlot());

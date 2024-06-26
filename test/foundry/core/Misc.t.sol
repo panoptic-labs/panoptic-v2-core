@@ -1973,6 +1973,77 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(1_000_000 - 266263, Bob, Bob, $posIdList);
     }
 
+    function test_liquidateG() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token1.approve(address(ct1), type(uint128).max);
+        ct1.deposit(1_000_000, Bob);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -15,
+                1
+            )
+        );
+
+        pp.mintOptions(
+            $posIdList,
+            3_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-20_000));
+
+        // update twaps
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+
+        uint256 liqBal0 = ct0.convertToAssets(ct0.balanceOf(Alice));
+        uint256 liqBal1 = ct1.convertToAssets(ct1.balanceOf(Alice));
+
+        vm.startPrank(Alice);
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(0).toLeftSlot(3_000_000),
+            $posIdList
+        );
+
+        console2.log(
+            "Liquidator ETH Delta",
+            int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(liqBal0)
+        );
+        console2.log(
+            "Liquidator USDC Delta",
+            int256(ct1.convertToAssets(ct1.balanceOf(Alice))) - int256(liqBal1)
+        );
+
+        revert();
+    }
+
     function test_Fail_validateCollateralWithdrawable() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
