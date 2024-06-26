@@ -914,7 +914,8 @@ contract FuzzDeployments is FuzzHelpers {
     function invariant_collateral_removal_via_withdrawal_or_redemption(
         uint256 fuzzNumerator,
         uint256 fuzzDenominator,
-        address recipient
+        address recipient,
+        uint256 fullOrSelfFuzz
     ) public {
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
@@ -939,9 +940,9 @@ contract FuzzDeployments is FuzzHelpers {
             if (fuzzNumerator > fuzzDenominator)
                 (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
 
-            // attempt a full withdrawal every 3rd block, and a self-withdrawal every 5th block, to ensure we're testing those cases
-            if (block.number % 3 == 0) fuzzNumerator = fuzzDenominator;
-            if (block.number % 5 == 0) recipient = msg.sender;
+            // attempt a full withdrawal every 3rd attempt, and a self-withdrawal every 5th attempt, to ensure we're testing those cases
+            if (fullOrSelfFuzz % 3 == 0) fuzzNumerator = fuzzDenominator;
+            if (fullOrSelfFuzz % 5 == 0) recipient = msg.sender;
 
             uint256 fuzzedSharesToRedeem0 = (shareBal0 * fuzzNumerator) / fuzzDenominator;
             uint256 fuzzedSharesToRedeem1 = (shareBal1 * fuzzNumerator) / fuzzDenominator;
@@ -981,7 +982,8 @@ contract FuzzDeployments is FuzzHelpers {
     function invariant_collateral_removal_via_transfer(
         uint256 fuzzNumerator,
         uint256 fuzzDenominator,
-        address recipient
+        address recipient,
+        uint256 fullOrNotFuzz
     ) public {
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
@@ -997,8 +999,8 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 fuzzedAmtToTransfer0 = (bal0 * fuzzNumerator) / fuzzDenominator;
             uint256 fuzzedAmtToTransfer1 = (bal1 * fuzzNumerator) / fuzzDenominator;
 
-            // attempt a full withdrawal every 4th block, to ensure we're testing that case too
-            if (block.number % 4 == 0) (fuzzedAmtToTransfer0, fuzzedAmtToTransfer1) = (bal0, bal1);
+            // attempt a full withdrawal every 4th attempt, to ensure we're testing that case too
+            if (fullOrNotFuzz % 4 == 0) (fuzzedAmtToTransfer0, fuzzedAmtToTransfer1) = (bal0, bal1);
 
             if (fuzzedAmtToTransfer0 > 0) {
                 try collToken0.transfer(recipient, fuzzedAmtToTransfer0) {
