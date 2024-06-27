@@ -95,14 +95,14 @@ contract PanopticHelper {
     ) external view returns (int24) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
 
-        return
-            PanopticMath.computeMedianObservedPrice(
-                univ3pool,
-                observationIndex,
-                observationCardinality,
-                cardinality,
-                period
-            );
+        (int24 medianTick, ) = PanopticMath.computeMedianObservedPrice(
+            univ3pool,
+            observationIndex,
+            observationCardinality,
+            cardinality,
+            period
+        );
+        return medianTick;
     }
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
@@ -119,14 +119,14 @@ contract PanopticHelper {
     ) external view returns (int24, uint256) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
 
-        return
-            PanopticMath.computeInternalMedian(
-                observationIndex,
-                observationCardinality,
-                period,
-                medianData,
-                univ3pool
-            );
+        (int24 _medianTick, , uint256 _medianData) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            period,
+            medianData,
+            univ3pool
+        );
+        return (_medianTick, _medianData);
     }
 
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
