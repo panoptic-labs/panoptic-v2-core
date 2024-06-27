@@ -576,8 +576,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // update tracked asset balance
         s_poolAssets -= uint128(assets);
 
-        // reverts if account is not solvent/eligible to withdraw
+        // reverts if account doesn't have enough colateral/is not solvent
         s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
+        s_panopticPool.isAccountSolvent(owner, positionIdList);
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
         SafeTransferLib.safeTransferFrom(
