@@ -2681,7 +2681,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -2689,7 +2689,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+        (slowOracleTick, , ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             60,
@@ -2834,7 +2834,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -2842,7 +2842,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+        (slowOracleTick, , ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             60,
@@ -2995,7 +2995,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -3003,7 +3003,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+        (slowOracleTick, , ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             60,
@@ -3210,7 +3210,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -3218,7 +3218,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+        (slowOracleTick, , ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             60,
@@ -4776,7 +4776,7 @@ contract PanopticPoolTest is PositionUtils {
             int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
                 int256(lastCollateralBalance1[Alice]);
             (, , observationIndex, observationCardinality, , , ) = pool.slot0();
-            int24 _fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            (int24 _fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
                 pool,
                 observationIndex,
                 observationCardinality,
