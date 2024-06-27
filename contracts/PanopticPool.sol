@@ -861,7 +861,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
-            int24 latestTick,
+            int24 lastObservedTick,
             uint256 _medianData
         ) = _getOracleTicks();
 
@@ -872,14 +872,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
         if (
             int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(fastOracleTick - currentTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
             MAX_SLOW_FAST_DELTA ** 2
         ) {
             atTicks = new int24[](3);
             atTicks[0] = fastOracleTick;
             atTicks[1] = slowOracleTick;
-            atTicks[2] = currentTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[4] = currentTick;
         } else {
             atTicks = new int24[](1);
             atTicks[0] = fastOracleTick;
