@@ -1003,13 +1003,17 @@ contract FuzzDeployments is FuzzHelpers {
             if (fullOrNotFuzz % 4 == 0) (fuzzedAmtToTransfer0, fuzzedAmtToTransfer1) = (bal0, bal1);
 
             if (fuzzedAmtToTransfer0 > 0) {
+                hevm.prank(msg.sender);
                 try collToken0.transfer(recipient, fuzzedAmtToTransfer0) {
                     assertWithMsg(
                         false,
                         "Collateral could be removed via transfer with open positions"
                     );
                 } catch {}
+
+                hevm.prank(msg.sender);
                 collToken0.approve(recipient, fuzzedAmtToTransfer0);
+
                 hevm.prank(recipient);
                 try collToken0.transferFrom(msg.sender, recipient, fuzzedAmtToTransfer0) {
                     assertWithMsg(
@@ -1019,13 +1023,17 @@ contract FuzzDeployments is FuzzHelpers {
                 } catch {}
             }
             if (fuzzedAmtToTransfer1 > 0) {
+                hevm.prank(msg.sender);
                 try collToken1.transfer(recipient, fuzzedAmtToTransfer1) {
                     assertWithMsg(
                         false,
                         "Collateral could be removed via transfer with open positions"
                     );
                 } catch {}
+
+                hevm.prank(msg.sender);
                 collToken1.approve(recipient, fuzzedAmtToTransfer1);
+
                 hevm.prank(recipient);
                 try collToken1.transferFrom(msg.sender, recipient, fuzzedAmtToTransfer1) {
                     assertWithMsg(
@@ -1065,6 +1073,7 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
             // then, assert we get a revert when trying to withdraw too much:
+            hevm.prank(withdrawer);
             try
                 collToken.withdraw(
                     maxAssetsWithdrawable + amountOver,
@@ -1201,6 +1210,8 @@ contract FuzzDeployments is FuzzHelpers {
     ) internal {
         (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();
         amountOver = bound(amountOver, 1, type(uint256).max - ct_s_poolAssets);
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
+        TokenId[] memory withdrawersOpenPositions = userPositions[owner];
 
         hevm.prank(owner);
         if (nonOwnerCall) {
@@ -1208,7 +1219,6 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(recipient);
         }
 
-        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions == 0) {
             try collToken.withdraw(ct_s_poolAssets + amountOver, recipient, owner) {
                 assertWithMsg(false, "User withdrew > collateralTokens poolAssets");
@@ -1228,6 +1238,7 @@ contract FuzzDeployments is FuzzHelpers {
                 }
             }
 
+            nonOwnerCall ? hevm.prank(recipient) : hevm.prank(owner);
             try
                 collToken.withdraw(ct_s_poolAssets + amountOver, recipient, owner, new TokenId[](0))
             {
@@ -1248,7 +1259,6 @@ contract FuzzDeployments is FuzzHelpers {
                 }
             }
         } else {
-            TokenId[] memory withdrawersOpenPositions = userPositions[owner];
             try
                 collToken.withdraw(
                     ct_s_poolAssets + amountOver,
@@ -1376,6 +1386,8 @@ contract FuzzDeployments is FuzzHelpers {
     ) internal {
         uint256 ownersAssets = collToken.convertToAssets(collToken.balanceOf(owner));
         amountOver = bound(amountOver, 1, type(uint256).max - ownersAssets);
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
+        TokenId[] memory withdrawersOpenPositions = userPositions[owner];
 
         hevm.prank(owner);
         // every other attempt, make it a non-owner call:
@@ -1384,17 +1396,16 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(recipient);
         }
 
-        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions == 0) {
             try collToken.withdraw(ownersAssets + amountOver, recipient, owner) {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
 
+            nonOwnerCall ? hevm.prank(recipient) : hevm.prank(owner);
             try collToken.withdraw(ownersAssets + amountOver, recipient, owner, new TokenId[](0)) {
                 assertWithMsg(false, "User withdrew > their balance");
             } catch {}
         } else {
-            TokenId[] memory withdrawersOpenPositions = userPositions[owner];
             try
                 collToken.withdraw(
                     ownersAssets + amountOver,
@@ -1865,6 +1876,15 @@ contract FuzzDeployments is FuzzHelpers {
         bool isToken0,
         uint256 withdrawerAsssetsInCT
     ) internal returns (uint256) {
+        // TODO: this method needs to consider both tokens, not just one.
+        /*
+        1. use panoptic helper to convert the collateral requirement of BOTH TOKENS to one token
+            1. for a tick to convert the two prices - use both ticks, the slow and the fast tick
+        2. confirm the user’s shares in the CT convert to a token amount greater than the total collateral requirement calculated in 1
+        3. this means they are solvent
+        4. use this to fuzz whether validateCollateralWithdrawable is valid
+        5. and therefore, you can drop this overWithdraw thing where you’re trying to get max withdrawable
+         */
         (, int24 curTick, , , , , ) = pool.slot0();
         (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
             .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
