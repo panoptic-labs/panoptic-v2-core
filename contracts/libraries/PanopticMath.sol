@@ -200,7 +200,6 @@ library PanopticMath {
     /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
     /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
-    /// @return lastObservedTick The latest observation in the Uniswap pool
     /// @return updatedMedianData The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
         uint256 observationIndex,
@@ -208,7 +207,7 @@ library PanopticMath {
         uint256 period,
         uint256 medianData,
         IUniswapV3Pool univ3pool
-    ) external view returns (int24 medianTick, int24 lastObservedTick, uint256 updatedMedianData) {
+    ) external view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick =
@@ -218,6 +217,7 @@ library PanopticMath {
 
             // only proceed if last entry is at least MEDIAN_PERIOD seconds old
             if (block.timestamp >= uint256(uint40(medianData >> 216)) + period) {
+                int24 lastObservedTick;
                 {
                     (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
                         uint256(
