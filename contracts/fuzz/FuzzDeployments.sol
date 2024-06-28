@@ -1871,31 +1871,35 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function _get_assets_withdrawable(
-        CollateralTracker collToken,
+        CollateralTracker collToken0,
+        CollateralTracker collToken1,
         address withdrawer,
         bool isToken0,
-        uint256 withdrawerAsssetsInCT
-    ) internal returns (uint256) {
-        // TODO: this method needs to consider both tokens, not just one.
-        /*
-        1. use panoptic helper to convert the collateral requirement of BOTH TOKENS to one token
-            1. for a tick to convert the two prices - use both ticks, the slow and the fast tick
-        2. confirm the user’s shares in the CT convert to a token amount greater than the total collateral requirement calculated in 1
-        3. this means they are solvent
-        4. use this to fuzz whether validateCollateralWithdrawable is valid
-        5. and therefore, you can drop this overWithdraw thing where you’re trying to get max withdrawable
-         */
+        uint256 withdrawerAssetsInCT0,
+        uint256 withdrawerAssetsInCT1
+    ) internal view returns (uint256) {
         (, int24 curTick, , , , , ) = pool.slot0();
-        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
-            .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
-        LeftRightUnsigned tokenData = collToken.getAccountMarginDetails(
-            withdrawer,
-            curTick,
-            positions,
-            isToken0 ? premium0 : premium1
-        );
-        uint256 marginCallThreshold = tokenData.leftSlot();
-        return withdrawerAsssetsInCT - marginCallThreshold;
+        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool.calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
+
+        LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(withdrawer, curTick, positions, premium0);
+        LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(withdrawer, curTick, positions, premium1);
+
+        uint256 marginCallThreshold0 = tokenData0.leftSlot();
+        uint256 marginCallThreshold1 = tokenData1.leftSlot();
+
+        // TODO: I am trying to conceptually figure out what the max i can withdraw is from a given CT,
+        // considering the margin threshold in the other CT, and then converting it.
+        // However, what i ended up with is much simpler than what is in _checkSolvencyAtTick - so i suspect its wrong.
+        uint256 totalWithdrawableAssets;
+        if (isToken0) {
+            uint256 marginCallThreshold1InToken0 = Math.mulDiv(marginCallThreshold1, Math.getSqrtRatioAtTick(curTick), 1e18);
+            totalWithdrawableAssets = (withdrawerAssetsInCT0 + withdrawerAssetsInCT1) - (marginCallThreshold0 + marginCallThreshold1InToken0);
+        } else {
+            uint256 marginCallThreshold0InToken1 = Math.mulDiv(marginCallThreshold0, 1e18, Math.getSqrtRatioAtTick(curTick));
+            totalWithdrawableAssets = (withdrawerAssetsInCT0 + withdrawerAssetsInCT1) - (marginCallThreshold0 + marginCallThreshold0InToken1);
+        }
+
+        return totalWithdrawableAssets;
     }
 
     function transfer_ct_shares(
@@ -1916,6 +1920,16 @@ contract FuzzDeployments is FuzzHelpers {
             _transfer_and_check(collToken1, shares, sender, recipient, transferFromSender);
         }
     }
+
+    // TODO: this method needs to consider both tokens, not just one.
+    /*
+    1. use panoptic helper to convert the collateral requirement of BOTH TOKENS to one token
+        1. for a tick to convert the two prices - use both ticks, the slow and the fast tick
+    2. confirm the user’s shares in the CT convert to a token amount greater than the total collateral requirement calculated in 1
+    3. this means they are solvent
+    4. use this to fuzz whether validateCollateralWithdrawable is valid
+    5. and therefore, you can drop this overWithdraw thing where you’re trying to get max withdrawable
+     */
 
     function _transfer_and_check(
         CollateralTracker collToken,
