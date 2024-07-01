@@ -8,6 +8,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {Math} from "@libraries/Math.sol";
 // Custom types
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId, TokenIdLibrary} from "@types/TokenId.sol";
@@ -71,6 +72,178 @@ contract PanopticHelper {
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
         return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
+    }
+
+
+    /// @notice optimizes the risk partneting of all legs within a tokenId
+    function optimizeRiskPartners(PanopticPool pool, int24 atTick, TokenId tokenId) public view returns (TokenId) {
+
+        uint256 numberOfLegs = tokenId.countLegs();
+        if (numberOfLegs == 1) {
+            return tokenId;
+        } else {
+            TokenId _tempTokenId = TokenId.wrap(TokenId.unwrap(tokenId) & 0xFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFFFFFFFFF);
+           
+            if (numberOfLegs == 2) {
+
+                TokenId[] memory tokenIdList = new TokenId[](2);
+
+                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1); 
+               
+                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1); 
+
+                
+                if (getRequiredBase(pool, tokenIdList[0], atTick) < getRequiredBase(pool, tokenIdList[1], atTick)) {
+                    return tokenIdList[0];
+                } else {
+                    return tokenIdList[1];
+                }
+            } else if (numberOfLegs == 3) {
+                TokenId[] memory tokenIdList = new TokenId[](4);
+
+                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1).addRiskPartner(2, 2); 
+
+                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(2, 2); 
+                tokenIdList[2] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(1, 1).addRiskPartner(0, 2); 
+                tokenIdList[3] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(2, 1).addRiskPartner(1, 2); 
+
+                uint256 lowestCollateralRequirement = getRequiredBase(pool, tokenIdList[0], atTick);
+                TokenId lowestTokenId = tokenIdList[0];
+                for (uint256 i=1; i < 4; ++i) {
+                    uint256 _collateralRequirement = getRequiredBase(pool, tokenIdList[1], atTick);
+                    if (_collateralRequirement < lowestCollateralRequirement) {
+                        lowestTokenId = tokenIdList[i];
+                        lowestCollateralRequirement = _collateralRequirement;
+                    }
+                }
+                return lowestTokenId; 
+            } else {
+                TokenId[] memory tokenIdList = new TokenId[](10);
+                
+                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1).addRiskPartner(2, 2).addRiskPartner(3, 3); 
+                
+                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(2, 2).addRiskPartner(3, 3); 
+                tokenIdList[2] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(1, 1).addRiskPartner(0, 2).addRiskPartner(3, 3); 
+                tokenIdList[3] = _tempTokenId.addRiskPartner(3, 0).addRiskPartner(1, 1).addRiskPartner(2, 2).addRiskPartner(0, 3); 
+               
+                tokenIdList[4] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(2, 1).addRiskPartner(1, 2).addRiskPartner(3, 3); 
+                tokenIdList[5] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(3, 1).addRiskPartner(2, 2).addRiskPartner(1, 3); 
+                tokenIdList[6] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1).addRiskPartner(3, 2).addRiskPartner(2, 3); 
+               
+                tokenIdList[7] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(3, 2).addRiskPartner(2, 3); 
+                tokenIdList[8] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(3, 1).addRiskPartner(0, 2).addRiskPartner(1, 3); 
+                tokenIdList[9] = _tempTokenId.addRiskPartner(3, 0).addRiskPartner(2, 1).addRiskPartner(0, 2).addRiskPartner(0, 3); 
+                
+                uint256 lowestCollateralRequirement = getRequiredBase(pool, tokenIdList[0], atTick);
+                TokenId lowestTokenId = tokenIdList[0];
+
+                for (uint256 i=1; i < 10; ++i) {
+                    uint256 _collateralRequirement = getRequiredBase(pool, tokenIdList[1], atTick);
+                    if (_collateralRequirement < lowestCollateralRequirement) {
+                        lowestTokenId = tokenIdList[i];
+                        lowestCollateralRequirement = _collateralRequirement;
+                    }
+                }
+                return lowestTokenId; 
+            }
+        }
+        
+
+    }
+
+    function getRequiredBase(PanopticPool pool, TokenId tokenId, int24 atTick) internal view returns (uint256) {
+       
+        if (validateTokenId(tokenId)) { 
+            
+            uint256 req0 = pool.collateralToken0().getMarginForTokenId(
+                tokenId,
+                atTick
+            );
+            uint256 req1 = pool.collateralToken1().getMarginForTokenId(
+                tokenId,
+                atTick
+            );
+
+            return req0 + PanopticMath.convert1to0(req1, Math.getSqrtRatioAtTick(atTick));
+        } else { 
+            return type(uint128).max;
+        }
+    }
+
+    function validateTokenId(TokenId self) internal pure returns (bool) {
+        if (self.optionRatio(0) == 0) return false;
+        uint256 CHUNK_MASK = 0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
+
+        // loop through the 4 (possible) legs in the tokenId `self`
+        unchecked {
+            // extract strike, width, and tokenType
+            uint256 chunkData = (TokenId.unwrap(self) & CHUNK_MASK) >> 64;
+            for (uint256 i = 0; i < 4; ++i) {
+                if (self.optionRatio(i) == 0) {
+                    // final leg in this position identified;
+                    // make sure any leg above this are zero as well
+                    // (we don't allow gaps eg having legs 1 and 4 active without 2 and 3 is not allowed)
+                    if ((TokenId.unwrap(self) >> (64 + 48 * i)) != 0)
+                        return false;
+
+                    break; // we are done iterating over potential legs
+                }
+
+                // prevent legs touching the same chunks - all chunks in the position must be discrete
+                uint256 numLegs = self.countLegs();
+                for (uint256 j = i + 1; j < numLegs; ++j) {
+                    if (uint48(chunkData >> (48 * i)) == uint48(chunkData >> (48 * j))) {
+                        return false;
+                    }
+                }
+                // now validate this ith leg in the position:
+
+                // The width cannot be 0; the minimum is 1
+                if ((self.width(i) == 0)) return false;
+                // Strike cannot be MIN_TICK or MAX_TICK
+                if (
+                    (self.strike(i) == Constants.MIN_V3POOL_TICK) ||
+                    (self.strike(i) == Constants.MAX_V3POOL_TICK)
+                ) return false;
+
+                // In the following, we check whether the risk partner of this leg is itself
+                // or another leg in this position.
+                // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
+                uint256 riskPartnerIndex = self.riskPartner(i);
+                if (riskPartnerIndex != i) {
+                    // Ensures that risk partners are mutual
+                    if (self.riskPartner(riskPartnerIndex) != i)
+                        return false;
+
+                    // Ensures that risk partners have 1) the same asset, and 2) the same ratio
+                    if (
+                        (self.asset(riskPartnerIndex) != self.asset(i)) ||
+                        (self.optionRatio(riskPartnerIndex) != self.optionRatio(i))
+                    ) return false;
+
+                    // long/short status of associated legs
+                    uint256 _isLong = self.isLong(i);
+                    uint256 isLongP = self.isLong(riskPartnerIndex);
+
+                    // token type status of associated legs (call/put)
+                    uint256 _tokenType = self.tokenType(i);
+                    uint256 tokenTypeP = self.tokenType(riskPartnerIndex);
+
+                    // if the position is the same i.e both long calls, short put's etc.
+                    // then this is a regular position, not a defined risk position
+                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP))
+                        return false;
+
+                    // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
+                    // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
+                    // unlike short stranlges, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
+                    if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
+                        return false;
+                }
+            } // end for loop over legs
+        }
+
+        return true;
     }
 
     /*//////////////////////////////////////////////////////////////
