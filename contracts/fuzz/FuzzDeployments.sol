@@ -1847,7 +1847,11 @@ contract FuzzDeployments is FuzzHelpers {
         */
         // Bound the fuzzed assets-to-withdraw to max assets withdrawable:
         // the smaller of the s_poolAssets and the user's assets in the CT
-        assetsToWithdraw = bound(assetsToWithdraw, 1, _max_assets_withdrawable(collToken, withdrawerSharesBefore));
+        assetsToWithdraw = bound(
+            assetsToWithdraw,
+            1,
+            _max_assets_withdrawable(collToken, withdrawerSharesBefore)
+        );
         // Figure out how many shares we expect to see burnt:
         uint256 expectedSharesBurnt = collToken.previewWithdraw(assetsToWithdraw);
 
@@ -1969,10 +1973,15 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _max_assets_withdrawable(CollateralTracker collToken, uint256 withdrawerSharesBefore) internal view returns(uint256 maxAssetsWithdrawable) {
+    function _max_assets_withdrawable(
+        CollateralTracker collToken,
+        uint256 withdrawerSharesBefore
+    ) internal view returns (uint256 maxAssetsWithdrawable) {
         (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();
         uint256 withdrawersAssetsInCT = collToken.convertToAssets(withdrawerSharesBefore);
-        maxAssetsWithdrawable =  ct_s_poolAssets < withdrawersAssetsInCT ? ct_s_poolAssets : withdrawersAssetsInCT;
+        maxAssetsWithdrawable = ct_s_poolAssets < withdrawersAssetsInCT
+            ? ct_s_poolAssets
+            : withdrawersAssetsInCT;
     }
 
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
