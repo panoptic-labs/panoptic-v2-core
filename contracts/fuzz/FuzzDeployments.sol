@@ -1046,37 +1046,36 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
-    function invariant_collateral_overremoval_with_open_positions(
-        CollateralTracker collToken,
-        uint256 amountOver
-    ) public {
-        _attempt_collateral_overremoval(collToken0, msg.sender, true, amountOver);
-        _attempt_collateral_overremoval(collToken1, msg.sender, false, amountOver);
+    function invariant_collateral_overremoval_with_open_positions(CollateralTracker collToken) public {
+        _attempt_collateral_overremoval(collToken0, msg.sender, true);
+        _attempt_collateral_overremoval(collToken1, msg.sender, false);
     }
 
     function _attempt_collateral_overremoval(
         CollateralTracker collToken,
         address withdrawer,
-        bool isToken0,
-        uint256 amountOver
+        bool isToken0
     ) public {
         uint256 withdrawersAssetsInCT = collToken.convertToAssets(collToken.balanceOf(withdrawer));
-        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
-            collToken,
+        /* NOTE: we are moving away from any approach that requires us to figure out the max the user can withdraw,
+         in favour of fuzzing validateCollateralWithdrawable being reliable
+         uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
             withdrawer,
-            isToken0,
-            withdrawersAssetsInCT
+            isToken0
         );
-        amountOver = bound(amountOver, 1, withdrawersAssetsInCT - maxAssetsWithdrawable);
+        amountOver = bound(amountOver, 1, withdrawersAssetsInCT - maxAssetsWithdrawable); */
 
         // assert is-solvent
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
+        // return early if user has no open positions
+        if (withdrawersOpenPositions.length == 0)
+            return;
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
-            // then, assert we get a revert when trying to withdraw too much:
+            // then, assert we get a revert when trying to withdraw too much (the user's full balance):
             hevm.prank(withdrawer);
             try
                 collToken.withdraw(
-                    maxAssetsWithdrawable + amountOver,
+                    withdrawersAssetsInCT,
                     withdrawer,
                     withdrawer,
                     withdrawersOpenPositions
@@ -1801,6 +1800,18 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
+    uint256 internal constant FAST_ORACLE_CARDINALITY = 3;
+    uint256 internal constant FAST_ORACLE_PERIOD = 1;
+
+    bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
+    uint256 internal constant SLOW_ORACLE_CARDINALITY = 7;
+    uint256 internal constant SLOW_ORACLE_PERIOD = 5;
+
+    uint256 internal constant MEDIAN_PERIOD = 60;
+
+    uint256 internal constant BP_DECREASE_BUFFER = 13_333;
+    int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
+
     function _withdraw_with_open_positions_and_check(
         CollateralTracker collToken,
         uint256 assetsToWithdraw,
@@ -1823,16 +1834,18 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
 
+        /* NOTE: We are moving away from approaches requiring us to calc the exact max amount withdrawable;
+         instead, we just handle the unhappy path by ensuring that a revert in withdraw matches to a revert
+         from validateCollateralWithdrawable
         // 1. Figure out how many assets we can legally withdraw:
         uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
-            collToken,
             withdrawer,
-            isToken0,
-            collToken.convertToAssets(withdrawerSharesBefore)
+            isToken0
         );
-        // 2. Bound the fuzzed assets-to-withdraw to maxAssetsWithdrawable:
-        assetsToWithdraw = bound(assetsToWithdraw, 1, maxAssetsWithdrawable);
-        // 3. Figure out how many shares we expect to see burnt:
+        */
+        // Bound the fuzzed assets-to-withdraw to maxAssetsWithdrawable:
+        assetsToWithdraw = bound(assetsToWithdraw, 1, collToken.convertToAssets(withdrawerSharesBefore));
+        // Figure out how many shares we expect to see burnt:
         uint256 expectedSharesBurnt = collToken.previewWithdraw(assetsToWithdraw);
 
         hevm.prank(withdrawer);
@@ -1857,72 +1870,138 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             // show we are still solvent:
-            try
-                panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions)
-            {} catch {
-                assertWithMsg(
-                    false,
-                    "User is not solvent after seemingly legal withdrawal-with-open-positions"
-                );
+            try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {} catch {
+                assertWithMsg(false, "User not solvent after seemingly legal withdrawal-with-open-positions");
             }
         } catch {
-            assertWithMsg(false, "Failed to withdraw for unknown reason");
+            bool shouldRevertBecauseWithdrawalCausesInsolvency = false;
+            (,int24 currentTick,uint16 observationIndex,uint16 observationCardinality,,,) = pool.slot0();
+
+            int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+                pool,
+                observationIndex,
+                observationCardinality,
+                FAST_ORACLE_CARDINALITY,
+                FAST_ORACLE_PERIOD
+            );
+
+            int24 slowOracleTick;
+            if (SLOW_ORACLE_UNISWAP_MODE) {
+                slowOracleTick = PanopticMath.computeMedianObservedPrice(
+                    pool,
+                    observationIndex,
+                    observationCardinality,
+                    SLOW_ORACLE_CARDINALITY,
+                    SLOW_ORACLE_PERIOD
+                );
+            } else {
+                uint256 miniMedian;
+                unchecked {
+                    miniMedian =
+                        (uint256(block.timestamp) << 216) +
+                        // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
+                        // see comment on s_miniMedian initialization for format of this magic number
+                        (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
+                        (uint256(uint24(currentTick)) << 24) + // add to slot 4
+                        (uint256(uint24(currentTick))); // add to slot 3
+                }
+                (, uint256 medianData) = PanopticMath.computeInternalMedian(
+                    observationIndex,
+                    observationCardinality,
+                    MEDIAN_PERIOD,
+                    miniMedian,
+                    pool
+                );
+                if (medianData != 0) miniMedian = medianData;
+
+                (slowOracleTick, medianData) = PanopticMath.computeInternalMedian(
+                    observationIndex,
+                    observationCardinality,
+                    MEDIAN_PERIOD,
+                    miniMedian,
+                    pool
+                );
+            }
+
+            // Check the user's solvency at the fast tick; revert if not solvent
+            bool solventAtFast = _checkSolvencyAtTick(
+                withdrawer,
+                withdrawersOpenPositions,
+                currentTick,
+                fastOracleTick,
+                BP_DECREASE_BUFFER
+            );
+            if (!solventAtFast) shouldRevertBecauseWithdrawalCausesInsolvency = true;
+
+            // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
+            if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
+                if (!_checkSolvencyAtTick(withdrawer, withdrawersOpenPositions, currentTick, slowOracleTick, BP_DECREASE_BUFFER))
+                    shouldRevertBecauseWithdrawalCausesInsolvency = true;
+
+            // aaaand, putting it all together - if we reverted for some unknown reason, we failed an assertion, but
+            // if we just reverted because the withdrawal causes insolvency, everything is fine:
+            assertWithMsg(shouldRevertBecauseWithdrawalCausesInsolvency, "Withdrawal reverted for reason other than causing insolvency");
         }
     }
 
-    function _get_assets_withdrawable(
-        CollateralTracker collToken0,
-        CollateralTracker collToken1,
-        address withdrawer,
-        bool isToken0,
-        uint256 withdrawerAssetsInCT0,
-        uint256 withdrawerAssetsInCT1
-    ) internal view returns (uint256) {
-        (, int24 curTick, , , , , ) = pool.slot0();
-        (int128 premium0, int128 premium1, uint256[2][] memory positions) = panopticPool
-            .calculateAccumulatedFeesBatch(withdrawer, false, userPositions[withdrawer]);
+    bool internal constant ONLY_AVAILABLE_PREMIUM = false;
+
+    function _checkSolvencyAtTick(
+        address account,
+        TokenId[] memory positionIdList,
+        int24 currentTick,
+        int24 atTick,
+        uint256 buffer
+    ) internal view returns (bool) {
+
+        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
+            account,
+            ONLY_AVAILABLE_PREMIUM,
+            positionIdList
+        );
 
         LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
-            withdrawer,
-            curTick,
-            positions,
+            account,
+            atTick,
+            positionBalanceArray,
             premium0
         );
         LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(
-            withdrawer,
-            curTick,
-            positions,
+            account,
+            atTick,
+            positionBalanceArray,
             premium1
         );
 
-        uint256 marginCallThreshold0 = tokenData0.leftSlot();
-        uint256 marginCallThreshold1 = tokenData1.leftSlot();
+        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
+            tokenData0,
+            tokenData1,
+            Math.getSqrtRatioAtTick(atTick)
+        );
 
-        // TODO: I am trying to conceptually figure out what the max i can withdraw is from a given CT,
-        // considering the margin threshold in the other CT, and then converting it.
-        // However, what i ended up with is much simpler than what is in _checkSolvencyAtTick - so i suspect its wrong.
-        uint256 totalWithdrawableAssets;
-        if (isToken0) {
-            uint256 marginCallThreshold1InToken0 = Math.mulDiv(
-                marginCallThreshold1,
-                Math.getSqrtRatioAtTick(curTick),
-                1e18
-            );
-            totalWithdrawableAssets =
-                (withdrawerAssetsInCT0 + withdrawerAssetsInCT1) -
-                (marginCallThreshold0 + marginCallThreshold1InToken0);
-        } else {
-            uint256 marginCallThreshold0InToken1 = Math.mulDiv(
-                marginCallThreshold0,
-                1e18,
-                Math.getSqrtRatioAtTick(curTick)
-            );
-            totalWithdrawableAssets =
-                (withdrawerAssetsInCT0 + withdrawerAssetsInCT1) -
-                (marginCallThreshold0 + marginCallThreshold0InToken1);
+        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
+        unchecked {
+            return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
         }
+    }
 
-        return totalWithdrawableAssets;
+    function _getSolvencyBalances(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
+        unchecked {
+            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
+            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
+            balanceCross =
+                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
+            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
+            // overstimate by rounding up
+            thresholdCross =
+                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
+        }
     }
 
     function transfer_ct_shares(
@@ -1943,16 +2022,6 @@ contract FuzzDeployments is FuzzHelpers {
             _transfer_and_check(collToken1, shares, sender, recipient, transferFromSender);
         }
     }
-
-    // TODO: this method needs to consider both tokens, not just one.
-    /*
-    1. use panoptic helper to convert the collateral requirement of BOTH TOKENS to one token
-        1. for a tick to convert the two prices - use both ticks, the slow and the fast tick
-    2. confirm the user’s shares in the CT convert to a token amount greater than the total collateral requirement calculated in 1
-    3. this means they are solvent
-    4. use this to fuzz whether validateCollateralWithdrawable is valid
-    5. and therefore, you can drop this overWithdraw thing where you’re trying to get max withdrawable
-     */
 
     function _transfer_and_check(
         CollateralTracker collToken,
