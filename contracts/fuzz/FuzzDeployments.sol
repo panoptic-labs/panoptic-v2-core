@@ -1071,7 +1071,9 @@ contract FuzzDeployments is FuzzHelpers {
         if (withdrawersOpenPositions.length == 0)
             return;
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
-            // then, assert we get a revert when trying to withdraw too much (the user's full balance):
+            // then, assert we get a revert when trying to withdraw too much
+            // (too much in this case just means the user's full balance - we won't fuzz intermittent
+            //  amounts that are less than full balance but more than the amount that would cause insolvency)
             hevm.prank(withdrawer);
             try
                 collToken.withdraw(
