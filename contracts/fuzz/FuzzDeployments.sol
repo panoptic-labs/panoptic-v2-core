@@ -1080,7 +1080,10 @@ contract FuzzDeployments is FuzzHelpers {
                     withdrawersOpenPositions
                 )
             {
-                assertWithMsg(false, "User was able to withdraw despite validateCollateralWithdrawable saying they could not");
+                assertWithMsg(
+                    false,
+                    "User was able to withdraw despite validateCollateralWithdrawable saying they could not"
+                );
             } catch {}
         }
     }
