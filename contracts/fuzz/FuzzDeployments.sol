@@ -1064,8 +1064,11 @@ contract FuzzDeployments is FuzzHelpers {
         // return early if user has no open positions
         if (withdrawersOpenPositions.length == 0) return;
 
-        uint256 withdrawersAssetsInCT = collToken.convertToAssets(collToken.balanceOf(withdrawer));
-        amountToWithdraw = bound(amountToWithdraw, 1, withdrawersAssetsInCT);
+        amountToWithdraw = bound(
+            amountToWithdraw,
+            1,
+            _max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer))
+        );
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
             // Do nothing: the user _can_ withdraw their collateral, so there's nothing to test
         } catch {
@@ -1842,12 +1845,9 @@ contract FuzzDeployments is FuzzHelpers {
             isToken0
         );
         */
-        // Bound the fuzzed assets-to-withdraw to maxAssetsWithdrawable:
-        assetsToWithdraw = bound(
-            assetsToWithdraw,
-            1,
-            collToken.convertToAssets(withdrawerSharesBefore)
-        );
+        // Bound the fuzzed assets-to-withdraw to max assets withdrawable:
+        // the smaller of the s_poolAssets and the user's assets in the CT
+        assetsToWithdraw = bound(assetsToWithdraw, 1, _max_assets_withdrawable(collToken, withdrawerSharesBefore));
         // Figure out how many shares we expect to see burnt:
         uint256 expectedSharesBurnt = collToken.previewWithdraw(assetsToWithdraw);
 
@@ -1967,6 +1967,12 @@ contract FuzzDeployments is FuzzHelpers {
                 "Withdrawal reverted for reason other than causing insolvency"
             );
         }
+    }
+
+    function _max_assets_withdrawable(CollateralTracker collToken, uint256 withdrawerSharesBefore) internal view returns(uint256 maxAssetsWithdrawable) {
+        (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();
+        uint256 withdrawersAssetsInCT = collToken.convertToAssets(withdrawerSharesBefore);
+        maxAssetsWithdrawable =  ct_s_poolAssets < withdrawersAssetsInCT ? ct_s_poolAssets : withdrawersAssetsInCT;
     }
 
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
