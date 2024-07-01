@@ -1047,48 +1047,41 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
     function invariant_collateral_overremoval_with_open_positions(
-        CollateralTracker collToken
+        CollateralTracker collToken,
+        uint256 amountToWithdraw
     ) public {
-        _attempt_collateral_overremoval(collToken0, msg.sender, true);
-        _attempt_collateral_overremoval(collToken1, msg.sender, false);
+        _attempt_collateral_overremoval(collToken0, msg.sender, true, amountToWithdraw);
+        _attempt_collateral_overremoval(collToken1, msg.sender, false, amountToWithdraw);
     }
 
     function _attempt_collateral_overremoval(
         CollateralTracker collToken,
         address withdrawer,
-        bool isToken0
+        bool isToken0,
+        uint256 amountToWithdraw
     ) public {
-        uint256 withdrawersAssetsInCT = collToken.convertToAssets(collToken.balanceOf(withdrawer));
-        /* NOTE: we are moving away from any approach that requires us to figure out the max the user can withdraw,
-         in favour of fuzzing validateCollateralWithdrawable being reliable
-         uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
-            withdrawer,
-            isToken0
-        );
-        amountOver = bound(amountOver, 1, withdrawersAssetsInCT - maxAssetsWithdrawable); */
-
-        // assert is-solvent
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
         // return early if user has no open positions
         if (withdrawersOpenPositions.length == 0) return;
+
+        uint256 withdrawersAssetsInCT = collToken.convertToAssets(collToken.balanceOf(withdrawer));
+        amountToWithdraw = bound(amountToWithdraw, 1, withdrawersAssetsInCT);
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
-            // then, assert we get a revert when trying to withdraw too much
-            // (too much in this case just means the user's full balance - we won't fuzz intermittent
-            //  amounts that are less than full balance but more than the amount that would cause insolvency)
+            // Do nothing: the user _can_ withdraw their collateral, so there's nothing to test
+        } catch {
+            // if validateCollateralWithdrawable says we should not be able to withdraw,
+            // then we should fail here:
             hevm.prank(withdrawer);
             try
                 collToken.withdraw(
-                    withdrawersAssetsInCT,
+                    amountToWithdraw,
                     withdrawer,
                     withdrawer,
                     withdrawersOpenPositions
                 )
             {
-                assertWithMsg(false, "User was able to withdraw too much");
+                assertWithMsg(false, "User was able to withdraw despite validateCollateralWithdrawable saying they could not");
             } catch {}
-        } catch {
-            // Do nothing: the msg.sender we were passed was not solvent prior
-            // to withdrawal attempt, so nothing to check for this invariant this time around
         }
     }
 
@@ -2100,6 +2093,22 @@ contract FuzzDeployments is FuzzHelpers {
                     assertWithMsg(false, "unknown reversion when trying to transfer");
             }
         }
+    }
+
+    // Deal USDC or WETH to the contracts occassionally, to check if this messes with things such as being
+    // able to withdraw greater than the internally-accounted s_poolAssets
+    function deal_to_contracts(uint amount1, amount2, bool whichAmount) public {
+        deal_USDC(panopticPool, whichAmount ? amount1 : amount2, true);
+        deal_WETH(panopticPool, whichAmount ? amount2 : amount1);
+
+        deal_USDC(collToken0, whichAmount ? amount1 : amount2, true);
+        deal_WETH(collToken0, whichAmount ? amount2 : amount1);
+
+        deal_USDC(collToken1, whichAmount ? amount1 : amount2, true);
+        deal_WETH(collToken1, whichAmount ? amount2 : amount1);
+
+        deal_USDC(pool, whichAmount ? amount1 : amount2, true);
+        deal_WETH(pool, whichAmount ? amount2 : amount1);
     }
 
     /////////////////////////////////////////////////////////////
