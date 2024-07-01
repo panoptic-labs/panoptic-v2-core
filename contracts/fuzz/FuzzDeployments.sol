@@ -1046,7 +1046,9 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
-    function invariant_collateral_overremoval_with_open_positions(CollateralTracker collToken) public {
+    function invariant_collateral_overremoval_with_open_positions(
+        CollateralTracker collToken
+    ) public {
         _attempt_collateral_overremoval(collToken0, msg.sender, true);
         _attempt_collateral_overremoval(collToken1, msg.sender, false);
     }
@@ -1068,8 +1070,7 @@ contract FuzzDeployments is FuzzHelpers {
         // assert is-solvent
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
         // return early if user has no open positions
-        if (withdrawersOpenPositions.length == 0)
-            return;
+        if (withdrawersOpenPositions.length == 0) return;
         try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
             // then, assert we get a revert when trying to withdraw too much (the user's full balance):
             hevm.prank(withdrawer);
@@ -1844,7 +1845,11 @@ contract FuzzDeployments is FuzzHelpers {
         );
         */
         // Bound the fuzzed assets-to-withdraw to maxAssetsWithdrawable:
-        assetsToWithdraw = bound(assetsToWithdraw, 1, collToken.convertToAssets(withdrawerSharesBefore));
+        assetsToWithdraw = bound(
+            assetsToWithdraw,
+            1,
+            collToken.convertToAssets(withdrawerSharesBefore)
+        );
         // Figure out how many shares we expect to see burnt:
         uint256 expectedSharesBurnt = collToken.previewWithdraw(assetsToWithdraw);
 
@@ -1870,12 +1875,25 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             // show we are still solvent:
-            try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {} catch {
-                assertWithMsg(false, "User not solvent after seemingly legal withdrawal-with-open-positions");
+            try
+                panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions)
+            {} catch {
+                assertWithMsg(
+                    false,
+                    "User not solvent after seemingly legal withdrawal-with-open-positions"
+                );
             }
         } catch {
             bool shouldRevertBecauseWithdrawalCausesInsolvency = false;
-            (,int24 currentTick,uint16 observationIndex,uint16 observationCardinality,,,) = pool.slot0();
+            (
+                ,
+                int24 currentTick,
+                uint16 observationIndex,
+                uint16 observationCardinality,
+                ,
+                ,
+
+            ) = pool.slot0();
 
             int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
                 pool,
@@ -1935,12 +1953,22 @@ contract FuzzDeployments is FuzzHelpers {
 
             // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
             if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
-                if (!_checkSolvencyAtTick(withdrawer, withdrawersOpenPositions, currentTick, slowOracleTick, BP_DECREASE_BUFFER))
-                    shouldRevertBecauseWithdrawalCausesInsolvency = true;
+                if (
+                    !_checkSolvencyAtTick(
+                        withdrawer,
+                        withdrawersOpenPositions,
+                        currentTick,
+                        slowOracleTick,
+                        BP_DECREASE_BUFFER
+                    )
+                ) shouldRevertBecauseWithdrawalCausesInsolvency = true;
 
             // aaaand, putting it all together - if we reverted for some unknown reason, we failed an assertion, but
             // if we just reverted because the withdrawal causes insolvency, everything is fine:
-            assertWithMsg(shouldRevertBecauseWithdrawalCausesInsolvency, "Withdrawal reverted for reason other than causing insolvency");
+            assertWithMsg(
+                shouldRevertBecauseWithdrawalCausesInsolvency,
+                "Withdrawal reverted for reason other than causing insolvency"
+            );
         }
     }
 
@@ -1953,12 +1981,8 @@ contract FuzzDeployments is FuzzHelpers {
         int24 atTick,
         uint256 buffer
     ) internal view returns (bool) {
-
-        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
-            account,
-            ONLY_AVAILABLE_PREMIUM,
-            positionIdList
-        );
+        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = panopticPool
+            .calculateAccumulatedFeesBatch(account, ONLY_AVAILABLE_PREMIUM, positionIdList);
 
         LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
             account,
