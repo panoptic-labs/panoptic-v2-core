@@ -1856,7 +1856,6 @@ contract FuzzDeployments is FuzzHelpers {
         try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer, withdrawersOpenPositions) {
             // assert assets & shares were deducted/incremented appropriately:
             uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(address(panopticPool));
-
             uint256 withdrawerAssetsAfter = IERC20(collToken.asset()).balanceOf(withdrawer);
             uint256 withdrawerSharesAfter = collToken.balanceOf(withdrawer);
             assertWithMsg(
@@ -1882,7 +1881,7 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             }
         } catch {
-            bool shouldRevertBecauseWithdrawalCausesInsolvency = false;
+            bool withdrawalCausesInsolvency = false;
             (
                 ,
                 int24 currentTick,
@@ -1947,7 +1946,7 @@ contract FuzzDeployments is FuzzHelpers {
                 fastOracleTick,
                 BP_DECREASE_BUFFER
             );
-            if (!solventAtFast) shouldRevertBecauseWithdrawalCausesInsolvency = true;
+            if (!solventAtFast) withdrawalCausesInsolvency = true;
 
             // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
             if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
@@ -1959,12 +1958,12 @@ contract FuzzDeployments is FuzzHelpers {
                         slowOracleTick,
                         BP_DECREASE_BUFFER
                     )
-                ) shouldRevertBecauseWithdrawalCausesInsolvency = true;
+                ) withdrawalCausesInsolvency = true;
 
             // aaaand, putting it all together - if we reverted for some unknown reason, we failed an assertion, but
             // if we just reverted because the withdrawal causes insolvency, everything is fine:
             assertWithMsg(
-                shouldRevertBecauseWithdrawalCausesInsolvency,
+                withdrawalCausesInsolvency,
                 "Withdrawal reverted for reason other than causing insolvency"
             );
         }
