@@ -1150,9 +1150,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int24 currentTick,
         uint256[2][] memory positionBalanceArray,
         int128 premiumAllPositions
-    ) public view returns (LeftRightUnsigned tokenData) {
+    ) external view returns (LeftRightUnsigned tokenData) {
         tokenData = _getAccountMargin(user, currentTick, positionBalanceArray, premiumAllPositions);
     }
+
+    function getMarginForTokenId(
+        TokenId tokenId,
+        int24 atTick
+    ) external view returns (uint256 tokensRequired) {
+        tokensRequired = _getRequiredCollateralAtTickSinglePosition(tokenId, 1e18, atTick, uint128(uint256(_poolUtilization()))); 
+    }
+
 
     /// @notice Get the collateral status/margin details of an account/user.
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
