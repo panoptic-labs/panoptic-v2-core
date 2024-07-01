@@ -1749,7 +1749,7 @@ contract FuzzDeployments is FuzzHelpers {
         assetsToWithdraw = bound(
             assetsToWithdraw,
             1,
-            collToken.convertToAssets(collToken.balanceOf(withdrawer))
+            _max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer))
         );
 
         uint256 sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
@@ -1768,14 +1768,14 @@ contract FuzzDeployments is FuzzHelpers {
                 );
                 assertWithMsg(
                     withdrawerAssetsAfter - withdrawerAssetsBefore == assetsToWithdraw,
-                    "User balance incorrect after deposit"
+                    "User balance incorrect after redemption"
                 );
                 assertWithMsg(
                     withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after redemption"
                 );
             } catch {
-                assertWithMsg(false, "Failed to withdraw for unknown reason");
+                assertWithMsg(false, "Failed to redeem for unknown reason");
             }
         } else {
             try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer) {
@@ -1790,14 +1790,14 @@ contract FuzzDeployments is FuzzHelpers {
                 );
                 assertWithMsg(
                     withdrawerAssetsAfter - withdrawerAssetsBefore == assetsToWithdraw,
-                    "User balance incorrect after deposit"
+                    "User balance incorrect after withdrawal"
                 );
                 assertWithMsg(
                     withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after withdrawal"
                 );
             } catch {
-                assertWithMsg(false, "Failed to redeem for unknown reason");
+                assertWithMsg(false, "Failed to withdraw for unknown reason");
             }
         }
     }
@@ -1836,15 +1836,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
 
-        /* NOTE: We are moving away from approaches requiring us to calc the exact max amount withdrawable;
-         instead, we just handle the unhappy path by ensuring that a revert in withdraw matches to a revert
-         from validateCollateralWithdrawable
-        // 1. Figure out how many assets we can legally withdraw:
-        uint256 maxAssetsWithdrawable = _get_assets_withdrawable(
-            withdrawer,
-            isToken0
-        );
-        */
         // Bound the fuzzed assets-to-withdraw to max assets withdrawable:
         // the smaller of the s_poolAssets and the user's assets in the CT
         assetsToWithdraw = bound(
