@@ -2100,7 +2100,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     // Deal USDC or WETH to the contracts occassionally, to check if this messes with things such as being
     // able to withdraw greater than the internally-accounted s_poolAssets
-    function deal_to_contracts(uint amount1, amount2, bool whichAmount) public {
+    function deal_to_contracts(uint amount1, uint amount2, bool whichAmount) public {
         deal_USDC(panopticPool, whichAmount ? amount1 : amount2, true);
         deal_WETH(panopticPool, whichAmount ? amount2 : amount1);
 
