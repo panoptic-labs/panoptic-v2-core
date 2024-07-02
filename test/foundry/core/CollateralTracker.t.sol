@@ -853,8 +853,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.withdraw(maxAssets + 1, Bob, Bob, new TokenId[](0));
     }
 
-    // mint a position with greater than s_poolAssets
-    function test_Fail_mintGTAvailableCollateral(
+    function test_Fail_mintGTAvailableAssets(
         uint256 widthSeed,
         int256 strikeSeed,
         uint256 positionSizeSeed
@@ -893,6 +892,66 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(bound(positionSizeSeed, 501, 1000)),
             0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    // mint a position with greater than s_poolAssets
+    function test_Fail_burnGTAvailableAssets(uint256 widthSeed, int256 strikeSeed) public {
+        // initalize world state
+        _initWorld(0);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+
+        collateralToken0.deposit(1000, Bob);
+        collateralToken1.deposit(type(uint104).max, Bob);
+
+        (width, strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            750,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            500,
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        collateralToken0.setPoolAssets(collateralToken0._availableAssets() - 300);
+
+        positionIdList.pop();
+
+        vm.expectRevert(Errors.CastingError.selector);
+        panopticPool.burnOptions(
+            tokenId,
+            positionIdList,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
