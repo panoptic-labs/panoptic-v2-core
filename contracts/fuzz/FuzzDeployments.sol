@@ -1876,89 +1876,15 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             }
         } catch {
-            bool withdrawalCausesInsolvency = false;
-            (
-                ,
-                int24 currentTick,
-                uint16 observationIndex,
-                uint16 observationCardinality,
-                ,
-                ,
-
-            ) = pool.slot0();
-
-            int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
-                pool,
-                observationIndex,
-                observationCardinality,
-                FAST_ORACLE_CARDINALITY,
-                FAST_ORACLE_PERIOD
-            );
-
-            int24 slowOracleTick;
-            if (SLOW_ORACLE_UNISWAP_MODE) {
-                slowOracleTick = PanopticMath.computeMedianObservedPrice(
-                    pool,
-                    observationIndex,
-                    observationCardinality,
-                    SLOW_ORACLE_CARDINALITY,
-                    SLOW_ORACLE_PERIOD
-                );
-            } else {
-                uint256 miniMedian;
-                unchecked {
-                    miniMedian =
-                        (uint256(block.timestamp) << 216) +
-                        // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                        // see comment on s_miniMedian initialization for format of this magic number
-                        (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                        (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                        (uint256(uint24(currentTick))); // add to slot 3
-                }
-                (, uint256 medianData) = PanopticMath.computeInternalMedian(
-                    observationIndex,
-                    observationCardinality,
-                    MEDIAN_PERIOD,
-                    miniMedian,
-                    pool
-                );
-                if (medianData != 0) miniMedian = medianData;
-
-                (slowOracleTick, medianData) = PanopticMath.computeInternalMedian(
-                    observationIndex,
-                    observationCardinality,
-                    MEDIAN_PERIOD,
-                    miniMedian,
-                    pool
-                );
-            }
-
-            // Check the user's solvency at the fast tick; revert if not solvent
-            bool solventAtFast = _checkSolvencyAtTick(
-                withdrawer,
-                withdrawersOpenPositions,
-                currentTick,
-                fastOracleTick,
-                BP_DECREASE_BUFFER
-            );
-            if (!solventAtFast) withdrawalCausesInsolvency = true;
-
-            // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
-            if (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA)
-                if (
-                    !_checkSolvencyAtTick(
-                        withdrawer,
-                        withdrawersOpenPositions,
-                        currentTick,
-                        slowOracleTick,
-                        BP_DECREASE_BUFFER
-                    )
-                ) withdrawalCausesInsolvency = true;
-
-            // aaaand, putting it all together - if we reverted for some unknown reason, we failed an assertion, but
-            // if we just reverted because the withdrawal causes insolvency, everything is fine:
+            // if .withdraw reverted for some unknown reason, we failed an invariant, but if we just
+            // reverted because the withdrawal causes insolvency everything is fine:
             assertWithMsg(
-                withdrawalCausesInsolvency,
+                _does_withdrawal_cause_insolvency(
+                    withdrawer,
+                    withdrawersOpenPositions,
+                    assetsToWithdraw,
+                    isToken0
+                ),
                 "Withdrawal reverted for reason other than causing insolvency"
             );
         }
@@ -1975,15 +1901,75 @@ contract FuzzDeployments is FuzzHelpers {
             : withdrawersAssetsInCT;
     }
 
+    function _does_withdrawal_cause_insolvency(
+        address withdrawer,
+        TokenId[] memory withdrawersOpenPositions,
+        uint256 assetsToWithdraw,
+        bool isToken0
+    ) internal returns(bool withdrawalCausesInsolvency) {
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
+        ) = pool.slot0();
+
+        int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            pool,
+            observationIndex,
+            observationCardinality,
+            FAST_ORACLE_CARDINALITY,
+            FAST_ORACLE_PERIOD
+        );
+
+        // s_miniMedian, an internal var in the PanopticPool, can be found in storage slot 1:
+        uint256 miniMedian = uint256(hevm.load(address(panopticPool), bytes32(uint256(1))));
+        (int24 slowOracleTick, uint256 medianData) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            MEDIAN_PERIOD,
+            miniMedian,
+            pool
+        );
+
+        withdrawalCausesInsolvency = !_checkSolvencyAtTickForPossibleWithdrawal(
+            withdrawer,
+            withdrawersOpenPositions,
+            currentTick,
+            fastOracleTick,
+            BP_DECREASE_BUFFER,
+            assetsToWithdraw,
+            isToken0
+        );
+
+        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
+        withdrawalCausesInsolvency = withdrawalCausesInsolvency || (
+            (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA) &&
+            !_checkSolvencyAtTickForPossibleWithdrawal(
+                withdrawer,
+                withdrawersOpenPositions,
+                currentTick,
+                slowOracleTick,
+                BP_DECREASE_BUFFER,
+                assetsToWithdraw,
+                isToken0
+            )
+        );
+    }
+
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
 
-    function _checkSolvencyAtTick(
+    function _checkSolvencyAtTickForPossibleWithdrawal(
         address account,
         TokenId[] memory positionIdList,
         int24 currentTick,
         int24 atTick,
-        uint256 buffer
-    ) internal view returns (bool) {
+        uint256 buffer,
+        uint256 amountWithdrawn,
+        bool isToken0
+    ) internal returns (bool) {
         (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = panopticPool
             .calculateAccumulatedFeesBatch(account, ONLY_AVAILABLE_PREMIUM, positionIdList);
 
@@ -2003,7 +1989,9 @@ contract FuzzDeployments is FuzzHelpers {
         (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
             tokenData0,
             tokenData1,
-            Math.getSqrtRatioAtTick(atTick)
+            Math.getSqrtRatioAtTick(atTick),
+            amountWithdrawn,
+            isToken0
         );
 
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
@@ -2015,16 +2003,18 @@ contract FuzzDeployments is FuzzHelpers {
     function _getSolvencyBalances(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
-        uint160 sqrtPriceX96
+        uint160 sqrtPriceX96,
+        uint256 amountWithdrawn,
+        bool isToken0
     ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
         unchecked {
             // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
             // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
             balanceCross =
-                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
+                Math.mulDiv(uint256(tokenData1.rightSlot()) - (isToken0 ? 0 : amountWithdrawn), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96(tokenData0.rightSlot() - (isToken0 ? amountWithdrawn : 0), sqrtPriceX96);
             // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overstimate by rounding up
+            // overestimate by rounding up
             thresholdCross =
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
