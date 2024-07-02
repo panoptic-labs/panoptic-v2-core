@@ -994,7 +994,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        collateralToken0.setInAMM(450);
+        collateralToken0.setInAMM(-300);
 
         vm.expectRevert(Errors.CastingError.selector);
         panopticPool.mintOptions(
@@ -1041,7 +1041,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        collateralToken0.setInAMM(500);
+        collateralToken0.setInAMM(-250);
 
         positionIdList.pop();
 
