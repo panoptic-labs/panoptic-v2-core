@@ -873,7 +873,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(1000, Bob);
         collateralToken1.deposit(type(uint104).max, Bob);
 
-        collateralToken0.setPoolAssets(collateralToken0._availableAssets() - 500);
+        collateralToken0.setPoolAssets(500);
         collateralToken0.setInAMM(500);
 
         (width, strike) = PositionUtils.getOTMSW(
