@@ -3870,6 +3870,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
+            uint256 inAMMOffset = collateralToken0._inAMM();
+
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -3877,8 +3879,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-
-            uint256 inAMMOffset = collateralToken0._inAMM();
 
             vm.revertTo(snapshot);
 
@@ -4036,6 +4036,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
+            uint256 inAMMOffset = collateralToken0._inAMM();
+
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -4043,8 +4045,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-
-            uint256 inAMMOffset = collateralToken0._inAMM();
 
             vm.revertTo(snapshot);
 
@@ -4209,6 +4209,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
+            uint256 inAMMOffset = collateralToken0._inAMM();
+
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -4216,8 +4218,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-
-            uint256 inAMMOffset = collateralToken0._inAMM();
 
             vm.revertTo(snapshot);
 
@@ -4371,6 +4371,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
+            uint256 inAMMOffset = collateralToken1._inAMM();
+
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -4378,8 +4380,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-
-            uint256 inAMMOffset = collateralToken1._inAMM();
 
             vm.revertTo(snapshot);
 
@@ -4530,6 +4530,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
+            uint256 inAMMOffset = collateralToken0._inAMM();
+
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -4537,8 +4539,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-
-            uint256 inAMMOffset = collateralToken0._inAMM();
 
             vm.revertTo(snapshot);
 
@@ -4687,6 +4687,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
+            uint256 inAMMOffset = collateralToken1._inAMM();
+
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -4694,8 +4696,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-
-            uint256 inAMMOffset = collateralToken1._inAMM();
 
             vm.revertTo(snapshot);
 
