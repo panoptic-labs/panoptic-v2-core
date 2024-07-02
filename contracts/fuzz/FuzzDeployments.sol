@@ -1906,15 +1906,9 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory withdrawersOpenPositions,
         uint256 assetsToWithdraw,
         bool isToken0
-    ) internal returns(bool withdrawalCausesInsolvency) {
-        (
-            ,
-            int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
-        ) = pool.slot0();
+    ) internal returns (bool withdrawalCausesInsolvency) {
+        (, int24 currentTick, uint16 observationIndex, uint16 observationCardinality, , , ) = pool
+            .slot0();
 
         int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
             pool,
@@ -1945,18 +1939,18 @@ contract FuzzDeployments is FuzzHelpers {
         );
 
         // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
-        withdrawalCausesInsolvency = withdrawalCausesInsolvency || (
-            (Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA) &&
-            !_checkSolvencyAtTickForPossibleWithdrawal(
-                withdrawer,
-                withdrawersOpenPositions,
-                currentTick,
-                slowOracleTick,
-                BP_DECREASE_BUFFER,
-                assetsToWithdraw,
-                isToken0
-            )
-        );
+        withdrawalCausesInsolvency =
+            withdrawalCausesInsolvency ||
+            ((Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA) &&
+                !_checkSolvencyAtTickForPossibleWithdrawal(
+                    withdrawer,
+                    withdrawersOpenPositions,
+                    currentTick,
+                    slowOracleTick,
+                    BP_DECREASE_BUFFER,
+                    assetsToWithdraw,
+                    isToken0
+                ));
     }
 
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
@@ -2011,8 +2005,15 @@ contract FuzzDeployments is FuzzHelpers {
             // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
             // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
             balanceCross =
-                Math.mulDiv(uint256(tokenData1.rightSlot()) - (isToken0 ? 0 : amountWithdrawn), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot() - (isToken0 ? amountWithdrawn : 0), sqrtPriceX96);
+                Math.mulDiv(
+                    uint256(tokenData1.rightSlot()) - (isToken0 ? 0 : amountWithdrawn),
+                    2 ** 96,
+                    sqrtPriceX96
+                ) +
+                Math.mulDiv96(
+                    tokenData0.rightSlot() - (isToken0 ? amountWithdrawn : 0),
+                    sqrtPriceX96
+                );
             // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
             // overestimate by rounding up
             thresholdCross =
