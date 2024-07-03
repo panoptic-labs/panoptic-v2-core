@@ -1452,12 +1452,11 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function try_settle_long(uint256 fuzzedActorIndex) public {
-        address caller = msg.sender;
-        // NOTE: This may be the same as `caller`. Thats ok; you can settleLongPremium yourself.
+        // NOTE: This may be the same as msg.sender. Thats ok; you can settleLongPremium yourself.
         address settlee = actors[fuzzedActorIndex % 4];
 
-        if (userPositions[settledAccount].length == 0) return;
-        TokenId[] memory settleesPositions = userPositions[settledAccount];
+        if (userPositions[settlee].length == 0) return;
+        TokenId[] memory settleesPositions = userPositions[settlee];
 
         for (uint256 i = 0; i < settleesPositions.length; ++i) {
             TokenId position = settleesPositions[i];
@@ -1473,51 +1472,11 @@ contract FuzzDeployments is FuzzHelpers {
             // 1. calculate what the premium settled out to settlee _should_ be
             // NOTE: this is basically trying to get re-calc a value in s_options -
             //       probably derived from logic in closePosition / getPremium
-            uint128 premium0, premium1;
-            (uint128 numContractsOfPosition, , ) = panopticPool.optionPositionBalance(
-                settlee,
-                position
-            );
-            uint128 liquidity = PanopticMath
-                .getLiquidityChunk(position, longIndex, numContractsOfPosition)
-                .liquidity();
+            (uint128 premium0, uint128 premium1) = _calc_premium_for_each_token(settlee, position, longIndex);
 
-            (uint128 optionData0, uint128 optionData1) = panopticPool.optionData(
-                position,
-                settlee,
-                longIndex
-            );
-
-            {
-                (, currentTick, , , , , ) = pool.slot0();
-                uint128 premiumAccumulator0;
-                uint128 premiumAccumulator1;
-                {
-                    uint256 tokenType = position.tokenType(longIndex);
-                    (int24 tickLower, int24 tickUpper) = position.asTicks(longIndex);
-                    (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
-                        address(pool),
-                        address(panopticPool),
-                        tokenType,
-                        tickLower,
-                        tickUpper,
-                        currentTick,
-                        1
-                    );
-                }
-                premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
-                premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
-                emit LogUint256("premium0-calc", premium0);
-                emit LogUint256("premium1-calc", premium1);
-            }
-
-            // 2. get the balance before any settling occurs
-            uint256 settleeAssetsInCT0Before = collToken0.convertToAssets(
-                collToken0.balanceOf(settlee)
-            );
-            uint256 settleeAssetsInCT1Before = collToken1.convertToAssets(
-                collToken1.balanceOf(settlee)
-            );
+            // 2. get users balance in CT before any settling occurs
+            uint256 settleeAssetsInCT0Before = _assets_in_ct(collToken0, settlee);
+            uint256 settleeAssetsInCT1Before = _assets_in_ct(collToken0, settlee);
 
             (uint128 settledForChunkBefore0, uint128 settledForChunkBefore1, , ) = panopticPool.premiaSettlementData(
                 position,
@@ -1530,7 +1489,7 @@ contract FuzzDeployments is FuzzHelpers {
             settleesPositionsReorg[settleesPositions.length - 1] = position;
             settleesPositionsReorg[i] = userPositions[settlee][settleesPositions.length - 1];
 
-            hevm.prank(caller);
+            hevm.prank(msg.sender);
             panopticPool.settleLongPremium(settleesPositionsReorg, settlee, longIndex);
 
             // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
@@ -1549,12 +1508,8 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             // 5. get users balance in CT after, and assert it reduced by appropriate amounts
-            uint256 settleeAssetsInCT0After = collToken0.convertToAssets(
-                collToken0.balanceOf(settlee)
-            );
-            uint256 settleeAssetsInCT1After = collToken1.convertToAssets(
-                collToken1.balanceOf(settlee)
-            );
+            uint256 settleeAssetsInCT0After = _assets_in_ct(collToken0, settlee);
+            uint256 settleeAssetsInCT1After = _assets_in_ct(collToken0, settlee);
 
             // TODO: fairly sure this is redundant and covered by the next assert
             assertWithMsg(
@@ -1569,6 +1524,43 @@ contract FuzzDeployments is FuzzHelpers {
                 "User receiving settled long premia had their assets in the CT decrease by an amount other than the calculated premiums"
             );
         }
+    }
+
+    function _calc_premium_for_each_token(address settlee, TokenId position, uint256 longIndex) internal returns (uint128 premium0, uint128 premium1) {
+        (uint128 numContractsOfPosition, , ) = panopticPool.optionPositionBalance(
+            settlee,
+            position
+        );
+        uint128 liquidity = PanopticMath
+            .getLiquidityChunk(position, longIndex, numContractsOfPosition)
+            .liquidity();
+
+        (uint128 optionData0, uint128 optionData1) = panopticPool.optionData(
+            position,
+            settlee,
+            longIndex
+        );
+
+        (, currentTick, , , , , ) = pool.slot0();
+        uint256 tokenType = position.tokenType(longIndex);
+        (int24 tickLower, int24 tickUpper) = position.asTicks(longIndex);
+        (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
+            address(pool),
+            address(panopticPool),
+            tokenType,
+            tickLower,
+            tickUpper,
+            currentTick,
+            1
+        );
+        premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
+        premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
+        emit LogUint256("premium0-calc", premium0);
+        emit LogUint256("premium1-calc", premium1);
+    }
+
+    function _assets_in_ct(CollateralTracker collToken, address holder) internal returns(uint256) {
+        return collToken.convertToAssets(collToken.balanceOf(holder));
     }
 
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
