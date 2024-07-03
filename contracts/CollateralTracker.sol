@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.18;
 
+import "forge-std/Test.sol";
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
@@ -1154,14 +1155,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         tokenData = _getAccountMargin(user, currentTick, positionBalanceArray, premiumAllPositions);
     }
 
-    function getMarginForTokenId(
-        TokenId tokenId,
-        int24 atTick
-    ) external view returns (uint256 tokensRequired) {
-        tokensRequired = _getRequiredCollateralAtTickSinglePosition(tokenId, 1e18, atTick, uint128(uint256(_poolUtilization()))); 
-    }
-
-
     /// @notice Get the collateral status/margin details of an account/user.
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
@@ -1473,6 +1466,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         } else {
             required = _computeStrangle(tokenId, index, positionSize, atTick, poolUtilization);
         }
+
     }
 
     /// @notice Get the base collateral requirement for an 'amount' at the current Panoptic pool 'utilization' level.
