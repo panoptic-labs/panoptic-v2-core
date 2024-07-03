@@ -1472,16 +1472,18 @@ contract FuzzDeployments is FuzzHelpers {
             // 1. calculate what the premium settled out to settlee _should_ be
             // NOTE: this is basically trying to get re-calc a value in s_options -
             //       probably derived from logic in closePosition / getPremium
-            (uint128 premium0, uint128 premium1) = _calc_premium_for_each_token(settlee, position, longIndex);
+            (uint128 premium0, uint128 premium1) = _calc_premium_for_each_token(
+                settlee,
+                position,
+                longIndex
+            );
 
             // 2. get users balance in CT before any settling occurs
             uint256 settleeAssetsInCT0Before = _assets_in_ct(collToken0, settlee);
             uint256 settleeAssetsInCT1Before = _assets_in_ct(collToken0, settlee);
 
-            (uint128 settledForChunkBefore0, uint128 settledForChunkBefore1, , ) = panopticPool.premiaSettlementData(
-                position,
-                longIndex
-            );
+            (uint128 settledForChunkBefore0, uint128 settledForChunkBefore1, , ) = panopticPool
+                .premiaSettlementData(position, longIndex);
 
             // 3. trigger a settlement of long premium
             // TODO: why do we do this reorg stuff here?
@@ -1493,10 +1495,8 @@ contract FuzzDeployments is FuzzHelpers {
             panopticPool.settleLongPremium(settleesPositionsReorg, settlee, longIndex);
 
             // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
-            (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool.premiaSettlementData(
-                position,
-                longIndex
-            );
+            (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool
+                .premiaSettlementData(position, longIndex);
 
             assertWithMsg(
                 settledForChunkAfter0 == (settledForChunkBefore0 + premium0),
@@ -1526,7 +1526,11 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _calc_premium_for_each_token(address settlee, TokenId position, uint256 longIndex) internal returns (uint128 premium0, uint128 premium1) {
+    function _calc_premium_for_each_token(
+        address settlee,
+        TokenId position,
+        uint256 longIndex
+    ) internal returns (uint128 premium0, uint128 premium1) {
         (uint128 numContractsOfPosition, , ) = panopticPool.optionPositionBalance(
             settlee,
             position
@@ -1559,7 +1563,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("premium1-calc", premium1);
     }
 
-    function _assets_in_ct(CollateralTracker collToken, address holder) internal returns(uint256) {
+    function _assets_in_ct(CollateralTracker collToken, address holder) internal returns (uint256) {
         return collToken.convertToAssets(collToken.balanceOf(holder));
     }
 
