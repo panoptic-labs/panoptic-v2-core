@@ -381,6 +381,8 @@ contract FuzzDeployments is FuzzHelpers {
 
         $tokenIdActive = userPositions[msg.sender][userPositions[msg.sender].length - 1];
 
+        $sfpmBal = sfpm.balanceOf(address(panopticPool), TokenId.unwrap($tokenIdActive));
+
         $maxTransfer0 = 0;
         $maxTransfer1 = 0;
 
@@ -657,6 +659,12 @@ contract FuzzDeployments is FuzzHelpers {
             revert();
         }
 
+        assertWithMsg(
+            sfpm.balanceOf(address(panopticPool), TokenId.unwrap($tokenIdActive)) - $sfpmBal ==
+                $positionSizeActive,
+            "mintOptions: incorrect amount of SFPM tokens minted"
+        );
+
         $balance0Final = int256(
             Math.mulDiv(collToken0.balanceOf(msg.sender), $totalAssets0, $totalSupply0)
         );
@@ -906,6 +914,118 @@ contract FuzzDeployments is FuzzHelpers {
                 "Not all positions were burned"
             );
         } catch {}
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                             FORCE EXERCISE
+    //////////////////////////////////////////////////////////////*/
+
+    function force_exercise(uint256 position, bool search) public {
+        $allPositionOwners = new address[](0);
+        $allPositions = new TokenId[](0);
+        for (uint256 i = 0; i < actors.length; ++i) {
+            for (uint256 j = 0; j < userPositions[actors[i]].length; ++j) {
+                $allPositionOwners.push(actors[i]);
+                $allPositions.push(userPositions[actors[i]][j]);
+            }
+        }
+
+        // find a position with at least one long leg - reasonably high probability of being exercisable
+        if (search) {
+            bool isLong;
+            for (uint256 i = bound(position, 0, 0); i < $allPositions.length; ++i) {
+                for (uint256 j = 0; j < $allPositions[i].countLegs(); ++j) {
+                    if ($allPositions[i].isLong(j) == 1) {
+                        $tokenIdActive = $allPositions[i];
+                        $exercisee = $allPositionOwners[i];
+                        isLong = true;
+                        break;
+                    }
+                }
+                if (isLong) assertWithMsg(false, "searchFound");
+                if (isLong) break;
+            }
+            if (!isLong) {
+                assertWithMsg($allPositions.length < 10, "No long positions found");
+                ($exercisee, $tokenIdActive) = (
+                    $allPositionOwners[bound(position, 0, $allPositions.length - 1)],
+                    $allPositions[bound(position, 0, $allPositions.length - 1)]
+                );
+            }
+        } else {
+            ($exercisee, $tokenIdActive) = (
+                $allPositionOwners[bound(position, 0, $allPositions.length - 1)],
+                $allPositions[bound(position, 0, $allPositions.length - 1)]
+            );
+        }
+
+        $touchedId = [$tokenIdActive];
+        $positionListExercisor = userPositions[msg.sender];
+        $positionListExercisee = _get_list_without_tokenid(
+            userPositions[$exercisee],
+            $tokenIdActive
+        );
+
+        $twapTick = PanopticMath.twapFilter(pool, 600);
+
+        $shouldRevert = false;
+
+        try this.validate_exercisable_ext($tokenIdActive, $twapTick) {
+            $shouldRevert = $shouldRevert ? $shouldRevert : false;
+        } catch {
+            $shouldRevert = $shouldRevert ? $shouldRevert : true;
+        }
+
+        $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
+        $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
+
+        $balance0Exercisee = int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee)));
+        $balance1Exercisee = int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee)));
+
+        hevm.prank(msg.sender);
+        try
+            panopticPool.forceExercise(
+                $exercisee,
+                $touchedId,
+                $positionListExercisee,
+                $positionListExercisor
+            )
+        {
+            assertWithMsg(false, "success!");
+        } catch (bytes memory reason) {
+            emit LogBytes("Reason", reason);
+            assertWithMsg($shouldRevert, "Force exercise failed");
+
+            revert();
+        }
+
+        if ($burnCollateralRevert) {
+            assertWithMsg(false, "Unimplemented exercisee-transfer check");
+        } else {
+            assertWithMsg(
+                int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee))) -
+                    $balance0Exercisee ==
+                    $colDelta0,
+                "ForceExercise: Collateral delta0 deviated from burn (no alternate refund)"
+            );
+            assertWithMsg(
+                int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee))) -
+                    $balance1Exercisee ==
+                    $colDelta1,
+                "ForceExercise: Collateral delta1 deviated from burn (no alternate refund)"
+            );
+
+            assertWithMsg(
+                int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender))) ==
+                    $balance0Origin,
+                "ForceExercise: exercisor token0 balance changed unnecessarily (no alternate refund)"
+            );
+            assertWithMsg(
+                int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender))) ==
+                    $balance1Origin,
+                "ForceExercise: exercisor token1 balance changed unnecessarily (no alternate refund)"
+            );
+        }
     }
 
     ////////////////////////////////////////////////////

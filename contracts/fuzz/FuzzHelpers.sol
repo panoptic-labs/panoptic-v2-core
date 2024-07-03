@@ -244,6 +244,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool);
 
+    error PPBurnSimResError(int256, int256, bool, bool);
+
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
         LeftRightSigned totalSwapped;
@@ -290,6 +292,9 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 tokenType;
     }
 
+    address[] $allPositionOwners;
+    TokenId[] $allPositions;
+
     PanopticHelper panopticHelper;
     SemiFungiblePositionManager sfpm;
     IUniswapV3Factory univ3factory;
@@ -334,6 +339,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256 $spreadRatio;
 
+    uint256 $sfpmBal;
+
     int256 $netTokenTransfers0;
     int256 $netTokenTransfers1;
 
@@ -373,6 +380,9 @@ contract FuzzHelpers is PropertiesAsserts {
     int256 $balance0Origin;
     int256 $balance1Origin;
 
+    int256 $balance0Exercisee;
+    int256 $balance1Exercisee;
+
     int256 $balance0Final;
     int256 $balance1Final;
 
@@ -393,14 +403,23 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $shouldRevert;
 
+    bool $burnCollateralRevert;
+
     int24 $fastOracleTick;
     int24 $slowOracleTick;
+
+    int24 $twapTick;
 
     int24 $tickLower;
     int24 $tickUpper;
 
     address[] actors;
     address pool_manipulator;
+
+    address $exercisee;
+    TokenId[] $touchedId;
+    TokenId[] $positionListExercisor;
+    TokenId[] $positionListExercisee;
 
     SwapperC swapperc;
 
@@ -1318,6 +1337,85 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function quote_pp_burn() internal {
+        try this.pp_burn_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            bool sRevert;
+            ($colDelta0, $colDelta1, sRevert, $burnCollateralRevert) = abi.decode(
+                results,
+                (int256, int256, bool, bool)
+            );
+
+            $shouldRevert = $shouldRevert || sRevert;
+        }
+    }
+
+    function pp_burn_sim() external {
+        int256 balExerciseeOrig0 = int256(
+            collToken0.convertToAssets(collToken0.balanceOf($exercisee))
+        );
+        int256 balExerciseeOrig1 = int256(
+            collToken1.convertToAssets(collToken1.balanceOf($exercisee))
+        );
+        hevm.prank($exercisee);
+        try
+            panopticPool.burnOptions(
+                $tokenIdActive,
+                $positionListExercisee,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            )
+        {
+            revert PPBurnSimResError(
+                int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee))) -
+                    balExerciseeOrig0,
+                int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee))) -
+                    balExerciseeOrig1,
+                false,
+                false
+            );
+        } catch (bytes memory reason) {
+            if (keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))) {
+                hevm.prank(address(panopticPool));
+                collToken0.delegate($exercisee, 2 ** 104 * 100);
+                hevm.prank(address(panopticPool));
+                collToken1.delegate($exercisee, 2 ** 104 * 100);
+                balExerciseeOrig0 = int256(
+                    collToken0.convertToAssets(collToken0.balanceOf($exercisee))
+                );
+                balExerciseeOrig1 = int256(
+                    collToken1.convertToAssets(collToken1.balanceOf($exercisee))
+                );
+
+                hevm.prank($exercisee);
+                try
+                    panopticPool.burnOptions(
+                        $tokenIdActive,
+                        $positionListExercisee,
+                        TickMath.MIN_TICK,
+                        TickMath.MAX_TICK
+                    )
+                {
+                    revert PPBurnSimResError(
+                        int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee))) -
+                            balExerciseeOrig0,
+                        int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee))) -
+                            balExerciseeOrig1,
+                        false,
+                        true
+                    );
+                } catch {
+                    revert PPBurnSimResError(0, 0, true, false);
+                }
+            } else {
+                revert PPBurnSimResError(0, 0, true, false);
+            }
+        }
+    }
+
     function sfpm_mint_sim() external {
         hevm.prank(address(panopticPool));
         try
@@ -1351,6 +1449,10 @@ contract FuzzHelpers is PropertiesAsserts {
                 true
             );
         }
+    }
+
+    function validate_exercisable_ext(TokenId eid, int24 tickEat) external pure {
+        eid.validateIsExercisable(tickEat);
     }
 
     ////////////////////////////////////////////////////
