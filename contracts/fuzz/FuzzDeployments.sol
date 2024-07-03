@@ -1196,10 +1196,6 @@ contract FuzzDeployments is FuzzHelpers {
         _mint_option(minter, spread, posSize, is_covered, effLiqLimit);
     }
 
-    function test_asserting_abilities() public {
-        assertWithMsg(1 > 2, "1 is greater than 2???");
-    }
-
     function perform_swap(uint160 target_sqrt_price) public {
         // bound the price between 10 and 500000
         target_sqrt_price = uint160(
@@ -1455,149 +1451,123 @@ contract FuzzDeployments is FuzzHelpers {
         assertWithMsg((out <= 2 ** 255) && (out >= 2 ** 254), "within bounds");
     }
 
-    function try_settle_long(uint256 i_settled) public {
+    function try_settle_long(uint256 fuzzedActorIndex) public {
         address caller = msg.sender;
+        // NOTE: This may be the same as `caller`. Thats ok; you can settleLongPremium yourself.
+        address settlee = actors[fuzzedActorIndex % 4];
 
-        address settledAccount = actors[i_settled % 4];
+        if (userPositions[settledAccount].length == 0) return;
+        TokenId[] memory settleesPositions = userPositions[settledAccount];
 
-        if (userPositions[settledAccount].length < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
+        for (uint256 i = 0; i < settleesPositions.length; ++i) {
+            TokenId position = settleesPositions[i];
+            if (position.countLongs() == 0) continue;
 
-        // Need this?
-        //require(caller != settledAccount);
+            // TODO: Why does this work for finding longIndex?
+            //  What if there's more than 1 - don't we need index of all?
+            //  Why not just iterate through all the legs?
+            uint256 longIndex = ((fuzzedActorIndex >> 4) % position.countLegs());
+            if (position.isLong(longIndex) != 1) continue;
+            emit LogUint256("settled leg index", longIndex);
 
-        TokenId[] memory settled_positions = userPositions[settledAccount];
+            // 1. calculate what the premium settled out to settlee _should_ be
+            // NOTE: this is basically trying to get re-calc a value in s_options -
+            //       probably derived from logic in closePosition / getPremium
+            uint128 premium0, premium1;
+            (uint128 numContractsOfPosition, , ) = panopticPool.optionPositionBalance(
+                settlee,
+                position
+            );
+            uint128 liquidity = PanopticMath
+                .getLiquidityChunk(position, longIndex, numContractsOfPosition)
+                .liquidity();
 
-        emit LogUint256("settled positions length", settled_positions.length);
+            (uint128 optionData0, uint128 optionData1) = panopticPool.optionData(
+                position,
+                settlee,
+                longIndex
+            );
 
-        for (uint256 i = 0; i < settled_positions.length; ++i) {
-            TokenId tokenId = settled_positions[i];
-
-            if (tokenId.countLongs() > 0) {
-                uint256 longIndex = ((i_settled >> 4) % tokenId.countLegs());
-                if (tokenId.isLong(longIndex) == 1) {
-                    emit LogUint256("settled leg index", longIndex);
-                    uint128 premium0;
-                    uint128 premium1;
-
-                    {
-                        (uint128 balance, , ) = panopticPool.optionPositionBalance(
-                            settledAccount,
-                            tokenId
-                        );
-                        uint128 liquidity = PanopticMath
-                            .getLiquidityChunk(tokenId, longIndex, balance)
-                            .liquidity();
-
-                        (uint128 optionData0, uint128 optionData1) = panopticPool.optionData(
-                            tokenId,
-                            settledAccount,
-                            longIndex
-                        );
-
-                        {
-                            (, currentTick, , , , , ) = pool.slot0();
-                            uint128 premiumAccumulator0;
-                            uint128 premiumAccumulator1;
-                            {
-                                uint256 tokenType = tokenId.tokenType(longIndex);
-                                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(longIndex);
-                                (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
-                                    address(pool),
-                                    address(panopticPool),
-                                    tokenType,
-                                    tickLower,
-                                    tickUpper,
-                                    currentTick,
-                                    1
-                                );
-                            }
-                            premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
-                            premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
-
-                            emit LogUint256("premium0-calc", premium0);
-                            emit LogUint256("premium1-calc", premium1);
-                        }
-                    }
-                    {
-                        address _settledAccount = settledAccount;
-                        uint256 balanceBefore0 = collToken0.convertToAssets(
-                            collToken0.balanceOf(_settledAccount)
-                        );
-                        uint256 balanceBefore1 = collToken1.convertToAssets(
-                            collToken1.balanceOf(_settledAccount)
-                        );
-
-                        LeftRightUnsigned settledBefore;
-                        {
-                            (uint128 s0, uint128 s1, , ) = panopticPool.premiaSettlementData(
-                                tokenId,
-                                longIndex
-                            );
-
-                            settledBefore = LeftRightUnsigned.wrap(0).toRightSlot(s0).toLeftSlot(
-                                s1
-                            );
-                            emit LogUint256("s0", s0);
-                            emit LogUint256("s1", s1);
-                        }
-
-                        {
-                            TokenId[] memory settled_positions_reorg = userPositions[
-                                settledAccount
-                            ];
-                            settled_positions_reorg[settled_positions.length - 1] = tokenId;
-                            settled_positions_reorg[i] = userPositions[settledAccount][
-                                settled_positions.length - 1
-                            ];
-
-                            panopticPool.settleLongPremium(
-                                settled_positions_reorg,
-                                settledAccount,
-                                longIndex
-                            );
-                        }
-                        {
-                            (uint128 s0, uint128 s1, , ) = panopticPool.premiaSettlementData(
-                                tokenId,
-                                longIndex
-                            );
-
-                            assertWithMsg(
-                                s0 == (settledBefore.rightSlot() + premium0),
-                                "inconsistent settlement0 accounting!"
-                            );
-                            assertWithMsg(
-                                s1 == (settledBefore.leftSlot() + premium1),
-                                "inconsistent settlement1 accounting!"
-                            );
-                            emit LogUint256("s0", s0);
-                            emit LogUint256("s1", s1);
-                        }
-
-                        uint256 balanceAfter0 = collToken0.convertToAssets(
-                            collToken0.balanceOf(_settledAccount)
-                        );
-                        uint256 balanceAfter1 = collToken1.convertToAssets(
-                            collToken1.balanceOf(_settledAccount)
-                        );
-
-                        assertWithMsg(
-                            ((balanceAfter0 <= balanceBefore0) &&
-                                (balanceAfter1 <= balanceBefore1)),
-                            "user balance increased!!"
-                        );
-
-                        assertWithMsg(
-                            (((balanceBefore0 - balanceAfter0) == premium0) &&
-                                ((balanceBefore1 - balanceAfter1) == premium1)),
-                            "inconsistent premium settlement"
-                        );
-                    }
+            {
+                (, currentTick, , , , , ) = pool.slot0();
+                uint128 premiumAccumulator0;
+                uint128 premiumAccumulator1;
+                {
+                    uint256 tokenType = position.tokenType(longIndex);
+                    (int24 tickLower, int24 tickUpper) = position.asTicks(longIndex);
+                    (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+                        address(pool),
+                        address(panopticPool),
+                        tokenType,
+                        tickLower,
+                        tickUpper,
+                        currentTick,
+                        1
+                    );
                 }
+                premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
+                premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
+                emit LogUint256("premium0-calc", premium0);
+                emit LogUint256("premium1-calc", premium1);
             }
+
+            // 2. get the balance before any settling occurs
+            uint256 settleeAssetsInCT0Before = collToken0.convertToAssets(
+                collToken0.balanceOf(settlee)
+            );
+            uint256 settleeAssetsInCT1Before = collToken1.convertToAssets(
+                collToken1.balanceOf(settlee)
+            );
+
+            (uint128 settledForChunkBefore0, uint128 settledForChunkBefore1, , ) = panopticPool.premiaSettlementData(
+                position,
+                longIndex
+            );
+
+            // 3. trigger a settlement of long premium
+            // TODO: why do we do this reorg stuff here?
+            TokenId[] memory settleesPositionsReorg = userPositions[settlee];
+            settleesPositionsReorg[settleesPositions.length - 1] = position;
+            settleesPositionsReorg[i] = userPositions[settlee][settleesPositions.length - 1];
+
+            hevm.prank(caller);
+            panopticPool.settleLongPremium(settleesPositionsReorg, settlee, longIndex);
+
+            // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
+            (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool.premiaSettlementData(
+                position,
+                longIndex
+            );
+
+            assertWithMsg(
+                settledForChunkAfter0 == (settledForChunkBefore0 + premium0),
+                "Settled tokens for chunk recorded in CT0 did not increase by calculated premium0"
+            );
+            assertWithMsg(
+                settledForChunkAfter1 == (settledForChunkBefore1 + premium1),
+                "Settled tokens for chunk recorded in CT1 did not increase by calculated premium1"
+            );
+
+            // 5. get users balance in CT after, and assert it reduced by appropriate amounts
+            uint256 settleeAssetsInCT0After = collToken0.convertToAssets(
+                collToken0.balanceOf(settlee)
+            );
+            uint256 settleeAssetsInCT1After = collToken1.convertToAssets(
+                collToken1.balanceOf(settlee)
+            );
+
+            // TODO: fairly sure this is redundant and covered by the next assert
+            assertWithMsg(
+                ((settleeAssetsInCT0After <= settleeAssetsInCT0Before) &&
+                    (settleeAssetsInCT1After <= settleeAssetsInCT1Before)),
+                "User receiving settled long premia had their balance of assets in the CT increase"
+            );
+
+            assertWithMsg(
+                (((settleeAssetsInCT0Before - settleeAssetsInCT0After) == premium0) &&
+                    ((settleeAssetsInCT1Before - settleeAssetsInCT1After) == premium1)),
+                "User receiving settled long premia had their assets in the CT decrease by an amount other than the calculated premiums"
+            );
         }
     }
 
