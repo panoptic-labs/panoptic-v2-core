@@ -75,26 +75,32 @@ contract PanopticHelper {
         return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
     }
 
-
     /// @notice optimizes the risk partneting of all legs within a tokenId
-    function optimizeRiskPartners(PanopticPool pool, int24 atTick, TokenId tokenId) public view returns (TokenId) {
-
+    function optimizeRiskPartners(
+        PanopticPool pool,
+        int24 atTick,
+        TokenId tokenId
+    ) public view returns (TokenId) {
         uint256 numberOfLegs = tokenId.countLegs();
         if (numberOfLegs == 1) {
             return tokenId;
         } else {
-            TokenId _tempTokenId = TokenId.wrap(TokenId.unwrap(tokenId) & 0xFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFFFFFFFFF);
-           
-            if (numberOfLegs == 2) {
+            TokenId _tempTokenId = TokenId.wrap(
+                TokenId.unwrap(tokenId) &
+                    0xFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFFFFFFFFF
+            );
 
+            if (numberOfLegs == 2) {
                 TokenId[] memory tokenIdList = new TokenId[](2);
 
-                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1); 
-               
-                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1); 
+                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1);
 
-                
-                if (this.getRequiredBase(pool, tokenIdList[0], atTick) < this.getRequiredBase(pool, tokenIdList[1], atTick)) {
+                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1);
+
+                if (
+                    this.getRequiredBase(pool, tokenIdList[0], atTick) <
+                    this.getRequiredBase(pool, tokenIdList[1], atTick)
+                ) {
                     return tokenIdList[0];
                 } else {
                     return tokenIdList[1];
@@ -102,70 +108,140 @@ contract PanopticHelper {
             } else if (numberOfLegs == 3) {
                 TokenId[] memory tokenIdList = new TokenId[](4);
 
-                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1).addRiskPartner(2, 2); 
+                tokenIdList[0] = _tempTokenId
+                    .addRiskPartner(0, 0)
+                    .addRiskPartner(1, 1)
+                    .addRiskPartner(2, 2);
 
-                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(2, 2); 
-                tokenIdList[2] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(1, 1).addRiskPartner(0, 2); 
-                tokenIdList[3] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(2, 1).addRiskPartner(1, 2); 
+                tokenIdList[1] = _tempTokenId
+                    .addRiskPartner(1, 0)
+                    .addRiskPartner(0, 1)
+                    .addRiskPartner(2, 2);
+                tokenIdList[2] = _tempTokenId
+                    .addRiskPartner(2, 0)
+                    .addRiskPartner(1, 1)
+                    .addRiskPartner(0, 2);
+                tokenIdList[3] = _tempTokenId
+                    .addRiskPartner(0, 0)
+                    .addRiskPartner(2, 1)
+                    .addRiskPartner(1, 2);
 
-                uint256 lowestCollateralRequirement = this.getRequiredBase(pool, tokenIdList[0], atTick);
+                uint256 lowestCollateralRequirement = this.getRequiredBase(
+                    pool,
+                    tokenIdList[0],
+                    atTick
+                );
                 TokenId lowestTokenId = tokenIdList[0];
-                for (uint256 i=1; i < 4; ++i) {
-                    uint256 _collateralRequirement = this.getRequiredBase(pool, tokenIdList[1], atTick);
+                for (uint256 i = 1; i < 4; ++i) {
+                    uint256 _collateralRequirement = this.getRequiredBase(
+                        pool,
+                        tokenIdList[1],
+                        atTick
+                    );
                     if (_collateralRequirement < lowestCollateralRequirement) {
                         lowestTokenId = tokenIdList[i];
                         lowestCollateralRequirement = _collateralRequirement;
                     }
                 }
-                return lowestTokenId; 
+                return lowestTokenId;
             } else {
                 TokenId[] memory tokenIdList = new TokenId[](10);
-                
-                tokenIdList[0] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1).addRiskPartner(2, 2).addRiskPartner(3, 3); 
-                
-                tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(2, 2).addRiskPartner(3, 3); 
-                tokenIdList[2] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(1, 1).addRiskPartner(0, 2).addRiskPartner(3, 3); 
-                tokenIdList[3] = _tempTokenId.addRiskPartner(3, 0).addRiskPartner(1, 1).addRiskPartner(2, 2).addRiskPartner(0, 3); 
-               
-                tokenIdList[4] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(2, 1).addRiskPartner(1, 2).addRiskPartner(3, 3); 
-                tokenIdList[5] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(3, 1).addRiskPartner(2, 2).addRiskPartner(1, 3); 
-                tokenIdList[6] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(1, 1).addRiskPartner(3, 2).addRiskPartner(2, 3); 
-               
-                tokenIdList[7] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(3, 2).addRiskPartner(2, 3); 
-                tokenIdList[8] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(3, 1).addRiskPartner(0, 2).addRiskPartner(1, 3); 
-                tokenIdList[9] = _tempTokenId.addRiskPartner(3, 0).addRiskPartner(2, 1).addRiskPartner(0, 2).addRiskPartner(0, 3); 
-               
-                uint256 lowestCollateralRequirement = this.getRequiredBase(pool, tokenIdList[0], atTick);
+
+                tokenIdList[0] = _tempTokenId
+                    .addRiskPartner(0, 0)
+                    .addRiskPartner(1, 1)
+                    .addRiskPartner(2, 2)
+                    .addRiskPartner(3, 3);
+
+                tokenIdList[1] = _tempTokenId
+                    .addRiskPartner(1, 0)
+                    .addRiskPartner(0, 1)
+                    .addRiskPartner(2, 2)
+                    .addRiskPartner(3, 3);
+                tokenIdList[2] = _tempTokenId
+                    .addRiskPartner(2, 0)
+                    .addRiskPartner(1, 1)
+                    .addRiskPartner(0, 2)
+                    .addRiskPartner(3, 3);
+                tokenIdList[3] = _tempTokenId
+                    .addRiskPartner(3, 0)
+                    .addRiskPartner(1, 1)
+                    .addRiskPartner(2, 2)
+                    .addRiskPartner(0, 3);
+
+                tokenIdList[4] = _tempTokenId
+                    .addRiskPartner(0, 0)
+                    .addRiskPartner(2, 1)
+                    .addRiskPartner(1, 2)
+                    .addRiskPartner(3, 3);
+                tokenIdList[5] = _tempTokenId
+                    .addRiskPartner(0, 0)
+                    .addRiskPartner(3, 1)
+                    .addRiskPartner(2, 2)
+                    .addRiskPartner(1, 3);
+                tokenIdList[6] = _tempTokenId
+                    .addRiskPartner(0, 0)
+                    .addRiskPartner(1, 1)
+                    .addRiskPartner(3, 2)
+                    .addRiskPartner(2, 3);
+
+                tokenIdList[7] = _tempTokenId
+                    .addRiskPartner(1, 0)
+                    .addRiskPartner(0, 1)
+                    .addRiskPartner(3, 2)
+                    .addRiskPartner(2, 3);
+                tokenIdList[8] = _tempTokenId
+                    .addRiskPartner(2, 0)
+                    .addRiskPartner(3, 1)
+                    .addRiskPartner(0, 2)
+                    .addRiskPartner(1, 3);
+                tokenIdList[9] = _tempTokenId
+                    .addRiskPartner(3, 0)
+                    .addRiskPartner(2, 1)
+                    .addRiskPartner(0, 2)
+                    .addRiskPartner(0, 3);
+
+                uint256 lowestCollateralRequirement = this.getRequiredBase(
+                    pool,
+                    tokenIdList[0],
+                    atTick
+                );
                 TokenId lowestTokenId = tokenIdList[0];
 
-                console2.log('lowestTokenId', TokenId.unwrap(lowestTokenId));
-                for (uint256 i=1; i < 10; ++i) {
-                    try this.getRequiredBase(pool, tokenIdList[i], atTick) returns (uint256 _collateralRequirement) { 
-                        console2.log('collateralRequirement', _collateralRequirement, lowestCollateralRequirement);
+                console2.log("lowestTokenId", TokenId.unwrap(lowestTokenId));
+                for (uint256 i = 1; i < 10; ++i) {
+                    try this.getRequiredBase(pool, tokenIdList[i], atTick) returns (
+                        uint256 _collateralRequirement
+                    ) {
+                        console2.log(
+                            "collateralRequirement",
+                            _collateralRequirement,
+                            lowestCollateralRequirement
+                        );
                         if (_collateralRequirement < lowestCollateralRequirement) {
                             lowestTokenId = tokenIdList[i];
                             lowestCollateralRequirement = _collateralRequirement;
                         }
                     } catch {}
                 }
-                console2.log('lowestTokenId', TokenId.unwrap(lowestTokenId));
-                return lowestTokenId; 
+                console2.log("lowestTokenId", TokenId.unwrap(lowestTokenId));
+                return lowestTokenId;
             }
         }
-        
-
     }
 
-    function getRequiredBase(PanopticPool pool, TokenId tokenId, int24 atTick) external view returns (uint256) {
+    function getRequiredBase(
+        PanopticPool pool,
+        TokenId tokenId,
+        int24 atTick
+    ) external view returns (uint256) {
         try this.validateTokenId(tokenId) {
-      
             uint256[2][] memory positionBalance = new uint256[2][](1);
 
             positionBalance[0][0] = TokenId.unwrap(tokenId);
             positionBalance[0][1] = type(uint48).max;
 
             if (checkTokenId(tokenId, uint128(positionBalance[0][1]))) {
-
                 LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
                     address(0xdead),
                     atTick,
@@ -200,9 +276,7 @@ contract PanopticHelper {
         }
     }
 
-
     function checkTokenId(TokenId tokenId, uint128 positionSize) internal pure returns (bool) {
-
         for (uint256 legIndex; legIndex < tokenId.countLegs(); ++legIndex) {
             uint256 amount0;
             uint256 amount1;

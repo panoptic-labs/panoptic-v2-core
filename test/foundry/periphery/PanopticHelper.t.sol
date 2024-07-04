@@ -1012,10 +1012,7 @@ contract PanopticHelperTest is PositionUtils {
     }
 
     /// forge-config: default.fuzz.runs = 100
-    function test_Success_optimizePartners(
-        uint256 x,
-        uint256 seed
-    ) public {
+    function test_Success_optimizePartners(uint256 x, uint256 seed) public {
         _initPool(x);
 
         uint256 numberOfLegs = 4;
@@ -1029,7 +1026,7 @@ contract PanopticHelperTest is PositionUtils {
             .addRiskPartner(1, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(3, 3);
-        
+
         tokenId = tokenId.addPoolId(poolId);
 
         // keep option ratio same for all
@@ -1071,7 +1068,7 @@ contract PanopticHelperTest is PositionUtils {
             int24 width = int24(uint24(uint256((seed >> 31) % 2 ** 12)));
             width = (width / 2) * 2;
             width = width == 0 ? int24(2) : width;
-            
+
             tokenId = tokenId.addWidth(width, i);
 
             // add to input array of legs
@@ -1089,11 +1086,11 @@ contract PanopticHelperTest is PositionUtils {
             inputLeg[i] = _Leg;
         }
 
-        console2.log('tokenIds', TokenId.unwrap(tokenId));
+        console2.log("tokenIds", TokenId.unwrap(tokenId));
 
         TokenId optimizedTokenId = ph.optimizeRiskPartners(pp, currentTick, tokenId);
-        
-        console2.log('tokenIds', TokenId.unwrap(tokenId), TokenId.unwrap(optimizedTokenId));
+
+        console2.log("tokenIds", TokenId.unwrap(tokenId), TokenId.unwrap(optimizedTokenId));
 
         //assertTrue(TokenId.unwrap(tokenId) == TokenId.unwrap(optimizedTokenId));
     }
