@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.18;
 
+import "forge-std/Test.sol";
 // Interfaces
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -78,11 +79,13 @@ contract PanopticHelper {
     /// @notice optimizes the risk partneting of all legs within a tokenId
     function optimizeRiskPartners(PanopticPool pool, int24 atTick, TokenId tokenId) public view returns (TokenId) {
 
+        console2.log('tt', TokenId.unwrap(tokenId));
         uint256 numberOfLegs = tokenId.countLegs();
         if (numberOfLegs == 1) {
             return tokenId;
         } else {
-            TokenId _tempTokenId = TokenId.wrap(TokenId.unwrap(tokenId) & 0xFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFFFFFFFFF);
+            TokenId _tempTokenId = TokenId.wrap(TokenId.unwrap(tokenId) & 0xFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFFFFFFFFF);
+            console2.log('tt0', TokenId.unwrap(_tempTokenId));
            
             if (numberOfLegs == 2) {
 
@@ -133,17 +136,20 @@ contract PanopticHelper {
                 tokenIdList[7] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1).addRiskPartner(3, 2).addRiskPartner(2, 3); 
                 tokenIdList[8] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(3, 1).addRiskPartner(0, 2).addRiskPartner(1, 3); 
                 tokenIdList[9] = _tempTokenId.addRiskPartner(3, 0).addRiskPartner(2, 1).addRiskPartner(0, 2).addRiskPartner(0, 3); 
-                
+               
                 uint256 lowestCollateralRequirement = getRequiredBase(pool, tokenIdList[0], atTick);
                 TokenId lowestTokenId = tokenIdList[0];
 
+                console2.log('lowestTokenId', TokenId.unwrap(lowestTokenId));
                 for (uint256 i=1; i < 10; ++i) {
                     uint256 _collateralRequirement = getRequiredBase(pool, tokenIdList[1], atTick);
+                    console2.log('collateralRequirement', _collateralRequirement, lowestCollateralRequirement);
                     if (_collateralRequirement < lowestCollateralRequirement) {
                         lowestTokenId = tokenIdList[i];
                         lowestCollateralRequirement = _collateralRequirement;
                     }
                 }
+                console2.log('lowestTokenId', TokenId.unwrap(lowestTokenId));
                 return lowestTokenId; 
             }
         }
@@ -152,22 +158,38 @@ contract PanopticHelper {
     }
 
     function getRequiredBase(PanopticPool pool, TokenId tokenId, int24 atTick) internal view returns (uint256) {
-       
         if (validateTokenId(tokenId)) { 
-            
-            uint256 req0 = pool.collateralToken0().getMarginForTokenId(
-                tokenId,
-                atTick
-            );
-            uint256 req1 = pool.collateralToken1().getMarginForTokenId(
-                tokenId,
-                atTick
-            );
+      
+            uint256[2][] memory positionBalance = new uint256[2][](1);
 
-            return req0 + PanopticMath.convert1to0(req1, Math.getSqrtRatioAtTick(atTick));
-        } else { 
-            return type(uint128).max;
+            positionBalance[0][0] = TokenId.unwrap(tokenId);
+            positionBalance[0][1] = type(uint48).max;
+
+            if (checkTokenId(tokenId, uint128(positionBalance[0][1]))) {
+
+                LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
+                    address(0xdead),
+                    atTick,
+                    positionBalance,
+                    0
+                );
+                LeftRightUnsigned tokenData1 = pool.collateralToken1().getAccountMarginDetails(
+                    address(0xdead),
+                    atTick,
+                    positionBalance,
+                    0
+                );
+                (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+                    tokenData0,
+                    tokenData1,
+                    0,
+                    atTick
+                );
+
+                return required0;
+            }
         }
+        return type(uint128).max;
     }
 
     function validateTokenId(TokenId self) internal pure returns (bool) {
@@ -243,6 +265,41 @@ contract PanopticHelper {
             } // end for loop over legs
         }
 
+        return true;
+    }
+
+
+    function checkTokenId(TokenId tokenId, uint128 positionSize) internal pure returns (bool) {
+
+        for (uint256 legIndex; legIndex < tokenId.countLegs(); ++legIndex) {
+            uint256 amount0;
+            uint256 amount1;
+            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
+
+            // effective strike price of the option (avg. price over LP range)
+            // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
+            uint256 geometricMeanPriceX96 = Math.mulDiv96(
+                Math.getSqrtRatioAtTick(tickLower),
+                Math.getSqrtRatioAtTick(tickUpper)
+            );
+
+            console2.log('geometricMeanPriceX96', geometricMeanPriceX96, legIndex);
+            if (geometricMeanPriceX96 == 0) return false;
+
+            if (tokenId.asset(legIndex) == 0) {
+                amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
+
+                amount1 = Math.mulDiv96RoundingUp(amount0, geometricMeanPriceX96);
+            } else {
+                amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
+
+                amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96);
+            }
+            console2.log('amounts', amount0, amount1);
+            if ((amount0 > type(uint128).max) || (amount1 > type(uint128).max)) {
+                return false;
+            }
+        }
         return true;
     }
 
