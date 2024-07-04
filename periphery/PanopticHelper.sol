@@ -94,7 +94,7 @@ contract PanopticHelper {
                 tokenIdList[1] = _tempTokenId.addRiskPartner(1, 0).addRiskPartner(0, 1); 
 
                 
-                if (getRequiredBase(pool, tokenIdList[0], atTick) < getRequiredBase(pool, tokenIdList[1], atTick)) {
+                if (this.getRequiredBase(pool, tokenIdList[0], atTick) < this.getRequiredBase(pool, tokenIdList[1], atTick)) {
                     return tokenIdList[0];
                 } else {
                     return tokenIdList[1];
@@ -108,10 +108,10 @@ contract PanopticHelper {
                 tokenIdList[2] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(1, 1).addRiskPartner(0, 2); 
                 tokenIdList[3] = _tempTokenId.addRiskPartner(0, 0).addRiskPartner(2, 1).addRiskPartner(1, 2); 
 
-                uint256 lowestCollateralRequirement = getRequiredBase(pool, tokenIdList[0], atTick);
+                uint256 lowestCollateralRequirement = this.getRequiredBase(pool, tokenIdList[0], atTick);
                 TokenId lowestTokenId = tokenIdList[0];
                 for (uint256 i=1; i < 4; ++i) {
-                    uint256 _collateralRequirement = getRequiredBase(pool, tokenIdList[1], atTick);
+                    uint256 _collateralRequirement = this.getRequiredBase(pool, tokenIdList[1], atTick);
                     if (_collateralRequirement < lowestCollateralRequirement) {
                         lowestTokenId = tokenIdList[i];
                         lowestCollateralRequirement = _collateralRequirement;
@@ -135,17 +135,18 @@ contract PanopticHelper {
                 tokenIdList[8] = _tempTokenId.addRiskPartner(2, 0).addRiskPartner(3, 1).addRiskPartner(0, 2).addRiskPartner(1, 3); 
                 tokenIdList[9] = _tempTokenId.addRiskPartner(3, 0).addRiskPartner(2, 1).addRiskPartner(0, 2).addRiskPartner(0, 3); 
                
-                uint256 lowestCollateralRequirement = getRequiredBase(pool, tokenIdList[0], atTick);
+                uint256 lowestCollateralRequirement = this.getRequiredBase(pool, tokenIdList[0], atTick);
                 TokenId lowestTokenId = tokenIdList[0];
 
                 console2.log('lowestTokenId', TokenId.unwrap(lowestTokenId));
                 for (uint256 i=1; i < 10; ++i) {
-                    uint256 _collateralRequirement = getRequiredBase(pool, tokenIdList[1], atTick);
-                    console2.log('collateralRequirement', _collateralRequirement, lowestCollateralRequirement);
-                    if (_collateralRequirement < lowestCollateralRequirement) {
-                        lowestTokenId = tokenIdList[i];
-                        lowestCollateralRequirement = _collateralRequirement;
-                    }
+                    try this.getRequiredBase(pool, tokenIdList[i], atTick) returns (uint256 _collateralRequirement) { 
+                        console2.log('collateralRequirement', _collateralRequirement, lowestCollateralRequirement);
+                        if (_collateralRequirement < lowestCollateralRequirement) {
+                            lowestTokenId = tokenIdList[i];
+                            lowestCollateralRequirement = _collateralRequirement;
+                        }
+                    } catch {}
                 }
                 console2.log('lowestTokenId', TokenId.unwrap(lowestTokenId));
                 return lowestTokenId; 
@@ -155,7 +156,7 @@ contract PanopticHelper {
 
     }
 
-    function getRequiredBase(PanopticPool pool, TokenId tokenId, int24 atTick) internal view returns (uint256) {
+    function getRequiredBase(PanopticPool pool, TokenId tokenId, int24 atTick) external view returns (uint256) {
         try this.validateTokenId(tokenId) {
       
             uint256[2][] memory positionBalance = new uint256[2][](1);

@@ -1023,107 +1023,40 @@ contract PanopticHelperTest is PositionUtils {
         PanopticHelper.Leg[] memory inputLeg = new PanopticHelper.Leg[](numberOfLegs);
 
         TokenId[10] memory riskArray;
-        riskArray[0] = TokenId
+        TokenId tokenId = TokenId
             .wrap(0)
             .addRiskPartner(0, 0)
             .addRiskPartner(1, 1)
             .addRiskPartner(2, 2)
             .addRiskPartner(3, 3);
-        riskArray[1] = TokenId
-            .wrap(0)
-            .addRiskPartner(0, 0)
-            .addRiskPartner(2, 1)
-            .addRiskPartner(1, 2)
-            .addRiskPartner(3, 3);
-        riskArray[2] = TokenId
-            .wrap(0)
-            .addRiskPartner(0, 0)
-            .addRiskPartner(3, 1)
-            .addRiskPartner(2, 2)
-            .addRiskPartner(1, 3);
-        riskArray[3] = TokenId
-            .wrap(0)
-            .addRiskPartner(0, 0)
-            .addRiskPartner(1, 1)
-            .addRiskPartner(3, 2)
-            .addRiskPartner(2, 3);
-        riskArray[4] = TokenId
-            .wrap(0)
-            .addRiskPartner(1, 0)
-            .addRiskPartner(0, 1)
-            .addRiskPartner(2, 2)
-            .addRiskPartner(3, 3);
-        riskArray[5] = TokenId
-            .wrap(0)
-            .addRiskPartner(1, 0)
-            .addRiskPartner(0, 1)
-            .addRiskPartner(3, 2)
-            .addRiskPartner(2, 3);
-        riskArray[6] = TokenId
-            .wrap(0)
-            .addRiskPartner(2, 0)
-            .addRiskPartner(1, 1)
-            .addRiskPartner(0, 2)
-            .addRiskPartner(3, 3);
-        riskArray[7] = TokenId
-            .wrap(0)
-            .addRiskPartner(2, 0)
-            .addRiskPartner(3, 1)
-            .addRiskPartner(0, 2)
-            .addRiskPartner(1, 3);
-        riskArray[8] = TokenId
-            .wrap(0)
-            .addRiskPartner(3, 0)
-            .addRiskPartner(1, 1)
-            .addRiskPartner(2, 2)
-            .addRiskPartner(0, 3);
-        riskArray[9] = TokenId
-            .wrap(0)
-            .addRiskPartner(3, 0)
-            .addRiskPartner(2, 1)
-            .addRiskPartner(1, 2)
-            .addRiskPartner(0, 3);
+        
+        tokenId = tokenId.addPoolId(poolId);
 
-        TokenId[10] memory tokenTypeArray; // first of the partered leg is 1, the other are 0
-        tokenTypeArray[0] = TokenId.wrap(0);
-        tokenTypeArray[1] = TokenId.wrap(0).addTokenType(1, 1);
-        tokenTypeArray[2] = TokenId.wrap(0).addTokenType(1, 1);
-        tokenTypeArray[3] = TokenId.wrap(0).addTokenType(1, 2);
-        tokenTypeArray[4] = TokenId.wrap(0).addTokenType(1, 0);
-        tokenTypeArray[5] = TokenId.wrap(0).addTokenType(1, 0).addTokenType(1, 2);
-        tokenTypeArray[6] = TokenId.wrap(0).addTokenType(1, 0);
-        tokenTypeArray[7] = TokenId.wrap(0).addTokenType(1, 0).addTokenType(1, 1);
-        tokenTypeArray[8] = TokenId.wrap(0).addTokenType(1, 0);
-        tokenTypeArray[9] = TokenId.wrap(0).addTokenType(1, 0).addTokenType(1, 1);
-
-        uint256 riskPreset = uint256(keccak256(abi.encode(seed))) % 10;
-        TokenId tokenId = TokenId.wrap(
-            TokenId.unwrap(riskArray[0].addPoolId(poolId)) +
-                TokenId.unwrap(tokenTypeArray[riskPreset])
-        );
-
+        // keep option ratio same for all
         uint256 optionRatio = uint256(seed % 2 ** 7);
         optionRatio = optionRatio == 0 ? 1 : optionRatio;
 
-        uint256 isLong = uint256((seed >> 7) % 2);
-        int24 width = int24(uint24(uint256((seed >> 31) % 2 ** 12)));
-        width = (width / 2) * 2;
-        width = width == 0 ? int24(2) : width;
+        // keep asset same for all
         uint256 asset = uint256((seed >> 9) % 2);
 
         for (uint256 i; i < numberOfLegs; ++i) {
             // update seed
             seed = uint256(keccak256(abi.encode(seed)));
+            uint256 isLong;
+            {
+                isLong = uint256((seed >> 7) % 2);
 
-            // add optionRatio
-            tokenId = tokenId.addOptionRatio(optionRatio, i);
+                uint256 tokenType = uint256((seed >> 27) % 2);
+                tokenId = tokenId.addTokenType(tokenType, i);
+                // add optionRatio
+                tokenId = tokenId.addOptionRatio(optionRatio, i);
 
-            // add isLong
-            tokenId = tokenId.addIsLong(isLong, i);
+                // add isLong
+                tokenId = tokenId.addIsLong(isLong, i);
 
-            // add asset
-            tokenId = tokenId.addAsset(asset, i);
-
+                // add asset
+                tokenId = tokenId.addAsset(asset, i);
+            }
             // add strike
             uint256 strikeTemp = uint256((seed >> 10) % 2 ** 20);
             uint256 strikeSign = uint256((seed >> 30) % 2);
@@ -1135,6 +1068,10 @@ contract PanopticHelperTest is PositionUtils {
             tokenId = tokenId.addStrike(strike, i);
 
             // add width
+            int24 width = int24(uint24(uint256((seed >> 31) % 2 ** 12)));
+            width = (width / 2) * 2;
+            width = width == 0 ? int24(2) : width;
+            
             tokenId = tokenId.addWidth(width, i);
 
             // add to input array of legs
@@ -1152,35 +1089,13 @@ contract PanopticHelperTest is PositionUtils {
             inputLeg[i] = _Leg;
         }
 
-        /*
-        for (uint256 i; i < numberOfLegs; ++i) {
-            // long strangles cannot be partnered; only short strangles
-            if (
-                tokenId.riskPartner(i) != i &&
-                tokenId.tokenType(i) != tokenId.tokenType(tokenId.riskPartner(i))
-            ) {
-                vm.assume(tokenId.isLong(i) != 1);
-            }
-        }
-
-        for (uint256 legIndex; legIndex < tokenId.countLegs(); legIndex++) {
-            for (uint256 j = legIndex + 1; j < tokenId.countLegs(); ++j) {
-                vm.assume(
-                    !(tokenId.strike(legIndex) == tokenId.strike(j) &&
-                        tokenId.width(legIndex) == tokenId.width(j) &&
-                        tokenId.tokenType(legIndex) == tokenId.tokenType(j))
-                );
-            }
-        }
-
-        tokenId.validate();
-        */
-        //PanopticHelper.Leg[] memory unwrappedLeg = ph.unwrapTokenId(tokenId);
+        console2.log('tokenIds', TokenId.unwrap(tokenId));
 
         TokenId optimizedTokenId = ph.optimizeRiskPartners(pp, currentTick, tokenId);
+        
         console2.log('tokenIds', TokenId.unwrap(tokenId), TokenId.unwrap(optimizedTokenId));
 
-        assertTrue(false);
+        //assertTrue(TokenId.unwrap(tokenId) == TokenId.unwrap(optimizedTokenId));
     }
 
     function test_Success_checkCollateral_OTMandITMShortCall(
