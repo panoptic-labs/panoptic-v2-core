@@ -79,13 +79,11 @@ contract PanopticHelper {
     /// @notice optimizes the risk partneting of all legs within a tokenId
     function optimizeRiskPartners(PanopticPool pool, int24 atTick, TokenId tokenId) public view returns (TokenId) {
 
-        console2.log('tt', TokenId.unwrap(tokenId));
         uint256 numberOfLegs = tokenId.countLegs();
         if (numberOfLegs == 1) {
             return tokenId;
         } else {
             TokenId _tempTokenId = TokenId.wrap(TokenId.unwrap(tokenId) & 0xFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFF3FFFFFFFFFFFFFFFFFF);
-            console2.log('tt0', TokenId.unwrap(_tempTokenId));
            
             if (numberOfLegs == 2) {
 
@@ -158,7 +156,7 @@ contract PanopticHelper {
     }
 
     function getRequiredBase(PanopticPool pool, TokenId tokenId, int24 atTick) internal view returns (uint256) {
-        if (validateTokenId(tokenId)) { 
+        try this.validateTokenId(tokenId) {
       
             uint256[2][] memory positionBalance = new uint256[2][](1);
 
@@ -188,84 +186,17 @@ contract PanopticHelper {
 
                 return required0;
             }
+            return type(uint128).max;
+        } catch {
+            return type(uint128).max;
         }
-        return type(uint128).max;
     }
 
-    function validateTokenId(TokenId self) internal pure returns (bool) {
-        if (self.optionRatio(0) == 0) return false;
-        uint256 CHUNK_MASK = 0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
-
-        // loop through the 4 (possible) legs in the tokenId `self`
-        unchecked {
-            // extract strike, width, and tokenType
-            uint256 chunkData = (TokenId.unwrap(self) & CHUNK_MASK) >> 64;
-            for (uint256 i = 0; i < 4; ++i) {
-                if (self.optionRatio(i) == 0) {
-                    // final leg in this position identified;
-                    // make sure any leg above this are zero as well
-                    // (we don't allow gaps eg having legs 1 and 4 active without 2 and 3 is not allowed)
-                    if ((TokenId.unwrap(self) >> (64 + 48 * i)) != 0)
-                        return false;
-
-                    break; // we are done iterating over potential legs
-                }
-
-                // prevent legs touching the same chunks - all chunks in the position must be discrete
-                uint256 numLegs = self.countLegs();
-                for (uint256 j = i + 1; j < numLegs; ++j) {
-                    if (uint48(chunkData >> (48 * i)) == uint48(chunkData >> (48 * j))) {
-                        return false;
-                    }
-                }
-                // now validate this ith leg in the position:
-
-                // The width cannot be 0; the minimum is 1
-                if ((self.width(i) == 0)) return false;
-                // Strike cannot be MIN_TICK or MAX_TICK
-                if (
-                    (self.strike(i) == Constants.MIN_V3POOL_TICK) ||
-                    (self.strike(i) == Constants.MAX_V3POOL_TICK)
-                ) return false;
-
-                // In the following, we check whether the risk partner of this leg is itself
-                // or another leg in this position.
-                // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
-                uint256 riskPartnerIndex = self.riskPartner(i);
-                if (riskPartnerIndex != i) {
-                    // Ensures that risk partners are mutual
-                    if (self.riskPartner(riskPartnerIndex) != i)
-                        return false;
-
-                    // Ensures that risk partners have 1) the same asset, and 2) the same ratio
-                    if (
-                        (self.asset(riskPartnerIndex) != self.asset(i)) ||
-                        (self.optionRatio(riskPartnerIndex) != self.optionRatio(i))
-                    ) return false;
-
-                    // long/short status of associated legs
-                    uint256 _isLong = self.isLong(i);
-                    uint256 isLongP = self.isLong(riskPartnerIndex);
-
-                    // token type status of associated legs (call/put)
-                    uint256 _tokenType = self.tokenType(i);
-                    uint256 tokenTypeP = self.tokenType(riskPartnerIndex);
-
-                    // if the position is the same i.e both long calls, short put's etc.
-                    // then this is a regular position, not a defined risk position
-                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP))
-                        return false;
-
-                    // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
-                    // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
-                    // unlike short stranlges, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
-                    if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
-                        return false;
-                }
-            } // end for loop over legs
+    function validateTokenId(TokenId self) external pure returns (bool) {
+        self.validate();
+        for (uint256 leg; leg < self.countLegs(); ++leg) {
+            (int24 tickLower, int24 tickUpper) = self.asTicks(leg);
         }
-
-        return true;
     }
 
 
@@ -283,7 +214,6 @@ contract PanopticHelper {
                 Math.getSqrtRatioAtTick(tickUpper)
             );
 
-            console2.log('geometricMeanPriceX96', geometricMeanPriceX96, legIndex);
             if (geometricMeanPriceX96 == 0) return false;
 
             if (tokenId.asset(legIndex) == 0) {
@@ -295,8 +225,7 @@ contract PanopticHelper {
 
                 amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96);
             }
-            console2.log('amounts', amount0, amount1);
-            if ((amount0 > type(uint128).max) || (amount1 > type(uint128).max)) {
+            if ((amount0 > type(uint120).max) || (amount1 > type(uint120).max)) {
                 return false;
             }
         }
