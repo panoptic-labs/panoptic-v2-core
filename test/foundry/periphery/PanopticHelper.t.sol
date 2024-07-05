@@ -1089,11 +1089,11 @@ contract PanopticHelperTest is PositionUtils {
             inputLeg[i] = _Leg;
         }
 
-        console2.log('tokenIds', TokenId.unwrap(tokenId));
-
+        uint256 requiredBefore = ph.getRequiredBase(pp, tokenId, currentTick);
         TokenId optimizedTokenId = ph.optimizeRiskPartners(pp, currentTick, tokenId);
-        
+        uint256 requiredAfter = ph.getRequiredBase(pp, optimizedTokenId, currentTick);
         console2.log('tokenIds', TokenId.unwrap(tokenId), TokenId.unwrap(optimizedTokenId));
+        assertTrue(requiredAfter <= requiredBefore); 
 
         //assertTrue(TokenId.unwrap(tokenId) == TokenId.unwrap(optimizedTokenId));
     }
