@@ -1453,74 +1453,58 @@ contract FuzzDeployments is FuzzHelpers {
 
     function try_settle_long(uint256 fuzzedActorIndex) public {
         // NOTE: This may be the same as msg.sender. Thats ok; you can settleLongPremium yourself.
-        address settlee = actors[fuzzedActorIndex % 4];
+        address settlee = actors[fuzzedActorIndex % actors.length];
 
         if (userPositions[settlee].length == 0) return;
-        TokenId[] memory settleesPositions = userPositions[settlee];
 
-        for (uint256 i = 0; i < settleesPositions.length; ++i) {
-            TokenId position = settleesPositions[i];
-            if (position.countLongs() == 0) continue;
+        for (uint256 i = 0; i < userPositions[settlee].length; ++i) {
+            if (userPositions[settlee][i].countLongs() == 0) continue;
 
             // TODO: Why does this work for finding longIndex?
             //  What if there's more than 1 - don't we need index of all?
             //  Why not just iterate through all the legs?
-            uint256 longIndex = ((fuzzedActorIndex >> 4) % position.countLegs());
-            if (position.isLong(longIndex) != 1) continue;
-            emit LogUint256("settled leg index", longIndex);
+            uint256 longIndex = ((fuzzedActorIndex >> 4) % userPositions[settlee][i].countLegs());
+            if (userPositions[settlee][i].isLong(longIndex) != 1) continue;
 
             // 1. calculate what the premium settled out to settlee _should_ be
             // NOTE: this is basically trying to get re-calc a value in s_options -
             //       probably derived from logic in closePosition / getPremium
             (uint128 premium0, uint128 premium1) = _calc_premium_for_each_token(
                 settlee,
-                position,
+                userPositions[settlee][i],
                 longIndex
             );
 
             // 2. get users balance in CT before any settling occurs
             uint256 settleeAssetsInCT0Before = _assets_in_ct(collToken0, settlee);
-            uint256 settleeAssetsInCT1Before = _assets_in_ct(collToken0, settlee);
+            uint256 settleeAssetsInCT1Before = _assets_in_ct(collToken1, settlee);
 
             (uint128 settledForChunkBefore0, uint128 settledForChunkBefore1, , ) = panopticPool
-                .premiaSettlementData(position, longIndex);
+                .premiaSettlementData(userPositions[settlee][i], longIndex);
 
             // 3. trigger a settlement of long premium
             // TODO: why do we do this reorg stuff here?
             TokenId[] memory settleesPositionsReorg = userPositions[settlee];
-            settleesPositionsReorg[settleesPositions.length - 1] = position;
-            settleesPositionsReorg[i] = userPositions[settlee][settleesPositions.length - 1];
+            settleesPositionsReorg[userPositions[settlee].length - 1] = userPositions[settlee][i];
+            settleesPositionsReorg[i] = userPositions[settlee][userPositions[settlee].length - 1];
 
             hevm.prank(msg.sender);
             panopticPool.settleLongPremium(settleesPositionsReorg, settlee, longIndex);
 
             // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
             (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool
-                .premiaSettlementData(position, longIndex);
+                .premiaSettlementData(userPositions[settlee][i], longIndex);
 
             assertWithMsg(
-                settledForChunkAfter0 == (settledForChunkBefore0 + premium0),
-                "Settled tokens for chunk recorded in CT0 did not increase by calculated premium0"
-            );
-            assertWithMsg(
-                settledForChunkAfter1 == (settledForChunkBefore1 + premium1),
-                "Settled tokens for chunk recorded in CT1 did not increase by calculated premium1"
+                settledForChunkAfter0 == (settledForChunkBefore0 + premium0) &&
+                    settledForChunkAfter1 == (settledForChunkBefore1 + premium1),
+                "Settled tokens for chunk recorded in CT did not increase by calculated premium"
             );
 
             // 5. get users balance in CT after, and assert it reduced by appropriate amounts
-            uint256 settleeAssetsInCT0After = _assets_in_ct(collToken0, settlee);
-            uint256 settleeAssetsInCT1After = _assets_in_ct(collToken0, settlee);
-
-            // TODO: fairly sure this is redundant and covered by the next assert
             assertWithMsg(
-                ((settleeAssetsInCT0After <= settleeAssetsInCT0Before) &&
-                    (settleeAssetsInCT1After <= settleeAssetsInCT1Before)),
-                "User receiving settled long premia had their balance of assets in the CT increase"
-            );
-
-            assertWithMsg(
-                (((settleeAssetsInCT0Before - settleeAssetsInCT0After) == premium0) &&
-                    ((settleeAssetsInCT1Before - settleeAssetsInCT1After) == premium1)),
+                (((settleeAssetsInCT0Before - _assets_in_ct(collToken0, settlee)) == premium0) &&
+                    ((settleeAssetsInCT1Before - _assets_in_ct(collToken1, settlee)) == premium1)),
                 "User receiving settled long premia had their assets in the CT decrease by an amount other than the calculated premiums"
             );
         }
