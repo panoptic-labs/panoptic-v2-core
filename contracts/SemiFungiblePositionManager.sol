@@ -786,7 +786,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             if ((itm0 != 0) && (itm1 != 0)) {
                 (uint160 sqrtPriceX96, , , , , , ) = _univ3pool.slot0();
 
-                // implement a single "netting" swap. Thank you @danrobinson for this puzzle/idea
+                // implement a single "netting" swap. 
                 // NOTE: negative ITM amounts denote a surplus of tokens (burning liquidity), while positive amounts denote a shortage of tokens (minting liquidity)
                 // compute the approximate delta of token0 that should be resolved in the swap at the current tick
                 // we do this by flipping the signs on the token1 ITM amount converting+deducting it against the token0 ITM amount
