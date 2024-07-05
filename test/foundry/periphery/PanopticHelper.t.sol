@@ -1015,13 +1015,12 @@ contract PanopticHelperTest is PositionUtils {
     function test_Success_optimizePartners(uint256 x, uint256 seed) public {
         _initPool(x);
 
-
         seed = uint256(keccak256(abi.encode(seed)));
-        console2.log('seed', seed);
-        uint256 numberOfLegs = (seed >> 222) % 4 + 1;
+        console2.log("seed", seed);
+        uint256 numberOfLegs = ((seed >> 222) % 4) + 1;
 
         PanopticHelper.Leg[] memory inputLeg = new PanopticHelper.Leg[](numberOfLegs);
-        
+
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
 
         for (uint256 leg; leg < numberOfLegs; ++leg) {
@@ -1088,9 +1087,8 @@ contract PanopticHelperTest is PositionUtils {
         uint256 requiredBefore = ph.getRequiredBase(pp, tokenId, currentTick);
         TokenId optimizedTokenId = ph.optimizeRiskPartners(pp, currentTick, tokenId);
         uint256 requiredAfter = ph.getRequiredBase(pp, optimizedTokenId, currentTick);
-        console2.log('tokenIds', TokenId.unwrap(tokenId), TokenId.unwrap(optimizedTokenId));
-        assertTrue(requiredAfter <= requiredBefore); 
-
+        console2.log("tokenIds", TokenId.unwrap(tokenId), TokenId.unwrap(optimizedTokenId));
+        assertTrue(requiredAfter <= requiredBefore);
     }
 
     function test_Success_checkCollateral_OTMandITMShortCall(
