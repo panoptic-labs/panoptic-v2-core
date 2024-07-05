@@ -1466,7 +1466,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         } else {
             required = _computeStrangle(tokenId, index, positionSize, atTick, poolUtilization);
         }
-
     }
 
     /// @notice Get the base collateral requirement for an 'amount' at the current Panoptic pool 'utilization' level.

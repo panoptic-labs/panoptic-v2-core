@@ -1012,10 +1012,7 @@ contract PanopticHelperTest is PositionUtils {
     }
 
     /// forge-config: default.fuzz.runs = 100
-    function test_Success_optimizePartners(
-        uint256 x,
-        uint256 seed
-    ) public {
+    function test_Success_optimizePartners(uint256 x, uint256 seed) public {
         _initPool(x);
 
 
@@ -1030,7 +1027,6 @@ contract PanopticHelperTest is PositionUtils {
         for (uint256 leg; leg < numberOfLegs; ++leg) {
             tokenId = tokenId.addRiskPartner(leg, leg);
         }
-
 
         // keep option ratio same for all
         uint256 optionRatio = uint256(seed % 2 ** 7);
@@ -1071,7 +1067,7 @@ contract PanopticHelperTest is PositionUtils {
             int24 width = int24(uint24(uint256((seed >> 31) % 2 ** 12)));
             width = (width / 2) * 2;
             width = width == 0 ? int24(2) : width;
-            
+
             tokenId = tokenId.addWidth(width, i);
 
             // add to input array of legs
