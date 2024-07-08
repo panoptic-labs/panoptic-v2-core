@@ -374,7 +374,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Returns the maximum deposit amount.
     /// @return maxAssets The maximum amount of assets that can be deposited
     function maxDeposit(address) external pure returns (uint256 maxAssets) {
-        return type(uint104).max;
+        return Constants.MAX_DEPOSIT_ASSETS;
     }
 
     /// @notice Returns shares received for depositing given amount of assets.
@@ -392,14 +392,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
-    /// @dev There is a maximum asset deposit limit of (2 ** 104) - 1.
+    /// @dev There is a maximum asset deposit limit of Constants.MAX_DEPOSIT_ASSETS.
     /// @dev An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
     /// @param assets Amount of assets deposited
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
-        if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+        if (assets > Constants.MAX_DEPOSIT_ASSETS) revert Errors.DepositTooLarge();
 
         shares = previewDeposit(assets);
 
@@ -427,7 +427,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return maxShares The maximum amount of shares that can be minted.
     function maxMint(address) external view returns (uint256 maxShares) {
         unchecked {
-            return (convertToShares(type(uint104).max) * (DECIMALS - COMMISSION_FEE)) / DECIMALS;
+            return
+                (convertToShares(Constants.MAX_DEPOSIT_ASSETS) * (DECIMALS - COMMISSION_FEE)) /
+                DECIMALS;
         }
     }
 
@@ -450,7 +452,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
-    /// There is a maximum asset deposit limit of (2 ** 104) - 1.
+    /// There is a maximum asset deposit limit of Constants.MAX_DEPOSIT_ASSETS.
     /// An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
     /// @param shares Amount of shares to be minted.
@@ -459,7 +461,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
         assets = previewMint(shares);
 
-        if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+        if (assets > Constants.MAX_DEPOSIT_ASSETS) revert Errors.DepositTooLarge();
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
         // in return for the shares to be minted
