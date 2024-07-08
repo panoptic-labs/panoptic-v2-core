@@ -1929,10 +1929,48 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266263));
+        editCollateral(ct0, Bob, ct0.convertToShares(998503)); // (1_000_000 / 1.0001**15) + 1
         editCollateral(ct1, Bob, 0);
 
         pp.validateCollateralWithdrawable(Bob, $posIdList);
+    }
+
+    function test_Success_isAccountSolvent() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        editCollateral(ct0, Bob, ct0.convertToShares(266263)); // (1_000_000 / 1.0001**15) / 5 * 1.333
+        editCollateral(ct1, Bob, 0);
+
+        pp.isAccountSolvent(Bob, $posIdList);
     }
 
     function test_Success_WithdrawWithOpenPositions() public {
@@ -1970,7 +2008,55 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266263, Bob, Bob, $posIdList);
+        ct0.withdraw(1_000_000 - 998503, Bob, Bob, $posIdList);
+    }
+
+    function test_Success_WithdrawWithOpenITMPositions() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint Deep ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (-150_000 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        editCollateral(ct0, Bob, ct0.convertToShares(1e15));
+        editCollateral(ct1, Bob, 0);
+
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        ct0.withdraw(1e15 - 3266566691941, Bob, Bob, $posIdList); // 1_000_000 / 1.0001**(-150_000) rounded down
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        ct0.withdraw(1e15 - 3266566691942, Bob, Bob, $posIdList); // 1_000_000 / 1.0001**(-150_000) rounded up
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        ct0.withdraw(1e15 - 3919879030331, Bob, Bob, $posIdList); // 1_000_000 / 1.0001**(-150_000) * 1.2
+
+        ct0.withdraw(1e15 - 5226374711140, Bob, Bob, $posIdList); // 1_000_000 / 1.0001**(-150_000) * 1.2 * 1.3333
     }
 
     function test_Fail_validateCollateralWithdrawable() public {
@@ -2005,14 +2091,14 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266262));
+        editCollateral(ct0, Bob, ct0.convertToShares(998502));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
         pp.validateCollateralWithdrawable(Bob, $posIdList);
     }
 
-    function test_Fail_WithdrawWithOpenPositions_AccountInsolvent() public {
+    function test_Fail_WithdrawWithOpenPositions_NotEnoughCollateral() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2047,11 +2133,52 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        ct0.withdraw(1_000_000 - 998502, Bob, Bob, $posIdList);
     }
 
-    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_AccountInsolvent() public {
+    function test_Fail_WithdrawWithOpenITMPositions_AccountInsolvent() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (-150_000 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        editCollateral(ct0, Bob, ct0.convertToShares(1e15));
+        editCollateral(ct1, Bob, 0);
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        ct0.withdraw(1e15 - 5226374711139, Bob, Bob, $posIdList);
+    }
+
+    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_NotEnoughCollateral() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2086,8 +2213,8 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
-        ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        ct0.withdraw(1_000_000 - 998502, Alice, Bob, $posIdList);
     }
 
     function test_success_NotionalRounding() public {
