@@ -738,14 +738,6 @@ library PanopticMath {
         // compute amounts moved
         LeftRightUnsigned amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
 
-        bool isShort = tokenId.isLong(legIndex) == 0;
-
-        // short put = K
-        // short call = 1
-        // long put = 1
-        // long call = K
-        // if token0
-
         if (tokenId.tokenType(legIndex) == tokenId.isLong(legIndex)) {
             // if option is a short call or a long put, add amountsMoved0 to right slot and subtract amountsMoved1 from left slot
             coveredAmounts = coveredAmounts.toRightSlot(Math.toInt128(amountsMoved.rightSlot()));
