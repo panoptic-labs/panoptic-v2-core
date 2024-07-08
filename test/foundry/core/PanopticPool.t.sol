@@ -5417,7 +5417,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_getRefundAmounts(
+    function test_Success_getExerciseDeltas(
         uint256 x,
         uint256 balance0,
         uint256 balance1,
@@ -5449,10 +5449,12 @@ contract PanopticPoolTest is PositionUtils {
         ct0.deposit(balance0, Charlie);
         ct1.deposit(balance1, Charlie);
 
-        int256 shortage = refund0 - int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
+        int256 shortage = Constants.STANDARD_DELEGATION +
+            refund0 -
+            int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
 
         if (shortage > 0) {
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
+            LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
                 Charlie,
                 LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
                 int24(atTick),
@@ -5471,10 +5473,13 @@ contract PanopticPoolTest is PositionUtils {
             return;
         }
 
-        shortage = refund1 - int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
+        shortage =
+            Constants.STANDARD_DELEGATION +
+            refund1 -
+            int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
 
         if (shortage > 0) {
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
+            LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
                 Charlie,
                 LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
                 int24(atTick),

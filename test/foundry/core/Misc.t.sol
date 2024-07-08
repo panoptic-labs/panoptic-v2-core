@@ -537,6 +537,81 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    // are delegations for ITM positions sufficient?
+    function test_success_exercise_crossDelegate() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Seller);
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        $posIdList[0] = TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            15,
+            1
+        );
+
+        vm.startPrank(Alice);
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        editCollateral(ct1, Alice, 0);
+
+        vm.startPrank(Swapper);
+
+        PanopticMath.twapFilter(uniPool, 600);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+
+        PanopticMath.twapFilter(uniPool, 600);
+
+        vm.startPrank(Bob);
+        pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
+    }
+
     function test_success_ITMspreadfee_0_01bp() public {
         CollateralTracker(collateralReference).startToken(
             true,

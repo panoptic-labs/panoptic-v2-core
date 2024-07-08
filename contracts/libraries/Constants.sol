@@ -28,5 +28,5 @@ library Constants {
 
     /// @notice LeftRight-packed token0:token1 right:left quantities of virtual assets to delegate during liquidations/force exercises
     /// @dev `LeftRightSigned.wrap(0).toRightSlot(MAX_DEPOSIT_ASSETS * 10_000).toLeftSlot(MAX_DEPOSIT_ASSETS * 10_000)`
-    int128 internal constant STANDARD_DELEGATION = MAX_DEPOSIT_ASSETS * 10_000;
+    int128 internal constant STANDARD_DELEGATION = int128(int256(MAX_DEPOSIT_ASSETS * 10_000));
 }
