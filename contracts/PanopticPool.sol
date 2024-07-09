@@ -976,8 +976,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         {
             bool safeMode = _isSafeMode();
             // if safeMode, enforce covered at assignment
-            if (safeMode && (tickLimitLow > tickLimitHigh)) {
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            if (safeMode) {
+                if (tickLimitLow > tickLimitHigh) {
+                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+                }
             }
         }
 
