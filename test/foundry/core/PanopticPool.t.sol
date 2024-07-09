@@ -48,10 +48,6 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
-    function miniMedian() external view returns (uint256) {
-        return s_miniMedian;
-    }
-
     /**
      * @notice compute the TWAP price from the last 600s = 10mins
      * @return twapTick the TWAP price in ticks

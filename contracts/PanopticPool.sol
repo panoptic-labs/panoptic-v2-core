@@ -654,10 +654,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
-        bool safeMode = isSafeMode();
+        bool safeMode = _isSafeMode();
         // if safeMode, enforce covered deployment
-        if (safeMode && (tickLimitLow > tickLimitHigh)) {
-            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+        if (safeMode) {
+            if (tickLimitLow > tickLimitHigh) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
         }
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
@@ -972,7 +974,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         )
     {
         {
-            bool safeMode = isSafeMode();
+            bool safeMode = _isSafeMode();
             // if safeMode, enforce covered at assignment
             if (safeMode && (tickLimitLow > tickLimitHigh)) {
                 (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
@@ -1393,7 +1395,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
     /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
-    function isSafeMode() internal view returns (bool safeMode) {
+    function _isSafeMode() internal view returns (bool safeMode) {
         // check if the price has deviated too much recently.
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
         unchecked {
@@ -1481,7 +1483,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Get the collateral token corresponding to token0 of the AMM pool.
     /// @return collateralToken Collateral token corresponding to token0 in the AMM
-    function collateralToken0() external view returns (CollateralTracker collateralToken) {
+    function collateralToken0() external view returns (CollateralTracker) {
         return s_collateralToken0;
     }
 
@@ -1491,10 +1493,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return s_collateralToken1;
     }
 
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    function isSafeMode() external view returns (bool) {
+        return _isSafeMode();
+    }
+
+    /// @notice Returns s_miniMedia, used to compute the slow oracle tick
+    /// @return s_miniMedian Uint256 that stores a sorted set of 8 price observations used to compute the internal median oracle price.
+    function miniMedian() external view returns (uint256) {
+        return s_miniMedian;
+    }
+
     /// @notice Get the current number of open positions for an account
     /// @param user The account to query
     /// @return _numberOfPositions Number of open positions for `user`
-    function numberOfPositions(address user) public view returns (uint256 _numberOfPositions) {
+    function numberOfPositions(address user) external view returns (uint256 _numberOfPositions) {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 
