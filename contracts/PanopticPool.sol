@@ -1499,10 +1499,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return _isSafeMode();
     }
 
-    /// @notice Returns s_miniMedia, used to compute the slow oracle tick
-    /// @return s_miniMedian Uint256 that stores a sorted set of 8 price observations used to compute the internal median oracle price.
-    function miniMedian() external view returns (uint256) {
-        return s_miniMedian;
+    /// @notice Computes and returns all oracle ticks.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian`
+    function getOracleTicks()
+        external
+        view
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
+    {
+        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = _getOracleTicks();
+        medianData = s_miniMedian;
     }
 
     /// @notice Get the current number of open positions for an account
