@@ -2090,6 +2090,77 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
     }
 
+    function test_Success_SafeMode() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1800));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 1800, "small price deviation");
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1801));
+
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 1800, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+    }
+
+    function test_Success_SafeMode_pokes() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1802));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 1800, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 4; ++i) {
+            swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+        }
+
+        assertTrue(pp.isSafeMode() == true, "slow oracle tick did not catch up");
+
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+        vm.warp(block.timestamp + 120);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+        swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "slow oracle tick caught up");
+    }
+
     function test_success_NotionalRounding() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
