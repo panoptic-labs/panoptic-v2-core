@@ -48,10 +48,6 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
-    function miniMedian() external view returns (uint256) {
-        return s_miniMedian;
-    }
-
     /**
      * @notice compute the TWAP price from the last 600s = 10mins
      * @return twapTick the TWAP price in ticks
@@ -2681,7 +2677,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -2834,7 +2830,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -2995,7 +2991,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -3210,7 +3206,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -4776,7 +4772,7 @@ contract PanopticPoolTest is PositionUtils {
             int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
                 int256(lastCollateralBalance1[Alice]);
             (, , observationIndex, observationCardinality, , , ) = pool.slot0();
-            int24 _fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            (int24 _fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
                 pool,
                 observationIndex,
                 observationCardinality,

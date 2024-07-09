@@ -654,7 +654,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
-        bool safeMode = isSafeMode();
+        bool safeMode = _isSafeMode();
         // if safeMode, enforce covered deployment
         if (safeMode) {
             if (tickLimitLow > tickLimitHigh) {
@@ -873,6 +873,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
+            int24 lastObservedTick,
             uint256 _medianData
         ) = _getOracleTicks();
 
@@ -883,14 +884,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
         if (
             int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(fastOracleTick - currentTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
             MAX_SLOW_FAST_DELTA ** 2
         ) {
-            atTicks = new int24[](3);
+            atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
             atTicks[1] = slowOracleTick;
-            atTicks[2] = currentTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
         } else {
             atTicks = new int24[](1);
             atTicks[0] = fastOracleTick;
@@ -900,10 +902,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         if (!solvent) revert Errors.AccountInsolvent();
     }
 
+    /// @notice Burns and handles the exercise of options.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
     function _getOracleTicks()
         internal
         view
-        returns (int24 currentTick, int24 fastOracleTick, int24 slowOracleTick, uint256 medianData)
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
     {
         IUniswapV3Pool _univ3pool = s_univ3pool;
         uint16 observationIndex;
@@ -911,7 +925,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         (, currentTick, observationIndex, observationCardinality, , , ) = _univ3pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, latestObservation) = PanopticMath.computeMedianObservedPrice(
             _univ3pool,
             observationIndex,
             observationCardinality,
@@ -920,7 +934,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         if (SLOW_ORACLE_UNISWAP_MODE) {
-            slowOracleTick = PanopticMath.computeMedianObservedPrice(
+            (slowOracleTick, ) = PanopticMath.computeMedianObservedPrice(
                 _univ3pool,
                 observationIndex,
                 observationCardinality,
@@ -964,7 +978,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         )
     {
         {
-            bool safeMode = isSafeMode();
+            bool safeMode = _isSafeMode();
             // if safeMode, enforce covered at assignment
             if (safeMode && (tickLimitLow > tickLimitHigh)) {
                 (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
@@ -1385,7 +1399,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
     /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
-    function isSafeMode() internal view returns (bool safeMode) {
+    function _isSafeMode() internal view returns (bool safeMode) {
         // check if the price has deviated too much recently.
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
         unchecked {
@@ -1473,7 +1487,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Get the collateral token corresponding to token0 of the AMM pool.
     /// @return collateralToken Collateral token corresponding to token0 in the AMM
-    function collateralToken0() external view returns (CollateralTracker collateralToken) {
+    function collateralToken0() external view returns (CollateralTracker) {
         return s_collateralToken0;
     }
 
@@ -1483,10 +1497,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return s_collateralToken1;
     }
 
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    function isSafeMode() external view returns (bool) {
+        return _isSafeMode();
+    }
+
+    /// @notice Returns s_miniMedia, used to compute the slow oracle tick
+    /// @return s_miniMedian Uint256 that stores a sorted set of 8 price observations used to compute the internal median oracle price.
+    function miniMedian() external view returns (uint256) {
+        return s_miniMedian;
+    }
+
     /// @notice Get the current number of open positions for an account
     /// @param user The account to query
     /// @return _numberOfPositions Number of open positions for `user`
-    function numberOfPositions(address user) public view returns (uint256 _numberOfPositions) {
+    function numberOfPositions(address user) external view returns (uint256 _numberOfPositions) {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 
