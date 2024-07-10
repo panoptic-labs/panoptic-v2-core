@@ -1043,8 +1043,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint128(uint256(updatedAssets));
-            s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
+            s_poolAssets = uint256(updatedAssets).toUint128();
+            s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
             utilization = _poolUtilization();
         }
@@ -1089,8 +1089,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // update stored asset balances with net moved amounts
             // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
-            s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)));
+            s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
 
             return (int128(tokenToPay));
         }

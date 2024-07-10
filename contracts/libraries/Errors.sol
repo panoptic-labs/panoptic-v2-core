@@ -108,4 +108,7 @@ library Errors {
 
     /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or factory
     error UniswapPoolNotInitialized();
+
+    /// @notice SFPM: Mints/burns of 0-liquidity chunks in Uniswap are not supported
+    error ZeroLiquidity();
 }
