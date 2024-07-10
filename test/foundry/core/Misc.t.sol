@@ -2583,7 +2583,7 @@ contract Misctest is Test, PositionUtils {
     function test_success_liquidation_fuzzedSwapITM(uint256[4] memory prices) public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+        swapperc.mint(uniPool, -887270, 887270, 10 ** 24);
 
         // L = 1
         uniPool.liquidity();
