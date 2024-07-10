@@ -988,7 +988,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
             // the left slot represents the amount of liquidity currently bought (removed) that has been removed from the AMM - the user owes it to a seller
-            // the reason why it is called "removedLiquidity" is because long options are created by removing -ie.short selling LP positions
+            // the reason why it is called "removedLiquidity" is because long options are created by removing - ie. short selling LP positions
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
             uint128 chunkLiquidity = liquidityChunk.liquidity();
