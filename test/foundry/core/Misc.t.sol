@@ -2225,11 +2225,11 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
+        // add enough for the covered mint
         ct0.deposit(2_000, Bob);
         ct1.deposit(102_000, Bob);
 
-        uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2237,10 +2237,23 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
-        uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        console2.log(before0, before1, after0, after1);
+        // add enough for 100% collateral requirement
+        ct0.deposit(78_000, Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pp
+            .calculateAccumulatedFeesBatch(Bob, false, $posIdList);
+
+        // pool utilizations at 100%
+        assertTrue(uint64(positionBalanceArray[0][1] >> 128) == 10_000);
+        assertTrue(uint64((positionBalanceArray[0][1] >> 128) >> 64) == 10_000);
     }
 
     function test_Success_SafeMode_burn() public {
