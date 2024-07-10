@@ -2689,8 +2689,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             // deal alice a bunch of collateral tokens without touching the supply
