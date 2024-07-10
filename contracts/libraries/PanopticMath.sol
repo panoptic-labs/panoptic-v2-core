@@ -15,6 +15,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -919,6 +920,7 @@ library PanopticMath {
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
     /// @param exercisee Address of the force exercisee
+    /// @param delegatedShares The amount of virtual shares delegated to the exercisor that must be returned to the protocol
     /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param collateral0 CollateralTracker for token0
@@ -926,6 +928,7 @@ library PanopticMath {
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
         address exercisee,
+        LeftRightUnsigned delegatedShares,
         LeftRightSigned exerciseFees,
         int24 atTick,
         CollateralTracker collateral0,
@@ -934,11 +937,18 @@ library PanopticMath {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
-            int256 balanceShortage = Constants.STANDARD_DELEGATION -
+            int256 balanceShortage = int256(
+                Math.mulDivRoundingUp(
+                    delegatedShares.rightSlot(),
+                    collateral0.totalAssets(),
+                    collateral0.totalSupply()
+                )
+            ) -
                 int256(collateral0.convertToAssets(collateral0.balanceOf(exercisee))) +
                 exerciseFees.rightSlot();
 
             if (balanceShortage > 0) {
+                console2.log("BS1");
                 return
                     LeftRightSigned
                         .wrap(0)
@@ -953,11 +963,18 @@ library PanopticMath {
             }
 
             balanceShortage =
-                Constants.STANDARD_DELEGATION -
+                int256(
+                    Math.mulDivRoundingUp(
+                        delegatedShares.leftSlot(),
+                        collateral1.totalAssets(),
+                        collateral1.totalSupply()
+                    )
+                ) -
                 int256(collateral1.convertToAssets(collateral1.balanceOf(exercisee))) +
                 exerciseFees.leftSlot();
 
             if (balanceShortage > 0) {
+                console2.log("BS2");
                 return
                     LeftRightSigned
                         .wrap(0)
@@ -972,6 +989,7 @@ library PanopticMath {
             }
         }
 
+        console2.log("NO BS");
         // otherwise, no need to deviate from the original exercise fee deltas
         return exerciseFees;
     }

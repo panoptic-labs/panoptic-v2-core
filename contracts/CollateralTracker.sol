@@ -17,6 +17,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -905,22 +906,26 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _transferFrom(delegator, delegatee, shares);
     }
 
-    /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
+    /// @notice Increase the share balance of a user by shares worth `assets` without updating the total supply.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev Mints ghost shares so a position can be settled - the total supply is not affected.
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares
-    /// @param assets The assets to which the shares delegated correspond
-    function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
-        balanceOf[delegatee] += convertToShares(assets);
+    /// @param delegatee The account to increase the balance of
+    /// @param assets The amount of assets worth of shares to mint to `delegatee`
+    /// @return shares The amount of shares minted to `delegatee`
+    function delegate(
+        address delegatee,
+        uint256 assets
+    ) external onlyPanopticPool returns (uint256 shares) {
+        shares = convertToShares(assets);
+        balanceOf[delegatee] += shares;
     }
 
-    /// @notice Refunds delegated tokens back to the protocol.
-    /// @dev Assumes that `delegatee` has enough money to pay for the refund.
-    /// @dev Burns ghost shares after a position has been settled - the total supply is not affected.
-    /// @param delegatee The account refunding tokens to 'delegatee'
-    /// @param assets The amount of assets to which the shares to refund to the protocol correspond
-    function refund(address delegatee, uint256 assets) external onlyPanopticPool {
-        balanceOf[delegatee] -= convertToShares(assets);
+    /// @notice Decrease the share balance of a user without updating the total supply.
+    /// @dev Assumes that `delegatee` has enough money to pay for the refund, will revert otherwise.
+    /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @param delegatee The account to decrease the balance of
+    /// @param shares The amount of shares to burn from `delegatee`
+    function revoke(address delegatee, uint256 shares) external onlyPanopticPool {
+        balanceOf[delegatee] -= shares;
     }
 
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
@@ -1072,7 +1077,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // add premium and token deltas not covered by swap to be paid/collected on position close
             int256 tokenToPay = swappedAmount - (longAmount - shortAmount) - realizedPremium;
-
+            console2.log("totalAssetsBefore", totalAssets());
+            console2.log("totalSupplyBefore", totalSupply);
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
@@ -1080,18 +1086,30 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
+                console2.log("totalSharesDelta", -int256(sharesToBurn));
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 // if user must receive tokens, mint them
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
+                console2.log("totalSharesDelta", sharesToMint);
                 _mint(optionOwner, sharesToMint);
             }
 
+            console2.log(
+                "totalAssetsDelta",
+                (updatedAssets +
+                    realizedPremium +
+                    int256(uint256(s_inAMM)) -
+                    (shortAmount - longAmount)) - int256(uint256(s_poolAssets) + s_inAMM)
+            );
             // update stored asset balances with net moved amounts
             // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
             s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
+
+            console2.log("totalAssetsAfter", totalAssets());
+            console2.log("totalSupplyAfter", totalSupply);
 
             return (int128(tokenToPay));
         }

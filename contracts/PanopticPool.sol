@@ -19,6 +19,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
@@ -1157,6 +1158,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
+        int24 twapTick = getUniV3TWAP();
+
+        // on forced exercise, the price *must* be outside the position's range for at least 1 leg
+        touchedId[0].validateIsExercisable(twapTick);
+
+        // The protocol delegates some virtual shares to ensure the burn can be settled.
+        LeftRightUnsigned delegatedShares = LeftRightUnsigned
+            .wrap(0)
+            .toRightSlot(
+                uint128(
+                    (s_collateralToken0.delegate(account, uint128(Constants.STANDARD_DELEGATION)))
+                )
+            )
+            .toLeftSlot(
+                uint128(
+                    s_collateralToken1.delegate(account, uint128(Constants.STANDARD_DELEGATION))
+                )
+            );
+
         uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
 
         // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
@@ -1166,16 +1186,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionBalance
         );
 
-        int24 twapTick = getUniV3TWAP();
-
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-        // on forced exercise, the price *must* be outside the position's range for at least 1 leg
-        touchedId[0].validateIsExercisable(twapTick);
-
-        // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(account, uint128(Constants.STANDARD_DELEGATION));
-        s_collateralToken1.delegate(account, uint128(Constants.STANDARD_DELEGATION));
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
@@ -1194,19 +1205,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
             account,
+            delegatedShares,
             exerciseFees,
             twapTick,
             s_collateralToken0,
             s_collateralToken1
         );
 
+        console2.log("exerciseFees.rightSlot()", exerciseFees.rightSlot());
+        console2.log("refundAmounts.rightSlot()", refundAmounts.rightSlot());
+
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
-        // refund the protocol any virtual shares after settling the difference with the exercisor
-        s_collateralToken0.refund(account, uint128(Constants.STANDARD_DELEGATION));
-        s_collateralToken1.refund(account, uint128(Constants.STANDARD_DELEGATION));
+        // revoke the virual shares that were delegated after settling the difference with the exercisor
+        s_collateralToken0.revoke(account, delegatedShares.rightSlot());
+        s_collateralToken1.revoke(account, delegatedShares.leftSlot());
 
         _validateSolvency(account, positionIdListExercisee, NO_BUFFER);
 

@@ -206,12 +206,12 @@ contract PanopticPoolHarness is PanopticPool {
         collateralToken.refund(delegator, delegatee, requestedAmount);
     }
 
-    function refund(
+    function revoke(
         address delegatee,
         uint256 requestedAmount,
         CollateralTracker collateralToken
     ) external {
-        collateralToken.refund(delegatee, requestedAmount);
+        collateralToken.revoke(delegatee, requestedAmount);
     }
 
     function getTWAP() external view returns (int24 twapTick) {
@@ -1925,12 +1925,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(
+        panopticPool.revoke(
             Alice,
             convertToAssets(sharesBefore0, collateralToken0),
             collateralToken0
         );
-        panopticPool.refund(
+        panopticPool.revoke(
             Alice,
             convertToAssets(sharesBefore1, collateralToken1),
             collateralToken1
@@ -2060,7 +2060,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.delegate(address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.refund(address(0), 0);
+        collateralToken0.revoke(address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
         collateralToken0.revoke(address(0), address(0), 0);
