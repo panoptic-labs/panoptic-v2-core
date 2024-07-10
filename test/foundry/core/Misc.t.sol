@@ -2276,6 +2276,74 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions($posIdList[0], new TokenId[](0), int24(887272), int24(-887272));
     }
 
+    function test_success_CoveredAmounts() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 24);
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                int24(1820),
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+            .computeExercisedAmounts($posIdList[0], 1e10);
+        LeftRightSigned coveredAmounts = PanopticMath.computeCoveredAmounts($posIdList[0], 1e10);
+
+        uint128 fees0 = uint128(
+            (
+                (uint128(shortAmounts.rightSlot() * 20) /
+                    10000 +
+                    uint128(
+                        uint256(
+                            Math.abs(coveredAmounts.rightSlot() - shortAmounts.rightSlot()) * 10
+                        ) / 10000
+                    ))
+            )
+        );
+        uint128 fees1 = uint128(
+            (
+                (uint128(shortAmounts.leftSlot() * 20) /
+                    10000 +
+                    uint128(
+                        uint256(
+                            Math.abs(coveredAmounts.leftSlot() - shortAmounts.leftSlot()) * 10
+                        ) / 10000
+                    ))
+            )
+        );
+
+        (uint256 before0, uint256 before1) = (ct0.balanceOf(Bob), ct1.balanceOf(Bob));
+        pp.mintOptions($posIdList, 1e10, 0, int24(-887272), int24(887272));
+
+        (uint256 after0, uint256 after1) = (ct0.balanceOf(Bob), ct1.balanceOf(Bob));
+
+        assertApproxEqAbs(
+            int256(ct0.convertToAssets(after0)) - int256(ct0.convertToAssets(before0)),
+            int256(coveredAmounts.rightSlot()) - int128(fees0),
+            1
+        );
+        assertApproxEqAbs(
+            int256(ct1.convertToAssets(after1)) - int256(ct1.convertToAssets(before1)),
+            int256(coveredAmounts.leftSlot()) - int128(fees1),
+            1
+        );
+    }
+
     function test_success_PremiumRollover() public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
