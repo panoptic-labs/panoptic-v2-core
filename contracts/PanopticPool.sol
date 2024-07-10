@@ -1166,9 +1166,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned delegatedShares = LeftRightUnsigned
             .wrap(0)
             .toRightSlot(
-                uint128((s_collateralToken0.delegate(account, type(uint104).max * 10_000)))
+                uint128((s_collateralToken0.delegate(account, uint256(type(uint104).max) * 10_000)))
             )
-            .toLeftSlot(uint128(s_collateralToken1.delegate(account, type(uint104).max * 10_000)));
+            .toLeftSlot(
+                uint128(s_collateralToken1.delegate(account, uint256(type(uint104).max) * 10_000))
+            );
 
         uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
 
