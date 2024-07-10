@@ -988,10 +988,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
             // the left slot represents the amount of liquidity currently bought (removed) that has been removed from the AMM - the user owes it to a seller
-            // the reason why it is called "removedLiquidity" is because long options are created by removing -ie.short selling LP positions
+            // the reason why it is called "removedLiquidity" is because long options are created by removing - ie. short selling LP positions
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
             uint128 chunkLiquidity = liquidityChunk.liquidity();
+
+            // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
+            // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
+            if (chunkLiquidity == 0) revert Errors.ZeroLiquidity();
 
             if (isLong == 0) {
                 // selling/short: so move from msg.sender *to* uniswap
