@@ -6287,7 +6287,11 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
-
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(swapSizeSeed);
+        }
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
@@ -6789,7 +6793,6 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         twoWaySwap(swapSizeSeed);
-
         // now we can mint the options being liquidated
         vm.startPrank(Alice);
 
@@ -6816,6 +6819,11 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         twoWaySwap(swapSizeSeed);
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(swapSizeSeed);
+        }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
