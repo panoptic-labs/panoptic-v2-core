@@ -5423,100 +5423,146 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    // function test_Success_getExerciseDeltas(
-    //     uint256 x,
-    //     uint256 balance0,
-    //     uint256 balance1,
-    //     int256 refund0,
-    //     int256 refund1,
-    //     int256 atTickSeed
-    // ) public {
-    //     unchecked {
-    //     _initPool(x);
+    function test_Success_getExerciseDeltas(
+        uint256 x,
+        uint256 balance0,
+        uint256 balance1,
+        int256 refund0,
+        int256 refund1,
+        int256 atTickSeed
+    ) public {
+        unchecked {
+            _initPool(x);
 
-    //     balance0 = bound(balance0, 0, type(uint104).max);
-    //     balance1 = bound(balance1, 0, type(uint104).max);
-    //     refund0 = bound(
-    //         refund0,
-    //         -int256(uint256(type(uint104).max)),
-    //         int256(uint256(type(uint104).max))
-    //     );
-    //     refund1 = bound(
-    //         refund1,
-    //         -int256(uint256(type(uint104).max)),
-    //         int256(uint256(type(uint104).max))
-    //     );
-    //     // possible for the amounts used here to overflow beyond these ticks
-    //     // convert0To1 is tested on the full tickrange elsewhere
-    //     atTick = int24(bound(atTickSeed, -159_000, 159_000));
+            balance0 = bound(balance0, 0, type(uint104).max);
+            balance1 = bound(balance1, 0, type(uint104).max);
+            refund0 = bound(
+                refund0,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
+            );
+            refund1 = bound(
+                refund1,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
+            );
+            // possible for the amounts used here to overflow beyond these ticks
+            // convert0To1 is tested on the full tickrange elsewhere
+            atTick = int24(bound(atTickSeed, -159_000, 159_000));
 
-    //     uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(int24(atTick));
+            uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(int24(atTick));
 
-    //     vm.startPrank(Charlie);
-    //     ct0.deposit(balance0, Charlie);
-    //     ct1.deposit(balance1, Charlie);
+            vm.startPrank(Charlie);
+            ct0.deposit(balance0, Charlie);
+            ct1.deposit(balance1, Charlie);
 
-    //     int256 shortage = Constants.STANDARD_DELEGATION +
-    //         refund0 -
-    //         int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
+            int256 shortage = int256(
+                Math.mulDivRoundingUp(
+                    ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)),
+                    ct0.totalAssets(),
+                    ct0.totalSupply()
+                )
+            ) +
+                refund0 -
+                int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
 
-    //     if (shortage > 0) {
-    //         LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-    //             Charlie,
-    //             LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-    //             int24(atTick),
-    //             ct0,
-    //             ct1
-    //         );
+            if (shortage > 0) {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(
+                            uint128(ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
+                        )
+                        .toLeftSlot(
+                            uint128(ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
+                        ),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
 
-    //         refund0 = int128(refund0) - int128(shortage);
-    //         refund1 = int128(PanopticMath.convert0to1(shortage, sqrtPriceX96)) + int128(refund1);
+                refund0 = int128(refund0) - int128(shortage);
+                refund1 =
+                    int128(PanopticMath.convert0to1(shortage, sqrtPriceX96)) +
+                    int128(refund1);
 
-    //         assertEq(refundAmounts.rightSlot(), refund0);
-    //         assertEq(refundAmounts.leftSlot(), refund1);
+                assertEq(refundAmounts.rightSlot(), refund0);
+                assertEq(refundAmounts.leftSlot(), refund1);
 
-    //         // if there is a shortage of token1, it won't be reached since it's only considered possible to have a shortage
-    //         // of one token with force exercises. If there is a shortage of both the account is insolvent and it will fail
-    //         // when trying to transfer the tokens
-    //         return;
-    //     }
+                // if there is a shortage of token1, it won't be reached since it's only considered possible to have a shortage
+                // of one token with force exercises. If there is a shortage of both the account is insolvent and it will fail
+                // when trying to transfer the tokens
+                return;
+            }
 
-    //     shortage =
-    //         Constants.STANDARD_DELEGATION +
-    //         refund1 -
-    //         int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
+            shortage =
+                int256(
+                    Math.mulDivRoundingUp(
+                        ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)),
+                        ct1.totalAssets(),
+                        ct1.totalSupply()
+                    )
+                ) +
+                refund1 -
+                int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
 
-    //     if (shortage > 0) {
-    //         LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-    //             Charlie,
-    //             LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-    //             int24(atTick),
-    //             ct0,
-    //             ct1
-    //         );
+            if (shortage > 0) {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(
+                            uint128(ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
+                        )
+                        .toLeftSlot(
+                            uint128(ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
+                        ),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
 
-    //         refund1 = int128(refund1) - shortage;
-    //         refund0 = int128(PanopticMath.convert1to0(shortage, sqrtPriceX96)) + int128(refund0);
+                refund1 = int128(refund1) - shortage;
+                refund0 =
+                    int128(PanopticMath.convert1to0(shortage, sqrtPriceX96)) +
+                    int128(refund0);
 
-    //         assertEq(refundAmounts.rightSlot(), refund0);
-    //         assertEq(refundAmounts.leftSlot(), refund1);
+                assertEq(refundAmounts.rightSlot(), refund0);
+                assertEq(refundAmounts.leftSlot(), refund1);
 
-    //         return;
-    //     }
-    //     {
-    //     LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-    //         Charlie,
-    //         LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-    //         int24(atTick),
-    //         ct0,
-    //         ct1
-    //     );
+                return;
+            }
+            {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(
+                            uint128(ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
+                        )
+                        .toLeftSlot(
+                            uint128(ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
+                        ),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
 
-    //     assertEq(refundAmounts.rightSlot(), int128(refund0));
-    //     assertEq(refundAmounts.leftSlot(), int128(refund1));
-    //     }
-    //     }
-    // }
+                assertEq(refundAmounts.rightSlot(), int128(refund0));
+                assertEq(refundAmounts.leftSlot(), int128(refund1));
+            }
+        }
+    }
 
     function test_Fail_forceExercise_ExercisorNotSolvent(
         uint256 x,
