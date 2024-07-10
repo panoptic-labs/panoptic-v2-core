@@ -5458,7 +5458,7 @@ contract PanopticPoolTest is PositionUtils {
 
             int256 shortage = int256(
                 Math.mulDivRoundingUp(
-                    ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)),
+                    ct0.convertToShares(type(uint104).max),
                     ct0.totalAssets(),
                     ct0.totalSupply()
                 )
@@ -5471,12 +5471,8 @@ contract PanopticPoolTest is PositionUtils {
                     Charlie,
                     LeftRightUnsigned
                         .wrap(0)
-                        .toRightSlot(
-                            uint128(ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
-                        )
-                        .toLeftSlot(
-                            uint128(ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
-                        ),
+                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
+                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
                     LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
                         int128(refund1)
                     ),
@@ -5502,7 +5498,7 @@ contract PanopticPoolTest is PositionUtils {
             shortage =
                 int256(
                     Math.mulDivRoundingUp(
-                        ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)),
+                        ct1.convertToShares(type(uint104).max),
                         ct1.totalAssets(),
                         ct1.totalSupply()
                     )
@@ -5515,12 +5511,8 @@ contract PanopticPoolTest is PositionUtils {
                     Charlie,
                     LeftRightUnsigned
                         .wrap(0)
-                        .toRightSlot(
-                            uint128(ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
-                        )
-                        .toLeftSlot(
-                            uint128(ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
-                        ),
+                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
+                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
                     LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
                         int128(refund1)
                     ),
@@ -5544,12 +5536,8 @@ contract PanopticPoolTest is PositionUtils {
                     Charlie,
                     LeftRightUnsigned
                         .wrap(0)
-                        .toRightSlot(
-                            uint128(ct0.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
-                        )
-                        .toLeftSlot(
-                            uint128(ct1.convertToShares(uint128(Constants.STANDARD_DELEGATION)))
-                        ),
+                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
+                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
                     LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
                         int128(refund1)
                     ),

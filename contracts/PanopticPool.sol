@@ -19,7 +19,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
@@ -1167,15 +1166,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned delegatedShares = LeftRightUnsigned
             .wrap(0)
             .toRightSlot(
-                uint128(
-                    (s_collateralToken0.delegate(account, uint128(Constants.STANDARD_DELEGATION)))
-                )
+                uint128((s_collateralToken0.delegate(account, type(uint104).max * 10_000)))
             )
-            .toLeftSlot(
-                uint128(
-                    s_collateralToken1.delegate(account, uint128(Constants.STANDARD_DELEGATION))
-                )
-            );
+            .toLeftSlot(uint128(s_collateralToken1.delegate(account, type(uint104).max * 10_000)));
 
         uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
 
@@ -1211,9 +1204,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_collateralToken0,
             s_collateralToken1
         );
-
-        console2.log("exerciseFees.rightSlot()", exerciseFees.rightSlot());
-        console2.log("refundAmounts.rightSlot()", refundAmounts.rightSlot());
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
