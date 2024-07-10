@@ -421,7 +421,7 @@ library PanopticMath {
     /// @param userBalance The position balance array for the user (left=tokenId, right=positionSize)
     /// @param positionIdList A list of all positions the user holds on that pool
     /// @return coveredAmounts Left-right packed word where where rightSlot = covered amount for token0 and leftSlot = covered amount for token1
-    function computeCoveredAmounts(
+    function getCoveredAmounts(
         mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightSigned coveredAmounts) {
@@ -429,21 +429,11 @@ library PanopticMath {
         for (uint256 i; i < numberOfPositions; ) {
             TokenId tokenId = positionIdList[i];
             uint128 positionSize = userBalance[tokenId].rightSlot();
-            uint256 numLegs = tokenId.countLegs();
-            for (uint256 leg = 0; leg < numLegs; ) {
-                // Compute the amount of funds that have been removed from the Panoptic Pool
-                LeftRightSigned _coveredAmounts = _calculateCoveredAmounts(
-                    tokenId,
-                    positionSize,
-                    leg
-                );
 
-                coveredAmounts = coveredAmounts.add(_coveredAmounts);
+            LeftRightSigned _coveredAmounts = computeCoveredAmounts(tokenId, positionSize);
 
-                unchecked {
-                    ++leg;
-                }
-            }
+            coveredAmounts = coveredAmounts.add(_coveredAmounts);
+
             unchecked {
                 ++i;
             }
@@ -725,7 +715,28 @@ library PanopticMath {
         }
     }
 
-    /// @notice Compute the amount of funds required to exercise that option.
+    /// @notice Compute the amount of funds required to exercise that tokenId.
+    /// @param tokenId The option position identifier
+    /// @param positionSize The number of positions minted
+    /// @return coveredAmounts Left-right packed word where where rightSlot = covered amount for token0 and leftSlot = covered amount for token1
+    function computeCoveredAmounts(
+        TokenId tokenId,
+        uint128 positionSize
+    ) internal pure returns (LeftRightSigned coveredAmounts) {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ) {
+            // Compute the amount of funds that have been removed from the Panoptic Pool
+            LeftRightSigned _coveredAmounts = _calculateCoveredAmounts(tokenId, positionSize, leg);
+
+            coveredAmounts = coveredAmounts.add(_coveredAmounts);
+
+            unchecked {
+                ++leg;
+            }
+        }
+    }
+
+    /// @notice Compute the amount of funds required to exercise that option's legIndex.
     /// @param tokenId The option position identifier
     /// @param positionSize The number of positions minted
     /// @param legIndex The leg index minted in this position, can be {0,1,2,3}

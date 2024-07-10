@@ -347,7 +347,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external view {
         _validatePositionList(user, positionIdList, 0);
 
-        LeftRightSigned coveredAmounts = PanopticMath.computeCoveredAmounts(
+        LeftRightSigned coveredAmounts = PanopticMath.getCoveredAmounts(
             s_positionBalance[user],
             positionIdList
         );
