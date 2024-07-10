@@ -168,7 +168,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     SemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
-                                STORAGE 
+                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /// @notice The Uniswap v3 pool that this instance of Panoptic is deployed on.
@@ -1392,7 +1392,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
             // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overstimate by rounding up
+            // overestimate by rounding up
             thresholdCross =
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
