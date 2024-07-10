@@ -216,8 +216,8 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i = 0; i < 100; ++i) {
             vm.warp(block.timestamp + 1);
             vm.roll(block.number + 1);
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+            swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
         }
         swapperc.mint(uniPool, -887270, 887270, 10 ** 18);
 
@@ -3206,8 +3206,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+                swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
             }
 
             vm.startPrank(Alice);
