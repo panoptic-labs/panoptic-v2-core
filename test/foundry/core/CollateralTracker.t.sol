@@ -1886,7 +1886,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
     }
 
-    function test_Success_refund_virtual(uint256 x, uint104 shares) public {
+    function test_Success_revoke_virtual(uint256 x, uint104 shares) public {
         {
             // fuzz
             _initWorld(x);
@@ -1925,16 +1925,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.revoke(
-            Alice,
-            convertToAssets(sharesBefore0, collateralToken0),
-            collateralToken0
-        );
-        panopticPool.revoke(
-            Alice,
-            convertToAssets(sharesBefore1, collateralToken1),
-            collateralToken1
-        );
+        panopticPool.revoke(Alice, sharesBefore0, collateralToken0);
+        panopticPool.revoke(Alice, sharesBefore1, collateralToken1);
 
         // make sure share price stays the same
         assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
@@ -1943,8 +1935,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
         uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
 
-        assertApproxEqAbs(0, convertToAssets(sharesAfter0, collateralToken0), 5);
-        assertApproxEqAbs(0, convertToAssets(sharesAfter1, collateralToken1), 5);
+        assertEq(0, sharesAfter0);
+        assertEq(0, sharesAfter1);
     }
 
     function test_success_refund_positive(uint256 x, uint104 shares) public {
