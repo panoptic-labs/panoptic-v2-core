@@ -425,6 +425,49 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function test_fail_mint0liquidity_SFPM() public {
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                -224040,
+                3540
+            )
+        );
+
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        vm.startPrank(Alice);
+        $posIdList[0] = TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            0,
+            1,
+            0,
+            1,
+            0,
+            0,
+            -224040,
+            3540
+        );
+
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+    }
+
     function test_success_MintBurnCallSpread() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -2358,6 +2401,14 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
         vm.startPrank(Seller);

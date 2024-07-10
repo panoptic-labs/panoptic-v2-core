@@ -168,7 +168,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     SemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
-                                STORAGE 
+                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /// @notice The Uniswap v3 pool that this instance of Panoptic is deployed on.
@@ -861,6 +861,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
+            int24 lastObservedTick,
             uint256 _medianData
         ) = _getOracleTicks();
 
@@ -871,14 +872,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
         if (
             int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(fastOracleTick - currentTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
             MAX_SLOW_FAST_DELTA ** 2
         ) {
-            atTicks = new int24[](3);
+            atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
             atTicks[1] = slowOracleTick;
-            atTicks[2] = currentTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
         } else {
             atTicks = new int24[](1);
             atTicks[0] = fastOracleTick;
@@ -888,10 +890,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         if (!solvent) revert Errors.AccountInsolvent();
     }
 
+    /// @notice Burns and handles the exercise of options.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
     function _getOracleTicks()
         internal
         view
-        returns (int24 currentTick, int24 fastOracleTick, int24 slowOracleTick, uint256 medianData)
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
     {
         IUniswapV3Pool _univ3pool = s_univ3pool;
         uint16 observationIndex;
@@ -899,7 +913,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         (, currentTick, observationIndex, observationCardinality, , , ) = _univ3pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, latestObservation) = PanopticMath.computeMedianObservedPrice(
             _univ3pool,
             observationIndex,
             observationCardinality,
@@ -908,7 +922,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         if (SLOW_ORACLE_UNISWAP_MODE) {
-            slowOracleTick = PanopticMath.computeMedianObservedPrice(
+            (slowOracleTick, ) = PanopticMath.computeMedianObservedPrice(
                 _univ3pool,
                 observationIndex,
                 observationCardinality,
@@ -1382,7 +1396,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
             // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overstimate by rounding up
+            // overestimate by rounding up
             thresholdCross =
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
