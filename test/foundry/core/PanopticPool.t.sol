@@ -4514,10 +4514,6 @@ contract PanopticPoolTest is PositionUtils {
             ? (notionalVals1[0] * int24(2 * (fee / 100))) / 10_000
             : -((notionalVals1[0] * int24(2 * (fee / 100))) / 10_000);
 
-        console2.log("ITMSpread", ITMSpread);
-        console2.log("notionalVals[0]", notionalVals[0]);
-        console2.log("notionalVals[1]", notionalVals[1]);
-        console2.log("tokensOwed0", tokensOwed0);
         assertApproxEqAbs(
             int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
             -ITMSpread -
@@ -4530,10 +4526,6 @@ contract PanopticPoolTest is PositionUtils {
             "Incorrect token0 delta"
         );
 
-        console2.log("ITMSpread1", ITMSpread1);
-        console2.log("notionalVals1[0]", notionalVals1[0]);
-        console2.log("notionalVals1[1]", notionalVals1[1]);
-        console2.log("tokensOwed1", tokensOwed1);
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
             -ITMSpread1 - notionalVals1[0] - notionalVals1[1] + int256(uint256(tokensOwed1)),
@@ -5386,10 +5378,6 @@ contract PanopticPoolTest is PositionUtils {
         {
             $balanceDelta0 = int256(exerciseFeeAmounts[0]) - $intrinsicValue0 + $expectedPremia0;
 
-            console2.log("exerciseFeeAmounts[0]", exerciseFeeAmounts[0]);
-            console2.log("intrinsicValue0", $intrinsicValue0);
-            console2.log("expectedPremia0", $expectedPremia0);
-
             $balanceDelta0 = $balanceDelta0 > 0
                 ? int256(uint256($balanceDelta0))
                 : -int256(uint256(-$balanceDelta0));
@@ -5400,8 +5388,6 @@ contract PanopticPoolTest is PositionUtils {
                 ? int256(uint256($balanceDelta1))
                 : -int256(uint256(-$balanceDelta1));
 
-            console2.log("lastCollateralBalance0[Alice]", lastCollateralBalance0[Alice]);
-            console2.log("ct0.balanceOf(Alice)", ct0.balanceOf(Alice));
             assertApproxEqAbs(
                 int256(ct0.convertToAssets(ct0.balanceOf(Alice))) -
                     int256(lastCollateralBalance0[Alice]),

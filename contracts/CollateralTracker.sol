@@ -392,7 +392,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
-    /// @dev There is a maximum asset deposit limit of 2 ** 104 - 1.
+    /// @dev There is a maximum asset deposit limit of (2 ** 104) - 1.
     /// @dev An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
     /// @param assets Amount of assets deposited
@@ -450,7 +450,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
-    /// There is a maximum asset deposit limit of 2**104 - 1.
+    /// @dev There is a maximum asset deposit limit of (2 ** 104) - 1.
     /// An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
     /// @param shares Amount of shares to be minted.
