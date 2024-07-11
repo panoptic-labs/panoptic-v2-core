@@ -94,8 +94,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
                                     PanopticMath.uniswapFeeToString(uint24(fee)),
                                     " market"
                                 ),
-                                '", "attributes": [{',
-                                '"trait_type": "Rarity", "value": "',
+                                '", "attributes": [{"trait_type": "Rarity", "value": "',
                                 string.concat(
                                     LibString.toString(rarity),
                                     " - ",
@@ -105,9 +104,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
                                 metadata[bytes32("strategies")][lastCharVal].dataStr(),
                                 '"}, {"trait_type": "ChainId", "value": "',
                                 getChainName(),
-                                '"}]',
-                                ', "image": "',
-                                "data:image/svg+xml;base64,",
+                                '"}], "image": "data:image/svg+xml;base64,',
                                 Base64.encode(bytes(svgOut)),
                                 '"}'
                             )
