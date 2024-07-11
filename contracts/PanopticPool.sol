@@ -1023,10 +1023,33 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
 
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        {
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
+
+            (, int24 fastOracleTick, , , ) = _getOracleTicks();
+            // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
+            /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
+            int24[] memory atTicks = new int24[](3);
+            atTicks[0] = twapTick;
+            atTicks[1] = currentTick;
+            atTicks[2] = fastOracleTick;
+
+            bool solvent = _checkSolvencyAtTicks(
+                liquidatee,
+                positionIdList,
+                currentTick,
+                atTicks,
+                NO_BUFFER
+            );
+
+            if (solvent) revert Errors.NotMarginCalled();
+        }
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightSigned premia;
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+
         {
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
@@ -1036,6 +1059,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
+
             tokenData0 = s_collateralToken0.getAccountMarginDetails(
                 liquidatee,
                 twapTick,
@@ -1049,44 +1073,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionBalanceArray,
                 premia.leftSlot()
             );
-
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
-
-            (, int24 fastOracleTick, , , ) = _getOracleTicks();
-            // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
-            /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
-            if (
-                _checkCrossBalances(
-                    liquidatee,
-                    twapTick,
-                    positionBalanceArray,
-                    premia,
-                    NO_BUFFER
-                ) ||
-                _checkCrossBalances(
-                    liquidatee,
-                    currentTick,
-                    positionBalanceArray,
-                    premia,
-                    NO_BUFFER
-                ) ||
-                _checkCrossBalances(
-                    liquidatee,
-                    fastOracleTick,
-                    positionBalanceArray,
-                    premia,
-                    NO_BUFFER
-                )
-            ) revert Errors.NotMarginCalled();
-
-            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-                tokenData0,
-                tokenData1,
-                Math.getSqrtRatioAtTick(twapTick)
-            );
-
-            if (balanceCross >= thresholdCross) revert Errors.NotMarginCalled();
         }
 
         // Perform the specified delegation from `msg.sender` to `liquidatee`
