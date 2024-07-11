@@ -327,12 +327,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param minValue0 The minimum acceptable `token0` value of collateral
     /// @param minValue1 The minimum acceptable `token1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
-        if (
-            ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
-            ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
-        ) revert Errors.AccountInsolvent();
+        PanopticMath.checkBalances(
+            msg.sender,
+            s_collateralToken0,
+            s_collateralToken1,
+            int256(minValue0),
+            int256(minValue1)
+        );
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -351,12 +352,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_positionBalance[user],
             positionIdList
         );
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
-        if (
-            int256(ct0.convertToAssets(ct0.balanceOf(user))) < coveredAmounts.rightSlot() ||
-            int256(ct1.convertToAssets(ct1.balanceOf(user))) < coveredAmounts.leftSlot()
-        ) revert Errors.NotEnoughCollateral();
+        PanopticMath.checkBalances(
+            user,
+            s_collateralToken0,
+            s_collateralToken1,
+            int256(coveredAmounts.rightSlot()),
+            int256(coveredAmounts.leftSlot())
+        );
     }
 
     /// @notice Determines if account is solvent.
@@ -691,7 +693,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         if (safeMode) {
-            return uint128(10_000) + uint128(10_000 << 64);
+            return 0x27100000000000002710; //uint128(10_000) + uint128(10_000 << 64);
         } else {
             return poolUtilizations;
         }

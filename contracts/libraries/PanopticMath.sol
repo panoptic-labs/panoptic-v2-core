@@ -418,6 +418,19 @@ library PanopticMath {
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    function checkBalances(
+        address user,
+        CollateralTracker collateral0,
+        CollateralTracker collateral1,
+        int256 minValue0,
+        int256 minValue1
+    ) external view {
+        if (
+            int256(collateral0.convertToAssets(collateral0.balanceOf(user))) < minValue0 ||
+            int256(collateral1.convertToAssets(collateral1.balanceOf(user))) < minValue1
+        ) revert Errors.NotEnoughCollateral();
+    }
+
     /// @notice Compute the amount of funds that are underlying this positionIdList.
     /// @param userBalance The position balance array for the user (left=tokenId, right=positionSize)
     /// @param positionIdList A list of all positions the user holds on that pool
