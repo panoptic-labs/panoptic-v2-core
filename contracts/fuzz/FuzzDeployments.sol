@@ -1541,8 +1541,10 @@ contract FuzzDeployments is FuzzHelpers {
             );
         }
         for (uint i = 0; i < usersOriginalNumPositions; i++) {
-            if ((fromFront && i >= positionsToBurn.length) ||
-                (!fromFront && i < (positionsToBurn.length - 1))) {
+            if (
+                (fromFront && i >= positionsToBurn.length) ||
+                (!fromFront && i < (positionsToBurn.length - 1))
+            ) {
                 retainedPositions.push(
                     userPositions[caller][fromFront ? usersOriginalNumPositions - i : i]
                 );
