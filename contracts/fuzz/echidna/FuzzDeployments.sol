@@ -251,7 +251,6 @@ contract FuzzDeployments is FuzzHelpers {
             $assets[i] = bound(assets[i], 0, 1);
             $ratios[i] = bound(ratioSeeds[i], 1, 127);
 
-
             if ($isLongs[i] == 0) {
                 ($widths[i], $strikes[i]) = getValidSW(
                     widthSeeds[i],
@@ -903,7 +902,7 @@ contract FuzzDeployments is FuzzHelpers {
     //     }
     //     int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
     //     int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
-        
+
     //     hevm.prank(caller);
     //     try
     //         panopticPool.burnOptions(userPositions[caller], emptyList, tickLimitLow, tickLimitHigh)
@@ -986,7 +985,7 @@ contract FuzzDeployments is FuzzHelpers {
         $balance1Exercisee = int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee)));
 
         quote_pp_burn();
-        
+
         hevm.prank(msg.sender);
         try
             panopticPool.forceExercise(
@@ -995,8 +994,7 @@ contract FuzzDeployments is FuzzHelpers {
                 $positionListExercisee,
                 $positionListExercisor
             )
-        {
-        } catch (bytes memory reason) {
+        {} catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
             assertWithMsg($shouldRevert, "Force exercise failed");
 

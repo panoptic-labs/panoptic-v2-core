@@ -407,7 +407,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     address[] actors;
     address pool_manipulator;
-    
+
     int256 $allPositionCount;
     int256 $failedPositionCount;
 
