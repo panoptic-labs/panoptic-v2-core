@@ -1568,8 +1568,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     function getAccountPremiumGross(
-        TokenId position
+        TokenId position, uint256 leg
     ) external view returns (LeftRightUnsigned accountPremiumGross) {
-        return s_accountPremiumGross[position];
+        bytes32 chunkKey = keccak256(
+            abi.encodePacked(
+                position.strike(leg),
+                position.width(leg),
+                position.tokenType(leg)
+            )
+        );
+        return s_accountPremiumGross[chunkKey];
     }
 }

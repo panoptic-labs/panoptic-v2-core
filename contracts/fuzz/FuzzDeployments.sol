@@ -1331,7 +1331,7 @@ contract FuzzDeployments is FuzzHelpers {
         require(positionsOpened > 0);
         positionIndex = bound(positionIndex, 0, userPositions[caller].length - 1);
 
-        TokenId position = userPositions[caller][panopticPool];
+        TokenId position = userPositions[caller][positionIndex];
         TokenId[] memory positionsNew = _get_list_without_tokenid(userPositions[caller], position);
 
         (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, position);
@@ -1366,14 +1366,14 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 burnersPreburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
         uint256 burnersPreburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
         (
-            uint256[] idealPremium0,
-            uint256[] idealPremium1,
-            uint256[] proratedPremium0,
-            uint256[] proratedPremium1,
-            uint128[] preburnSettledToken0,
-            uint128[] preburnSettledToken1,
-            uint128[] preburnGrossPremiaLast0,
-            uint128[] preburnGrossPremiaLast1
+            uint128[] memory projectedIdealPremium0,
+            uint128[] memory projectedIdealPremium1,
+            uint128[] memory projectedProratedPremium0,
+            uint128[] memory projectedProratedPremium1,
+            uint128[] memory preburnSettledToken0,
+            uint128[] memory preburnSettledToken1,
+            uint128[] memory preburnGrossPremiaLast0,
+            uint128[] memory preburnGrossPremiaLast1
         ) = _get_preburn_accumulators_and_projected_premia(position, caller, posSize);
 
         hevm.prank(caller);
@@ -1385,8 +1385,8 @@ contract FuzzDeployments is FuzzHelpers {
         );
 
         (
-            uint256 totalProjectedProratedPremium0,
-            uint256 totalProjectedProratedPremium1
+            uint128 totalProjectedProratedPremium0,
+            uint128 totalProjectedProratedPremium1
         ) = _assert_each_legs_chunk_accumulators_correct(
                 position,
                 projectedIdealPremium0,
@@ -1445,30 +1445,30 @@ contract FuzzDeployments is FuzzHelpers {
         for (uint positionIndex = 0; positionIndex < numUserPositions; positionIndex++) {
             (uint128 posSize, , ) = panopticPool.optionPositionBalance(
                 caller,
-                userPositions[positionIndex]
+                userPositions[caller][positionIndex]
             );
             (
-                uint256[] projectedIdealPremium0,
-                uint256[] projectedIdealPremium1,
-                uint256[] projectedProratedPremium0,
-                uint256[] projectedProratedPremium1,
-                uint128[] preburnSettledToken0,
-                uint128[] preburnSettledToken1,
-                uint128[] preburnGrossPremiaLast0,
-                uint128[] preburnGrossPremiaLast1
+                uint128[] memory projectedIdealPremium0_,
+                uint128[] memory projectedIdealPremium1_,
+                uint128[] memory projectedProratedPremium0_,
+                uint128[] memory projectedProratedPremium1_,
+                uint128[] memory preburnSettledToken0_,
+                uint128[] memory preburnSettledToken1_,
+                uint128[] memory preburnGrossPremiaLast0_,
+                uint128[] memory preburnGrossPremiaLast1_
             ) = _get_preburn_accumulators_and_projected_premia(
-                    userPositions[positionIndex],
+                    userPositions[caller][positionIndex],
                     caller,
                     posSize
                 );
-            projectedIdealPremium0[positionIndex] = projectedIdealPremium0;
-            projectedIdealPremium1[positionIndex] = projectedIdealPremium1;
-            projectedProratedPremium0[positionIndex] = projectedProratedPremium0;
-            projectedProratedPremium1[positionIndex] = projectedProratedPremium1;
-            preburnSettledToken0[positionIndex] = preburnSettledToken0;
-            preburnSettledToken1[positionIndex] = preburnSettledToken1;
-            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0;
-            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1;
+            projectedIdealPremium0[positionIndex] = projectedIdealPremium0_;
+            projectedIdealPremium1[positionIndex] = projectedIdealPremium1_;
+            projectedProratedPremium0[positionIndex] = projectedProratedPremium0_;
+            projectedProratedPremium1[positionIndex] = projectedProratedPremium1_;
+            preburnSettledToken0[positionIndex] = preburnSettledToken0_;
+            preburnSettledToken1[positionIndex] = preburnSettledToken1_;
+            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0_;
+            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1_;
         }
 
         hevm.prank(caller);
@@ -1478,14 +1478,14 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
         uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
 
-        uint256 allPositionsProjectedProratedPremium0 = 0;
-        uint256 allPositionsProjectedProratedPremium1 = 0;
+        uint128 allPositionsProjectedProratedPremium0 = 0;
+        uint128 allPositionsProjectedProratedPremium1 = 0;
         for (uint positionIndex = 0; positionIndex < numUserPositions; positionIndex++) {
             (
-                uint256 totalProjectedProratedPremium0,
-                uint256 totalProjectedProratedPremium1
+                uint128 totalProjectedProratedPremium0,
+                uint128 totalProjectedProratedPremium1
             ) = _assert_each_legs_chunk_accumulators_correct(
-                    userPositions[positionIndex],
+                    userPositions[caller][positionIndex],
                     projectedIdealPremium0[positionIndex],
                     projectedIdealPremium1[positionIndex],
                     projectedProratedPremium0[positionIndex],
@@ -1525,67 +1525,76 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:precondition The user has at least one position open
     function burn_some_options(bool isCovered, uint numPositionsToBurn, bool fromFront) public {
         address caller = msg.sender;
-        TokenId[] memory emptyList;
+        TokenId[] storage retainedPositions;
 
         uint256 usersOriginalNumPositions = userPositions[caller].length;
         if (usersOriginalNumPositions < 1) revert();
         int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
         int24 tickLimitHigh = isCovered ? int24(887272) : int24(-887272);
 
-        TokenId[] memory positionsToBurn;
+        TokenId[] storage positionsToBurn;
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
             positionsToBurn.push(
-                userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]
+                userPositions[caller][fromFront ? i : usersOriginalNumPositions - (i + 1)]
             );
+        }
+        for (uint i = 0; i < usersOriginalNumPositions; i++) {
+            if ((fromFront && i >= positionsToBurn.length) ||
+                (!fromFront && i < (positionsToBurn.length - 1))) {
+                retainedPositions.push(
+                    userPositions[caller][fromFront ? usersOriginalNumPositions - i : i]
+                );
+            }
         }
 
         uint256 burnersPreburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
         uint256 burnersPreburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
 
         // Get pre-burn accumulator values and projected premia for each position:
-        uint128[][] memory projectedIdealPremium0 = new uint128[][](numUserPositions);
-        uint128[][] memory projectedIdealPremium1 = new uint128[][](numUserPositions);
-        uint128[][] memory projectedProratedPremium0 = new uint128[][](numUserPositions);
-        uint128[][] memory projectedProratedPremium1 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnSettledToken0 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnSettledToken1 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](numUserPositions);
+        uint128[][] memory projectedIdealPremium0 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory projectedIdealPremium1 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory projectedProratedPremium0 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory projectedProratedPremium1 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory preburnSettledToken0 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory preburnSettledToken1 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](usersOriginalNumPositions);
+        uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](usersOriginalNumPositions);
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             (uint128 posSize, , ) = panopticPool.optionPositionBalance(
                 caller,
                 positionsToBurn[positionIndex]
             );
             (
-                uint256[] projectedIdealPremium0,
-                uint256[] projectedIdealPremium1,
-                uint256[] projectedProratedPremium0,
-                uint256[] projectedProratedPremium1,
-                uint128[] preburnSettledToken0,
-                uint128[] preburnSettledToken1,
-                uint128[] preburnGrossPremiaLast0,
-                uint128[] preburnGrossPremiaLast1
+                uint128[] memory projectedIdealPremium0_,
+                uint128[] memory projectedIdealPremium1_,
+                uint128[] memory projectedProratedPremium0_,
+                uint128[] memory projectedProratedPremium1_,
+                uint128[] memory preburnSettledToken0_,
+                uint128[] memory preburnSettledToken1_,
+                uint128[] memory preburnGrossPremiaLast0_,
+                uint128[] memory preburnGrossPremiaLast1_
             ) = _get_preburn_accumulators_and_projected_premia(
                     positionsToBurn[positionIndex],
                     caller,
                     posSize
                 );
-            projectedIdealPremium0[positionIndex] = projectedIdealPremium0;
-            projectedIdealPremium1[positionIndex] = projectedIdealPremium1;
-            projectedProratedPremium0[positionIndex] = projectedProratedPremium0;
-            projectedProratedPremium1[positionIndex] = projectedProratedPremium1;
-            preburnSettledToken0[positionIndex] = preburnSettledToken0;
-            preburnSettledToken1[positionIndex] = preburnSettledToken1;
-            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0;
-            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1;
+            projectedIdealPremium0[positionIndex] = projectedIdealPremium0_;
+            projectedIdealPremium1[positionIndex] = projectedIdealPremium1_;
+            projectedProratedPremium0[positionIndex] = projectedProratedPremium0_;
+            projectedProratedPremium1[positionIndex] = projectedProratedPremium1_;
+            preburnSettledToken0[positionIndex] = preburnSettledToken0_;
+            preburnSettledToken1[positionIndex] = preburnSettledToken1_;
+            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0_;
+            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1_;
         }
 
         hevm.prank(caller);
         // TODO: is passing in emptyList here OK,
-        //  or should we diff the old userPositions against the positionsToBurn & pass that in?
+        //  or should we pass in retainedPositions?
         //  burn_one_option seems to do the latter.
+        TokenId[] memory emptyList;
         panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, tickLimitHigh);
         assertWithMsg(
             panopticPool.numberOfPositions(caller) ==
@@ -1596,12 +1605,12 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
         uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
 
-        uint256 allPositionsProjectedProratedPremium0 = 0;
-        uint256 allPositionsProjectedProratedPremium1 = 0;
+        uint128 allPositionsProjectedProratedPremium0 = 0;
+        uint128 allPositionsProjectedProratedPremium1 = 0;
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             (
-                uint256 totalProjectedProratedPremium0,
-                uint256 totalProjectedProratedPremium1
+                uint128 totalProjectedProratedPremium0,
+                uint128 totalProjectedProratedPremium1
             ) = _assert_each_legs_chunk_accumulators_correct(
                     positionsToBurn[positionIndex],
                     projectedIdealPremium0[positionIndex],
@@ -1636,9 +1645,7 @@ contract FuzzDeployments is FuzzHelpers {
             "Burners token1 balance did not increase by the amount the premia would indicate"
         );
 
-        for (uint i = 0; i < positionsToBurn.length; i++) {
-            delete userPositions[caller][fromFront ? i : usersOriginalNumPositions - i];
-        }
+        userPositions[caller] = retainedPositions;
     }
 
     function _get_preburn_accumulators_and_projected_premia(
@@ -1649,14 +1656,14 @@ contract FuzzDeployments is FuzzHelpers {
         internal
         view
         returns (
-            uint256[] idealPremium0,
-            uint256[] idealPremium1,
-            uint256[] proratedPremium0,
-            uint256[] proratedPremium1,
-            uint128[] preburnSettledToken0,
-            uint128[] preburnSettledToken1,
-            uint128[] preburnGrossPremiaLast0,
-            uint128[] preburnGrossPremiaLast1
+            uint128[] memory idealPremium0,
+            uint128[] memory idealPremium1,
+            uint128[] memory proratedPremium0,
+            uint128[] memory proratedPremium1,
+            uint128[] memory preburnSettledToken0,
+            uint128[] memory preburnSettledToken1,
+            uint128[] memory preburnGrossPremiaLast0,
+            uint128[] memory preburnGrossPremiaLast1
         )
     {
         uint256 numLegs = position.countLegs();
@@ -1664,13 +1671,13 @@ contract FuzzDeployments is FuzzHelpers {
         preburnSettledToken1 = new uint128[](numLegs);
         preburnGrossPremiaLast0 = new uint128[](numLegs);
         preburnGrossPremiaLast1 = new uint128[](numLegs);
-        preburnPremiumAccumulator0 = new uint128[](numLegs);
-        preburnPremiumAccumulator0 = new uint128[](numLegs);
-        preburnLiquidity = new uint128[](numLegs);
-        preburnPremiumGrowth0 = new uint128[](numLegs);
-        preburnPremiumGrowth1 = new uint128[](numLegs);
+        uint128[] memory preburnPremiumAccumulator0 = new uint128[](numLegs);
+        uint128[] memory preburnPremiumAccumulator1 = new uint128[](numLegs);
+        uint128[] memory preburnLiquidity = new uint128[](numLegs);
+        uint128[] memory preburnPremiumGrowth0 = new uint128[](numLegs);
+        uint128[] memory preburnPremiumGrowth1 = new uint128[](numLegs);
 
-        (, preburnCurrentTick, , , , , ) = pool.slot0();
+        (, int24 preburnCurrentTick, , , , , ) = pool.slot0();
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
             (
                 uint128 settledToken0,
@@ -1724,31 +1731,33 @@ contract FuzzDeployments is FuzzHelpers {
             preburnPremiumAccumulator1,
             preburnLiquidity,
             preburnPremiumGrowth0,
-            preburnPremiumGrowth1
+            preburnPremiumGrowth1,
+            preburnSettledToken0,
+            preburnSettledToken1
         );
     }
 
     function _assert_each_legs_chunk_accumulators_correct(
         TokenId position,
-        uint256[] projectedProratedPremium0,
-        uint256[] projectedProratedPremium1,
-        uint256[] projectedIdealPremium0,
-        uint256[] projectedIdealPremium1,
-        uint256[] preburnSettledToken0,
-        uint256[] preburnSettledToken1,
-        uint256[] preburnGrossPremiaLast0,
-        uint256[] preburnGrossPremiaLast1
+        uint128[] memory projectedProratedPremium0,
+        uint128[] memory projectedProratedPremium1,
+        uint128[] memory projectedIdealPremium0,
+        uint128[] memory projectedIdealPremium1,
+        uint128[] memory preburnSettledToken0,
+        uint128[] memory preburnSettledToken1,
+        uint128[] memory preburnGrossPremiaLast0,
+        uint128[] memory preburnGrossPremiaLast1
     )
         internal
         view
-        returns (uint256 totalProjectedProratedPremium0, uint256 totalProjectedProratedPremium1)
+        returns (uint128 totalProjectedProratedPremium0, uint128 totalProjectedProratedPremium1)
     {
-        preburnProjectedTotalProratedPremium0 = 0;
-        preburnProjectedTotalProratedPremium1 = 0;
+        totalProjectedProratedPremium0 = 0;
+        totalProjectedProratedPremium1 = 0;
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            preburnProjectedTotalProratedPremium0 += projectedProratedPremium0[legIndex];
-            preburnProjectedTotalProratedPremium1 += projectedProratedPremium1[legIndex];
+            totalProjectedProratedPremium0 += projectedProratedPremium0[legIndex];
+            totalProjectedProratedPremium1 += projectedProratedPremium1[legIndex];
             (
                 uint128 postburnSettledToken0,
                 uint128 postburnSettledToken1,
@@ -1758,22 +1767,22 @@ contract FuzzDeployments is FuzzHelpers {
 
             assertWithMsg(
                 postburnSettledToken0 ==
-                    preburnSettledToken0[legIndex] - proratedPremium0[legIndex],
+                    preburnSettledToken0[legIndex] - projectedProratedPremium0[legIndex],
                 "Settled token0s did not decrease by the amount of total (prorated) premium paid out"
             );
             assertWithMsg(
                 postburnSettledToken1 ==
-                    preburnSettledToken1[legIndex] - proratedPremium1[legIndex],
+                    preburnSettledToken1[legIndex] - projectedProratedPremium1[legIndex],
                 "Settled token1s did not decrease by the amount of total (prorated) premium paid out"
             );
 
             assertWithMsg(
-                postburnGrossPremiaLast0[legIndex] ==
+                postburnGrossPremiaLast0 ==
                     preburnGrossPremiaLast0[legIndex] + projectedIdealPremium0[legIndex],
                 "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
             );
             assertWithMsg(
-                postburnGrossPremiaLast1[legIndex] ==
+                postburnGrossPremiaLast1 ==
                     preburnGrossPremiaLast1[legIndex] + projectedIdealPremium1[legIndex],
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
@@ -1782,19 +1791,21 @@ contract FuzzDeployments is FuzzHelpers {
 
     function _calc_premia_from_preburn_values(
         TokenId position,
-        uint128[] calldata preburnPremiumAccumulator0,
-        uint128[] calldata preburnPremiumAccumulator1,
-        uint128[] calldata preburnLiquidity,
-        uint128[] calldata preburnPremiumGrowth0,
-        uint128[] calldata preburnPremiumGrowth1
+        uint128[] memory preburnPremiumAccumulator0,
+        uint128[] memory preburnPremiumAccumulator1,
+        uint128[] memory preburnLiquidity,
+        uint128[] memory preburnPremiumGrowth0,
+        uint128[] memory preburnPremiumGrowth1,
+        uint128[] memory preburnSettledToken0,
+        uint128[] memory preburnSettledToken1
     )
         internal
         view
         returns (
-            uint256[] idealPremium0,
-            uint256[] idealPremium1,
-            uint256[] proratedPremium0,
-            uint256[] proratedPremium1
+            uint128[] memory idealPremium0,
+            uint128[] memory idealPremium1,
+            uint128[] memory proratedPremium0,
+            uint128[] memory proratedPremium1
         )
     {
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
@@ -1831,7 +1842,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnGrossPremium,
         uint128 preburnLiquidity,
         uint128 preburnSettledTokens
-    ) internal pure returns (uint256) {
+    ) internal pure returns (uint128) {
         return
             uint128(
                 Math.min(
@@ -1858,7 +1869,7 @@ contract FuzzDeployments is FuzzHelpers {
             (, , uint128 grossPremiaLastToken0, uint128 grossPremiaLastToken1) = panopticPool
                 .premiaSettlementData(position, legIndex);
 
-            uint128 sfpmGrossPremia = sfpm.getAccountPremiumGross(position);
+            LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
 
             assertWithMsg(
                 grossPremiaLastToken0 <= sfpmGrossPremia.rightSlot(),
