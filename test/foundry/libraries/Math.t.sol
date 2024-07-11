@@ -21,32 +21,32 @@ contract MathTest is Test {
         harness = new MathHarness();
     }
 
-    function test_Success_min24_A_LT_B(int24 a, int24 b) public {
+    function test_Success_min24_A_LT_B(int24 a, int24 b) public view {
         vm.assume(a < b);
         assertEq(harness.min24(a, b), a);
     }
 
-    function test_Success_min24_A_GE_B(int24 a, int24 b) public {
+    function test_Success_min24_A_GE_B(int24 a, int24 b) public view {
         vm.assume(a >= b);
         assertEq(harness.min24(a, b), b);
     }
 
-    function test_Success_max24_A_GT_B(int24 a, int24 b) public {
+    function test_Success_max24_A_GT_B(int24 a, int24 b) public view {
         vm.assume(a > b);
         assertEq(harness.max24(a, b), a);
     }
 
-    function test_Success_max24_A_LE_B(int24 a, int24 b) public {
+    function test_Success_max24_A_LE_B(int24 a, int24 b) public view {
         vm.assume(a <= b);
         assertEq(harness.max24(a, b), b);
     }
 
-    function test_Success_abs_X_GT_0(int256 x) public {
+    function test_Success_abs_X_GT_0(int256 x) public view {
         vm.assume(x > 0);
         assertEq(harness.abs(x), x);
     }
 
-    function test_Success_abs_X_LE_0(int256 x) public {
+    function test_Success_abs_X_LE_0(int256 x) public view {
         vm.assume(x <= 0 && x != type(int256).min);
         assertEq(harness.abs(x), -x);
     }
@@ -57,17 +57,17 @@ contract MathTest is Test {
         harness.abs(type(int256).min);
     }
 
-    function test_Success_toUint128(uint256 toDowncast) public {
+    function test_Success_toUint128(uint256 toDowncast) public view {
         vm.assume(toDowncast <= type(uint128).max);
         assertEq(harness.toUint128(toDowncast), toDowncast);
     }
 
-    function test_Success_toUint128Capped(uint256 toDowncast) public {
+    function test_Success_toUint128Capped(uint256 toDowncast) public view {
         vm.assume(toDowncast <= type(uint128).max);
         assertEq(harness.toUint128Capped(toDowncast), toDowncast);
     }
 
-    function test_Success_Cap_toUint128Capped(uint256 toDowncast) public {
+    function test_Success_Cap_toUint128Capped(uint256 toDowncast) public view {
         vm.assume(toDowncast > type(uint128).max);
         assertEq(harness.toUint128Capped(toDowncast), type(uint128).max);
     }
@@ -78,7 +78,7 @@ contract MathTest is Test {
         harness.toUint128(toDowncast);
     }
 
-    function test_Success_toInt128(uint128 toCast) public {
+    function test_Success_toInt128(uint128 toCast) public view {
         vm.assume(toCast <= uint128(type(int128).max));
         assertEq(uint128(harness.toInt128(toCast)), toCast);
     }
@@ -110,7 +110,7 @@ contract MathTest is Test {
         }
     }
 
-    function test_Success_sort(int256[] memory data) public {
+    function test_Success_sort(int256[] memory data) public view {
         vm.assume(data.length != 0);
         // Compare against an alternative sorting implementation
         // Bubble sort
@@ -128,7 +128,7 @@ contract MathTest is Test {
         assertEq(abi.encodePacked(data), abi.encodePacked(harness.sort(data)));
     }
 
-    function test_Success_mulDiv64(uint96 a, uint96 b) public {
+    function test_Success_mulDiv64(uint96 a, uint96 b) public view {
         uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 64);
         uint256 returnedResult = harness.mulDiv64(a, b);
 
@@ -142,7 +142,7 @@ contract MathTest is Test {
         harness.mulDiv64(input, input);
     }
 
-    function test_Success_mulDiv96(uint96 a, uint96 b) public {
+    function test_Success_mulDiv96(uint96 a, uint96 b) public view {
         uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 96);
         uint256 returnedResult = harness.mulDiv96(a, b);
 
@@ -156,7 +156,7 @@ contract MathTest is Test {
         harness.mulDiv96(input, input);
     }
 
-    function test_Success_mulDiv128(uint128 a, uint128 b) public {
+    function test_Success_mulDiv128(uint128 a, uint128 b) public view {
         uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 128);
         uint256 returnedResult = harness.mulDiv128(a, b);
 
@@ -170,14 +170,14 @@ contract MathTest is Test {
         harness.mulDiv128(input, input);
     }
 
-    function test_Success_mulDiv128RoundingUp(uint128 a, uint128 b) public {
+    function test_Success_mulDiv128RoundingUp(uint128 a, uint128 b) public view {
         uint256 expectedResult = FullMath.mulDivRoundingUp(a, b, 2 ** 128);
         uint256 returnedResult = harness.mulDiv128RoundingUp(a, b);
 
         assertEq(expectedResult, returnedResult);
     }
 
-    function test_Success_mulDiv192(uint128 a, uint128 b) public {
+    function test_Success_mulDiv192(uint128 a, uint128 b) public view {
         uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 192);
         uint256 returnedResult = harness.mulDiv192(a, b);
 
@@ -191,7 +191,7 @@ contract MathTest is Test {
         harness.mulDiv192(input, input);
     }
 
-    function test_Success_unsafeDivRoundingUp(uint256 a, uint256 b) public {
+    function test_Success_unsafeDivRoundingUp(uint256 a, uint256 b) public view {
         uint256 divRes;
         uint256 modRes;
         assembly ("memory-safe") {
@@ -211,14 +211,14 @@ contract MathTest is Test {
         harness.getSqrtRatioAtTick(-x);
     }
 
-    function test_Success_getSqrtRatioAtTick(int24 x) public {
+    function test_Success_getSqrtRatioAtTick(int24 x) public view {
         x = int24(bound(x, int24(-887271), int24(887271)));
         uint160 uniV3Result = TickMath.getSqrtRatioAtTick(x);
         uint160 returnedResult = harness.getSqrtRatioAtTick(x);
         assertEq(uniV3Result, returnedResult);
     }
 
-    function test_Success_getAmount0ForLiquidity(uint128 a) public {
+    function test_Success_getAmount0ForLiquidity(uint128 a) public view {
         a = uint128(bound(a, uint128(1), uint128(2 ** 128 - 1)));
         uint256 uniV3Result = LiquidityAmounts.getAmount0ForLiquidity(
             TickMath.getSqrtRatioAtTick(int24(-14)),
@@ -233,7 +233,7 @@ contract MathTest is Test {
         assertEq(uniV3Result, returnedResult);
     }
 
-    function test_Success_getAmount1ForLiquidity(uint128 a) public {
+    function test_Success_getAmount1ForLiquidity(uint128 a) public view {
         uint256 uniV3Result = LiquidityAmounts.getAmount1ForLiquidity(
             TickMath.getSqrtRatioAtTick(int24(-14)),
             TickMath.getSqrtRatioAtTick(int24(10)),
@@ -247,7 +247,7 @@ contract MathTest is Test {
         assertEq(uniV3Result, returnedResult);
     }
 
-    function test_Success_getAmountsForLiquidity(uint128 a) public {
+    function test_Success_getAmountsForLiquidity(uint128 a) public view {
         (uint256 uniV3Result0, uint256 uniV3Result1) = LiquidityAmounts.getAmountsForLiquidity(
             TickMath.getSqrtRatioAtTick(int24(2)),
             TickMath.getSqrtRatioAtTick(int24(-14)),
@@ -264,7 +264,7 @@ contract MathTest is Test {
         assertEq(uniV3Result1, returnedResult1);
     }
 
-    function test_Success_getLiquidityForAmount0(uint112 a) public {
+    function test_Success_getLiquidityForAmount0(uint112 a) public view {
         uint256 uniV3Result = LiquidityAmounts.getLiquidityForAmount0(
             TickMath.getSqrtRatioAtTick(int24(-14)),
             TickMath.getSqrtRatioAtTick(int24(10)),
@@ -278,7 +278,7 @@ contract MathTest is Test {
         assertEq(uniV3Result, returnedResult);
     }
 
-    function test_Success_getLiquidityForAmount1(uint112 a) public {
+    function test_Success_getLiquidityForAmount1(uint112 a) public view {
         uint256 uniV3Result = LiquidityAmounts.getLiquidityForAmount1(
             TickMath.getSqrtRatioAtTick(int24(-14)),
             TickMath.getSqrtRatioAtTick(int24(10)),

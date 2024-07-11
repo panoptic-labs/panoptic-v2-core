@@ -469,7 +469,7 @@ contract FuzzHelpers is PropertiesAsserts {
         return ((a <= b) ? a : b);
     }
 
-    function deal_USDC(address to, uint256 amt, bool alter_supply) internal {
+    function deal_USDC(address to, uint256 amt) internal {
         deployer.mintToken(false, to, amt);
     }
 
@@ -690,7 +690,7 @@ contract FuzzHelpers is PropertiesAsserts {
     function _calculate_settled_tokens(
         TokenId[] memory positions,
         int24 tick
-    ) internal returns (uint256, bytes memory) {
+    ) internal view returns (uint256, bytes memory) {
         uint256 settledTokens0;
 
         uint256[2][4][32] memory settledTokens;

@@ -65,7 +65,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         initialize();
 
-        deal_USDC(pool_manipulator, 1000000000 ether, true);
+        deal_USDC(pool_manipulator, 1000000000 ether);
         deal_WETH(pool_manipulator, 1000000 ether);
         hevm.prank(pool_manipulator);
         IERC20(USDC).approve(address(pool), type(uint256).max);
@@ -94,7 +94,7 @@ contract FuzzDeployments is FuzzHelpers {
         assert(pool.token1() == address(WETH));
 
         // give test contract a sufficient amount of tokens to deploy a new pool
-        deal_USDC(address(this), 10000000 ether, true);
+        deal_USDC(address(this), 10000000 ether);
         deal_WETH(address(this), 10000 ether);
 
         // Check: Make sure the correct balance is set to the contract
@@ -151,7 +151,7 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// @dev Mint USDC and WETH to the sender and approve all the system contracts
     function fund_and_approve() public {
-        deal_USDC(msg.sender, 10000000 ether, true);
+        deal_USDC(msg.sender, 10000000 ether);
         deal_WETH(msg.sender, 10000 ether);
 
         hevm.prank(msg.sender);
@@ -710,7 +710,6 @@ contract FuzzDeployments is FuzzHelpers {
             )
         );
 
-        int24 TWAPtick_before = PanopticMath.twapFilter(pool, 600);
         emit LogUint256("price before swap", uint256(price));
 
         hevm.prank(pool_manipulator);

@@ -614,7 +614,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function test_parity_maxmint_previewmint() public {
+    function test_parity_maxmint_previewmint() public view {
         assertEq(ct0.previewMint(ct0.maxMint(Alice)), type(uint104).max);
     }
 
