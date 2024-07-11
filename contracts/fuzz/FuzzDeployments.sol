@@ -1536,7 +1536,9 @@ contract FuzzDeployments is FuzzHelpers {
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
-            positionsToBurn.push(userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]);
+            positionsToBurn.push(
+                userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]
+            );
         }
 
         uint256 burnersPreburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
@@ -1552,7 +1554,10 @@ contract FuzzDeployments is FuzzHelpers {
         uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](numUserPositions);
         uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](numUserPositions);
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
-            (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, positionsToBurn[positionIndex]);
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(
+                caller,
+                positionsToBurn[positionIndex]
+            );
             (
                 uint256[] projectedIdealPremium0,
                 uint256[] projectedIdealPremium1,
@@ -1563,10 +1568,10 @@ contract FuzzDeployments is FuzzHelpers {
                 uint128[] preburnGrossPremiaLast0,
                 uint128[] preburnGrossPremiaLast1
             ) = _get_preburn_accumulators_and_projected_premia(
-                positionsToBurn[positionIndex],
-                caller,
-                posSize
-            );
+                    positionsToBurn[positionIndex],
+                    caller,
+                    posSize
+                );
             projectedIdealPremium0[positionIndex] = projectedIdealPremium0;
             projectedIdealPremium1[positionIndex] = projectedIdealPremium1;
             projectedProratedPremium0[positionIndex] = projectedProratedPremium0;
@@ -1583,7 +1588,8 @@ contract FuzzDeployments is FuzzHelpers {
         //  burn_one_option seems to do the latter.
         panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, tickLimitHigh);
         assertWithMsg(
-            panopticPool.numberOfPositions(caller) == usersOriginalNumPositions - positionsToBurn.length,
+            panopticPool.numberOfPositions(caller) ==
+                usersOriginalNumPositions - positionsToBurn.length,
             "Not all positions were burned"
         );
 
@@ -1597,16 +1603,16 @@ contract FuzzDeployments is FuzzHelpers {
                 uint256 totalProjectedProratedPremium0,
                 uint256 totalProjectedProratedPremium1
             ) = _assert_each_legs_chunk_accumulators_correct(
-                positionsToBurn[positionIndex],
-                projectedIdealPremium0[positionIndex],
-                projectedIdealPremium1[positionIndex],
-                projectedProratedPremium0[positionIndex],
-                projectedProratedPremium1[positionIndex],
-                preburnSettledToken0[positionIndex],
-                preburnSettledToken1[positionIndex],
-                preburnGrossPremiaLast0[positionIndex],
-                preburnGrossPremiaLast1[positionIndex]
-            );
+                    positionsToBurn[positionIndex],
+                    projectedIdealPremium0[positionIndex],
+                    projectedIdealPremium1[positionIndex],
+                    projectedProratedPremium0[positionIndex],
+                    projectedProratedPremium1[positionIndex],
+                    preburnSettledToken0[positionIndex],
+                    preburnSettledToken1[positionIndex],
+                    preburnGrossPremiaLast0[positionIndex],
+                    preburnGrossPremiaLast1[positionIndex]
+                );
             allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
             allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
         }
@@ -1620,11 +1626,13 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
 
         assertWithMsg(
-            burnersPostburnToken0Balance == burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
+            burnersPostburnToken0Balance ==
+                burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
             "Burners token0 balance did not increase by the amount the premia would indicate"
         );
         assertWithMsg(
-            burnersPostburnToken1Balance == burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
+            burnersPostburnToken1Balance ==
+                burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
             "Burners token1 balance did not increase by the amount the premia would indicate"
         );
 
