@@ -15,7 +15,7 @@ seqLen: 500
 testLimit: 300000
 shrinkLimit: 0
 workers: 32
-corpusDir: contracts/fuzz/corpus
+corpusDir: test/echidna/corpus
 #rpcBlock: 19582800
 coverageFormats: ["html"]
 # format: text

@@ -4,11 +4,10 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {Constants} from "@libraries/Constants.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
@@ -27,6 +26,7 @@ import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
@@ -268,20 +268,16 @@ contract PanopticHelperTest is PositionUtils {
     function _deployPanopticPool() internal {
         vm.startPrank(Deployer);
 
-        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
-
         factory = new PanopticFactory(
             WETH,
             sfpm,
             V3FACTORY,
-            dNFT,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
-
-        factory.initialize(Deployer);
-
-        DonorNFT(address(dNFT)).changeFactory(address(factory));
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
@@ -294,7 +290,9 @@ contract PanopticHelperTest is PositionUtils {
                     token0,
                     token1,
                     fee,
-                    bytes32(uint256(uint160(Deployer)) << 96)
+                    uint96(block.timestamp),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );
@@ -1071,7 +1069,13 @@ contract PanopticHelperTest is PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            pp.mintOptions(posIdList, positionSizes[0], 0, 0, 0);
+            pp.mintOptions(
+                posIdList,
+                positionSizes[0],
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
         }
 
         {
@@ -1079,7 +1083,13 @@ contract PanopticHelperTest is PositionUtils {
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
 
-            pp.mintOptions(posIdList, positionSizes[1], 0, 0, 0);
+            pp.mintOptions(
+                posIdList,
+                positionSizes[1],
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
 
             (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
                 .calculateAccumulatedFeesBatch(Alice, false, posIdList);

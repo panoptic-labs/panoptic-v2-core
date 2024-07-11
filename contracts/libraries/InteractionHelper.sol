@@ -6,13 +6,13 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-// OpenZeppelin libraries
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+// Libraries
+import {PanopticMath} from "@libraries/PanopticMath.sol";
 
 /// @title InteractionHelper - contains helper functions for external interactions such as approvals.
 /// @notice Used to delegate logic with multiple external calls.
 /// @dev Generally employed when there is a need to save or reuse bytecode size
-// on a core contract (calls take a significant amount of logic).
+/// on a core contract (calls take a significant amount of logic).
 /// @author Axicon Labs Limited
 library InteractionHelper {
     /// @notice Function that performs approvals on behalf of the PanopticPool for CollateralTracker and SemiFungiblePositionManager.
@@ -42,7 +42,7 @@ library InteractionHelper {
     /// @param token0 The token0 in the Uniswap Pool
     /// @param token1 The token1 in the Uniswap Pool
     /// @param isToken0 Whether the collateral token computing the name is for token0 or token1
-    /// @param fee The fee of the Uniswap pool in basis points
+    /// @param fee The fee of the Uniswap pool in hundredths of basis points
     /// @param prefix A constant string appended to the start of the token name
     /// @return The complete name of the collateral token calling this function
     function computeName(
@@ -52,21 +52,9 @@ library InteractionHelper {
         uint24 fee,
         string memory prefix
     ) external view returns (string memory) {
-        // get the underlying token symbols
-        // it's not guaranteed that they support the metadata extension
-        // so we need to let them fail and return placeholder if not
-        string memory symbol0;
-        string memory symbol1;
-        try IERC20Metadata(token0).symbol() returns (string memory _symbol) {
-            symbol0 = _symbol;
-        } catch {
-            symbol0 = "???";
-        }
-        try IERC20Metadata(token1).symbol() returns (string memory _symbol) {
-            symbol1 = _symbol;
-        } catch {
-            symbol1 = "???";
-        }
+        string memory symbol0 = PanopticMath.safeERC20Symbol(token0);
+        string memory symbol1 = PanopticMath.safeERC20Symbol(token1);
+
         unchecked {
             return
                 string.concat(
@@ -78,8 +66,7 @@ library InteractionHelper {
                     "/",
                     symbol1,
                     " ",
-                    Strings.toString(fee),
-                    "bps"
+                    PanopticMath.uniswapFeeToString(fee)
                 );
         }
     }
@@ -92,13 +79,7 @@ library InteractionHelper {
         address token,
         string memory prefix
     ) external view returns (string memory) {
-        // not guaranteed that token supports metadada extension
-        // so we need to let call fail and return placeholder if not
-        try IERC20Metadata(token).symbol() returns (string memory tokenSymbol) {
-            return string.concat(prefix, tokenSymbol);
-        } catch {
-            return string.concat(prefix, "???");
-        }
+        return string.concat(prefix, PanopticMath.safeERC20Symbol(token));
     }
 
     /// @notice Returns decimals of underlying token (0 if not present).

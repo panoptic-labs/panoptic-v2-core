@@ -121,32 +121,6 @@ contract PanopticMathHarness is Test {
         return (collateralBalance, requiredCollateral);
     }
 
-    function _convertNotional(
-        uint128 contractSize,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 asset
-    ) public pure returns (uint128) {
-        uint128 notional = PanopticMath.convertNotional(contractSize, tickLower, tickUpper, asset);
-        return notional;
-    }
-
-    function convertNotional(
-        uint128 contractSize,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 asset
-    ) public view returns (uint128) {
-        try this._convertNotional(contractSize, tickLower, tickUpper, asset) returns (
-            uint128 notional
-        ) {
-            return notional;
-        } catch {
-            vm.assume(2 + 2 == 5);
-            return 0;
-        }
-    }
-
     function _getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,

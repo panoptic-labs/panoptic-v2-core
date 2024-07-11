@@ -11,6 +11,9 @@ import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {LiquidityAmounts} from "@uniswap/v3-periphery/contracts/libraries/LiquidityAmounts.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {Math} from "@libraries/Math.sol";
+import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 
 contract MiniPositionManager {
     struct CallbackData {
@@ -163,7 +166,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -193,7 +196,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -247,7 +250,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -290,7 +293,7 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         uint256 tokenType
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -335,7 +338,7 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         uint256 tokenType
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -380,7 +383,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -411,7 +414,7 @@ contract PositionUtils is Test {
         int256 strikeSeed,
         uint256 ts_,
         int24 currentTick
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -443,7 +446,7 @@ contract PositionUtils is Test {
         uint256 ts_,
         int24 currentTick,
         uint256 tokenType
-    ) public view returns (int24 width, int24 strike) {
+    ) public pure returns (int24 width, int24 strike) {
         return
             tokenType == 1
                 ? getBelowRangeSW(widthSeed, strikeSeed, ts_, currentTick)
@@ -1367,5 +1370,86 @@ contract PositionUtils is Test {
         }
 
         return calldataWithoutSelector;
+    }
+
+    function getSCR(int256 utilization) internal pure returns (uint256 sellCollateralRatio) {
+        // the sell ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (targetPoolUtilization,min_sell_ratio) and
+        //   (x1,y1) = (saturatedPoolUtilization,max_sell_ratio)
+        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
+        /**
+            SELL
+            COLLATERAL
+            RATIO
+                          ^
+                          |                  max ratio = 100%
+                   100% - |                _------
+                          |             _-¯
+                          |          _-¯
+                    20% - |---------¯
+                          |         .       . .
+                          +---------+-------+-+--->   POOL_
+                                   50%    90% 100%     UTILIZATION
+        */
+
+        uint256 min_sell_ratio = 2000;
+        /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
+        /// at 0% utilization, strangle legs do not compound efficiency
+        if (utilization < 0) {
+            unchecked {
+                min_sell_ratio /= 2;
+                utilization = -utilization;
+            }
+        }
+
+        // return the basal sell ratio if pool utilization is lower than target
+        if (uint256(utilization) < 5000) {
+            return min_sell_ratio;
+        }
+
+        // return 100% collateral ratio if utilization is above saturated pool utilization
+        // this means all new positions are fully collateralized, which reduces risks of insolvency at high pool utilization
+        if (uint256(utilization) > 9000) {
+            return 10000;
+        }
+
+        unchecked {
+            return
+                min_sell_ratio +
+                ((10000 - min_sell_ratio) * (uint256(utilization) - 5000)) /
+                (9000 - 5000);
+        }
+    }
+
+    // convert signed int to assets
+    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
+        return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
+    }
+
+    // "virtual" deposit or withdrawal from an account without changing the share price
+    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
+        int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
+        int256 assetDelta = convertToAssets(ct, shareDelta);
+        vm.store(
+            address(ct),
+            bytes32(uint256(7)),
+            bytes32(
+                uint256(
+                    LeftRightSigned.unwrap(
+                        LeftRightSigned
+                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
+                            .add(LeftRightSigned.wrap(int256(uint256(uint128(int128(assetDelta))))))
+                    )
+                )
+            )
+        );
+
+        deal(
+            ct.asset(),
+            address(ct),
+            uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
+        );
+
+        deal(address(ct), owner, newShares, true);
     }
 }

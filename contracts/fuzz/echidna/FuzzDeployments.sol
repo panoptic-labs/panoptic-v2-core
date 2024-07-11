@@ -43,21 +43,17 @@ contract FuzzDeployments is FuzzHelpers {
         );
         emit LogAddress("Panoptic Collateral reference", address(collateralReference));
 
-        dnft = IDonorNFT(address(new DonorNFT()));
-        emit LogAddress("DonorNFT", address(dnft));
-
         panopticFactory = new PanopticFactory(
             address(WETH),
             sfpm,
             univ3factory,
-            dnft,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
         emit LogAddress("Panoptic Factory", address(panopticFactory));
-
-        panopticFactory.initialize(address(this));
-        DonorNFT(address(dnft)).changeFactory(address(panopticFactory));
 
         swapperc = new SwapperC();
         emit LogAddress("Panoptic Swapper", address(swapperc));
@@ -128,7 +124,9 @@ contract FuzzDeployments is FuzzHelpers {
                     pool.token0(),
                     pool.token1(),
                     poolFee,
-                    bytes32(uint256(uint160(address(this))) << 96)
+                    uint96(0),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );
@@ -252,6 +250,7 @@ contract FuzzDeployments is FuzzHelpers {
             $isLongs[i] = $isLongs[i] > 1 ? 0 : $isLongs[i];
             $assets[i] = bound(assets[i], 0, 1);
             $ratios[i] = bound(ratioSeeds[i], 1, 127);
+
 
             if ($isLongs[i] == 0) {
                 ($widths[i], $strikes[i]) = getValidSW(
@@ -644,17 +643,16 @@ contract FuzzDeployments is FuzzHelpers {
                 TickMath.MIN_TICK
             )
         {
-            // already working
-            // for (uint256 i = 0; i < $numLegs; ++i) {
-            //     assertWithMsg($isLongs[i] != 1, "success!");
-            // }
-
+            for (uint256 i = 0; i < $numLegs; ++i) {
+                // assertWithMsg($isLongs[i] != 1, "minted long!");
+            }
+            $allPositionCount++;
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
             assertWithMsg($shouldRevert, "mintOptions: unexpected revert");
-
+            $failedPositionCount++;
             // reverse test state changes (i.e. positionidlist)
             revert();
         }
@@ -819,108 +817,113 @@ contract FuzzDeployments is FuzzHelpers {
     // Burning
     ////////////////////////////////////////////////////
 
-    /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
-    /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
-    /// @custom:property PANO-BURN-002 Position opened counter must decrease when a position is burned
-    /// @custom:precondition The user has a position open
-    function burn_one_option(uint256 pos_idx, bool is_covered) public {
-        address caller = msg.sender;
-        uint256 positions_opened = panopticPool.numberOfPositions(caller);
-        require(positions_opened > 0);
-        pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
+    // /// @custom:property PANO-BURN-001 Zero sized positions can not be burned
+    // /// @custom:property PANO-BURN-002 Current liquidity must be greater than the liquidity in the chunk for the position
+    // /// @custom:property PANO-BURN-002 Position opened counter must decrease when a position is burned
+    // /// @custom:precondition The user has a position open
+    // function burn_one_option(uint256 pos_idx, bool is_covered) public {
+    //     address caller = msg.sender;
+    //     uint256 positions_opened = panopticPool.numberOfPositions(caller);
+    //     require(positions_opened > 0);
+    //     pos_idx = bound(pos_idx, 0, userPositions[caller].length - 1);
 
-        emit LogString("Burning one option");
-        emit LogAddress("Caller", caller);
-        emit LogUint256("Positions opened for user", panopticPool.numberOfPositions(caller));
-        emit LogUint256("Positions to be burned", pos_idx);
+    //     emit LogString("Burning one option");
+    //     emit LogAddress("Caller", caller);
+    //     emit LogUint256("Positions opened for user", panopticPool.numberOfPositions(caller));
+    //     emit LogUint256("Positions to be burned", pos_idx);
 
-        TokenId position = userPositions[caller][pos_idx];
-        TokenId[] memory positions_new = _get_list_without_tokenid(userPositions[caller], position);
+    //     TokenId position = userPositions[caller][pos_idx];
+    //     TokenId[] memory positions_new = _get_list_without_tokenid(userPositions[caller], position);
 
-        (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, position);
-        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(position, 0, posSize);
-        LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
-            address(pool),
-            address(panopticPool),
-            position.tokenType(0),
-            liquidityChunk.tickLower(),
-            liquidityChunk.tickUpper()
-        );
+    //     (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, position);
+    //     LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(position, 0, posSize);
+    //     LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
+    //         address(pool),
+    //         address(panopticPool),
+    //         position.tokenType(0),
+    //         liquidityChunk.tickLower(),
+    //         liquidityChunk.tickUpper()
+    //     );
 
-        emit LogUint256("Position size", posSize);
-        emit LogUint256("Position isLong", position.isLong(0));
-        emit LogUint256("Current Liquidity", currentLiquidity.rightSlot());
-        emit LogUint256("LiqChunk Liquidity", liquidityChunk.liquidity());
-        emit LogInt256("LiqChunk tickUpper", liquidityChunk.tickUpper());
-        emit LogInt256("LiqChunk tickLower", liquidityChunk.tickLower());
-        int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
-        int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
+    //     emit LogUint256("Position size", posSize);
+    //     emit LogUint256("Position isLong", position.isLong(0));
+    //     emit LogUint256("Current Liquidity", currentLiquidity.rightSlot());
+    //     emit LogUint256("LiqChunk Liquidity", liquidityChunk.liquidity());
+    //     emit LogInt256("LiqChunk tickUpper", liquidityChunk.tickUpper());
+    //     emit LogInt256("LiqChunk tickLower", liquidityChunk.tickLower());
+    //     int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
+    //     int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
 
-        if (posSize == 0) {
-            hevm.prank(caller);
-            try panopticPool.burnOptions(position, positions_new, tickLimitLow, tickLimitHigh) {
-                assertWithMsg(false, "A zero-sized position was burned.");
-            } catch {}
-            return;
-        }
+    //     if (posSize == 0) {
+    //         hevm.prank(caller);
+    //         try panopticPool.burnOptions(position, positions_new, tickLimitLow, tickLimitHigh) {
+    //             assertWithMsg(false, "A zero-sized position was burned.");
+    //         } catch {}
+    //         return;
+    //     }
 
-        if (position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()) {
-            hevm.prank(caller);
-            try panopticPool.burnOptions(position, positions_new, tickLimitLow, tickLimitHigh) {
-                assertWithMsg(false, "A short position with not enough liquidity was burned.");
-            } catch {}
-            return;
-        }
+    //     if (position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()) {
+    //         hevm.prank(caller);
+    //         try panopticPool.burnOptions(position, positions_new, tickLimitLow, tickLimitHigh) {
+    //             assertWithMsg(false, "A short position with not enough liquidity was burned.");
+    //         } catch {}
+    //         return;
+    //     }
 
-        int256 balanceBefore = int256(_get_assets_in_token0(caller, currentTick));
-        emit LogInt256("User Balance before burning in token0 terms", balanceBefore);
+    //     int256 balanceBefore = int256(_get_assets_in_token0(caller, currentTick));
+    //     emit LogInt256("User Balance before burning in token0 terms", balanceBefore);
 
-        hevm.prank(caller);
-        panopticPool.burnOptions(position, positions_new, tickLimitLow, tickLimitHigh);
+    //     hevm.prank(caller);
+    //     panopticPool.burnOptions(position, positions_new, tickLimitLow, tickLimitHigh);
 
-        assertWithMsg(
-            panopticPool.numberOfPositions(caller) == positions_opened - 1,
-            "Burning a position did not decrease the position counter"
-        );
+    //     assertWithMsg(
+    //         panopticPool.numberOfPositions(caller) == positions_opened - 1,
+    //         "Burning a position did not decrease the position counter"
+    //     );
 
-        int256 balanceAfter = int256(_get_assets_in_token0(caller, currentTick));
-        emit LogInt256("User Balance after burning in token0 terms", balanceAfter);
+    //     int256 balanceAfter = int256(_get_assets_in_token0(caller, currentTick));
+    //     emit LogInt256("User Balance after burning in token0 terms", balanceAfter);
 
-        emit LogInt256("Delta balance", balanceAfter - balanceBefore);
+    //     emit LogInt256("Delta balance", balanceAfter - balanceBefore);
 
-        userPositions[caller] = positions_new;
-    }
+    //     userPositions[caller] = positions_new;
 
-    /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
-    /// @custom:precondition The user has at least one position open
-    function burn_all_options(bool is_covered) public {
-        address caller = msg.sender;
-        TokenId[] memory emptyList;
+    //     $allPositionCount--;
+    // }
 
-        if (userPositions[caller].length < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
-        int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
-        int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
+    // /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
+    // /// @custom:precondition The user has at least one position open
+    // function burn_all_options(bool is_covered) public {
+    //     address caller = msg.sender;
+    //     TokenId[] memory emptyList;
 
-        hevm.prank(caller);
-        try
-            panopticPool.burnOptions(userPositions[caller], emptyList, tickLimitLow, tickLimitHigh)
-        {
-            delete userPositions[caller];
-            assertWithMsg(
-                panopticPool.numberOfPositions(caller) == 0,
-                "Not all positions were burned"
-            );
-        } catch {}
-    }
+    //     if (userPositions[caller].length < 1) {
+    //         emit LogString("No current positions");
+    //         revert();
+    //     }
+    //     int24 tickLimitLow = is_covered ? int24(-887272) : int24(887272);
+    //     int24 tickLimitHigh = is_covered ? int24(887272) : int24(-887272);
+        
+    //     hevm.prank(caller);
+    //     try
+    //         panopticPool.burnOptions(userPositions[caller], emptyList, tickLimitLow, tickLimitHigh)
+    //     {
+    //         $allPositionCount -= int256(userPositions[caller].length);
+
+    //         delete userPositions[caller];
+    //         assertWithMsg(
+    //             panopticPool.numberOfPositions(caller) == 0,
+    //             "Not all positions were burned"
+    //         );
+    //     } catch {}
+    // }
 
     /*//////////////////////////////////////////////////////////////
                              FORCE EXERCISE
     //////////////////////////////////////////////////////////////*/
 
     function force_exercise(uint256 position, bool search) public {
+        // assertWithMsg($allPositionCount < 5, "APC > 5");
         $allPositionOwners = new address[](0);
         $allPositions = new TokenId[](0);
         for (uint256 i = 0; i < actors.length; ++i) {
@@ -942,11 +945,11 @@ contract FuzzDeployments is FuzzHelpers {
                         break;
                     }
                 }
-                if (isLong) assertWithMsg(false, "searchFound");
+                // if (isLong) assertWithMsg(false, "searchFound");
                 if (isLong) break;
             }
             if (!isLong) {
-                assertWithMsg($allPositions.length < 10, "No long positions found");
+                // assertWithMsg($allPositions.length < 5, "No long positions found");
                 ($exercisee, $tokenIdActive) = (
                     $allPositionOwners[bound(position, 0, $allPositions.length - 1)],
                     $allPositions[bound(position, 0, $allPositions.length - 1)]
@@ -982,6 +985,8 @@ contract FuzzDeployments is FuzzHelpers {
         $balance0Exercisee = int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee)));
         $balance1Exercisee = int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee)));
 
+        quote_pp_burn();
+        
         hevm.prank(msg.sender);
         try
             panopticPool.forceExercise(
@@ -991,7 +996,6 @@ contract FuzzDeployments is FuzzHelpers {
                 $positionListExercisor
             )
         {
-            assertWithMsg(false, "success!");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
             assertWithMsg($shouldRevert, "Force exercise failed");

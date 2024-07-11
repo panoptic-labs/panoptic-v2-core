@@ -7,13 +7,9 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PropertiesAsserts} from "./PropertiesHelper.sol";
 import {IUniDeployer} from "./fuzz-mocks/IUniDeployer.sol";
 import {IUniSwapRouterDeployer} from "./fuzz-mocks/IUniSwapRouterDeployer.sol";
-import {WETH9} from "./fuzz-mocks/WETH9.sol";
-
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
@@ -26,14 +22,11 @@ import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
-import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
-import {FullMath} from "v3-core/libraries/FullMath.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
-import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {Constants} from "@libraries/Constants.sol";
-import {Errors} from "@libraries/Errors.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -300,7 +293,6 @@ contract FuzzHelpers is PropertiesAsserts {
     IUniswapV3Factory univ3factory;
     address poolReference;
     address collateralReference;
-    IDonorNFT dnft;
     PanopticFactory panopticFactory;
     PanopticPoolWrapper panopticPool;
     uint64 poolId;
@@ -415,6 +407,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
     address[] actors;
     address pool_manipulator;
+    
+    int256 $allPositionCount;
+    int256 $failedPositionCount;
 
     address $exercisee;
     TokenId[] $touchedId;

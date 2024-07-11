@@ -102,7 +102,7 @@ library FeesCalc {
         uint128 liquidity
     ) public view returns (LeftRightSigned) {
         // extract the amount of AMM fees collected within the liquidity chunk`
-        // note: the fee variables are *per unit of liquidity*; so more "rate" variables
+        // NOTE: the fee variables are *per unit of liquidity*; so more "rate" variables
         (
             uint256 ammFeesPerLiqToken0X128,
             uint256 ammFeesPerLiqToken1X128
@@ -125,8 +125,8 @@ library FeesCalc {
     /// @param currentTick The current price tick in the AMM
     /// @param tickLower The lower tick of the option position leg (a liquidity chunk)
     /// @param tickUpper The upper tick of the option position leg (a liquidity chunk)
-    /// @return feeGrowthInside0X128 the fee growth in the AMM of token0
-    /// @return feeGrowthInside1X128 the fee growth in the AMM of token1
+    /// @return feeGrowthInside0X128 The fee growth in the AMM of token0
+    /// @return feeGrowthInside1X128 The fee growth in the AMM of token1
     function _getAMMSwapFeesPerLiquidityCollected(
         IUniswapV3Pool univ3pool,
         int24 currentTick,

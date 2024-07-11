@@ -3,11 +3,14 @@ pragma solidity ^0.8.0;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
+// OpenZeppelin libraries
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -16,13 +19,12 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
 library PanopticMath {
-    // Used for safecasting
     using Math for uint256;
 
     /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
-    /// @notice masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
+    /// @notice Masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
     uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
 
     /*//////////////////////////////////////////////////////////////
@@ -30,18 +32,18 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
-    /// @dev Example:
-    ///      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
-    ///      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
-    ///      e.g.:
-    ///        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
-    ///        tickSpacing = 60
-    ///      the returned id is then:
-    ///        poolPattern = 0x00008ad599c3A0ff
-    ///        tickSpacing = 0x003c000000000000    +
-    ///        --------------------------------------------
-    ///        poolId      = 0x003c8ad599c3A0ff
-    ///
+    // Example:
+    //      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
+    //      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
+    //      e.g.:
+    //        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    //        tickSpacing = 60
+    //      the returned id is then:
+    //        poolPattern = 0x00008ad599c3A0ff
+    //        tickSpacing = 0x003c000000000000    +
+    //        --------------------------------------------
+    //        poolId      = 0x003c8ad599c3A0ff
+    //
     /// @param univ3pool The address of the Uniswap v3 pool to get the ID of
     /// @return A uint64 representing a fingerprint of the uniswap v3 pool address
     function getPoolId(address univ3pool) internal view returns (uint64) {
@@ -58,24 +60,55 @@ library PanopticMath {
     /// @return The provided `poolId` with its pool pattern slot incremented by 1
     function incrementPoolPattern(uint64 poolId) internal pure returns (uint64) {
         unchecked {
-            // increment
             return (poolId & TICKSPACING_MASK) + (uint48(poolId) + 1);
         }
     }
 
     /// @notice Get the number of leading hex characters in an address.
-    ///     0x0000bababaab...     0xababababab...
-    ///          ▲                 ▲
-    ///          │                 │
-    ///     4 leading hex      0 leading hex
-    ///    character zeros    character zeros
-    ///
+    //     0x0000bababaab...     0xababababab...
+    //          ▲                 ▲
+    //          │                 │
+    //     4 leading hex      0 leading hex
+    //    character zeros    character zeros
+    //
     /// @param addr The address to get the number of leading zero hex characters for
     /// @return The number of leading zero hex characters in the address
     function numberOfLeadingHexZeros(address addr) external pure returns (uint256) {
         unchecked {
             return addr == address(0) ? 40 : 39 - Math.mostSignificantNibble(uint160(addr));
         }
+    }
+
+    /// @notice Returns ERC20 symbol of `token`.
+    /// @param token The address of the token to get the symbol of
+    /// @return The symbol of `token` or "???" if not supported
+    function safeERC20Symbol(address token) external view returns (string memory) {
+        // not guaranteed that token supports metadata extension
+        // so we need to let call fail and return placeholder if not
+        try IERC20Metadata(token).symbol() returns (string memory symbol) {
+            return symbol;
+        } catch {
+            return "???";
+        }
+    }
+
+    /// @notice Converts `fee` to a string with "bps" appended.
+    /// @dev The lowest supported value of `fee` is 1 (`="0.01bps"`).
+    /// @param fee The fee to convert to a string (in hundredths of basis points)
+    /// @return Stringified version of `fee` with "bps" appended
+    function uniswapFeeToString(uint24 fee) internal pure returns (string memory) {
+        return
+            string.concat(
+                Strings.toString(fee / 100),
+                fee % 100 == 0
+                    ? ""
+                    : string.concat(
+                        ".",
+                        Strings.toString((fee / 10) % 10),
+                        Strings.toString(fee % 10)
+                    ),
+                "bps"
+            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -97,15 +130,17 @@ library PanopticMath {
         // add the XOR`ed hash of the single option position `tokenId` to the `existingHash`
         // @dev 0 ^ x = x
 
+        // update hash by taking the XOR of the new tokenId
+        uint256 updatedHash = uint248(existingHash) ^
+            (uint248(uint256(keccak256(abi.encode(tokenId)))));
+
+        // increment the upper 8 bits (position counter) if addflag=true, decrement otherwise
+        uint256 newPositionCount = addFlag
+            ? uint8(existingHash >> 248) + 1
+            : uint8(existingHash >> 248) - 1;
+
         unchecked {
-            // update hash by taking the XOR of the new tokenId
-            uint248 updatedHash = uint248(existingHash) ^
-                (uint248(uint256(keccak256(abi.encode(tokenId)))));
-            // increment the top 8 bit if addflag=true, decrement otherwise
-            return
-                addFlag
-                    ? uint256(updatedHash) + (((existingHash >> 248) + 1) << 248)
-                    : uint256(updatedHash) + (((existingHash >> 248) - 1) << 248);
+            return uint256(updatedHash) + (newPositionCount << 248);
         }
     }
 
@@ -119,7 +154,7 @@ library PanopticMath {
     /// @param univ3pool The Uniswap pool to get the median observation from
     /// @param observationIndex The index of the last observation in the pool
     /// @param observationCardinality The number of observations in the pool
-    /// @param cardinality The number of `periods` to in the median price array, should be odd.
+    /// @param cardinality The number of `periods` to in the median price array, should be odd
     /// @param period The number of observations to average to compute one entry in the median price array
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
     function computeMedianObservedPrice(
@@ -151,20 +186,20 @@ library PanopticMath {
                     int256(timestamps[i] - timestamps[i + 1]);
             }
 
-            // get the median of the 3 calculated ticks
+            // get the median of the `ticks` array (assuming `cardinality` is odd)
             return int24(Math.sort(ticks)[cardinality / 2]);
         }
     }
 
-    /// @notice Takes a packed structure representing a sorted 7-slot ring buffer of ticks and returns the median of those values.
+    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
     /// @param observationIndex The index of the last observation in the Uniswap pool
     /// @param observationCardinality The number of observations in the Uniswap pool
     /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
-    /// @param medianData The packed structure representing the sorted 7-slot ring buffer of ticks
+    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
-    /// @return medianTick The median of the provided 7-slot ring buffer of ticks in `medianData`
-    /// @return updatedMedianData The updated 7-slot ring buffer of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
+    /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
+    /// @return updatedMedianData The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
         uint256 observationIndex,
         uint256 observationCardinality,
@@ -235,9 +270,9 @@ library PanopticMath {
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
     /// @dev Note that our definition of TWAP differs from a typical mean of prices over a time window.
     /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages.
-    /// @param univ3pool The Uniswap pool from which to compute the TWAP.
-    /// @param twapWindow The time window to compute the TWAP over.
-    /// @return twapTick The final calculated TWAP tick.
+    /// @param univ3pool The Uniswap pool from which to compute the TWAP
+    /// @param twapWindow The time window to compute the TWAP over
+    /// @return The final calculated TWAP tick
     function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
@@ -263,7 +298,7 @@ library PanopticMath {
             int256[] memory sortedTicks = Math.sort(twapMeasurement);
 
             // Get the median value
-            return int24(sortedTicks[10]);
+            return int24(sortedTicks[9]);
         }
     }
 
@@ -273,15 +308,15 @@ library PanopticMath {
 
     /// @notice For a given option position (`tokenId`), leg index within that position (`legIndex`), and `positionSize` get the tick range spanned and its
     /// liquidity (share ownership) in the Univ3 pool; this is a liquidity chunk.
-    ///          Liquidity chunk  (defined by tick upper, tick lower, and its size/amount: the liquidity)
-    ///   liquidity    │
-    ///         ▲      │
-    ///         │     ┌▼┐
-    ///         │  ┌──┴─┴──┐
-    ///         │  │       │
-    ///         │  │       │
-    ///         └──┴───────┴────► price
-    ///         Uniswap v3 Pool
+    //          Liquidity chunk  (defined by tick upper, tick lower, and its size/amount: the liquidity)
+    //   liquidity    │
+    //         ▲      │
+    //         │     ┌▼┐
+    //         │  ┌──┴─┴──┐
+    //         │  │       │
+    //         │  │       │
+    //         └──┴───────┴────► price
+    //         Uniswap v3 Pool
     /// @param tokenId The option position id
     /// @param legIndex The leg index of the option position, can be {0,1,2,3}
     /// @param positionSize The number of contracts held by this leg
@@ -364,8 +399,8 @@ library PanopticMath {
 
     /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.
     /// @dev Given `r = (width * tickSpacing) / 2`, `tickLower = strike - floor(r)` and `tickUpper = strike + ceil(r)`.
-    /// @param width The width of the leg.
-    /// @param tickSpacing The tick spacing of the underlying pool.
+    /// @param width The width of the leg
+    /// @param tickSpacing The tick spacing of the underlying pool
     /// @return The lower tick of the range
     /// @return The upper tick of the range
     function getRangesFromStrike(
@@ -385,8 +420,8 @@ library PanopticMath {
     /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
     /// @param tokenId The option position id
     /// @param positionSize The number of contracts of this option
-    /// @return longAmounts Left-right packed word where the right contains the total contract size and the left total notional
-    /// @return shortAmounts Left-right packed word where the right contains the total contract size and the left total notional
+    /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
+    /// @return shortAmounts Left-right packed word where where rightSlot = token0 and leftSlot = token1 borrowed to create short legs
     function computeExercisedAmounts(
         TokenId tokenId,
         uint128 positionSize
@@ -452,38 +487,8 @@ library PanopticMath {
             convertCollateralData(tokenData0, tokenData1, tokenType, Math.getSqrtRatioAtTick(tick));
     }
 
-    /// @notice Compute the notional amount given an incoming total number of `contracts` deployed between `tickLower` and `tickUpper`.
-    /// @dev The notional value of an option is the value of the crypto assets that are controlled (rather than the cost of the transaction).
-    /// @dev Example: Notional value in an option refers to the value that the option controls.
-    /// @dev For example, token ABC is trading for $20 with a particular ABC call option costing $1.50.
-    /// @dev One option controls 100 underlying tokens. A trader purchases the option for $1.50 x 100 = $150.
-    /// @dev The notional value of the option is $20 x 100 = $2,000 --> (underlying price) * (contract/position size).
-    /// @dev Thus, `contracts` refer to "100" in this example. The $20 is the strike price. We get the strike price from `tickLower` and `tickUpper`.
-    /// @dev From TradFi: [https://www.investopedia.com/terms/n/notionalvalue.asp](https://www.investopedia.com/terms/n/notionalvalue.asp).
-    /// @param contractSize The total number of contracts (position size) between `tickLower` and `tickUpper
-    /// @param tickLower The lower price tick of the position. The strike price can be recovered from this + `tickUpper`
-    /// @param tickUpper The upper price tick of the position. The strike price can be recovered from this + `tickLower`
-    /// @param asset The asset for that leg (token0=0, token1=1)
-    /// @return The notional value of the option position
-    function convertNotional(
-        uint128 contractSize,
-        int24 tickLower,
-        int24 tickUpper,
-        uint256 asset
-    ) internal pure returns (uint128) {
-        unchecked {
-            uint256 notional = asset == 0
-                ? convert0to1(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2))
-                : convert1to0(contractSize, Math.getSqrtRatioAtTick((tickUpper + tickLower) / 2));
-
-            if (notional == 0 || notional > type(uint128).max) revert Errors.InvalidNotionalValue();
-
-            return uint128(notional);
-        }
-    }
-
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of tick.s
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -500,7 +505,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
     /// @return The converted `amount` of token1 represented in terms of token0
@@ -517,7 +522,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -540,7 +545,7 @@ library PanopticMath {
     }
 
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
-    /// @dev Uses reduced precision after tick 443636 in order to accomodate the full range of ticks.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
     /// @return The converted `amount` of token0 represented in terms of token1
@@ -576,23 +581,26 @@ library PanopticMath {
         uint128 positionSize,
         uint256 legIndex
     ) internal pure returns (LeftRightUnsigned) {
-        // get the tick range for this leg in order to get the strike price (the underlying price)
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-
         uint128 amount0;
         uint128 amount1;
+
+        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
+
+        // effective strike price of the option (avg. price over LP range)
+        // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
+        uint256 geometricMeanPriceX96 = Math.mulDiv96(
+            Math.getSqrtRatioAtTick(tickLower),
+            Math.getSqrtRatioAtTick(tickUpper)
+        );
+
         if (tokenId.asset(legIndex) == 0) {
             amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount1 = Math
-                .getAmount1ForLiquidity(Math.getLiquidityForAmount0(tickLower, tickUpper, amount0))
-                .toUint128();
+            amount1 = Math.mulDiv96RoundingUp(amount0, geometricMeanPriceX96).toUint128();
         } else {
             amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
 
-            amount0 = Math
-                .getAmount0ForLiquidity(Math.getLiquidityForAmount1(tickLower, tickUpper, amount1))
-                .toUint128();
+            amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
         }
 
         return LeftRightUnsigned.wrap(0).toRightSlot(amount0).toLeftSlot(amount1);
@@ -666,7 +674,8 @@ library PanopticMath {
                     sqrtPriceX96Twap
                 );
                 uint256 required1 = tokenData1.leftSlot();
-                uint256 requiredRatioX128 = (required0 << 128) / (required0 + required1);
+
+                uint256 requiredRatioX128 = Math.mulDiv(required0, 2 ** 128, required0 + required1);
 
                 (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.convertCollateralData(
                     tokenData0,
@@ -792,6 +801,7 @@ library PanopticMath {
             int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
             int256 haircut0;
             int256 haircut1;
+
             // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
             // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
             if (
@@ -877,9 +887,9 @@ library PanopticMath {
 
                         bytes32 chunkKey = keccak256(
                             abi.encodePacked(
-                                tokenId.strike(0),
-                                tokenId.width(0),
-                                tokenId.tokenType(0)
+                                tokenId.strike(leg),
+                                tokenId.width(leg),
+                                tokenId.tokenType(leg)
                             )
                         );
 
@@ -913,7 +923,7 @@ library PanopticMath {
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param collateral0 CollateralTracker for token0
     /// @param collateral1 CollateralTracker for token1
-    /// @return The LeftRight-packed amount of token0/token1 to refund to the user.
+    /// @return The LeftRight-packed amount of token0/token1 to refund to the user
     function getRefundAmounts(
         address refunder,
         LeftRightSigned refundValues,
@@ -924,7 +934,7 @@ library PanopticMath {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // note: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
+            // NOTE: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
             int256 balanceShortage = refundValues.rightSlot() -
                 int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
 
