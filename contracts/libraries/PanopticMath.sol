@@ -544,11 +544,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token0 to convert into token1
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
-    /// @return The converted `amount` of token0 represented in terms of token1
+    /// @param amount The amount of token1 to convert into token0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
+    /// @return The converted `amount` of token1 represented in terms of token0
     function convert1to0(int256 amount, uint160 sqrtPriceX96) internal pure returns (int256) {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
