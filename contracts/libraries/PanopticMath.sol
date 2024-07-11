@@ -446,7 +446,7 @@ library PanopticMath {
 
     /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
     /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
-    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token1)
+    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
     /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
     /// @param sqrtPriceX96 The sqrt price at which to convert between token0/token1
     /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
@@ -472,7 +472,7 @@ library PanopticMath {
 
     /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
     /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
-    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token1)
+    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
     /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
     /// @param tick The tick at which to convert between token0/token1
     /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
