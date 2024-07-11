@@ -690,7 +690,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
-        return poolUtilizations;
+        if (safeMode) {
+            return uint128(10_000) + uint128(10_000 << 64);
+        } else {
+            return poolUtilizations;
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
