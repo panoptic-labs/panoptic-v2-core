@@ -1847,7 +1847,7 @@ contract FuzzDeployments is FuzzHelpers {
 
             // TODO: Why, in the following two assertions, don't we have to prorate premium0
             //       by the portion of available tokens over total owed?
-            //       (maybe because its already prorated? See TODO on line 1573 about why a
+            //       (maybe because its already prorated? See TODO in _calc_premia_from_preburn_values about why a
             //        similar calculation might be _incorrect_ because it applies proration)
             // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
             (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool
