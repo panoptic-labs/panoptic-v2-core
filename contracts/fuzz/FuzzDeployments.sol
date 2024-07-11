@@ -1536,23 +1536,97 @@ contract FuzzDeployments is FuzzHelpers {
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
-            positionsToBurn.push(
-                userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]
-            );
+            positionsToBurn.push(userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]);
         }
 
-        // TODO: Get pre-burn values for each position
+        uint256 burnersPreburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
+        uint256 burnersPreburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
+
+        // Get pre-burn accumulator values and projected premia for each position:
+        uint128[][] memory projectedIdealPremium0 = new uint128[][](numUserPositions);
+        uint128[][] memory projectedIdealPremium1 = new uint128[][](numUserPositions);
+        uint128[][] memory projectedProratedPremium0 = new uint128[][](numUserPositions);
+        uint128[][] memory projectedProratedPremium1 = new uint128[][](numUserPositions);
+        uint128[][] memory preburnSettledToken0 = new uint128[][](numUserPositions);
+        uint128[][] memory preburnSettledToken1 = new uint128[][](numUserPositions);
+        uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](numUserPositions);
+        uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](numUserPositions);
+        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, positionsToBurn[positionIndex]);
+            (
+                uint256[] projectedIdealPremium0,
+                uint256[] projectedIdealPremium1,
+                uint256[] projectedProratedPremium0,
+                uint256[] projectedProratedPremium1,
+                uint128[] preburnSettledToken0,
+                uint128[] preburnSettledToken1,
+                uint128[] preburnGrossPremiaLast0,
+                uint128[] preburnGrossPremiaLast1
+            ) = _get_preburn_accumulators_and_projected_premia(
+                positionsToBurn[positionIndex],
+                caller,
+                posSize
+            );
+            projectedIdealPremium0[positionIndex] = projectedIdealPremium0;
+            projectedIdealPremium1[positionIndex] = projectedIdealPremium1;
+            projectedProratedPremium0[positionIndex] = projectedProratedPremium0;
+            projectedProratedPremium1[positionIndex] = projectedProratedPremium1;
+            preburnSettledToken0[positionIndex] = preburnSettledToken0;
+            preburnSettledToken1[positionIndex] = preburnSettledToken1;
+            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0;
+            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1;
+        }
+
         hevm.prank(caller);
         // TODO: is passing in emptyList here OK,
         //  or should we diff the old userPositions against the positionsToBurn & pass that in?
         //  burn_one_option seems to do the latter.
         panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, tickLimitHigh);
         assertWithMsg(
-            panopticPool.numberOfPositions(caller) ==
-                usersOriginalNumPositions - positionsToBurn.length,
+            panopticPool.numberOfPositions(caller) == usersOriginalNumPositions - positionsToBurn.length,
             "Not all positions were burned"
         );
-        // TODO: _assert_post_burn_differences_correct on each position
+
+        uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
+        uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
+
+        uint256 allPositionsProjectedProratedPremium0 = 0;
+        uint256 allPositionsProjectedProratedPremium1 = 0;
+        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+            (
+                uint256 totalProjectedProratedPremium0,
+                uint256 totalProjectedProratedPremium1
+            ) = _assert_each_legs_chunk_accumulators_correct(
+                positionsToBurn[positionIndex],
+                projectedIdealPremium0[positionIndex],
+                projectedIdealPremium1[positionIndex],
+                projectedProratedPremium0[positionIndex],
+                projectedProratedPremium1[positionIndex],
+                preburnSettledToken0[positionIndex],
+                preburnSettledToken1[positionIndex],
+                preburnGrossPremiaLast0[positionIndex],
+                preburnGrossPremiaLast1[positionIndex]
+            );
+            allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
+            allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
+        }
+
+        // Assert: did the burner receive `proratedPremia` + the size of the position in tokens?
+        //    TODO: wait, do they receive anything besides the premia?
+        //         - Collateral?
+        //          (I don't think so - i think only buyers that borrow the LP position post collateral - but need to check)
+        //         - any assets related to making the option they sold covered?
+        uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
+        uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
+
+        assertWithMsg(
+            burnersPostburnToken0Balance == burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
+            "Burners token0 balance did not increase by the amount the premia would indicate"
+        );
+        assertWithMsg(
+            burnersPostburnToken1Balance == burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
+            "Burners token1 balance did not increase by the amount the premia would indicate"
+        );
 
         for (uint i = 0; i < positionsToBurn.length; i++) {
             delete userPositions[caller][fromFront ? i : usersOriginalNumPositions - i];
