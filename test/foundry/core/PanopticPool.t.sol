@@ -7519,6 +7519,12 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
+        // update twap
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(1e4);
+        }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
@@ -7560,13 +7566,6 @@ contract PanopticPoolTest is PositionUtils {
                 )
             )
         );
-
-        // update twap
-        for (uint256 j = 0; j < 20; ++j) {
-            vm.warp(block.timestamp + 120);
-            vm.roll(block.number + 10);
-            twoWaySwap(1e4);
-        }
 
         vm.startPrank(Bob);
         vm.expectRevert(Errors.NotMarginCalled.selector);
