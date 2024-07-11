@@ -1528,15 +1528,18 @@ contract FuzzDeployments is FuzzHelpers {
 
         numPositionsToBurn = numPositionsToBurn % usersOriginalNumPositions;
         TokenId[] memory positionsToBurn = new TokenId[](numPositionsToBurn);
-        TokenId[] memory retainedPositions = new TokenId[](usersOriginalNumPositions - numPositionsToBurn);
+        TokenId[] memory retainedPositions = new TokenId[](
+            usersOriginalNumPositions - numPositionsToBurn
+        );
 
         int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
         int24 tickLimitHigh = isCovered ? int24(887272) : int24(-887272);
 
-
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
-            positionsToBurn[i] = userPositions[caller][fromFront ? i : usersOriginalNumPositions - (i + 1)];
+            positionsToBurn[i] = userPositions[caller][
+                fromFront ? i : usersOriginalNumPositions - (i + 1)
+            ];
         }
         for (uint i = 0; i < usersOriginalNumPositions; i++) {
             if (
@@ -1544,9 +1547,7 @@ contract FuzzDeployments is FuzzHelpers {
                 (!fromFront && i < (positionsToBurn.length - 1))
             ) {
                 retainedPositions[
-                    fromFront ?
-                        i :
-                        (usersOriginalNumPositions - numPositionsToBurn) - i
+                    fromFront ? i : (usersOriginalNumPositions - numPositionsToBurn) - i
                 ] = userPositions[caller][fromFront ? usersOriginalNumPositions - i : i];
             }
         }
