@@ -1475,9 +1475,6 @@ contract FuzzDeployments is FuzzHelpers {
         panopticPool.burnOptions(userPositions[caller], emptyList, tickLimitLow, tickLimitHigh);
         assertWithMsg(panopticPool.numberOfPositions(caller) == 0, "Not all positions were burned");
 
-        uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
-        uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
-
         uint128 allPositionsProjectedProratedPremium0 = 0;
         uint128 allPositionsProjectedProratedPremium1 = 0;
         for (uint positionIndex = 0; positionIndex < numUserPositions; positionIndex++) {
@@ -1525,29 +1522,32 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:precondition The user has at least one position open
     function burn_some_options(bool isCovered, uint numPositionsToBurn, bool fromFront) public {
         address caller = msg.sender;
-        TokenId[] storage retainedPositions;
 
         uint256 usersOriginalNumPositions = userPositions[caller].length;
         if (usersOriginalNumPositions < 1) revert();
+
+        numPositionsToBurn = numPositionsToBurn % usersOriginalNumPositions;
+        TokenId[] memory positionsToBurn = new TokenId[](numPositionsToBurn);
+        TokenId[] memory retainedPositions = new TokenId[](usersOriginalNumPositions - numPositionsToBurn);
+
         int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
         int24 tickLimitHigh = isCovered ? int24(887272) : int24(-887272);
 
-        TokenId[] storage positionsToBurn;
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
-            positionsToBurn.push(
-                userPositions[caller][fromFront ? i : usersOriginalNumPositions - (i + 1)]
-            );
+            positionsToBurn[i] = userPositions[caller][fromFront ? i : usersOriginalNumPositions - (i + 1)];
         }
         for (uint i = 0; i < usersOriginalNumPositions; i++) {
             if (
                 (fromFront && i >= positionsToBurn.length) ||
                 (!fromFront && i < (positionsToBurn.length - 1))
             ) {
-                retainedPositions.push(
-                    userPositions[caller][fromFront ? usersOriginalNumPositions - i : i]
-                );
+                retainedPositions[
+                    fromFront ?
+                        i :
+                        (usersOriginalNumPositions - numPositionsToBurn) - i
+                ] = userPositions[caller][fromFront ? usersOriginalNumPositions - i : i];
             }
         }
 
@@ -1603,9 +1603,6 @@ contract FuzzDeployments is FuzzHelpers {
                 usersOriginalNumPositions - positionsToBurn.length,
             "Not all positions were burned"
         );
-
-        uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
-        uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
 
         uint128 allPositionsProjectedProratedPremium0 = 0;
         uint128 allPositionsProjectedProratedPremium1 = 0;
@@ -1751,7 +1748,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint128[] memory preburnGrossPremiaLast1
     )
         internal
-        view
         returns (uint128 totalProjectedProratedPremium0, uint128 totalProjectedProratedPremium1)
     {
         totalProjectedProratedPremium0 = 0;
