@@ -610,7 +610,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         return shares;
     }
 
-
     /// @notice Returns the maximum amount of shares that can be redeemed for a given user.
     /// If the user has any open positions, the max redeemable balance is zero.
     /// @param owner The redeeming address.

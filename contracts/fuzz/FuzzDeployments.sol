@@ -1374,11 +1374,7 @@ contract FuzzDeployments is FuzzHelpers {
             uint128[] preburnSettledToken1,
             uint128[] preburnGrossPremiaLast0,
             uint128[] preburnGrossPremiaLast1
-        ) = _get_preburn_accumulators_and_projected_premia(
-            position,
-            caller,
-            posSize
-        );
+        ) = _get_preburn_accumulators_and_projected_premia(position, caller, posSize);
 
         hevm.prank(caller);
         panopticPool.burnOptions(position, positionsNew, tickLimitLow, tickLimitHigh);
@@ -1392,28 +1388,29 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 totalProjectedProratedPremium0,
             uint256 totalProjectedProratedPremium1
         ) = _assert_each_legs_chunk_accumulators_correct(
-            position,
-            projectedIdealPremium0,
-            projectedIdealPremium1,
-            projectedProratedPremium0,
-            projectedProratedPremium1,
-            preburnSettledToken0,
-            preburnSettledToken1,
-            preburnGrossPremiaLast0,
-            preburnGrossPremiaLast1
-        );
+                position,
+                projectedIdealPremium0,
+                projectedIdealPremium1,
+                projectedProratedPremium0,
+                projectedProratedPremium1,
+                preburnSettledToken0,
+                preburnSettledToken1,
+                preburnGrossPremiaLast0,
+                preburnGrossPremiaLast1
+            );
 
         uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
         uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
         assertWithMsg(
-            burnersPostburnToken0Balance == burnersPreburnToken0Balance + totalProjectedProratedPremium0,
+            burnersPostburnToken0Balance ==
+                burnersPreburnToken0Balance + totalProjectedProratedPremium0,
             "Burners token0 balance did not increase by the amount the premia would indicate"
         );
         assertWithMsg(
-            burnersPostburnToken1Balance == burnersPreburnToken1Balance + totalProjectedProratedPremium1,
+            burnersPostburnToken1Balance ==
+                burnersPreburnToken1Balance + totalProjectedProratedPremium1,
             "Burners token1 balance did not increase by the amount the premia would indicate"
         );
-
 
         // Keep userPositions up-to-date for other tests' benefit -
         // some of the caller's positions no longer exist:
@@ -1446,7 +1443,10 @@ contract FuzzDeployments is FuzzHelpers {
         uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](numUserPositions);
         uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](numUserPositions);
         for (uint positionIndex = 0; positionIndex < numUserPositions; positionIndex++) {
-            (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, userPositions[positionIndex]);
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(
+                caller,
+                userPositions[positionIndex]
+            );
             (
                 uint256[] projectedIdealPremium0,
                 uint256[] projectedIdealPremium1,
@@ -1457,10 +1457,10 @@ contract FuzzDeployments is FuzzHelpers {
                 uint128[] preburnGrossPremiaLast0,
                 uint128[] preburnGrossPremiaLast1
             ) = _get_preburn_accumulators_and_projected_premia(
-                userPositions[positionIndex],
-                caller,
-                posSize
-            );
+                    userPositions[positionIndex],
+                    caller,
+                    posSize
+                );
             projectedIdealPremium0[positionIndex] = projectedIdealPremium0;
             projectedIdealPremium1[positionIndex] = projectedIdealPremium1;
             projectedProratedPremium0[positionIndex] = projectedProratedPremium0;
@@ -1473,10 +1473,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         hevm.prank(caller);
         panopticPool.burnOptions(userPositions[caller], emptyList, tickLimitLow, tickLimitHigh);
-        assertWithMsg(
-            panopticPool.numberOfPositions(caller) == 0,
-            "Not all positions were burned"
-        );
+        assertWithMsg(panopticPool.numberOfPositions(caller) == 0, "Not all positions were burned");
 
         uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
         uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
@@ -1488,16 +1485,16 @@ contract FuzzDeployments is FuzzHelpers {
                 uint256 totalProjectedProratedPremium0,
                 uint256 totalProjectedProratedPremium1
             ) = _assert_each_legs_chunk_accumulators_correct(
-                userPositions[positionIndex],
-                projectedIdealPremium0[positionIndex],
-                projectedIdealPremium1[positionIndex],
-                projectedProratedPremium0[positionIndex],
-                projectedProratedPremium1[positionIndex],
-                preburnSettledToken0[positionIndex],
-                preburnSettledToken1[positionIndex],
-                preburnGrossPremiaLast0[positionIndex],
-                preburnGrossPremiaLast1[positionIndex]
-            );
+                    userPositions[positionIndex],
+                    projectedIdealPremium0[positionIndex],
+                    projectedIdealPremium1[positionIndex],
+                    projectedProratedPremium0[positionIndex],
+                    projectedProratedPremium1[positionIndex],
+                    preburnSettledToken0[positionIndex],
+                    preburnSettledToken1[positionIndex],
+                    preburnGrossPremiaLast0[positionIndex],
+                    preburnGrossPremiaLast1[positionIndex]
+                );
             allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
             allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
         }
@@ -1511,11 +1508,13 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
 
         assertWithMsg(
-            burnersPostburnToken0Balance == burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
+            burnersPostburnToken0Balance ==
+                burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
             "Burners token0 balance did not increase by the amount the premia would indicate"
         );
         assertWithMsg(
-            burnersPostburnToken1Balance == burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
+            burnersPostburnToken1Balance ==
+                burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
             "Burners token1 balance did not increase by the amount the premia would indicate"
         );
 
@@ -1537,7 +1536,9 @@ contract FuzzDeployments is FuzzHelpers {
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
-            positionsToBurn.push(userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]);
+            positionsToBurn.push(
+                userPositions[caller][fromFront ? i : usersOriginalNumPositions - i]
+            );
         }
 
         // TODO: Get pre-burn values for each position
@@ -1547,7 +1548,8 @@ contract FuzzDeployments is FuzzHelpers {
         //  burn_one_option seems to do the latter.
         panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, tickLimitHigh);
         assertWithMsg(
-            panopticPool.numberOfPositions(caller) == usersOriginalNumPositions - positionsToBurn.length,
+            panopticPool.numberOfPositions(caller) ==
+                usersOriginalNumPositions - positionsToBurn.length,
             "Not all positions were burned"
         );
         // TODO: _assert_post_burn_differences_correct on each position
@@ -1557,16 +1559,24 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _get_preburn_accumulators_and_projected_premia(TokenId position, address seller, uint128 posSize) internal view returns(
-        uint256[] idealPremium0,
-        uint256[] idealPremium1,
-        uint256[] proratedPremium0,
-        uint256[] proratedPremium1,
-        uint128[] preburnSettledToken0,
-        uint128[] preburnSettledToken1,
-        uint128[] preburnGrossPremiaLast0,
-        uint128[] preburnGrossPremiaLast1
-    ) {
+    function _get_preburn_accumulators_and_projected_premia(
+        TokenId position,
+        address seller,
+        uint128 posSize
+    )
+        internal
+        view
+        returns (
+            uint256[] idealPremium0,
+            uint256[] idealPremium1,
+            uint256[] proratedPremium0,
+            uint256[] proratedPremium1,
+            uint128[] preburnSettledToken0,
+            uint128[] preburnSettledToken1,
+            uint128[] preburnGrossPremiaLast0,
+            uint128[] preburnGrossPremiaLast1
+        )
+    {
         uint256 numLegs = position.countLegs();
         preburnSettledToken0 = new uint128[](numLegs);
         preburnSettledToken1 = new uint128[](numLegs);
@@ -1578,7 +1588,7 @@ contract FuzzDeployments is FuzzHelpers {
         preburnPremiumGrowth0 = new uint128[](numLegs);
         preburnPremiumGrowth1 = new uint128[](numLegs);
 
-        (, preburnCurrentTick, , , , ,) = pool.slot0();
+        (, preburnCurrentTick, , , , , ) = pool.slot0();
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
             (
                 uint128 settledToken0,
@@ -1646,11 +1656,11 @@ contract FuzzDeployments is FuzzHelpers {
         uint256[] preburnSettledToken1,
         uint256[] preburnGrossPremiaLast0,
         uint256[] preburnGrossPremiaLast1
-    ) internal view returns(
-        uint256 totalProjectedProratedPremium0,
-        uint256 totalProjectedProratedPremium1
-    ) {
-
+    )
+        internal
+        view
+        returns (uint256 totalProjectedProratedPremium0, uint256 totalProjectedProratedPremium1)
+    {
         preburnProjectedTotalProratedPremium0 = 0;
         preburnProjectedTotalProratedPremium1 = 0;
 
@@ -1665,20 +1675,24 @@ contract FuzzDeployments is FuzzHelpers {
             ) = panopticPool.premiaSettlementData(position, legIndex);
 
             assertWithMsg(
-                postburnSettledToken0 == preburnSettledToken0[legIndex] - proratedPremium0[legIndex],
+                postburnSettledToken0 ==
+                    preburnSettledToken0[legIndex] - proratedPremium0[legIndex],
                 "Settled token0s did not decrease by the amount of total (prorated) premium paid out"
             );
             assertWithMsg(
-                postburnSettledToken1 == preburnSettledToken1[legIndex] - proratedPremium1[legIndex],
+                postburnSettledToken1 ==
+                    preburnSettledToken1[legIndex] - proratedPremium1[legIndex],
                 "Settled token1s did not decrease by the amount of total (prorated) premium paid out"
             );
 
             assertWithMsg(
-                postburnGrossPremiaLast0[legIndex] == preburnGrossPremiaLast0[legIndex] + projectedIdealPremium0[legIndex],
+                postburnGrossPremiaLast0[legIndex] ==
+                    preburnGrossPremiaLast0[legIndex] + projectedIdealPremium0[legIndex],
                 "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
             );
             assertWithMsg(
-                postburnGrossPremiaLast1[legIndex] == preburnGrossPremiaLast1[legIndex] + projectedIdealPremium1[legIndex],
+                postburnGrossPremiaLast1[legIndex] ==
+                    preburnGrossPremiaLast1[legIndex] + projectedIdealPremium1[legIndex],
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
         }
@@ -1691,17 +1705,27 @@ contract FuzzDeployments is FuzzHelpers {
         uint128[] calldata preburnLiquidity,
         uint128[] calldata preburnPremiumGrowth0,
         uint128[] calldata preburnPremiumGrowth1
-    ) internal view returns (
-        uint256[] idealPremium0,
-        uint256[] idealPremium1,
-        uint256[] proratedPremium0,
-        uint256[] proratedPremium1
-    ) {
+    )
+        internal
+        view
+        returns (
+            uint256[] idealPremium0,
+            uint256[] idealPremium1,
+            uint256[] proratedPremium0,
+            uint256[] proratedPremium1
+        )
+    {
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
             //    TODO: I don't think this is correct. I think this is already prorated.
-            idealPremium0[legIndex] = ((preburnPremiumAccumulator0[legIndex] - preburnPremiumGrowth0[legIndex]) * preburnLiquidity[legIndex]) >> 64;
-            idealPremium1[legIndex] = ((preburnPremiumAccumulator1[legIndex] - preburnPremiumGrowth1[legIndex]) * preburnLiquidity[legIndex]) >> 64;
+            idealPremium0[legIndex] =
+                ((preburnPremiumAccumulator0[legIndex] - preburnPremiumGrowth0[legIndex]) *
+                    preburnLiquidity[legIndex]) >>
+                64;
+            idealPremium1[legIndex] =
+                ((preburnPremiumAccumulator1[legIndex] - preburnPremiumGrowth1[legIndex]) *
+                    preburnLiquidity[legIndex]) >>
+                64;
 
             // 2. get proratedPremia - you should have been paid idealPremia * total settled tokens / total gross premia -
             //    eg, your premia gets prorated by the seller-wide portion of settled tokens available
@@ -1725,24 +1749,32 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnGrossPremium,
         uint128 preburnLiquidity,
         uint128 preburnSettledTokens
-    ) internal pure returns(uint256) {
-        return uint128(Math.min(
-            (idealPremium *
-                (preburnGrossPremium * preburnLiquidity) >> 64)
-                / preburnSettledTokens,
-            idealPremium
-        ));
+    ) internal pure returns (uint256) {
+        return
+            uint128(
+                Math.min(
+                    ((idealPremium * (preburnGrossPremium * preburnLiquidity)) >> 64) /
+                        preburnSettledTokens,
+                    idealPremium
+                )
+            );
     }
 
     // @custom:property PANO-SYS-009 The pool's grossPremiaLast is always less than the SFPM's grossPremia
-    function invariant_pools_gross_premia_is_less_than_sfpms_gross_premia(uint fuzzedActorIndex, uint fuzzedPositionIndex) public {
+    function invariant_pools_gross_premia_is_less_than_sfpms_gross_premia(
+        uint fuzzedActorIndex,
+        uint fuzzedPositionIndex
+    ) public {
         address positionHolder = actors[fuzzedActorIndex % actors.length];
         if (userPositions[positionHolder].length == 0) return;
 
-        TokenId position = userPositions[positionHolder][fuzzedPositionIndex % userPositions[positionHolder].length];
+        TokenId position = userPositions[positionHolder][
+            fuzzedPositionIndex % userPositions[positionHolder].length
+        ];
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            (, , uint128 grossPremiaLastToken0, uint128 grossPremiaLastToken1) = panopticPool.premiaSettlementData(position, legIndex);
+            (, , uint128 grossPremiaLastToken0, uint128 grossPremiaLastToken1) = panopticPool
+                .premiaSettlementData(position, legIndex);
 
             uint128 sfpmGrossPremia = sfpm.getAccountPremiumGross(position);
 
@@ -1867,7 +1899,6 @@ contract FuzzDeployments is FuzzHelpers {
             );
         }
     }
-
 
     // NOTE: this is basically trying to re-calc a value in s_options -
     //       probably derived from logic in closePosition / getPremium

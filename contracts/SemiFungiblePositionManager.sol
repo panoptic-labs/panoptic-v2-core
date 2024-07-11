@@ -1567,7 +1567,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
     }
 
-    function getAccountPremiumGross(TokenId position) external view returns(LeftRightUnsigned accountPremiumGross) {
+    function getAccountPremiumGross(
+        TokenId position
+    ) external view returns (LeftRightUnsigned accountPremiumGross) {
         return s_accountPremiumGross[position];
     }
 }
