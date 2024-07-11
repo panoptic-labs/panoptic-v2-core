@@ -590,7 +590,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
-
     /*//////////////////////////////////////////////////////////////
                          POSITION MINTING LOGIC
     //////////////////////////////////////////////////////////////*/
