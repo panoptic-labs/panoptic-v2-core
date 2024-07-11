@@ -179,7 +179,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     SemiFungiblePositionManager internal immutable SFPM;
 
     /*//////////////////////////////////////////////////////////////
-                                STORAGE 
+                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /// @dev The Uniswap v3 pool that this instance of Panoptic is deployed on
@@ -576,6 +576,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
     }
+
+    /// @notice Determines if account is eligible to withdraw or transfer collateral.
+    /// @dev Checks whether account is solvent with `BP_DECREASE_BUFFER` according to `_validateSolvency`.
+    /// @dev Prevents insolvent and near-insolvent accounts from withdrawing collateral before they are liquidated.
+    /// @dev Reverts if account is not solvent with `BP_DECREASE_BUFFER`.
+    /// @param user The account to check for collateral withdrawal eligibility
+    /// @param positionIdList The list of all option positions held by `user`
+    function validateCollateralWithdrawable(
+        address user,
+        TokenId[] calldata positionIdList
+    ) external {
+        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
+    }
+
 
     /*//////////////////////////////////////////////////////////////
                          POSITION MINTING LOGIC
@@ -1437,6 +1451,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
     }
 
+    // TODO: Move to wrapper
     function premiaSettlementData(
         TokenId tokenId,
         uint256 leg
@@ -1451,6 +1466,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return (settled.rightSlot(), settled.leftSlot(), gross.rightSlot(), gross.leftSlot());
     }
 
+    // TODO: Move to wrapper
     function optionData(
         TokenId tokenId,
         address account,

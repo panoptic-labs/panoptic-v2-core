@@ -118,7 +118,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            IMMUTABLES 
+                            IMMUTABLES
     //////////////////////////////////////////////////////////////*/
 
     /// @dev flag for mint/burn
@@ -137,7 +137,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     IUniswapV3Factory internal immutable FACTORY;
 
     /*//////////////////////////////////////////////////////////////
-                            STORAGE 
+                            STORAGE
     //////////////////////////////////////////////////////////////*/
 
     /// Store the mapping between the poolId and the Uniswap v3 pool - intent is to be 1:1 for all pools
@@ -149,19 +149,19 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     // (there will never be a collision because it's infeasible to mine an address with 8 consecutive bytes)
     mapping(uint64 poolId => PoolAddressAndLock contextData) internal s_poolContext;
 
-    /** 
+    /**
         We're tracking the amount of net and removed liquidity for the specific region:
 
-             net amount    
-           received minted  
-          ▲ for isLong=0     amount           
-          │                 moved out      actual amount 
-          │  ┌────┐-T      due isLong=1   in the UniswapV3Pool 
-          │  │    │          mints      
-          │  │    │                        ┌────┐-(T-R)  
-          │  │    │         ┌────┐-R       │    │          
-          │  │    │         │    │         │    │     
-          └──┴────┴─────────┴────┴─────────┴────┴──────►                     
+             net amount
+           received minted
+          ▲ for isLong=0     amount
+          │                 moved out      actual amount
+          │  ┌────┐-T      due isLong=1   in the UniswapV3Pool
+          │  │    │          mints
+          │  │    │                        ┌────┐-(T-R)
+          │  │    │         ┌────┐-R       │    │
+          │  │    │         │    │         │    │
+          └──┴────┴─────────┴────┴─────────┴────┴──────►
              total=T       removed=R      net=(T-R)
 
 
@@ -178,12 +178,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         internal s_accountLiquidity;
 
     /**
-        Any liquidity that has been deposited in the AMM using the SFPM will collect fees over 
+        Any liquidity that has been deposited in the AMM using the SFPM will collect fees over
         time, we call this the gross premia. If that liquidity has been removed, we also need to
         keep track of the amount of fees that *would have been collected*, we call this the owed
-        premia. The gross and owed premia are tracked per unit of liquidity by the 
+        premia. The gross and owed premia are tracked per unit of liquidity by the
         s_accountPremiumGross and s_accountPremiumOwed accumulators.
-        
+
         Here is how we can use the accumulators to compute the Gross, Net, and Owed fees collected
         by any position.
 
@@ -192,8 +192,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         the AMM will collect fees equal to:
 
               net_feesCollectedX128 = feeGrowthX128 * (T - R)
-                                    = feeGrowthX128 * N                                     
-        
+                                    = feeGrowthX128 * N
+
         where N = netLiquidity = T-R. Had that liquidity never been removed, we want the gross
         premia to be given by:
 
@@ -207,28 +207,28 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
               gross_feesCollectedX128 = net_feesCollectedX128 + owed_feesCollectedX128
 
-       where 
+       where
 
               owed_feesCollectedX128 = feeGrowthX128 * R * (1 + spread)                      (Eqn 1)
 
-        A very opinionated definition for the spread is: 
-              
+        A very opinionated definition for the spread is:
+
               spread = ν*(liquidity removed from that strike)/(netLiquidity remaining at that strike)
                      = ν*R/N
 
-        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by: 
+        For an arbitrary parameter 0 <= ν <= 1 (ν = 1/2^VEGOID). This way, the gross_feesCollectedX128 will be given by:
 
-              gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N) 
-                                      = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N         
+              gross_feesCollectedX128 = feeGrowthX128 * N + feeGrowthX128*R*(1 + ν*R/N)
+                                      = feeGrowthX128 * T + feesGrowthX128*ν*R^2/N
                                       = feeGrowthX128 * T * (1 + ν*R^2/(N*T))                (Eqn 2)
-        
+
         The s_accountPremiumOwed accumulator tracks the feeGrowthX128 * R * (1 + spread) term
         per unit of removed liquidity R every time the position touched:
 
               s_accountPremiumOwed += feeGrowthX128 * R * (1 + ν*R/N) / R
                                    += feeGrowthX128 * (T - R + ν*R)/N
                                    += feeGrowthX128 * T/N * (1 - R/T + ν*R/T)
-         
+
         Note that the value of feeGrowthX128 can be extracted from the amount of fees collected by
         the smart contract since the amount of feesCollected is related to feeGrowthX128 according
         to:
@@ -236,14 +236,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
              feesCollected = feesGrowthX128 * (T-R)
 
         So that we get:
-             
+
              feesGrowthX128 = feesCollected/N
 
         And the accumulator is computed from the amount of collected fees according to:
-             
-             s_accountPremiumOwed += feesCollected * T/N^2 * (1 - R/T + ν*R/T)          (Eqn 3)     
 
-        So, the amount of owed premia for a position of size r minted at time t1 and burnt at 
+             s_accountPremiumOwed += feesCollected * T/N^2 * (1 - R/T + ν*R/T)          (Eqn 3)
+
+        So, the amount of owed premia for a position of size r minted at time t1 and burnt at
         time t2 is:
 
              owedPremia(t1, t2) = (s_accountPremiumOwed_t2-s_accountPremiumOwed_t1) * r
@@ -255,26 +255,26 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         This way, the amount of premia owed for a position will match Eqn 1 exactly.
 
         Similarly, the amount of gross fees for the total liquidity is tracked in a similar manner
-        by the s_accountPremiumGross accumulator. 
+        by the s_accountPremiumGross accumulator.
 
         However, since we require that Eqn 2 holds up-- ie. the gross fees collected should be equal
         to the net fees collected plus the ower fees plus the small spread, the expression for the
-        s_accountPremiumGross accumulator has to be given by (you`ll see why in a minute): 
+        s_accountPremiumGross accumulator has to be given by (you`ll see why in a minute):
 
-            s_accountPremiumGross += feesCollected * T/N^2 * (1 - R/T + ν*R^2/T^2)       (Eqn 4) 
+            s_accountPremiumGross += feesCollected * T/N^2 * (1 - R/T + ν*R^2/T^2)       (Eqn 4)
 
         This expression can be used to calculate the fees collected by a position of size t between times
         t1 and t2 according to:
-             
+
             grossPremia(t1, t2) = ∆(s_accountPremiumGross) * t
-                                = ∆feeGrowthX128 * t * T/N * (1 - R/T + ν*R^2/T^2) 
-                                = ∆feeGrowthX128 * t * (T - R + ν*R^2/T) / N 
+                                = ∆feeGrowthX128 * t * T/N * (1 - R/T + ν*R^2/T^2)
+                                = ∆feeGrowthX128 * t * (T - R + ν*R^2/T) / N
                                 = ∆feeGrowthX128 * t * (N + ν*R^2/T) / N
                                 = ∆feeGrowthX128 * t * (1  + ν*R^2/(N*T))   (same as Eqn 2)
-            
+
         where the last expression matches Eqn 2 exactly.
 
-        In summary, the s_accountPremium accumulators allow smart contracts that need to handle 
+        In summary, the s_accountPremium accumulators allow smart contracts that need to handle
         long+short liquidity to guarantee that liquidity deposited always receives the correct
         premia, whether that liquidity has been removed from the AMM or not.
 
@@ -1053,7 +1053,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 │  │       │                         │      │
                 └──┴───────┴──►                      └──────┘
                    Uniswap v3                      msg.sender
-            
+
              else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
                 Buying(isLong=1): Burn in Uniswap
                        ┌─────────────────┐
@@ -1061,7 +1061,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 │  ┌──┴─┴──┐         ┌───▼──┐
                 │  │       │         │      │
                 └──┴───────┴──►      └──────┘
-                    Uniswap v3      msg.sender 
+                    Uniswap v3      msg.sender
             */
             moved = isLong == 0
                 ? _mintLiquidity(liquidityChunk, univ3pool)
@@ -1565,5 +1565,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @return poolId The unique poolId for that Uni v3 pool
     function getPoolId(address univ3pool) external view returns (uint64 poolId) {
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
+    }
+
+    function getAccountPremiumGross(TokenId position) external view returns(LeftRightUnsigned accountPremiumGross) {
+        return s_accountPremiumGross[position];
     }
 }
