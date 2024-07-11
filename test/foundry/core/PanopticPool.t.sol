@@ -7561,7 +7561,6 @@ contract PanopticPoolTest is PositionUtils {
             )
         );
 
-        vm.startPrank(Bob);
         // update twap
         for (uint256 j = 0; j < 20; ++j) {
             vm.warp(block.timestamp + 120);
@@ -7569,6 +7568,7 @@ contract PanopticPoolTest is PositionUtils {
             twoWaySwap(1e4);
         }
 
+        vm.startPrank(Bob);
         vm.expectRevert(Errors.NotMarginCalled.selector);
         pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]);
     }
