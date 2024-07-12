@@ -1772,8 +1772,8 @@ contract FuzzDeployments is FuzzHelpers {
             (
                 uint128 totalProjectedProratedPremium0,
                 uint128 totalProjectedProratedPremium1 // TODO: assertions in this helper will fail, because the pre-burn projected premia
-            ) = // assumed premia for each burn was independent.
-                // E.G., if you're burning A then B, burning A may change the premia owed for B,
+                // assumed premia for each burn was independent.
+            ) = // E.G., if you're burning A then B, burning A may change the premia owed for B,
                 // but your pre-burn projection was based on current values not post-burning-A-values
                 // you need to make a helper that just does a simulation and gives correct projections to
                 // preburnPremiaAndAccumulators
@@ -1835,14 +1835,17 @@ contract FuzzDeployments is FuzzHelpers {
             // the pool's grossPremiaLast should never exceed.
             // OLD: LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
             // TODO: Check that this new way of getting sfpmGrossPremia is correct:
-            (,int24 currentTick,,,,) = pool.slot0();
-            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_account_premium(position, legIndex);
+            (, int24 currentTick, , , , ) = pool.slot0();
+            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_account_premium(
+                position,
+                legIndex
+            );
             (uint128 posSize, , ) = panopticPool.optionPositionBalance(positionHolder, position);
             uint128 liquidity = PanopticMath
                 .getLiquidityChunk(position, legIndex, posSize)
                 .liquidity();
-            uint128 sfpmGrossPremia0 = premiumAccumulator0 * liquidity >> 64;
-            uint128 sfpmGrossPremia1 = premiumAccumulator1 * liquidity >> 64;
+            uint128 sfpmGrossPremia0 = (premiumAccumulator0 * liquidity) >> 64;
+            uint128 sfpmGrossPremia1 = (premiumAccumulator1 * liquidity) >> 64;
 
             assertWithMsg(
                 grossPremiaLastToken0 <= sfpmGrossPremia0,
