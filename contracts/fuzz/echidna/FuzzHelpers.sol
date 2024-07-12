@@ -26,7 +26,6 @@ import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {Constants} from "@libraries/Constants.sol";
-import {Pointer} from "@types/Pointer.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -237,7 +236,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool);
 
-    error PPBurnSimResError(int256, int256, bool, bool);
+    error PPBurnSimResError(int256, int256, bool);
 
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
@@ -284,6 +283,20 @@ contract FuzzHelpers is PropertiesAsserts {
         int24 width;
         uint256 tokenType;
     }
+
+    uint256 internal constant FAST_ORACLE_CARDINALITY = 3;
+    uint256 internal constant FAST_ORACLE_PERIOD = 1;
+
+    bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
+    uint256 internal constant SLOW_ORACLE_CARDINALITY = 7;
+    uint256 internal constant SLOW_ORACLE_PERIOD = 5;
+
+    uint256 internal constant MEDIAN_PERIOD = 60;
+
+    uint256 internal constant BP_DECREASE_BUFFER = 13_333;
+    int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
+
+    bool internal constant ONLY_AVAILABLE_PREMIUM = false;
 
     address[] $allPositionOwners;
     TokenId[] $allPositions;
@@ -394,8 +407,6 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256[2][] $posBalanceArray;
 
     bool $shouldRevert;
-
-    bool $burnCollateralRevert;
 
     int24 $fastOracleTick;
     int24 $slowOracleTick;
@@ -532,6 +543,34 @@ contract FuzzHelpers is PropertiesAsserts {
     /////////////////////////////////////////////////////////////
     // Calculation helpers
     /////////////////////////////////////////////////////////////
+
+    function _getSolvencyBalances(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint160 sqrtPriceX96,
+        uint256 amountWithdrawn,
+        bool isToken0
+    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
+        unchecked {
+            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
+            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
+            balanceCross =
+                Math.mulDiv(
+                    uint256(tokenData1.rightSlot()) - (isToken0 ? 0 : amountWithdrawn),
+                    2 ** 96,
+                    sqrtPriceX96
+                ) +
+                Math.mulDiv96(
+                    tokenData0.rightSlot() - (isToken0 ? amountWithdrawn : 0),
+                    sqrtPriceX96
+                );
+            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
+            // overestimate by rounding up
+            thresholdCross =
+                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
+                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
+        }
+    }
 
     function _get_effective_liq_factor(
         uint256 legTokenType,
@@ -893,131 +932,6 @@ contract FuzzHelpers is PropertiesAsserts {
         );
     }
 
-    /////////////////////////////////////////////////////////////
-    // Imported functions
-    /////////////////////////////////////////////////////////////
-
-    // function getOTMSW(
-    //     uint256 _widthSeed,
-    //     int256 _strikeSeed,
-    //     uint256 ts_,
-    //     int24 _currentTick,
-    //     uint256 _tokenType
-    // ) internal view returns (int24 width, int24 strike) {
-    //     int256 ts = int256(ts_);
-
-    //     width = ts == 1
-    //         ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-    //         : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
-    //     int24 oneSidedRange = int24((width * ts) / 2);
-
-    //     int24 rangeDown;
-    //     int24 rangeUp;
-    //     (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-    //     (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-    //     int24 lowerBound = _tokenType == 0
-    //         ? int24(_currentTick + ts + oneSidedRange - strikeOffset)
-    //         : int24(minTick + oneSidedRange - strikeOffset);
-    //     int24 upperBound = _tokenType == 0
-    //         ? int24(maxTick - oneSidedRange - strikeOffset)
-    //         : int24(_currentTick - oneSidedRange - strikeOffset);
-
-    //     if (ts == 1) {
-    //         lowerBound = _tokenType == 0
-    //             ? int24(_currentTick + ts + rangeDown - strikeOffset)
-    //             : int24(minTick + rangeDown - strikeOffset);
-    //         upperBound = _tokenType == 0
-    //             ? int24(maxTick - rangeUp - strikeOffset)
-    //             : int24(_currentTick - rangeUp - strikeOffset);
-    //     }
-
-    //     // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-    //     // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-    //     strike = int24(int256(bound(_strikeSeed, lowerBound / ts, upperBound / ts)));
-
-    //     strike = int24(strike * ts + strikeOffset);
-    // }
-
-    // function getITMSW(
-    //     uint256 _widthSeed,
-    //     int256 _strikeSeed,
-    //     uint256 ts_,
-    //     int24 _currentTick,
-    //     uint256 _tokenType
-    // ) internal view returns (int24 width, int24 strike) {
-    //     int256 ts = int256(ts_);
-
-    //     width = ts == 1
-    //         ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-    //         : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
-    //     int24 oneSidedRange = int24((width * ts) / 2);
-
-    //     int24 rangeDown;
-    //     int24 rangeUp;
-    //     (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-    //     (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-    //     int24 lowerBound = _tokenType == 0
-    //         ? int24(minTick + oneSidedRange - strikeOffset)
-    //         : int24(_currentTick + oneSidedRange - strikeOffset);
-    //     int24 upperBound = _tokenType == 0
-    //         ? int24(_currentTick + ts - oneSidedRange - strikeOffset)
-    //         : int24(maxTick - oneSidedRange - strikeOffset);
-
-    //     if (ts == 1) {
-    //         lowerBound = _tokenType == 0
-    //             ? int24(minTick + rangeDown - strikeOffset)
-    //             : int24(_currentTick + rangeDown - strikeOffset);
-    //         upperBound = _tokenType == 0
-    //             ? int24(_currentTick + ts - rangeUp - strikeOffset)
-    //             : int24(maxTick - rangeUp - strikeOffset);
-    //     }
-
-    //     // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-    //     // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-    //     strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
-
-    //     strike = int24(strike * ts + strikeOffset);
-    // }
-
-    // function getATMSW(
-    //     uint256 _widthSeed,
-    //     int256 _strikeSeed,
-    //     uint256 ts_,
-    //     int24 _currentTick,
-    //     uint256 _tokenType
-    // ) internal view returns (int24 width, int24 strike) {
-    //     int256 ts = int256(ts_);
-
-    //     width = ts == 1
-    //         ? width = int24(int256(bound(_widthSeed, 1, 1000)))
-    //         : int24(int256(bound(_widthSeed, 1, (1000 * 10) / uint256(ts))));
-    //     int24 oneSidedRange = int24((width * ts) / 2);
-
-    //     int24 rangeDown;
-    //     int24 rangeUp;
-    //     (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
-
-    //     (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
-
-    //     int24 lowerBound = int24(_currentTick + ts - oneSidedRange - strikeOffset);
-    //     int24 upperBound = int24(_currentTick + oneSidedRange - strikeOffset);
-
-    //     if (ts == 1) {
-    //         lowerBound = int24(_currentTick + rangeDown - strikeOffset);
-    //         upperBound = int24(_currentTick + ts - rangeUp - strikeOffset);
-    //     }
-
-    //     // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
-    //     // based on the width being divisibly by 2, it is then offset by either ts or ts / 2
-    //     strike = int24(bound(_strikeSeed, lowerBound / ts, upperBound / ts));
-
-    //     strike = int24(strike * ts + strikeOffset);
-    // }
-
     function getContext(
         uint256 ts_,
         int24 _currentTick,
@@ -1339,22 +1253,13 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
             bool sRevert;
-            ($colDelta0, $colDelta1, sRevert, $burnCollateralRevert) = abi.decode(
-                results,
-                (int256, int256, bool, bool)
-            );
+            ($colDelta0, $colDelta1, sRevert) = abi.decode(results, (int256, int256, bool));
 
             $shouldRevert = $shouldRevert || sRevert;
         }
     }
 
     function pp_burn_sim() external {
-        int256 balExerciseeOrig0 = int256(
-            collToken0.convertToAssets(collToken0.balanceOf($exercisee))
-        );
-        int256 balExerciseeOrig1 = int256(
-            collToken1.convertToAssets(collToken1.balanceOf($exercisee))
-        );
         hevm.prank($exercisee);
         try
             panopticPool.burnOptions(
@@ -1365,25 +1270,18 @@ contract FuzzHelpers is PropertiesAsserts {
             )
         {
             revert PPBurnSimResError(
-                int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee))) -
-                    balExerciseeOrig0,
-                int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee))) -
-                    balExerciseeOrig1,
-                false,
+                int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee,
+                int256(collToken1.balanceOf($exercisee)) - $balance1Exercisee,
                 false
             );
         } catch (bytes memory reason) {
             if (keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))) {
                 hevm.prank(address(panopticPool));
-                collToken0.delegate($exercisee, 2 ** 104 * 100);
+                collToken0.delegate($exercisee, (2 ** 104 - 1) * 10_000);
                 hevm.prank(address(panopticPool));
-                collToken1.delegate($exercisee, 2 ** 104 * 100);
-                balExerciseeOrig0 = int256(
-                    collToken0.convertToAssets(collToken0.balanceOf($exercisee))
-                );
-                balExerciseeOrig1 = int256(
-                    collToken1.convertToAssets(collToken1.balanceOf($exercisee))
-                );
+                collToken1.delegate($exercisee, (2 ** 104 - 1) * 10_000);
+                int256 balExerciseeOrig0 = int256(collToken0.balanceOf($exercisee));
+                int256 balExerciseeOrig1 = int256(collToken1.balanceOf($exercisee));
 
                 hevm.prank($exercisee);
                 try
@@ -1395,18 +1293,15 @@ contract FuzzHelpers is PropertiesAsserts {
                     )
                 {
                     revert PPBurnSimResError(
-                        int256(collToken0.convertToAssets(collToken0.balanceOf($exercisee))) -
-                            balExerciseeOrig0,
-                        int256(collToken1.convertToAssets(collToken1.balanceOf($exercisee))) -
-                            balExerciseeOrig1,
-                        false,
-                        true
+                        int256(collToken0.balanceOf($exercisee)) - balExerciseeOrig0,
+                        int256(collToken1.balanceOf($exercisee)) - balExerciseeOrig1,
+                        false
                     );
                 } catch {
-                    revert PPBurnSimResError(0, 0, true, false);
+                    revert PPBurnSimResError(0, 0, true);
                 }
             } else {
-                revert PPBurnSimResError(0, 0, true, false);
+                revert PPBurnSimResError(0, 0, true);
             }
         }
     }
@@ -1448,6 +1343,79 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function validate_exercisable_ext(TokenId eid, int24 tickEat) external pure {
         eid.validateIsExercisable(tickEat);
+    }
+
+    function _perform_swap_with_delay(uint160 target_sqrt_price, uint256 delay) internal {
+        // bound the price between 10 and 500000
+        target_sqrt_price = uint160(
+            bound(
+                target_sqrt_price,
+                112028621795169773357271145775104,
+                25054084147398268684193622782902272
+            )
+        );
+
+        uint160 price;
+
+        (price, currentTick, , , , , ) = pool.slot0();
+
+        emit LogInt256("tick before swap", currentTick);
+        emit LogUint256("price before swap", uint256(price));
+
+        uint256 delay_on = (delay % 2 == 0) ? 1 : 0;
+        uint256 delay_block = bound(delay, 0, 150);
+
+        emit LogUint256("number of block delayed", delay_block);
+
+        hevm.prank(pool_manipulator);
+        swapperc.swapTo(pool, target_sqrt_price);
+        hevm.warp(block.timestamp + delay_on * delay_block * 12);
+        hevm.roll(block.number + delay_on * delay_block);
+
+        // Do another random mint+burn
+        delay_on = ((delay >> 4) % 2) == 0 ? 1 : 0;
+        if (delay_on == 1) {
+            hevm.prank(pool_manipulator);
+            swapperc.mint(pool, -10, 10, 10 ** 18);
+            hevm.prank(pool_manipulator);
+            swapperc.burn(pool, -10, 10, 10 ** 18);
+        }
+
+        (price, currentTick, , , , , ) = pool.slot0();
+        emit LogInt256("tick after swap", currentTick);
+        emit LogUint256("price after swap", uint256(price));
+    }
+
+    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
+        int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
+        int256 assetDelta = convertToAssets(ct, shareDelta);
+        hevm.store(
+            address(ct),
+            bytes32(uint256(7)),
+            bytes32(
+                uint256(
+                    LeftRightSigned.unwrap(
+                        LeftRightSigned
+                            .wrap(int256(uint256(hevm.load(address(ct), bytes32(uint256(7))))))
+                            .add(LeftRightSigned.wrap(assetDelta))
+                    )
+                )
+            )
+        );
+
+        if (ct.asset() == address(USDC)) {
+            alter_USDC(
+                address(ct),
+                uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta)
+            );
+        } else {
+            alter_WETH(
+                address(ct),
+                uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta)
+            );
+        }
+
+        deal_Generic(address(ct), 1, owner, newShares, true, 0); // deal(address(ct), owner, newShares, true);
     }
 
     ////////////////////////////////////////////////////

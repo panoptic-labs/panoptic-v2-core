@@ -44,11 +44,5 @@ echidna . --contract ContractName --config path/to/config.yaml
 This allows you to have different configuration files for different tests, for example, you could fuzz the whole FuzzDeployments contract:
 
 ```bash
-echidna . --contract FuzzDeployments --config contracts/fuzz/echidna.yaml
-```
-
-and have a separate configuration file for just fuzzing the minting operations, as provided in the example FuzzMint.sol file:
-
-```bash
-echidna . --contract FuzzMint --config contracts/fuzz/evaluate_minting.yaml
+echidna . --contract EchidnaWrapper --config contracts/fuzz/echidna.yaml
 ```
