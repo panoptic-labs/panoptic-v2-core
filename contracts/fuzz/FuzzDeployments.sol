@@ -1695,21 +1695,32 @@ contract FuzzDeployments is FuzzHelpers {
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
     /// @custom:precondition The user has at least one position open
-    function burn_many_options(bool isCovered, bool burnAll, uint numPositionsToBurn, bool fromFront) public {
+    function burn_many_options(
+        bool isCovered,
+        bool burnAll,
+        uint numPositionsToBurn,
+        bool fromFront
+    ) public {
         address caller = msg.sender;
         uint256 preburnNumPositions = userPositions[caller].length;
         if (preburnNumPositions < 1) revert();
 
-        numPositionsToBurn = burnAll ? preburnNumPositions : numPositionsToBurn % preburnNumPositions;
+        numPositionsToBurn = burnAll
+            ? preburnNumPositions
+            : numPositionsToBurn % preburnNumPositions;
 
         TokenId[] memory positionsToBurn = new TokenId[](numPositionsToBurn);
-        TokenId[] memory retainedPositions = new TokenId[](preburnNumPositions - numPositionsToBurn);
+        TokenId[] memory retainedPositions = new TokenId[](
+            preburnNumPositions - numPositionsToBurn
+        );
 
         int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn; i++)
-            positionsToBurn[i] = userPositions[caller][fromFront ? i : preburnNumPositions - (i + 1)];
+            positionsToBurn[i] = userPositions[caller][
+                fromFront ? i : preburnNumPositions - (i + 1)
+            ];
 
         for (uint i = 0; i < preburnNumPositions; i++) {
             if (
@@ -1723,11 +1734,22 @@ contract FuzzDeployments is FuzzHelpers {
         }
 
         // Get pre-burn values to compare against
-        (uint256 burnersPreburnToken0Balance, uint256 burnersPreburnToken1Balance) = _get_token_balances(caller);
-        PremiaAndAccumulatorsForLeg[][] memory preburnPremiaAndAccumulators = new PremiaAndAccumulatorsForLeg[][](preburnNumPositions);
+        (
+            uint256 burnersPreburnToken0Balance,
+            uint256 burnersPreburnToken1Balance
+        ) = _get_token_balances(caller);
+        PremiaAndAccumulatorsForLeg[][]
+            memory preburnPremiaAndAccumulators = new PremiaAndAccumulatorsForLeg[][](
+                preburnNumPositions
+            );
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
-            (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, positionsToBurn[positionIndex]);
-            preburnPremiaAndAccumulators[positionIndex] = _get_preburn_accumulators_and_projected_premia(
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(
+                caller,
+                positionsToBurn[positionIndex]
+            );
+            preburnPremiaAndAccumulators[
+                positionIndex
+            ] = _get_preburn_accumulators_and_projected_premia(
                 positionsToBurn[positionIndex],
                 caller,
                 posSize
@@ -1740,8 +1762,7 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory emptyList;
         panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
         assertWithMsg(
-            panopticPool.numberOfPositions(caller) ==
-                preburnNumPositions - positionsToBurn.length,
+            panopticPool.numberOfPositions(caller) == preburnNumPositions - positionsToBurn.length,
             "Not all positions were burned"
         );
 
@@ -1751,13 +1772,16 @@ contract FuzzDeployments is FuzzHelpers {
             (
                 uint128 totalProjectedProratedPremium0,
                 uint128 totalProjectedProratedPremium1
-                // TODO: assertions in this helper will fail, because the pre-burn projected premia
+            ) = // TODO: assertions in this helper will fail, because the pre-burn projected premia
                 // assumed premia for each burn was independent.
                 // E.G., if you're burning A then B, burning A may change the premia owed for B,
                 // but your pre-burn projection was based on current values not post-burning-A-values
                 // you need to make a helper that just does a simulation and gives correct projections to
                 // preburnPremiaAndAccumulators
-            ) = _assert_each_legs_chunk_accumulators_correct(positionsToBurn[positionIndex], preburnPremiaAndAccumulators[positionIndex]);
+                _assert_each_legs_chunk_accumulators_correct(
+                    positionsToBurn[positionIndex],
+                    preburnPremiaAndAccumulators[positionIndex]
+                );
             allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
             allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
         }
@@ -1767,7 +1791,10 @@ contract FuzzDeployments is FuzzHelpers {
         //         - Collateral?
         //          (I don't think so - i think only buyers that borrow the LP position post collateral - but need to check)
         //         - any assets related to making the option they sold covered?
-        (uint256 burnersPostburnToken0Balance, uint256 burnersPostburnToken1Balance) = _get_token_balances(caller);
+        (
+            uint256 burnersPostburnToken0Balance,
+            uint256 burnersPostburnToken1Balance
+        ) = _get_token_balances(caller);
 
         assertWithMsg(
             burnersPostburnToken0Balance ==
