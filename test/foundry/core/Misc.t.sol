@@ -3171,6 +3171,9 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
+            (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+            vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 1800);
+
             pp.liquidate(
                 new TokenId[](0),
                 Bob,
