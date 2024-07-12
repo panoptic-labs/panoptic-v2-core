@@ -216,8 +216,8 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i = 0; i < 100; ++i) {
             vm.warp(block.timestamp + 1);
             vm.roll(block.number + 1);
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+            swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
         swapperc.mint(uniPool, -887270, 887270, 10 ** 18);
 
@@ -2840,7 +2840,7 @@ contract Misctest is Test, PositionUtils {
     function test_success_liquidation_fuzzedSwapITM(uint256[4] memory prices) public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+        swapperc.mint(uniPool, -887270, 887270, 10 ** 24);
 
         // L = 1
         uniPool.liquidity();
@@ -2946,13 +2946,20 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
             }
 
             // deal alice a bunch of collateral tokens without touching the supply
             editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
             editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+            // update twaps
+            for (uint256 j = 0; j < 100; ++j) {
+                vm.warp(block.timestamp + 120);
+                vm.roll(block.number + 10);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            }
 
             vm.startPrank(Alice);
             pp.liquidate(
@@ -3027,8 +3034,8 @@ contract Misctest is Test, PositionUtils {
                 uniPool,
                 tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
             );
-
             (, currentTick, , , , , ) = uniPool.slot0();
+
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
                 Bob,
@@ -3043,9 +3050,12 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
+
+            (, currentTick, , , , , ) = uniPool.slot0();
+            int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
 
             vm.startPrank(Alice);
             pp.liquidate(
@@ -3128,8 +3138,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3227,8 +3237,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3325,8 +3335,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3423,11 +3433,12 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
+
             pp.liquidate(
                 new TokenId[](0),
                 Bob,
@@ -3514,8 +3525,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3600,8 +3611,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3696,8 +3707,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3790,8 +3801,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3884,8 +3895,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4006,8 +4017,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4128,8 +4139,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4250,8 +4261,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);

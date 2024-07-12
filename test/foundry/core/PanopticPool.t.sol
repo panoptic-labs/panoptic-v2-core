@@ -6297,7 +6297,11 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
-
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(swapSizeSeed);
+        }
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
@@ -6799,7 +6803,6 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         twoWaySwap(swapSizeSeed);
-
         // now we can mint the options being liquidated
         vm.startPrank(Alice);
 
@@ -6826,6 +6829,11 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         twoWaySwap(swapSizeSeed);
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(1e4);
+        }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
@@ -7398,7 +7406,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(Constants.MAX_V3POOL_TICK) - int256(currentTick)
             )
         );
-        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 513);
+        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 1800);
         vm.store(
             address(pool),
             bytes32(0),
@@ -7521,6 +7529,12 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
+        // update twap
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(1e4);
+        }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
@@ -7564,6 +7578,8 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.startPrank(Bob);
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 1800);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
         pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]);

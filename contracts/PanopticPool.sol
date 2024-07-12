@@ -1001,15 +1001,38 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
 
+        int24 currentTick;
+        {
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            int24 fastOracleTick;
+            int24 lastObservedTick;
+            (currentTick, fastOracleTick, , lastObservedTick, ) = _getOracleTicks();
+
+            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
+
+            // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
+            /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
+            int24[] memory atTicks = new int24[](4);
+            atTicks[0] = fastOracleTick;
+            atTicks[1] = twapTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
+
+            bool solvent = _checkSolvencyAtTicks(
+                liquidatee,
+                positionIdList,
+                currentTick,
+                atTicks,
+                NO_BUFFER
+            );
+
+            if (solvent) revert Errors.NotMarginCalled();
+        }
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightSigned premia;
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-        {
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                revert Errors.StaleTWAP();
 
+        {
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -1019,21 +1042,19 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick
             );
 
-            if (!_checkCrossBalances(liquidatee, twapTick, positionBalanceArray, premia, NO_BUFFER))
-                revert Errors.NotMarginCalled();
+            tokenData0 = s_collateralToken0.getAccountMarginDetails(
+                liquidatee,
+                twapTick,
+                positionBalanceArray,
+                premia.rightSlot()
+            );
 
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            // TODO check with currentTick as well, do conservative collateral checks if outside
-            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                if (
-                    !_checkCrossBalances(
-                        liquidatee,
-                        currentTick,
-                        positionBalanceArray,
-                        premia,
-                        NO_BUFFER
-                    )
-                ) revert Errors.NotMarginCalled();
+            tokenData1 = s_collateralToken1.getAccountMarginDetails(
+                liquidatee,
+                twapTick,
+                positionBalanceArray,
+                premia.leftSlot()
+            );
         }
 
         // Perform the specified delegation from `msg.sender` to `liquidatee`
