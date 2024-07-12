@@ -1023,18 +1023,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
 
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        int24 currentTick;
         {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
 
-            (, int24 fastOracleTick, , , ) = _getOracleTicks();
+            int24 fastOracleTick;
+            int24 lastObservedTick;
+            (currentTick, fastOracleTick, , lastObservedTick, ) = _getOracleTicks();
             // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
             /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
-            int24[] memory atTicks = new int24[](3);
-            atTicks[0] = twapTick;
-            atTicks[1] = currentTick;
-            atTicks[2] = fastOracleTick;
+            int24[] memory atTicks = new int24[](4);
+            atTicks[0] = fastOracleTick;
+            atTicks[1] = twapTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
 
             bool solvent = _checkSolvencyAtTicks(
                 liquidatee,
