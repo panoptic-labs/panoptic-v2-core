@@ -1727,10 +1727,18 @@ contract FuzzDeployments is FuzzHelpers {
                     uint128 postburnGrossPremiaLast0,
                     uint128 postburnGrossPremiaLast1
                 ) = panopticPool.premiaSettlementData(position, legIndex);
-                $settledToken0DifferenceByLeg[positionIndex][legIndex] = postburnSettledToken0 - premiaAndAccumulators[positionIndex][legIndex].settledToken0;
-                $settledToken1DifferenceByLeg[positionIndex][legIndex] = postburnSettledToken0 - premiaAndAccumulators[positionIndex][legIndex].settledToken0;
-                $grossPremiaLast0DifferenceByLeg[positionIndex][legIndex] = postburnGrossPremiaLast0 - premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0;
-                $grossPremiaLast1DifferenceByLeg[positionIndex][legIndex] = postburnGrossPremiaLast1 - premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1;
+                $settledToken0DifferenceByLeg[positionIndex][legIndex] =
+                    postburnSettledToken0 -
+                    premiaAndAccumulators[positionIndex][legIndex].settledToken0;
+                $settledToken1DifferenceByLeg[positionIndex][legIndex] =
+                    postburnSettledToken0 -
+                    premiaAndAccumulators[positionIndex][legIndex].settledToken0;
+                $grossPremiaLast0DifferenceByLeg[positionIndex][legIndex] =
+                    postburnGrossPremiaLast0 -
+                    premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0;
+                $grossPremiaLast1DifferenceByLeg[positionIndex][legIndex] =
+                    postburnGrossPremiaLast1 -
+                    premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1;
             }
         }
         (
@@ -1759,7 +1767,10 @@ contract FuzzDeployments is FuzzHelpers {
         return false;
     }
 
-    function _push_to_array(bytes32[] memory array, bytes32 new_value) internal pure returns (bytes32[] memory new_array) {
+    function _push_to_array(
+        bytes32[] memory array,
+        bytes32 new_value
+    ) internal pure returns (bytes32[] memory new_array) {
         new_array = new bytes32[](array.length + 1);
         for (uint256 i = 0; i < array.length; i++) {
             new_array[i] = array[i];
@@ -1767,10 +1778,10 @@ contract FuzzDeployments is FuzzHelpers {
         new_array[array.length] = new_value;
     }
 
-    mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken0Difference;
-    mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken1Difference;
-    mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia0Difference;
-    mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia1Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedSettledToken0Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedSettledToken1Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedGrossPremia0Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedGrossPremia1Difference;
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
@@ -1838,14 +1849,16 @@ contract FuzzDeployments is FuzzHelpers {
 
         // Figure out what changes in settled tokens, burner token balances, and so on we expect
         // if we burn each individually
-        try this._simulate_burn_on_each_position(
-            caller,
-            positionsToBurn,
-            tickLimitLow,
-            preburnPremiaAndAccumulators,
-            burnersPreburnToken0Balance,
-            burnersPreburnToken1Balance
-        ) {
+        try
+            this._simulate_burn_on_each_position(
+                caller,
+                positionsToBurn,
+                tickLimitLow,
+                preburnPremiaAndAccumulators,
+                burnersPreburnToken0Balance,
+                burnersPreburnToken1Balance
+            )
+        {
             assertWithMsg(false, "The _simulate_burn_on_each_position helper should always revert");
         } catch (bytes memory _err) {
             (
@@ -1855,7 +1868,10 @@ contract FuzzDeployments is FuzzHelpers {
                 uint128[][] memory settledToken1Difference,
                 uint128[][] memory grossPremiaLast0Difference,
                 uint128[][] memory grossPremiaLast1Difference
-            ) = abi.decode(_err, (uint256, uint256, uint128[][], uint128[][], uint128[][], uint128[][]));
+            ) = abi.decode(
+                    _err,
+                    (uint256, uint256, uint128[][], uint128[][], uint128[][], uint128[][])
+                );
 
             // Then, prove that burning them all at once makes the same differences:
             // 1. burn
@@ -1865,7 +1881,8 @@ contract FuzzDeployments is FuzzHelpers {
             TokenId[] memory emptyList;
             panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
             assertWithMsg(
-                panopticPool.numberOfPositions(caller) == preburnNumPositions - positionsToBurn.length,
+                panopticPool.numberOfPositions(caller) ==
+                    preburnNumPositions - positionsToBurn.length,
                 "Not all positions were burned"
             );
 
@@ -1876,11 +1893,13 @@ contract FuzzDeployments is FuzzHelpers {
             ) = _get_token_balances(caller);
 
             assertWithMsg(
-                burnersPostburnToken0Balance - burnersPreburnToken0Balance == token0DifferenceWhenBurningEach,
+                burnersPostburnToken0Balance - burnersPreburnToken0Balance ==
+                    token0DifferenceWhenBurningEach,
                 "Burners token0 balance did not increase by the same amount as if they had burned each position one-by-one"
             );
             assertWithMsg(
-                burnersPostburnToken1Balance - burnersPreburnToken1Balance == token1DifferenceWhenBurningEach,
+                burnersPostburnToken1Balance - burnersPreburnToken1Balance ==
+                    token1DifferenceWhenBurningEach,
                 "Burners token1 balance did not increase by the same amount as if they had burned each position one-by-one"
             );
 
@@ -1897,10 +1916,18 @@ contract FuzzDeployments is FuzzHelpers {
                             position.tokenType(legIndex)
                         )
                     );
-                    chunkKeyToExpectedSettledToken0Difference[chunkKey] += settledToken0Difference[positionIndex][legIndex];
-                    chunkKeyToExpectedSettledToken1Difference[chunkKey] += settledToken1Difference[positionIndex][legIndex];
-                    chunkKeyToExpectedGrossPremia0Difference[chunkKey] += grossPremiaLast0Difference[positionIndex][legIndex];
-                    chunkKeyToExpectedGrossPremia1Difference[chunkKey] += grossPremiaLast1Difference[positionIndex][legIndex];
+                    chunkKeyToExpectedSettledToken0Difference[chunkKey] += settledToken0Difference[
+                        positionIndex
+                    ][legIndex];
+                    chunkKeyToExpectedSettledToken1Difference[chunkKey] += settledToken1Difference[
+                        positionIndex
+                    ][legIndex];
+                    chunkKeyToExpectedGrossPremia0Difference[
+                        chunkKey
+                    ] += grossPremiaLast0Difference[positionIndex][legIndex];
+                    chunkKeyToExpectedGrossPremia1Difference[
+                        chunkKey
+                    ] += grossPremiaLast1Difference[positionIndex][legIndex];
                     if (!_contains(chunksTouched, chunkKey)) {
                         _push_to_array(chunksTouched, chunkKey);
                     }
