@@ -4227,4 +4227,73 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
     }
+
+    function test_removedLiquidityOverflow() public {
+        _initPool(0);
+
+        _cacheWorldState(USDC_WETH_30);
+
+        sfpm.initializeAMMPool(token0, token1, fee);
+
+        int24 width = 4090;
+        int24 strike = 0;
+
+        populatePositionData(width, strike, 0, 0);
+
+        uint128 psnSize = type(uint128).max / 70;
+
+        TokenId shortTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId longTokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            1,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        for (uint256 i = 0; i < 32311; i++) {
+            sfpm.mintTokenizedPosition(shortTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+
+            sfpm.mintTokenizedPosition(longTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+        }
+
+        accountLiquidities = sfpm.getAccountLiquidity(
+            address(USDC_WETH_30),
+            Alice,
+            0,
+            tickLower,
+            tickUpper
+        );
+
+        uint128 accountLiquidities_leftSlot_before_overflow = accountLiquidities.leftSlot();
+        assertLt(accountLiquidities_leftSlot_before_overflow, type(uint128).max);
+
+        sfpm.mintTokenizedPosition(shortTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+
+        vm.expectRevert(stdError.arithmeticError);
+        sfpm.mintTokenizedPosition(longTokenId, psnSize, TickMath.MIN_TICK, TickMath.MAX_TICK);
+
+        accountLiquidities = sfpm.getAccountLiquidity(
+            address(USDC_WETH_30),
+            Alice,
+            0,
+            tickLower,
+            tickUpper
+        );
+
+        assertGe(accountLiquidities.leftSlot(), accountLiquidities_leftSlot_before_overflow);
+    }
 }

@@ -58,23 +58,23 @@ using TokenIdLibrary for TokenId global;
 //  - the Uniswap v3 pool id starts at bit index 0 and ends at bit index 63 (and thus takes up 64 bits).
 //  - the width of the 3rd leg in this option position starts at bit index 64+36+48*2=196
 library TokenIdLibrary {
-    /// @notice AND mask to extract all `isLong` bits for each leg from a TokenId
+    /// @notice AND mask to extract all `isLong` bits for each leg from a TokenId.
     uint256 internal constant LONG_MASK =
         0x100_000000000100_000000000100_000000000100_0000000000000000;
 
-    /// @notice AND mask to clear `poolId` from a TokenId
+    /// @notice AND mask to clear `poolId` from a TokenId.
     uint256 internal constant CLEAR_POOLID_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF_0000000000000000;
 
-    /// @notice AND mask to clear all bits except for the option ratios of the legs
+    /// @notice AND mask to clear all bits except for the option ratios of the legs.
     uint256 internal constant OPTION_RATIO_MASK =
         0x0000000000FE_0000000000FE_0000000000FE_0000000000FE_0000000000000000;
 
-    /// @notice AND mask to clear all bits except for the components of the chunk key (strike, width, tokenType) for each leg
+    /// @notice AND mask to clear all bits except for the components of the chunk key (strike, width, tokenType) for each leg.
     uint256 internal constant CHUNK_MASK =
         0xFFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_FFFFFFFFF200_0000000000000000;
 
-    /// @notice AND mask to cut a sign-extended int256 back to an int24
+    /// @notice AND mask to cut a sign-extended int256 back to an int24.
     int256 internal constant BITMASK_INT24 = 0xFFFFFF;
 
     /*//////////////////////////////////////////////////////////////
@@ -189,7 +189,7 @@ library TokenIdLibrary {
     /// @notice Add the `tickSpacing` to the PoolID for `self`.
     /// @param self The TokenId to add `_tickSpacing` to
     /// @param _tickSpacing The tickSpacing to add to `self`
-    /// @return `self` with `_tickSpacing` added to the TickSpacing slot in the PoolID.
+    /// @return `self` with `_tickSpacing` added to the TickSpacing slot in the PoolID
     function addTickSpacing(TokenId self, int24 _tickSpacing) internal pure returns (TokenId) {
         unchecked {
             return TokenId.wrap(TokenId.unwrap(self) + (uint256(uint24(_tickSpacing)) << 48));
@@ -323,7 +323,7 @@ library TokenIdLibrary {
     }
 
     /// @notice Add a leg to a TokenId.
-    /// @param self The tokenId in the SFPM representing an option position.
+    /// @param self The tokenId in the SFPM representing an option position
     /// @param legIndex The leg index of this position (in {0,1,2,3}) to add
     /// @param _optionRatio The relative size of the leg
     /// @param _asset The asset of the leg
@@ -400,7 +400,7 @@ library TokenIdLibrary {
     /// @notice Get the number of longs in this option position.
     /// @notice Count the number of legs (out of a maximum of 4) that are long positions.
     /// @param self The TokenId to count longs for
-    /// @return The number of long positions in `self` (in the range {0,...,4}).
+    /// @return The number of long positions in `self` (in the range {0,...,4})
     function countLongs(TokenId self) internal pure returns (uint256) {
         unchecked {
             return self.isLong(0) + self.isLong(1) + self.isLong(2) + self.isLong(3);
@@ -450,7 +450,7 @@ library TokenIdLibrary {
 
     /// @notice Clear a leg in an option position with index `i`.
     /// @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
-    /// @dev NOTE it's important that the caller fills in the leg details after.
+    /// @dev NOTE: it's important that the caller fills in the leg details after.
     //  - optionRatio is zeroed
     //  - asset is zeroed
     //  - width is zeroed
