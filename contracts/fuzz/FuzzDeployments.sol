@@ -872,7 +872,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("Minter", minter);
     }
 
-    /* function mint_option(
+    function mint_option(
         uint256 seller_index,
         bool asset,
         bool is_call,
@@ -921,7 +921,7 @@ contract FuzzDeployments is FuzzHelpers {
                 effLiqLimit
             );
         }
-    } */
+    }
 
     function mint_strategy_undefined(
         uint256 seller_index,
@@ -1466,239 +1466,6 @@ contract FuzzDeployments is FuzzHelpers {
         tokenBalance1 = IERC20(pool.token1()).balanceOf(caller);
     }
 
-    /*
-    /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
-    /// @custom:precondition The user has at least one position open
-    function burn_all_options(bool isCovered) public {
-        address caller = msg.sender;
-        TokenId[] memory emptyList;
-
-        uint256 numUserPositions = userPositions[caller].length;
-        if (numUserPositions < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
-        int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
-        int24 tickLimitHigh = isCovered ? int24(887272) : int24(-887272);
-
-        uint256 burnersPreburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
-        uint256 burnersPreburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
-
-        uint128[][] memory projectedIdealPremium0 = new uint128[][](numUserPositions);
-        uint128[][] memory projectedIdealPremium1 = new uint128[][](numUserPositions);
-        uint128[][] memory projectedProratedPremium0 = new uint128[][](numUserPositions);
-        uint128[][] memory projectedProratedPremium1 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnSettledToken0 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnSettledToken1 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](numUserPositions);
-        uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](numUserPositions);
-        for (uint positionIndex = 0; positionIndex < numUserPositions; positionIndex++) {
-            (uint128 posSize, , ) = panopticPool.optionPositionBalance(
-                caller,
-                userPositions[caller][positionIndex]
-            );
-            (
-                uint128[] memory projectedIdealPremium0_,
-                uint128[] memory projectedIdealPremium1_,
-                uint128[] memory projectedProratedPremium0_,
-                uint128[] memory projectedProratedPremium1_,
-                uint128[] memory preburnSettledToken0_,
-                uint128[] memory preburnSettledToken1_,
-                uint128[] memory preburnGrossPremiaLast0_,
-                uint128[] memory preburnGrossPremiaLast1_
-            ) = _get_preburn_accumulators_and_projected_premia(
-                    userPositions[caller][positionIndex],
-                    caller,
-                    posSize
-                );
-            projectedIdealPremium0[positionIndex] = projectedIdealPremium0_;
-            projectedIdealPremium1[positionIndex] = projectedIdealPremium1_;
-            projectedProratedPremium0[positionIndex] = projectedProratedPremium0_;
-            projectedProratedPremium1[positionIndex] = projectedProratedPremium1_;
-            preburnSettledToken0[positionIndex] = preburnSettledToken0_;
-            preburnSettledToken1[positionIndex] = preburnSettledToken1_;
-            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0_;
-            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1_;
-        }
-
-        hevm.prank(caller);
-        panopticPool.burnOptions(userPositions[caller], emptyList, tickLimitLow, tickLimitHigh);
-        assertWithMsg(panopticPool.numberOfPositions(caller) == 0, "Not all positions were burned");
-
-        uint128 allPositionsProjectedProratedPremium0 = 0;
-        uint128 allPositionsProjectedProratedPremium1 = 0;
-        for (uint positionIndex = 0; positionIndex < numUserPositions; positionIndex++) {
-            (
-                uint128 totalProjectedProratedPremium0,
-                uint128 totalProjectedProratedPremium1
-            ) = _assert_each_legs_chunk_accumulators_correct(
-                    userPositions[caller][positionIndex],
-                    projectedIdealPremium0[positionIndex],
-                    projectedIdealPremium1[positionIndex],
-                    projectedProratedPremium0[positionIndex],
-                    projectedProratedPremium1[positionIndex],
-                    preburnSettledToken0[positionIndex],
-                    preburnSettledToken1[positionIndex],
-                    preburnGrossPremiaLast0[positionIndex],
-                    preburnGrossPremiaLast1[positionIndex]
-                );
-            allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
-            allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
-        }
-
-        // Assert: did the burner receive `proratedPremia` + the size of the position in tokens?
-        //    TODO: wait, do they receive anything besides the premia?
-        //         - Collateral?
-        //          (I don't think so - i think only buyers that borrow the LP position post collateral - but need to check)
-        //         - any assets related to making the option they sold covered?
-        uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
-        uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
-
-        assertWithMsg(
-            burnersPostburnToken0Balance ==
-                burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
-            "Burners token0 balance did not increase by the amount the premia would indicate"
-        );
-        assertWithMsg(
-            burnersPostburnToken1Balance ==
-                burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
-            "Burners token1 balance did not increase by the amount the premia would indicate"
-        );
-
-        delete userPositions[caller];
-    }
-
-    /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
-    /// @custom:precondition The user has at least one position open
-    function burn_some_options(bool isCovered, uint numPositionsToBurn, bool fromFront) public {
-        address caller = msg.sender;
-
-        uint256 usersOriginalNumPositions = userPositions[caller].length;
-        if (usersOriginalNumPositions < 1) revert();
-
-        numPositionsToBurn = numPositionsToBurn % usersOriginalNumPositions;
-        TokenId[] memory positionsToBurn = new TokenId[](numPositionsToBurn);
-        TokenId[] memory retainedPositions = new TokenId[](
-            usersOriginalNumPositions - numPositionsToBurn
-        );
-
-        int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
-        int24 tickLimitHigh = isCovered ? int24(887272) : int24(-887272);
-
-        // Get a subset of userPositions[caller]
-        for (uint i = 0; i < numPositionsToBurn % usersOriginalNumPositions; i++) {
-            positionsToBurn[i] = userPositions[caller][
-                fromFront ? i : usersOriginalNumPositions - (i + 1)
-            ];
-        }
-        for (uint i = 0; i < usersOriginalNumPositions; i++) {
-            if (
-                (fromFront && i >= positionsToBurn.length) ||
-                (!fromFront && i < (positionsToBurn.length - 1))
-            ) {
-                retainedPositions[
-                    fromFront ? i : (usersOriginalNumPositions - numPositionsToBurn) - i
-                ] = userPositions[caller][fromFront ? usersOriginalNumPositions - i : i];
-            }
-        }
-
-        uint256 burnersPreburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
-        uint256 burnersPreburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
-
-        // Get pre-burn accumulator values and projected premia for each position:
-        uint128[][] memory projectedIdealPremium0 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory projectedIdealPremium1 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory projectedProratedPremium0 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory projectedProratedPremium1 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory preburnSettledToken0 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory preburnSettledToken1 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory preburnGrossPremiaLast0 = new uint128[][](usersOriginalNumPositions);
-        uint128[][] memory preburnGrossPremiaLast1 = new uint128[][](usersOriginalNumPositions);
-        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
-            (uint128 posSize, , ) = panopticPool.optionPositionBalance(
-                caller,
-                positionsToBurn[positionIndex]
-            );
-            (
-                uint128[] memory projectedIdealPremium0_,
-                uint128[] memory projectedIdealPremium1_,
-                uint128[] memory projectedProratedPremium0_,
-                uint128[] memory projectedProratedPremium1_,
-                uint128[] memory preburnSettledToken0_,
-                uint128[] memory preburnSettledToken1_,
-                uint128[] memory preburnGrossPremiaLast0_,
-                uint128[] memory preburnGrossPremiaLast1_
-            ) = _get_preburn_accumulators_and_projected_premia(
-                    positionsToBurn[positionIndex],
-                    caller,
-                    posSize
-                );
-            projectedIdealPremium0[positionIndex] = projectedIdealPremium0_;
-            projectedIdealPremium1[positionIndex] = projectedIdealPremium1_;
-            projectedProratedPremium0[positionIndex] = projectedProratedPremium0_;
-            projectedProratedPremium1[positionIndex] = projectedProratedPremium1_;
-            preburnSettledToken0[positionIndex] = preburnSettledToken0_;
-            preburnSettledToken1[positionIndex] = preburnSettledToken1_;
-            preburnGrossPremiaLast0[positionIndex] = preburnGrossPremiaLast0_;
-            preburnGrossPremiaLast1[positionIndex] = preburnGrossPremiaLast1_;
-        }
-
-        hevm.prank(caller);
-        // TODO: is passing in emptyList here OK,
-        //  or should we pass in retainedPositions?
-        //  burn_one_option seems to do the latter.
-        TokenId[] memory emptyList;
-        panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, tickLimitHigh);
-        assertWithMsg(
-            panopticPool.numberOfPositions(caller) ==
-                usersOriginalNumPositions - positionsToBurn.length,
-            "Not all positions were burned"
-        );
-
-        uint128 allPositionsProjectedProratedPremium0 = 0;
-        uint128 allPositionsProjectedProratedPremium1 = 0;
-        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
-            (
-                uint128 totalProjectedProratedPremium0,
-                uint128 totalProjectedProratedPremium1
-            ) = _assert_each_legs_chunk_accumulators_correct(
-                    positionsToBurn[positionIndex],
-                    projectedIdealPremium0[positionIndex],
-                    projectedIdealPremium1[positionIndex],
-                    projectedProratedPremium0[positionIndex],
-                    projectedProratedPremium1[positionIndex],
-                    preburnSettledToken0[positionIndex],
-                    preburnSettledToken1[positionIndex],
-                    preburnGrossPremiaLast0[positionIndex],
-                    preburnGrossPremiaLast1[positionIndex]
-                );
-            allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
-            allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
-        }
-
-        // Assert: did the burner receive `proratedPremia` + the size of the position in tokens?
-        //    TODO: wait, do they receive anything besides the premia?
-        //         - Collateral?
-        //          (I don't think so - i think only buyers that borrow the LP position post collateral - but need to check)
-        //         - any assets related to making the option they sold covered?
-        uint256 burnersPostburnToken0Balance = IERC20(pool.token0()).balanceOf(caller);
-        uint256 burnersPostburnToken1Balance = IERC20(pool.token1()).balanceOf(caller);
-
-        assertWithMsg(
-            burnersPostburnToken0Balance ==
-                burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
-            "Burners token0 balance did not increase by the amount the premia would indicate"
-        );
-        assertWithMsg(
-            burnersPostburnToken1Balance ==
-                burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
-            "Burners token1 balance did not increase by the amount the premia would indicate"
-        );
-
-        userPositions[caller] = retainedPositions;
-    }
-    */
-
     struct PremiaCalcInputs {
         uint128 premiumAccumulator0;
         uint128 premiumAccumulator1;
@@ -1925,6 +1692,97 @@ contract FuzzDeployments is FuzzHelpers {
             );
     }
 
+    /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
+    /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
+    /// @custom:precondition The user has at least one position open
+    function burn_many_options(bool isCovered, bool burnAll, uint numPositionsToBurn, bool fromFront) public {
+        address caller = msg.sender;
+        uint256 preburnNumPositions = userPositions[caller].length;
+        if (preburnNumPositions < 1) revert();
+
+        numPositionsToBurn = burnAll ? preburnNumPositions : numPositionsToBurn % preburnNumPositions;
+
+        TokenId[] memory positionsToBurn = new TokenId[](numPositionsToBurn);
+        TokenId[] memory retainedPositions = new TokenId[](preburnNumPositions - numPositionsToBurn);
+
+        int24 tickLimitLow = isCovered ? int24(-887272) : int24(887272);
+
+        // Get a subset of userPositions[caller]
+        for (uint i = 0; i < numPositionsToBurn; i++)
+            positionsToBurn[i] = userPositions[caller][fromFront ? i : preburnNumPositions - (i + 1)];
+
+        for (uint i = 0; i < preburnNumPositions; i++) {
+            if (
+                (fromFront && i >= positionsToBurn.length) ||
+                (!fromFront && i < (positionsToBurn.length - 1))
+            ) {
+                retainedPositions[
+                    fromFront ? i : (preburnNumPositions - numPositionsToBurn) - i
+                ] = userPositions[caller][fromFront ? preburnNumPositions - i : i];
+            }
+        }
+
+        // Get pre-burn values to compare against
+        (uint256 burnersPreburnToken0Balance, uint256 burnersPreburnToken1Balance) = _get_token_balances(caller);
+        PremiaAndAccumulatorsForLeg[][] memory preburnPremiaAndAccumulators = new PremiaAndAccumulatorsForLeg[][](preburnNumPositions);
+        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, positionsToBurn[positionIndex]);
+            preburnPremiaAndAccumulators[positionIndex] = _get_preburn_accumulators_and_projected_premia(
+                positionsToBurn[positionIndex],
+                caller,
+                posSize
+            );
+        }
+
+        // TODO: is passing in emptyList here OK,
+        //  or should we pass in retainedPositions?
+        //  burn_one_option seems to do the latter.
+        TokenId[] memory emptyList;
+        panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
+        assertWithMsg(
+            panopticPool.numberOfPositions(caller) ==
+                preburnNumPositions - positionsToBurn.length,
+            "Not all positions were burned"
+        );
+
+        uint128 allPositionsProjectedProratedPremium0 = 0;
+        uint128 allPositionsProjectedProratedPremium1 = 0;
+        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+            (
+                uint128 totalProjectedProratedPremium0,
+                uint128 totalProjectedProratedPremium1
+                // TODO: assertions in this helper will fail, because the pre-burn projected premia
+                // assumed premia for each burn was independent.
+                // E.G., if you're burning A then B, burning A may change the premia owed for B,
+                // but your pre-burn projection was based on current values not post-burning-A-values
+                // you need to make a helper that just does a simulation and gives correct projections to
+                // preburnPremiaAndAccumulators
+            ) = _assert_each_legs_chunk_accumulators_correct(positionsToBurn[positionIndex], preburnPremiaAndAccumulators[positionIndex]);
+            allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
+            allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
+        }
+
+        // Assert: did the burner receive `proratedPremia` + the size of the position in tokens?
+        //    TODO: wait, do they receive anything besides the premia?
+        //         - Collateral?
+        //          (I don't think so - i think only buyers that borrow the LP position post collateral - but need to check)
+        //         - any assets related to making the option they sold covered?
+        (uint256 burnersPostburnToken0Balance, uint256 burnersPostburnToken1Balance) = _get_token_balances(caller);
+
+        assertWithMsg(
+            burnersPostburnToken0Balance ==
+                burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
+            "Burners token0 balance did not increase by the amount the premia would indicate"
+        );
+        assertWithMsg(
+            burnersPostburnToken1Balance ==
+                burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
+            "Burners token1 balance did not increase by the amount the premia would indicate"
+        );
+
+        userPositions[caller] = retainedPositions;
+    }
+
     // @custom:property PANO-SYS-009 The pool's grossPremiaLast is always less than the SFPM's grossPremia
     function invariant_pools_gross_premia_is_less_than_sfpms_gross_premia(
         uint fuzzedActorIndex,
@@ -1945,12 +1803,12 @@ contract FuzzDeployments is FuzzHelpers {
 
             assertWithMsg(
                 grossPremiaLastToken0 <= sfpmGrossPremia.rightSlot(),
-                "Pools grossPremiaLastToken0 is not less than sfpms grossPremiaToken0"
+                "Pools grossPremiaLastToken0 is greater than SFPMs grossPremiaToken0"
             );
 
             assertWithMsg(
                 grossPremiaLastToken1 <= sfpmGrossPremia.leftSlot(),
-                "Pools grossPremiaLastToken1 is not less than sfpms grossPremiaToken1"
+                "Pools grossPremiaLastToken1 is greater than SFPMs grossPremiaToken1"
             );
         }
     }
