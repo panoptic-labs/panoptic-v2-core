@@ -3166,13 +3166,14 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -887200, 882700, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
-            (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-            vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 1800);
+            (, currentTick, , , , , ) = uniPool.slot0();
+            int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
+            vm.assume(Math.abs(int256(currentTick) - twapTick) < 1800);
 
             pp.liquidate(
                 new TokenId[](0),
@@ -3346,8 +3347,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3442,8 +3443,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3536,8 +3537,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3630,8 +3631,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3752,8 +3753,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3874,8 +3875,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -3996,8 +3997,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
