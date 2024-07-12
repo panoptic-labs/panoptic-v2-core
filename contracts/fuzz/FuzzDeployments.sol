@@ -1353,11 +1353,23 @@ contract FuzzDeployments is FuzzHelpers {
         }
 
         if (position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()) {
-            _try_burning_short_pos_with_inadequate_liq(caller, position, positionsNew, tickLimitLow);
+            _try_burning_short_pos_with_inadequate_liq(
+                caller,
+                position,
+                positionsNew,
+                tickLimitLow
+            );
             return;
         }
 
-        _try_burning_and_check_balances(caller, position, positionsNew, posSize, tickLimitLow, positionsOpened);
+        _try_burning_and_check_balances(
+            caller,
+            position,
+            positionsNew,
+            posSize,
+            tickLimitLow,
+            positionsOpened
+        );
     }
 
     function _try_burning_zero_size_position(
@@ -1403,8 +1415,16 @@ contract FuzzDeployments is FuzzHelpers {
         int24 tickLimitLow,
         uint256 positionsOpened
     ) internal {
-        (uint256 burnersPreburnToken0Balance, uint256 burnersPreburnToken1Balance) = _get_token_balances(caller);
-        PremiaAndAccumulatorsForLeg[] memory preburnPremiaAndAccumulators = _get_preburn_accumulators_and_projected_premia(position, caller, posSize);
+        (
+            uint256 burnersPreburnToken0Balance,
+            uint256 burnersPreburnToken1Balance
+        ) = _get_token_balances(caller);
+        PremiaAndAccumulatorsForLeg[]
+            memory preburnPremiaAndAccumulators = _get_preburn_accumulators_and_projected_premia(
+                position,
+                caller,
+                posSize
+            );
 
         hevm.prank(caller);
         panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
@@ -1419,7 +1439,10 @@ contract FuzzDeployments is FuzzHelpers {
             uint128 totalProjectedProratedPremium1
         ) = _assert_each_legs_chunk_accumulators_correct(position, preburnPremiaAndAccumulators);
 
-        (uint256 burnersPostburnToken0Balance, uint256 burnersPostburnToken1Balance) =_get_token_balances(caller);
+        (
+            uint256 burnersPostburnToken0Balance,
+            uint256 burnersPostburnToken1Balance
+        ) = _get_token_balances(caller);
         assertWithMsg(
             burnersPostburnToken0Balance ==
                 burnersPreburnToken0Balance + totalProjectedProratedPremium0,
@@ -1436,7 +1459,9 @@ contract FuzzDeployments is FuzzHelpers {
         userPositions[caller] = positionsNew;
     }
 
-    function _get_token_balances(address caller) internal view returns(uint256 tokenBalance0, uint256 tokenBalance1) {
+    function _get_token_balances(
+        address caller
+    ) internal view returns (uint256 tokenBalance0, uint256 tokenBalance1) {
         tokenBalance0 = IERC20(pool.token0()).balanceOf(caller);
         tokenBalance1 = IERC20(pool.token1()).balanceOf(caller);
     }
@@ -1686,11 +1711,7 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId position,
         address seller,
         uint128 posSize
-    )
-        internal
-        view
-        returns (PremiaAndAccumulatorsForLeg[] memory premiaAndAccumulators)
-    {
+    ) internal view returns (PremiaAndAccumulatorsForLeg[] memory premiaAndAccumulators) {
         uint256 numLegs = position.countLegs();
 
         premiaAndAccumulators = new PremiaAndAccumulatorsForLeg[](numLegs);
@@ -1722,11 +1743,7 @@ contract FuzzDeployments is FuzzHelpers {
             uint128[] memory idealPremium1,
             uint128[] memory proratedPremium0,
             uint128[] memory proratedPremium1
-        ) = _calc_premia_from_preburn_values(
-            position,
-            premiaCalcInputs,
-            premiaAndAccumulators
-        );
+        ) = _calc_premia_from_preburn_values(position, premiaCalcInputs, premiaAndAccumulators);
 
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
             premiaAndAccumulators[legIndex].projectedIdealPremium0 = idealPremium0[legIndex];
@@ -1742,15 +1759,16 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId position
     ) internal view returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
         (int24 tickLower, int24 tickUpper) = position.asTicks(legIndex);
-        return sfpm.getAccountPremium(
-            address(pool),
-            address(panopticPool),
-            position.tokenType(legIndex),
-            tickLower,
-            tickUpper,
-            preburnCurrentTick,
-            position.isLong(legIndex)
-        );
+        return
+            sfpm.getAccountPremium(
+                address(pool),
+                address(panopticPool),
+                position.tokenType(legIndex),
+                tickLower,
+                tickUpper,
+                preburnCurrentTick,
+                position.isLong(legIndex)
+            );
     }
 
     function _set_preburn_accumulators(
@@ -1806,8 +1824,10 @@ contract FuzzDeployments is FuzzHelpers {
         totalProjectedProratedPremium1 = 0;
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            totalProjectedProratedPremium0 += preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0;
-            totalProjectedProratedPremium1 += preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1;
+            totalProjectedProratedPremium0 += preburnPremiaAndAccumulators[legIndex]
+                .projectedProratedPremium0;
+            totalProjectedProratedPremium1 += preburnPremiaAndAccumulators[legIndex]
+                .projectedProratedPremium1;
 
             (
                 uint128 postburnSettledToken0,
@@ -1819,26 +1839,26 @@ contract FuzzDeployments is FuzzHelpers {
             assertWithMsg(
                 postburnSettledToken0 ==
                     preburnPremiaAndAccumulators[legIndex].settledToken0 -
-                    preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0,
+                        preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0,
                 "Settled token0s did not decrease by the amount of total (prorated) premium paid out"
             );
             assertWithMsg(
                 postburnSettledToken1 ==
                     preburnPremiaAndAccumulators[legIndex].settledToken1 -
-                    preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1,
+                        preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1,
                 "Settled token1s did not decrease by the amount of total (prorated) premium paid out"
             );
 
             assertWithMsg(
                 postburnGrossPremiaLast0 ==
                     preburnPremiaAndAccumulators[legIndex].grossPremiaLast0 +
-                    preburnPremiaAndAccumulators[legIndex].projectedIdealPremium0,
+                        preburnPremiaAndAccumulators[legIndex].projectedIdealPremium0,
                 "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
             );
             assertWithMsg(
                 postburnGrossPremiaLast1 ==
                     preburnPremiaAndAccumulators[legIndex].grossPremiaLast1 +
-                    preburnPremiaAndAccumulators[legIndex].projectedIdealPremium1,
+                        preburnPremiaAndAccumulators[legIndex].projectedIdealPremium1,
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
         }
@@ -1862,11 +1882,13 @@ contract FuzzDeployments is FuzzHelpers {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
             //    TODO: I don't think this is correct. I think this is already prorated.
             idealPremium0[legIndex] =
-                ((premiaCalcInputs[legIndex].premiumAccumulator0 - premiaCalcInputs[legIndex].premiumGrowth0) *
+                ((premiaCalcInputs[legIndex].premiumAccumulator0 -
+                    premiaCalcInputs[legIndex].premiumGrowth0) *
                     premiaCalcInputs[legIndex].liquidity) >>
                 64;
             idealPremium1[legIndex] =
-                ((premiaCalcInputs[legIndex].premiumAccumulator1 - premiaCalcInputs[legIndex].premiumGrowth1) *
+                ((premiaCalcInputs[legIndex].premiumAccumulator1 -
+                    premiaCalcInputs[legIndex].premiumGrowth1) *
                     premiaCalcInputs[legIndex].liquidity) >>
                 64;
 
