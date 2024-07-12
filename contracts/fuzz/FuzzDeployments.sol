@@ -1692,6 +1692,86 @@ contract FuzzDeployments is FuzzHelpers {
             );
     }
 
+    error BurnSimResults(
+        uint256 postburnToken0Difference,
+        uint256 postburnToken1Difference,
+        uint128[][] settledToken0DifferenceByLeg,
+        uint128[][] settledToken1DifferenceByLeg,
+        uint128[][] grossPremiaLast0DifferenceByLeg,
+        uint128[][] grossPremiaLast1DifferenceByLeg
+    );
+    uint256 $postburnToken0Difference;
+    uint256 $postburnToken1Difference;
+    uint128[][] $settledToken0DifferenceByLeg;
+    uint128[][] $settledToken1DifferenceByLeg;
+    uint128[][] $grossPremiaLast0DifferenceByLeg;
+    uint128[][] $grossPremiaLast1DifferenceByLeg;
+
+    function _simulate_burn_on_each_position(
+        address caller,
+        TokenId[] memory positionsToBurn,
+        int24 tickLimitLow,
+        PremiaAndAccumulatorsForLeg[][] memory premiaAndAccumulators,
+        uint256 burnersPreburnToken0Balance,
+        uint256 burnersPreburnToken1Balance
+    ) external {
+        TokenId[] memory positionsNew = userPositions[caller];
+        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+            TokenId position = positionsToBurn[positionIndex];
+            positionsNew = _get_list_without_tokenid(positionsNew, position);
+            panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
+            for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                (
+                    uint128 postburnSettledToken0,
+                    uint128 postburnSettledToken1,
+                    uint128 postburnGrossPremiaLast0,
+                    uint128 postburnGrossPremiaLast1
+                ) = panopticPool.premiaSettlementData(position, legIndex);
+                $settledToken0DifferenceByLeg[positionIndex][legIndex] = postburnSettledToken0 - premiaAndAccumulators[positionIndex][legIndex].settledToken0;
+                $settledToken1DifferenceByLeg[positionIndex][legIndex] = postburnSettledToken0 - premiaAndAccumulators[positionIndex][legIndex].settledToken0;
+                $grossPremiaLast0DifferenceByLeg[positionIndex][legIndex] = postburnGrossPremiaLast0 - premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0;
+                $grossPremiaLast1DifferenceByLeg[positionIndex][legIndex] = postburnGrossPremiaLast1 - premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1;
+            }
+        }
+        (
+            uint256 burnersPostburnToken0Balance,
+            uint256 burnersPostburnToken1Balance
+        ) = _get_token_balances(caller);
+        $postburnToken0Difference = burnersPostburnToken0Balance - burnersPreburnToken0Balance;
+        $postburnToken1Difference = burnersPostburnToken1Balance - burnersPreburnToken1Balance;
+
+        revert BurnSimResults(
+            $postburnToken0Difference,
+            $postburnToken1Difference,
+            $settledToken0DifferenceByLeg,
+            $settledToken1DifferenceByLeg,
+            $grossPremiaLast0DifferenceByLeg,
+            $grossPremiaLast1DifferenceByLeg
+        );
+    }
+
+    function _contains(bytes32[] memory array, bytes32 value) internal pure returns (bool) {
+        for (uint256 i = 0; i < array.length; i++) {
+            if (array[i] == value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function _push_to_array(bytes32[] memory array, bytes32 new_value) internal pure returns (bytes32[] memory new_array) {
+        new_array = new bytes32[](array.length + 1);
+        for (uint256 i = 0; i < array.length; i++) {
+            new_array[i] = array[i];
+        }
+        new_array[array.length] = new_value;
+    }
+
+    mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken0Difference;
+    mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken1Difference;
+    mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia0Difference;
+    mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia1Difference;
+
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
     /// @custom:precondition The user has at least one position open
@@ -1756,57 +1836,135 @@ contract FuzzDeployments is FuzzHelpers {
             );
         }
 
-        // TODO: is passing in emptyList here OK,
-        //  or should we pass in retainedPositions?
-        //  burn_one_option seems to do the latter.
-        TokenId[] memory emptyList;
-        panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
-        assertWithMsg(
-            panopticPool.numberOfPositions(caller) == preburnNumPositions - positionsToBurn.length,
-            "Not all positions were burned"
-        );
-
-        uint128 allPositionsProjectedProratedPremium0 = 0;
-        uint128 allPositionsProjectedProratedPremium1 = 0;
-        for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+        // Figure out what changes in settled tokens, burner token balances, and so on we expect
+        // if we burn each individually
+        try this._simulate_burn_on_each_position(
+            caller,
+            positionsToBurn,
+            tickLimitLow,
+            preburnPremiaAndAccumulators,
+            burnersPreburnToken0Balance,
+            burnersPreburnToken1Balance
+        ) {
+            assertWithMsg(false, "The _simulate_burn_on_each_position helper should always revert");
+        } catch (bytes memory _err) {
             (
-                uint128 totalProjectedProratedPremium0,
-                uint128 totalProjectedProratedPremium1 // TODO: assertions in this helper will fail, because the pre-burn projected premia
-                // E.G., if you're burning A then B, burning A may change the premia owed for B,
-            ) = // assumed premia for each burn was independent.
-                // but your pre-burn projection was based on current values not post-burning-A-values
-                // you need to make a helper that just does a simulation and gives correct projections to
-                // preburnPremiaAndAccumulators
-                _assert_each_legs_chunk_accumulators_correct(
-                    positionsToBurn[positionIndex],
-                    preburnPremiaAndAccumulators[positionIndex]
-                );
-            allPositionsProjectedProratedPremium0 += totalProjectedProratedPremium0;
-            allPositionsProjectedProratedPremium1 += totalProjectedProratedPremium1;
+                uint256 token0DifferenceWhenBurningEach,
+                uint256 token1DifferenceWhenBurningEach,
+                uint128[][] memory settledToken0Difference,
+                uint128[][] memory settledToken1Difference,
+                uint128[][] memory grossPremiaLast0Difference,
+                uint128[][] memory grossPremiaLast1Difference
+            ) = abi.decode(_err, (uint256, uint256, uint128[][], uint128[][], uint128[][], uint128[][]));
+
+            // Then, prove that burning them all at once makes the same differences:
+            // 1. burn
+            // TODO: is passing in emptyList here OK,
+            //  or should we pass in retainedPositions?
+            //  burn_one_option seems to do the latter.
+            TokenId[] memory emptyList;
+            panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
+            assertWithMsg(
+                panopticPool.numberOfPositions(caller) == preburnNumPositions - positionsToBurn.length,
+                "Not all positions were burned"
+            );
+
+            // 2. Assert: Same effect on burner's token balance as burning each one individually
+            (
+                uint256 burnersPostburnToken0Balance,
+                uint256 burnersPostburnToken1Balance
+            ) = _get_token_balances(caller);
+
+            assertWithMsg(
+                burnersPostburnToken0Balance - burnersPreburnToken0Balance == token0DifferenceWhenBurningEach,
+                "Burners token0 balance did not increase by the same amount as if they had burned each position one-by-one"
+            );
+            assertWithMsg(
+                burnersPostburnToken1Balance - burnersPreburnToken1Balance == token1DifferenceWhenBurningEach,
+                "Burners token1 balance did not increase by the same amount as if they had burned each position one-by-one"
+            );
+
+            // 3. Assert: Same effect on the accumulators for each chunk as burning each one individually
+            //   a. First, we must aggregate the accumulator changes across chunks
+            bytes32[] memory chunksTouched;
+            for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+                TokenId position = positionsToBurn[positionIndex];
+                for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                    bytes32 chunkKey = keccak256(
+                        abi.encodePacked(
+                            position.strike(legIndex),
+                            position.width(legIndex),
+                            position.tokenType(legIndex)
+                        )
+                    );
+                    chunkKeyToExpectedSettledToken0Difference[chunkKey] += settledToken0Difference[positionIndex][legIndex];
+                    chunkKeyToExpectedSettledToken1Difference[chunkKey] += settledToken1Difference[positionIndex][legIndex];
+                    chunkKeyToExpectedGrossPremia0Difference[chunkKey] += grossPremiaLast0Difference[positionIndex][legIndex];
+                    chunkKeyToExpectedGrossPremia1Difference[chunkKey] += grossPremiaLast1Difference[positionIndex][legIndex];
+                    if (!_contains(chunksTouched, chunkKey)) {
+                        _push_to_array(chunksTouched, chunkKey);
+                    }
+                }
+            }
+            //  b. Then, with the aggregated expected differences, compare to the actual differences
+            //     you get when you compare post-burn s_grossPremiumLast and s_settledTokens to pre-burn
+            for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
+                TokenId position = positionsToBurn[positionIndex];
+                for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                    (
+                        uint128 postburnSettledToken0,
+                        uint128 postburnSettledToken1,
+                        uint128 postburnGrossPremiaLast0,
+                        uint128 postburnGrossPremiaLast1
+                    ) = panopticPool.premiaSettlementData(position, legIndex);
+
+                    bytes32 chunkKey = keccak256(
+                        abi.encodePacked(
+                            position.strike(legIndex),
+                            position.width(legIndex),
+                            position.tokenType(legIndex)
+                        )
+                    );
+
+                    assertWithMsg(
+                        postburnSettledToken0 ==
+                            preburnPremiaAndAccumulators[positionIndex][legIndex].settledToken0 -
+                                chunkKeyToExpectedSettledToken0Difference[chunkKey],
+                        "Settled token0s did not decrease by the aggregated difference resulting from burning each position individually"
+                    );
+                    assertWithMsg(
+                        postburnSettledToken1 ==
+                            preburnPremiaAndAccumulators[positionIndex][legIndex].settledToken1 -
+                                chunkKeyToExpectedSettledToken1Difference[chunkKey],
+                        "Settled token1s did not decrease by the aggregated difference resulting from burning each position individually"
+                    );
+
+                    assertWithMsg(
+                        postburnGrossPremiaLast0 ==
+                            preburnPremiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0 +
+                                chunkKeyToExpectedGrossPremia0Difference[chunkKey],
+                        "grossPremiaLast on token0 did not go down by the aggregated difference resulting from burning each position individually"
+                    );
+                    assertWithMsg(
+                        postburnGrossPremiaLast1 ==
+                            preburnPremiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1 +
+                                chunkKeyToExpectedGrossPremia1Difference[chunkKey],
+                        "grossPremiaLast on token1 did not go down by the aggregated difference resulting from burning each position individually"
+                    );
+                }
+            }
+
+            // Clean-up:
+            // - the user's positions are now just the ones we didn't burn.
+            userPositions[caller] = retainedPositions;
+            // - clear the mappings
+            for (uint i = 0; i < chunksTouched.length; i++) {
+                chunkKeyToExpectedSettledToken0Difference[chunksTouched[i]] = 0;
+                chunkKeyToExpectedSettledToken1Difference[chunksTouched[i]] = 0;
+                chunkKeyToExpectedGrossPremia0Difference[chunksTouched[i]] = 0;
+                chunkKeyToExpectedGrossPremia1Difference[chunksTouched[i]] = 0;
+            }
         }
-
-        // Assert: did the burner receive `proratedPremia` + the size of the position in tokens?
-        //    TODO: wait, do they receive anything besides the premia?
-        //         - Collateral?
-        //          (I don't think so - i think only buyers that borrow the LP position post collateral - but need to check)
-        //         - any assets related to making the option they sold covered?
-        (
-            uint256 burnersPostburnToken0Balance,
-            uint256 burnersPostburnToken1Balance
-        ) = _get_token_balances(caller);
-
-        assertWithMsg(
-            burnersPostburnToken0Balance ==
-                burnersPreburnToken0Balance + allPositionsProjectedProratedPremium0,
-            "Burners token0 balance did not increase by the amount the premia would indicate"
-        );
-        assertWithMsg(
-            burnersPostburnToken1Balance ==
-                burnersPreburnToken1Balance + allPositionsProjectedProratedPremium1,
-            "Burners token1 balance did not increase by the amount the premia would indicate"
-        );
-
-        userPositions[caller] = retainedPositions;
     }
 
     // @custom:property PANO-SYS-009 The pool's grossPremiaLast is always less than what the SFPM
