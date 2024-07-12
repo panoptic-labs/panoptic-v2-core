@@ -1783,7 +1783,8 @@ contract FuzzDeployments is FuzzHelpers {
         userPositions[caller] = retainedPositions;
     }
 
-    // @custom:property PANO-SYS-009 The pool's grossPremiaLast is always less than the SFPM's grossPremia
+    // @custom:property PANO-SYS-009 The pool's grossPremiaLast is always less than what the SFPM
+    // records as the grossPremia for that pool.
     function invariant_pools_gross_premia_is_less_than_sfpms_gross_premia(
         uint fuzzedActorIndex,
         uint fuzzedPositionIndex
@@ -1799,6 +1800,13 @@ contract FuzzDeployments is FuzzHelpers {
             (, , uint128 grossPremiaLastToken0, uint128 grossPremiaLastToken1) = panopticPool
                 .premiaSettlementData(position, legIndex);
 
+            // TODO: you don't actually need this helper, and it returns an incorrect value -
+            // need to filter SFPM gross premia by pool.
+            // instead, you should getAccountPremium(), which returns a per-liquidity amount of premium owed to
+            // position holders like the account+position you passed in
+            // then, multiply by liquidity
+            // that product is the total gross premia SFPM thinks is owed to the Pool the position is in, and is the value
+            // the pool's grossPremiaLast should never exceed.
             LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
 
             assertWithMsg(
