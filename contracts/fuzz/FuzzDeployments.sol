@@ -1771,9 +1771,8 @@ contract FuzzDeployments is FuzzHelpers {
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             (
                 uint128 totalProjectedProratedPremium0,
-                uint128 totalProjectedProratedPremium1
-            ) = // TODO: assertions in this helper will fail, because the pre-burn projected premia
-                // assumed premia for each burn was independent.
+                uint128 totalProjectedProratedPremium1 // TODO: assertions in this helper will fail, because the pre-burn projected premia
+            ) = // assumed premia for each burn was independent.
                 // E.G., if you're burning A then B, burning A may change the premia owed for B,
                 // but your pre-burn projection was based on current values not post-burning-A-values
                 // you need to make a helper that just does a simulation and gives correct projections to
