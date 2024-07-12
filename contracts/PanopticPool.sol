@@ -332,7 +332,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         if (
             ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
             ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
-        ) revert Errors.NotEnoughCollateral();
+        ) revert Errors.AccountInsolvent();
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -813,17 +813,63 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
-        IUniswapV3Pool _univ3pool = s_univ3pool;
         (
-            ,
             int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 lastObservedTick,
+            uint256 _medianData
+        ) = _getOracleTicks();
 
-        ) = _univ3pool.slot0();
-        int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        medianData = _medianData;
+
+        int24[] memory atTicks;
+        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
+        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
+        if (
+            int256(fastOracleTick - slowOracleTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
+                int256(currentTick - slowOracleTick) ** 2 >
+            MAX_SLOW_FAST_DELTA ** 2
+        ) {
+            atTicks = new int24[](4);
+            atTicks[0] = fastOracleTick;
+            atTicks[1] = slowOracleTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
+        } else {
+            atTicks = new int24[](1);
+            atTicks[0] = fastOracleTick;
+        }
+
+        bool solvent = _checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer);
+        if (!solvent) revert Errors.AccountInsolvent();
+    }
+
+    /// @notice Burns and handles the exercise of options.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
+    function _getOracleTicks()
+        internal
+        view
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
+    {
+        IUniswapV3Pool _univ3pool = s_univ3pool;
+        uint16 observationIndex;
+        uint16 observationCardinality;
+
+        (, currentTick, observationIndex, observationCardinality, , , ) = _univ3pool.slot0();
+
+        (fastOracleTick, latestObservation) = PanopticMath.computeMedianObservedPrice(
             _univ3pool,
             observationIndex,
             observationCardinality,
@@ -831,9 +877,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             FAST_ORACLE_PERIOD
         );
 
-        int24 slowOracleTick;
         if (SLOW_ORACLE_UNISWAP_MODE) {
-            slowOracleTick = PanopticMath.computeMedianObservedPrice(
+            (slowOracleTick, ) = PanopticMath.computeMedianObservedPrice(
                 _univ3pool,
                 observationIndex,
                 observationCardinality,
@@ -849,37 +894,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 _univ3pool
             );
         }
-
-        uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
-        LeftRightSigned premia;
-        (premia, positionBalanceArray) = _calculateAccumulatedPremia(
-            user,
-            positionIdList,
-            COMPUTE_ALL_PREMIA,
-            ONLY_AVAILABLE_PREMIUM,
-            currentTick
-        );
-
-        bool solventAtFast = _checkCrossBalances(
-            user,
-            fastOracleTick,
-            positionBalanceArray,
-            premia,
-            buffer
-        );
-        if (!solventAtFast) revert Errors.NotEnoughCollateral();
-
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
-        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
-        if (
-            Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA ||
-            Math.abs(int256(fastOracleTick) - currentTick) > MAX_SLOW_FAST_DELTA ||
-            Math.abs(currentTick - slowOracleTick) > MAX_SLOW_FAST_DELTA
-        )
-            if (
-                !_checkCrossBalances(user, currentTick, positionBalanceArray, premia, buffer) ||
-                !_checkCrossBalances(user, slowOracleTick, positionBalanceArray, premia, buffer)
-            ) revert Errors.NotEnoughCollateral();
     }
 
     /// @notice Burns and handles the exercise of options.
@@ -968,8 +982,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightSigned premia;
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
         {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
+                revert Errors.StaleTWAP();
 
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
@@ -1005,7 +1022,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         int256 liquidationBonus0;
         int256 liquidationBonus1;
-        int24 finalTick;
         {
             LeftRightSigned netExchanged;
             LeftRightSigned[4][] memory premiasByLeg;
@@ -1022,8 +1038,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList
             );
 
-            (, finalTick, , , , , ) = s_univ3pool.slot0();
-
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
             (liquidationBonus0, liquidationBonus1, collateralRemaining) = PanopticMath
@@ -1031,7 +1045,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(twapTick),
-                    Math.getSqrtRatioAtTick(finalTick),
+                    Math.getSqrtRatioAtTick(currentTick),
                     netExchanged,
                     premia
                 );
@@ -1046,8 +1060,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
             // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
             address _liquidatee = liquidatee;
+            int24 _currentTick = currentTick;
             TokenId[] memory _positionIdList = positionIdList;
-            int24 _finalTick = finalTick;
             int256 deltaBonus0;
             int256 deltaBonus1;
             (deltaBonus0, deltaBonus1) = PanopticMath.haircutPremia(
@@ -1057,7 +1071,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 collateralRemaining,
                 s_collateralToken0,
                 s_collateralToken1,
-                Math.getSqrtRatioAtTick(_finalTick),
+                Math.getSqrtRatioAtTick(_currentTick),
                 s_settledTokens
             );
 
@@ -1079,26 +1093,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
             liquidatee,
             uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
         );
+        // ensure the owner is solvent (insolvent accounts are not permitted to pay premium unless they are being liquidated)
+        _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
 
-        // check that the provided positionIdList matches the positions in memory
-        _validatePositionList(msg.sender, positionIdListLiquidator, 0);
-
-        if (
-            !_checkSolvencyAtTick(
-                msg.sender,
-                positionIdListLiquidator,
-                finalTick,
-                finalTick,
-                BP_DECREASE_BUFFER
-            )
-        ) revert Errors.NotEnoughCollateral();
-
-        LeftRightSigned bonusAmounts = LeftRightSigned
-            .wrap(0)
-            .toRightSlot(int128(liquidationBonus0))
-            .toLeftSlot(int128(liquidationBonus1));
-
-        emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
+        {
+            LeftRightSigned bonusAmounts = LeftRightSigned
+                .wrap(0)
+                .toRightSlot(int128(liquidationBonus0))
+                .toLeftSlot(int128(liquidationBonus1));
+            emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
+        }
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
@@ -1215,14 +1219,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param account The account to check solvency for
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)
-    /// @param atTick The tick to check solvency at
+    /// @param atTicks An array of ticks to check solvency at
     /// @param buffer The buffer to apply to the collateral requirement
     /// @return Whether the account is solvent at the given tick
-    function _checkSolvencyAtTick(
+    function _checkSolvencyAtTicks(
         address account,
         TokenId[] calldata positionIdList,
         int24 currentTick,
-        int24 atTick,
+        int24[] memory atTicks,
         uint256 buffer
     ) internal view returns (bool) {
         (
@@ -1236,9 +1240,29 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick
             );
 
-        return _checkCrossBalances(account, atTick, positionBalanceArray, portfolioPremium, buffer);
+        uint256 numberOfTicks = atTicks.length;
+        bool solvent = true;
+        for (uint256 i; i < numberOfTicks; ++i) {
+            solvent =
+                solvent &&
+                _checkCrossBalances(
+                    account,
+                    atTicks[i],
+                    positionBalanceArray,
+                    portfolioPremium,
+                    buffer
+                );
+        }
+        return solvent;
     }
 
+    /// @notice Check whether a the balances of an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
+    /// @param account The account to check solvency for
+    /// @param atTick The tick to check solvency at
+    /// @param positionBalanceArray A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
+    /// @param portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot
+    /// @param buffer The buffer to apply to the collateral requirement
+    /// @return Whether the account is solvent at the given tick
     function _checkCrossBalances(
         address account,
         int24 atTick,
@@ -1259,12 +1283,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
             portfolioPremium.leftSlot()
         );
 
+        return _checkSolvencyCross(tokenData0, tokenData1, atTick, buffer);
+    }
+
+    function _checkSolvencyCross(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        int24 atTick,
+        uint256 buffer
+    ) internal pure returns (bool) {
         (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
             tokenData0,
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
         );
-
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         unchecked {
             return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
