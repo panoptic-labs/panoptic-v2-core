@@ -1834,15 +1834,24 @@ contract FuzzDeployments is FuzzHelpers {
             // then, multiply by liquidity
             // that product is the total gross premia SFPM thinks is owed to the Pool the position is in, and is the value
             // the pool's grossPremiaLast should never exceed.
-            LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
+            // OLD: LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
+            // TODO: Check that this new way of getting sfpmGrossPremia is correct:
+            (,int24 currentTick,,,,) = pool.slot0();
+            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_account_premium(position, legIndex);
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(positionHolder, position);
+            uint128 liquidity = PanopticMath
+                .getLiquidityChunk(position, legIndex, posSize)
+                .liquidity();
+            uint128 sfpmGrossPremia0 = premiumAccumulator0 * liquidity >> 64;
+            uint128 sfpmGrossPremia1 = premiumAccumulator1 * liquidity >> 64;
 
             assertWithMsg(
-                grossPremiaLastToken0 <= sfpmGrossPremia.rightSlot(),
+                grossPremiaLastToken0 <= sfpmGrossPremia0,
                 "Pools grossPremiaLastToken0 is greater than SFPMs grossPremiaToken0"
             );
 
             assertWithMsg(
-                grossPremiaLastToken1 <= sfpmGrossPremia.leftSlot(),
+                grossPremiaLastToken1 <= sfpmGrossPremia1,
                 "Pools grossPremiaLastToken1 is greater than SFPMs grossPremiaToken1"
             );
         }
