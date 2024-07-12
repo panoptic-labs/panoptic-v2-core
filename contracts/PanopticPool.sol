@@ -327,12 +327,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param minValue0 The minimum acceptable `token0` value of collateral
     /// @param minValue1 The minimum acceptable `token1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
-        if (
-            ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
-            ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
-        ) revert Errors.AccountInsolvent();
+        PanopticMath.checkBalances(
+            msg.sender,
+            s_collateralToken0,
+            s_collateralToken1,
+            int256(minValue0),
+            int256(minValue1)
+        );
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -345,6 +346,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList
     ) external view {
+        _validatePositionList(user, positionIdList, 0);
+
+        LeftRightSigned coveredAmounts = PanopticMath.getCoveredAmounts(
+            s_positionBalance[user],
+            positionIdList
+        );
+        PanopticMath.checkBalances(
+            user,
+            s_collateralToken0,
+            s_collateralToken1,
+            int256(coveredAmounts.rightSlot()),
+            int256(coveredAmounts.leftSlot())
+        );
+    }
+
+    /// @notice Determines if account is solvent.
+    /// @dev Checks whether account is solvent with `BP_DECREASE_BUFFER` according to `_validateSolvency`.
+    /// @dev Can be called externallt to identify insolvent and near-insolvent accounts before they are liquidated.
+    /// @dev Reverts if account is not solvent with `BP_DECREASE_BUFFER`.
+    /// @param user The account to check for solvency
+    /// @param positionIdList The list of all option positions held by `user`
+    function isAccountSolvent(address user, TokenId[] calldata positionIdList) external view {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
@@ -414,7 +437,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 atTick,
         TokenId[] calldata positionIdList
     ) external view returns (int256 value0, int256 value1) {
-        (value0, value1) = FeesCalc.getPortfolioValue(
+        (value0, value1) = PanopticMath.getPortfolioValue(
             atTick,
             s_positionBalance[user],
             positionIdList
@@ -677,7 +700,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         if (safeMode) {
-            return uint128(10_000) + uint128(10_000 << 64);
+            return 0x27100000000000002710; //uint128(10_000) + uint128(10_000 << 64);
         } else {
             return poolUtilizations;
         }

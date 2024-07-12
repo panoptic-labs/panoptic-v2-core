@@ -37,55 +37,6 @@ import {TokenId} from "@types/TokenId.sol";
 //              of the AMM
 //
 library FeesCalc {
-    /// @notice Calculate NAV of user's option portfolio at a given tick.
-    /// @param atTick The tick to calculate the value at
-    /// @param userBalance The position balance array for the user (left=tokenId, right=positionSize)
-    /// @param positionIdList A list of all positions the user holds on that pool
-    /// @return value0 The amount of token0 owned by portfolio
-    /// @return value1 The amount of token1 owned by portfolio
-    function getPortfolioValue(
-        int24 atTick,
-        mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
-        TokenId[] calldata positionIdList
-    ) external view returns (int256 value0, int256 value1) {
-        for (uint256 k = 0; k < positionIdList.length; ) {
-            TokenId tokenId = positionIdList[k];
-            uint128 positionSize = userBalance[tokenId].rightSlot();
-            uint256 numLegs = tokenId.countLegs();
-            for (uint256 leg = 0; leg < numLegs; ) {
-                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                    tokenId,
-                    leg,
-                    positionSize
-                );
-
-                (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
-                    atTick,
-                    liquidityChunk
-                );
-
-                if (tokenId.isLong(leg) == 0) {
-                    unchecked {
-                        value0 += int256(amount0);
-                        value1 += int256(amount1);
-                    }
-                } else {
-                    unchecked {
-                        value0 -= int256(amount0);
-                        value1 -= int256(amount1);
-                    }
-                }
-
-                unchecked {
-                    ++leg;
-                }
-            }
-            unchecked {
-                ++k;
-            }
-        }
-    }
-
     /// @notice Calculate the AMM Swap/trading fees for a `liquidityChunk` of each token.
     /// @dev Read from the uniswap pool and compute the accumulated fees from swapping activity.
     /// @param univ3pool The AMM/Uniswap pool where fees are collected from

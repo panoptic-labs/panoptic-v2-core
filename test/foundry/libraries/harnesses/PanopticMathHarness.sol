@@ -16,6 +16,9 @@ import "forge-std/Test.sol";
 /// @notice Replicates the interface of the PanopticMath library, passing through any function calls
 /// @author Axicon Labs Limited
 contract PanopticMathHarness is Test {
+    // used to pass into libraries
+    mapping(TokenId tokenId => LeftRightUnsigned balance) public userBalance;
+
     function getLiquidityChunk(
         TokenId tokenId,
         uint256 legIndex,
@@ -205,5 +208,21 @@ contract PanopticMathHarness is Test {
     ) public pure returns (int24 rangeDown, int24 rangeUp) {
         (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         return (result0, result1);
+    }
+
+    function getPortfolioValue(
+        int24 atTick,
+        TokenId[] calldata positionIdList
+    ) public view returns (int256, int256) {
+        (int256 value0, int256 value1) = PanopticMath.getPortfolioValue(
+            atTick,
+            userBalance,
+            positionIdList
+        );
+        return (value0, value1);
+    }
+
+    function addBalance(TokenId tokenId, uint128 balance) public {
+        userBalance[tokenId] = LeftRightUnsigned.wrap(0).toRightSlot(balance);
     }
 }

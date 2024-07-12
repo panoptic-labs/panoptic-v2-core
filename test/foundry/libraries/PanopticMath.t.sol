@@ -51,6 +51,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
     // use storage as temp to avoid stack to deeps
     IUniswapV3Pool selectedPool;
+    uint160 sqrtPriceAt;
     int24 tickSpacing;
     int24 currentTick;
 
@@ -1608,5 +1609,186 @@ contract PanopticMathTest is Test, PositionUtils {
             assertEq(strike - rangeDown, strike - range);
             assertEq(strike + rangeUp, strike + range);
         }
+    }
+
+    function test_Success_getPortfolioValue(
+        uint256 poolIdSeed,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int256 strikeSeed,
+        int256 widthSeed,
+        uint64 positionSize
+    ) public {
+        vm.assume(positionSize != 0);
+        TokenId tokenId;
+        selectedPool = pools[bound(poolIdSeed, 0, 2)];
+
+        {
+            // construct one leg token
+            tokenId = fuzzedPosition(
+                1, // total amount of legs
+                poolIdSeed,
+                optionRatioSeed,
+                assetSeed,
+                isLongSeed,
+                tokenTypeSeed,
+                strikeSeed,
+                widthSeed
+            );
+        }
+
+        // position size
+        addBalance(tokenId, positionSize);
+
+        // liquidity chunk
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+            tokenId,
+            0,
+            harness.userBalance(tokenId).rightSlot()
+        );
+
+        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
+            sqrtPriceAt,
+            TickMath.getSqrtRatioAtTick(liquidityChunk.tickLower()),
+            TickMath.getSqrtRatioAtTick(liquidityChunk.tickUpper()),
+            liquidityChunk.liquidity()
+        );
+
+        LeftRightSigned positionAmounts = LeftRightSigned
+            .wrap(0)
+            .toRightSlot(int128(int256(amount0)))
+            .toLeftSlot(int128(int256(amount1)));
+        LeftRightSigned portfolioAmounts;
+        {
+            // portfolio amounts
+            unchecked {
+                portfolioAmounts = tokenId.isLong(0) == 0
+                    ? portfolioAmounts = portfolioAmounts.add(positionAmounts)
+                    : portfolioAmounts = portfolioAmounts.sub(positionAmounts);
+            }
+
+            /// expected values
+            int256 expectedValue0;
+            int256 expectedValue1;
+            unchecked {
+                {
+                    expectedValue0 = portfolioAmounts.rightSlot();
+                }
+                {
+                    expectedValue1 = portfolioAmounts.leftSlot();
+                }
+            }
+
+            /// actual values
+            TokenId[] memory posIdList = new TokenId[](1);
+            posIdList[0] = tokenId;
+            (int256 returnedValue0, int256 returnedValue1) = harness.getPortfolioValue(
+                currentTick,
+                posIdList
+            );
+
+            assertEq(expectedValue0, returnedValue0, "value0");
+            assertEq(expectedValue1, returnedValue1, "value1");
+        }
+    }
+
+    // returns token containing 'totalLegs' amount of legs
+    // i.e totalLegs of 1 has a tokenId with 1 legs
+    // uses a seed to fuzz data so that there is different data for each leg
+    function fuzzedPosition(
+        uint256 totalLegs,
+        uint256 poolIdSeed,
+        uint256 optionRatioSeed,
+        uint256 assetSeed,
+        uint256 isLongSeed,
+        uint256 tokenTypeSeed,
+        int256 strikeSeed,
+        int256 widthSeed
+    ) internal returns (TokenId) {
+        tickSpacing = selectedPool.tickSpacing();
+        // add univ3pool to token
+        uint64 poolId = uint64(
+            ((uint64(bound(poolIdSeed, 1, type(uint64).max)) >> 16)) +
+                (uint64(uint24(tickSpacing)) << 48)
+        );
+        TokenId tokenId = TokenId.wrap(uint256(poolId));
+
+        for (uint256 legIndex; legIndex < totalLegs; legIndex++) {
+            // We don't want the same data for each leg
+            // int divide each seed by the current legIndex
+            // gives us a pseudorandom seed
+            // forge bound does not randomize the output
+            {
+                uint256 randomizer = legIndex + 1;
+
+                optionRatioSeed = optionRatioSeed / randomizer;
+                assetSeed = assetSeed / randomizer;
+                isLongSeed = isLongSeed / randomizer;
+                tokenTypeSeed = tokenTypeSeed / randomizer;
+                strikeSeed = strikeSeed / int24(int256(randomizer));
+                widthSeed = widthSeed / int24(int256(randomizer));
+            }
+
+            {
+                // the following are all 1 bit so mask them:
+                uint16 MASK = 0x1; // takes first 1 bit of the uint16
+                assetSeed = assetSeed & MASK;
+                isLongSeed = isLongSeed & MASK;
+                tokenTypeSeed = tokenTypeSeed & MASK;
+            }
+
+            /// bound inputs
+            int24 strike;
+            int24 width;
+            {
+                // the following must be at least 1
+                optionRatioSeed = bound(optionRatioSeed, 1, 127);
+
+                width = int24(bound(widthSeed, 1, 4094));
+                int24 oneSidedRange = (width * tickSpacing) / 2;
+
+                (int24 strikeOffset, int24 minTick, int24 maxTick) = PositionUtils.getContextFull(
+                    uint256(uint24(tickSpacing)),
+                    currentTick,
+                    width
+                );
+
+                int24 lowerBound = int24(minTick + oneSidedRange - strikeOffset);
+                int24 upperBound = int24(maxTick - oneSidedRange - strikeOffset);
+
+                // Set current tick and pool price
+                currentTick = int24(bound(currentTick, minTick, maxTick));
+                sqrtPriceAt = TickMath.getSqrtRatioAtTick(currentTick);
+
+                // bound strike
+                strike = int24(
+                    bound(strikeSeed, lowerBound / tickSpacing, upperBound / tickSpacing)
+                );
+                strike = int24(strike * tickSpacing + strikeOffset);
+            }
+
+            {
+                // add a leg
+                // no risk partner by default (will reference its own leg index)
+                tokenId = tokenId.addLeg(
+                    legIndex,
+                    optionRatioSeed,
+                    assetSeed,
+                    isLongSeed,
+                    tokenTypeSeed,
+                    legIndex,
+                    strike,
+                    width
+                );
+            }
+        }
+
+        return tokenId;
+    }
+
+    function addBalance(TokenId tokenId, uint128 balance) public {
+        harness.addBalance(tokenId, balance);
     }
 }

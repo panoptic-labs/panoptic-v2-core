@@ -418,6 +418,92 @@ library PanopticMath {
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    function checkBalances(
+        address user,
+        CollateralTracker collateral0,
+        CollateralTracker collateral1,
+        int256 minValue0,
+        int256 minValue1
+    ) external view {
+        if (
+            int256(collateral0.convertToAssets(collateral0.balanceOf(user))) < minValue0 ||
+            int256(collateral1.convertToAssets(collateral1.balanceOf(user))) < minValue1
+        ) revert Errors.NotEnoughCollateral();
+    }
+
+    /// @notice Compute the amount of funds that are underlying this positionIdList.
+    /// @param userBalance The position balance array for the user (left=tokenId, right=positionSize)
+    /// @param positionIdList A list of all positions the user holds on that pool
+    /// @return coveredAmounts Left-right packed word where where rightSlot = covered amount for token0 and leftSlot = covered amount for token1
+    function getCoveredAmounts(
+        mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
+        TokenId[] calldata positionIdList
+    ) external view returns (LeftRightSigned coveredAmounts) {
+        uint256 numberOfPositions = positionIdList.length;
+        for (uint256 i; i < numberOfPositions; ) {
+            TokenId tokenId = positionIdList[i];
+            uint128 positionSize = userBalance[tokenId].rightSlot();
+
+            LeftRightSigned _coveredAmounts = computeCoveredAmounts(tokenId, positionSize);
+
+            coveredAmounts = coveredAmounts.add(_coveredAmounts);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /// @notice Calculate NAV of user's option portfolio at a given tick.
+    /// @param atTick The tick to calculate the value at
+    /// @param userBalance The position balance array for the user (left=tokenId, right=positionSize)
+    /// @param positionIdList A list of all positions the user holds on that pool
+    /// @return value0 The amount of token0 owned by portfolio
+    /// @return value1 The amount of token1 owned by portfolio
+    function getPortfolioValue(
+        int24 atTick,
+        mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
+        TokenId[] calldata positionIdList
+    ) external view returns (int256 value0, int256 value1) {
+        uint256 numberOfPositions = positionIdList.length;
+        for (uint256 k = 0; k < numberOfPositions; ) {
+            TokenId tokenId = positionIdList[k];
+            uint128 positionSize = userBalance[tokenId].rightSlot();
+            uint256 numLegs = tokenId.countLegs();
+            for (uint256 leg = 0; leg < numLegs; ) {
+                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize
+                );
+
+                (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                    atTick,
+                    liquidityChunk
+                );
+
+                if (tokenId.isLong(leg) == 0) {
+                    unchecked {
+                        value0 += int256(amount0);
+                        value1 += int256(amount1);
+                    }
+                } else {
+                    unchecked {
+                        value0 -= int256(amount0);
+                        value1 -= int256(amount1);
+                    }
+                }
+
+                unchecked {
+                    ++leg;
+                }
+            }
+            unchecked {
+                ++k;
+            }
+        }
+    }
+
     /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
     /// @param tokenId The option position id
     /// @param positionSize The number of contracts of this option
@@ -640,6 +726,51 @@ library PanopticMath {
                 // if option is long, increment longs by notional
                 longs = longs.toLeftSlot(Math.toInt128(amountsMoved.leftSlot()));
             }
+        }
+    }
+
+    /// @notice Compute the amount of funds required to exercise that tokenId.
+    /// @param tokenId The option position identifier
+    /// @param positionSize The number of positions minted
+    /// @return coveredAmounts Left-right packed word where where rightSlot = covered amount for token0 and leftSlot = covered amount for token1
+    function computeCoveredAmounts(
+        TokenId tokenId,
+        uint128 positionSize
+    ) internal pure returns (LeftRightSigned coveredAmounts) {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ) {
+            // Compute the amount of funds that have been removed from the Panoptic Pool
+            LeftRightSigned _coveredAmounts = _calculateCoveredAmounts(tokenId, positionSize, leg);
+
+            coveredAmounts = coveredAmounts.add(_coveredAmounts);
+
+            unchecked {
+                ++leg;
+            }
+        }
+    }
+
+    /// @notice Compute the amount of funds required to exercise that option's legIndex.
+    /// @param tokenId The option position identifier
+    /// @param positionSize The number of positions minted
+    /// @param legIndex The leg index minted in this position, can be {0,1,2,3}
+    /// @return coveredAmounts Left-right packed word where where rightSlot = covered amount for token0 and leftSlot = covered amount for token1
+    function _calculateCoveredAmounts(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 legIndex
+    ) internal pure returns (LeftRightSigned coveredAmounts) {
+        // compute amounts moved
+        LeftRightUnsigned amountsMoved = getAmountsMoved(tokenId, positionSize, legIndex);
+
+        if (tokenId.tokenType(legIndex) == tokenId.isLong(legIndex)) {
+            // if option is a short call or a long put, add amountsMoved0 to right slot and subtract amountsMoved1 from left slot
+            coveredAmounts = coveredAmounts.toRightSlot(Math.toInt128(amountsMoved.rightSlot()));
+            coveredAmounts = coveredAmounts.toLeftSlot(-Math.toInt128(amountsMoved.leftSlot()));
+        } else {
+            // if option is a short put or a long call, add amountsMoved1 to left slot and subtract amountsMoved0 from right slot
+            coveredAmounts = coveredAmounts.toLeftSlot(Math.toInt128(amountsMoved.leftSlot()));
+            coveredAmounts = coveredAmounts.toRightSlot(-Math.toInt128(amountsMoved.rightSlot()));
         }
     }
 
