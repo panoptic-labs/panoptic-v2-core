@@ -2871,8 +2871,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
-                swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+                swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+                swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
             }
 
             vm.startPrank(Alice);

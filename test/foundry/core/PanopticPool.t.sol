@@ -6822,7 +6822,7 @@ contract PanopticPoolTest is PositionUtils {
         for (uint256 j = 0; j < 20; ++j) {
             vm.warp(block.timestamp + 120);
             vm.roll(block.number + 10);
-            twoWaySwap(swapSizeSeed);
+            twoWaySwap(1e4);
         }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
