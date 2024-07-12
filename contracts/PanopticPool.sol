@@ -1026,11 +1026,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick;
         {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
-
             int24 fastOracleTick;
             int24 lastObservedTick;
             (currentTick, fastOracleTick, , lastObservedTick, ) = _getOracleTicks();
+
+            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
+
             // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
             /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
             int24[] memory atTicks = new int24[](4);

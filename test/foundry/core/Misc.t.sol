@@ -2696,6 +2696,13 @@ contract Misctest is Test, PositionUtils {
             // deal alice a bunch of collateral tokens without touching the supply
             editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
             editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+            // update twaps
+            for (uint256 j = 0; j < 100; ++j) {
+                vm.warp(block.timestamp + 120);
+                vm.roll(block.number + 10);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            }
 
             vm.startPrank(Alice);
             pp.liquidate(
@@ -2789,6 +2796,9 @@ contract Misctest is Test, PositionUtils {
                 swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
                 swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
+
+            (, currentTick, , , , , ) = uniPool.slot0();
+            int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
 
             vm.startPrank(Alice);
             pp.liquidate(
@@ -3171,9 +3181,6 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            (, currentTick, , , , , ) = uniPool.slot0();
-            int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
-            vm.assume(Math.abs(int256(currentTick) - twapTick) < 1800);
 
             pp.liquidate(
                 new TokenId[](0),
