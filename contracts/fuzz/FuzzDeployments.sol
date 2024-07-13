@@ -1430,11 +1430,11 @@ contract FuzzDeployments is FuzzHelpers {
 
         out = boundLog(x, 0, 0);
         emit LogUint256("0-15", out);
-        assertWithMsg((out <= 2 ** 1 - 1) && (out >= 2**0), "within bounds");
+        assertWithMsg((out <= 2 ** 1 - 1) && (out >= 2 ** 0), "within bounds");
 
         out = boundLog(x, 0, 15);
         emit LogUint256("0-15", out);
-        assertWithMsg((out <= 2 ** 16 - 1) && (out >= 2**0), "within bounds");
+        assertWithMsg((out <= 2 ** 16 - 1) && (out >= 2 ** 0), "within bounds");
 
         out = boundLog(x, 32, 224);
         emit LogUint256("32-224", out);
