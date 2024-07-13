@@ -1692,6 +1692,13 @@ contract FuzzDeployments is FuzzHelpers {
             );
     }
 
+    struct AccumulatorDifference {
+        uint128 settledToken0Difference;
+        uint128 settledToken1Difference;
+        uint128 grossPremiaLast0Difference;
+        uint128 grossPremiaLast1Difference;
+    }
+
     error BurnSimResults(
         uint256 postburnToken0Difference,
         uint256 postburnToken1Difference,
@@ -1718,6 +1725,7 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory positionsNew = userPositions[caller];
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             TokenId position = positionsToBurn[positionIndex];
+            AccumulatorDifference[] memory thisPositionsDifferences = new AccumulatorDifference[](position.countLegs());
             positionsNew = _get_list_without_tokenid(positionsNew, position);
             panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
             for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
@@ -1727,12 +1735,21 @@ contract FuzzDeployments is FuzzHelpers {
                     uint128 postburnGrossPremiaLast0,
                     uint128 postburnGrossPremiaLast1
                 ) = panopticPool.premiaSettlementData(position, legIndex);
-                $settledToken0DifferenceByLeg[positionIndex][legIndex] = postburnSettledToken0 - premiaAndAccumulators[positionIndex][legIndex].settledToken0;
-                $settledToken1DifferenceByLeg[positionIndex][legIndex] = postburnSettledToken0 - premiaAndAccumulators[positionIndex][legIndex].settledToken0;
-                $grossPremiaLast0DifferenceByLeg[positionIndex][legIndex] = postburnGrossPremiaLast0 - premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0;
-                $grossPremiaLast1DifferenceByLeg[positionIndex][legIndex] = postburnGrossPremiaLast1 - premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1;
+                $settledToken0DifferenceByLeg[positionIndex][legIndex] =
+                    postburnSettledToken0 -
+                    premiaAndAccumulators[positionIndex][legIndex].settledToken0;
+                $settledToken1DifferenceByLeg[positionIndex][legIndex] =
+                    postburnSettledToken0 -
+                    premiaAndAccumulators[positionIndex][legIndex].settledToken0;
+                $grossPremiaLast0DifferenceByLeg[positionIndex][legIndex] =
+                    postburnGrossPremiaLast0 -
+                    premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0;
+                $grossPremiaLast1DifferenceByLeg[positionIndex][legIndex] =
+                    postburnGrossPremiaLast1 -
+                    premiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1;
             }
         }
+
         (
             uint256 burnersPostburnToken0Balance,
             uint256 burnersPostburnToken1Balance
@@ -1750,23 +1767,6 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
-    function _contains(bytes32[] memory array, bytes32 value) internal pure returns (bool) {
-        for (uint256 i = 0; i < array.length; i++) {
-            if (array[i] == value) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    function _push_to_array(bytes32[] memory array, bytes32 new_value) internal pure returns (bytes32[] memory new_array) {
-        new_array = new bytes32[](array.length + 1);
-        for (uint256 i = 0; i < array.length; i++) {
-            new_array[i] = array[i];
-        }
-        new_array[array.length] = new_value;
-    }
-
     mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken0Difference;
     mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken1Difference;
     mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia0Difference;
@@ -1781,8 +1781,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint numPositionsToBurn,
         bool fromFront
     ) public {
-        address caller = msg.sender;
-        uint256 preburnNumPositions = userPositions[caller].length;
+        uint256 preburnNumPositions = userPositions[msg.sender].length;
         if (preburnNumPositions < 1) revert();
 
         numPositionsToBurn = burnAll
@@ -1798,7 +1797,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         // Get a subset of userPositions[caller]
         for (uint i = 0; i < numPositionsToBurn; i++)
-            positionsToBurn[i] = userPositions[caller][
+            positionsToBurn[i] = userPositions[msg.sender][
                 fromFront ? i : preburnNumPositions - (i + 1)
             ];
 
@@ -1809,7 +1808,7 @@ contract FuzzDeployments is FuzzHelpers {
             ) {
                 retainedPositions[
                     fromFront ? i : (preburnNumPositions - numPositionsToBurn) - i
-                ] = userPositions[caller][fromFront ? preburnNumPositions - i : i];
+                ] = userPositions[msg.sender][fromFront ? preburnNumPositions - i : i];
             }
         }
 
@@ -1817,21 +1816,18 @@ contract FuzzDeployments is FuzzHelpers {
         (
             uint256 burnersPreburnToken0Balance,
             uint256 burnersPreburnToken1Balance
-        ) = _get_token_balances(caller);
-        PremiaAndAccumulatorsForLeg[][]
-            memory preburnPremiaAndAccumulators = new PremiaAndAccumulatorsForLeg[][](
-                preburnNumPositions
-            );
+        ) = _get_token_balances(msg.sender);
+        PremiaAndAccumulatorsForLeg[][] memory preburnAccumulators = new PremiaAndAccumulatorsForLeg[][](preburnNumPositions);
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             (uint128 posSize, , ) = panopticPool.optionPositionBalance(
-                caller,
+                msg.sender,
                 positionsToBurn[positionIndex]
             );
             preburnPremiaAndAccumulators[
                 positionIndex
             ] = _get_preburn_accumulators_and_projected_premia(
                 positionsToBurn[positionIndex],
-                caller,
+                msg.sender,
                 posSize
             );
         }
@@ -1839,7 +1835,7 @@ contract FuzzDeployments is FuzzHelpers {
         // Figure out what changes in settled tokens, burner token balances, and so on we expect
         // if we burn each individually
         try this._simulate_burn_on_each_position(
-            caller,
+            msg.sender,
             positionsToBurn,
             tickLimitLow,
             preburnPremiaAndAccumulators,
@@ -1855,17 +1851,24 @@ contract FuzzDeployments is FuzzHelpers {
                 uint128[][] memory settledToken1Difference,
                 uint128[][] memory grossPremiaLast0Difference,
                 uint128[][] memory grossPremiaLast1Difference
-            ) = abi.decode(_err, (uint256, uint256, uint128[][], uint128[][], uint128[][], uint128[][]));
+            ) = abi.decode(
+                    _err,
+                    (uint256, uint256, uint128[][], uint128[][], uint128[][], uint128[][])
+                );
 
             // Then, prove that burning them all at once makes the same differences:
             // 1. burn
+            // NOTE: I am pretty sure i pass in retainedPositions here, leaving old TODO just in case.
+            /* OLD:
             // TODO: is passing in emptyList here OK,
             //  or should we pass in retainedPositions?
             //  burn_one_option seems to do the latter.
             TokenId[] memory emptyList;
             panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
+            */
+            panopticPool.burnOptions(positionsToBurn, retainedPositions, tickLimitLow, -1 * tickLimitLow);
             assertWithMsg(
-                panopticPool.numberOfPositions(caller) == preburnNumPositions - positionsToBurn.length,
+                panopticPool.numberOfPositions(msg.sender) == preburnNumPositions - positionsToBurn.length,
                 "Not all positions were burned"
             );
 
@@ -1873,7 +1876,7 @@ contract FuzzDeployments is FuzzHelpers {
             (
                 uint256 burnersPostburnToken0Balance,
                 uint256 burnersPostburnToken1Balance
-            ) = _get_token_balances(caller);
+            ) = _get_token_balances(msg.sender);
 
             assertWithMsg(
                 burnersPostburnToken0Balance - burnersPreburnToken0Balance == token0DifferenceWhenBurningEach,
@@ -1886,83 +1889,125 @@ contract FuzzDeployments is FuzzHelpers {
 
             // 3. Assert: Same effect on the accumulators for each chunk as burning each one individually
             //   a. First, we must aggregate the accumulator changes across chunks
-            bytes32[] memory chunksTouched;
-            for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
-                TokenId position = positionsToBurn[positionIndex];
-                for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-                    bytes32 chunkKey = keccak256(
-                        abi.encodePacked(
-                            position.strike(legIndex),
-                            position.width(legIndex),
-                            position.tokenType(legIndex)
-                        )
-                    );
-                    chunkKeyToExpectedSettledToken0Difference[chunkKey] += settledToken0Difference[positionIndex][legIndex];
-                    chunkKeyToExpectedSettledToken1Difference[chunkKey] += settledToken1Difference[positionIndex][legIndex];
-                    chunkKeyToExpectedGrossPremia0Difference[chunkKey] += grossPremiaLast0Difference[positionIndex][legIndex];
-                    chunkKeyToExpectedGrossPremia1Difference[chunkKey] += grossPremiaLast1Difference[positionIndex][legIndex];
-                    if (!_contains(chunksTouched, chunkKey)) {
-                        _push_to_array(chunksTouched, chunkKey);
-                    }
-                }
-            }
+            _aggregate_each_chunks_accumulator_differences(
+                positionsToBurn,
+                settledToken0Difference,
+                settledToken1Difference,
+                grossPremiaLast0Difference,
+                grossPremiaLast1Difference
+            );
             //  b. Then, with the aggregated expected differences, compare to the actual differences
             //     you get when you compare post-burn s_grossPremiumLast and s_settledTokens to pre-burn
-            for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
-                TokenId position = positionsToBurn[positionIndex];
-                for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-                    (
-                        uint128 postburnSettledToken0,
-                        uint128 postburnSettledToken1,
-                        uint128 postburnGrossPremiaLast0,
-                        uint128 postburnGrossPremiaLast1
-                    ) = panopticPool.premiaSettlementData(position, legIndex);
-
-                    bytes32 chunkKey = keccak256(
-                        abi.encodePacked(
-                            position.strike(legIndex),
-                            position.width(legIndex),
-                            position.tokenType(legIndex)
-                        )
-                    );
-
-                    assertWithMsg(
-                        postburnSettledToken0 ==
-                            preburnPremiaAndAccumulators[positionIndex][legIndex].settledToken0 -
-                                chunkKeyToExpectedSettledToken0Difference[chunkKey],
-                        "Settled token0s did not decrease by the aggregated difference resulting from burning each position individually"
-                    );
-                    assertWithMsg(
-                        postburnSettledToken1 ==
-                            preburnPremiaAndAccumulators[positionIndex][legIndex].settledToken1 -
-                                chunkKeyToExpectedSettledToken1Difference[chunkKey],
-                        "Settled token1s did not decrease by the aggregated difference resulting from burning each position individually"
-                    );
-
-                    assertWithMsg(
-                        postburnGrossPremiaLast0 ==
-                            preburnPremiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0 +
-                                chunkKeyToExpectedGrossPremia0Difference[chunkKey],
-                        "grossPremiaLast on token0 did not go down by the aggregated difference resulting from burning each position individually"
-                    );
-                    assertWithMsg(
-                        postburnGrossPremiaLast1 ==
-                            preburnPremiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1 +
-                                chunkKeyToExpectedGrossPremia1Difference[chunkKey],
-                        "grossPremiaLast on token1 did not go down by the aggregated difference resulting from burning each position individually"
-                    );
-                }
-            }
+            _assert_burning_all_at_once_is_same_as_burning_individually(positionsToBurn, preburnPremiaAndAccumulators);
 
             // Clean-up:
-            // - the user's positions are now just the ones we didn't burn.
-            userPositions[caller] = retainedPositions;
-            // - clear the mappings
-            for (uint i = 0; i < chunksTouched.length; i++) {
-                chunkKeyToExpectedSettledToken0Difference[chunksTouched[i]] = 0;
-                chunkKeyToExpectedSettledToken1Difference[chunksTouched[i]] = 0;
-                chunkKeyToExpectedGrossPremia0Difference[chunksTouched[i]] = 0;
-                chunkKeyToExpectedGrossPremia1Difference[chunksTouched[i]] = 0;
+            // - the user's positions are now just the ones we didn't burn
+            userPositions[msg.sender] = retainedPositions;
+            // - clear the mappings we stored per-chunk accumulator differences in
+            _clear_accumulator_differences(positionsToBurn);
+        }
+    }
+
+    function _aggregate_each_chunks_accumulator_differences(
+        TokenId[] memory positionsBurnt,
+        uint128[][] memory settledToken0Difference,
+        uint128[][] memory settledToken1Difference,
+        uint128[][] memory grossPremiaLast0Difference,
+        uint128[][] memory grossPremiaLast1Difference
+    ) internal {
+        for (uint positionIndex = 0; positionIndex < positionsBurnt.length; positionIndex++) {
+            TokenId position = positionsBurnt[positionIndex];
+            for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                bytes32 chunkKey = keccak256(
+                    abi.encodePacked(
+                        position.strike(legIndex),
+                        position.width(legIndex),
+                        position.tokenType(legIndex)
+                    )
+                );
+                chunkKeyToExpectedSettledToken0Difference[chunkKey] += settledToken0Difference[
+                    positionIndex
+                ][legIndex];
+                chunkKeyToExpectedSettledToken1Difference[chunkKey] += settledToken1Difference[
+                    positionIndex
+                ][legIndex];
+                chunkKeyToExpectedGrossPremia0Difference[
+                    chunkKey
+                ] += grossPremiaLast0Difference[positionIndex][legIndex];
+                chunkKeyToExpectedGrossPremia1Difference[
+                    chunkKey
+                ] += grossPremiaLast1Difference[positionIndex][legIndex];
+            }
+        }
+    }
+
+    function _assert_burning_all_at_once_is_same_as_burning_individually(
+        TokenId[] memory positionsBurnt,
+        PremiaAndAccumulatorsForLeg[][] memory preburnPremiaAndAccumulators
+    ) internal {
+        for (uint positionIndex = 0; positionIndex < positionsBurnt.length; positionIndex++) {
+            TokenId position = positionsBurnt[positionIndex];
+            for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                (
+                    uint128 postburnSettledToken0,
+                    uint128 postburnSettledToken1,
+                    uint128 postburnGrossPremiaLast0,
+                    uint128 postburnGrossPremiaLast1
+                ) = panopticPool.premiaSettlementData(position, legIndex);
+
+                bytes32 chunkKey = keccak256(
+                    abi.encodePacked(
+                        position.strike(legIndex),
+                        position.width(legIndex),
+                        position.tokenType(legIndex)
+                    )
+                );
+
+                assertWithMsg(
+                    postburnSettledToken0 ==
+                        preburnPremiaAndAccumulators[positionIndex][legIndex].settledToken0 -
+                            chunkKeyToExpectedSettledToken0Difference[chunkKey],
+                    "Settled token0s did not decrease by the aggregated difference resulting from burning each position individually"
+                );
+                assertWithMsg(
+                    postburnSettledToken1 ==
+                        preburnPremiaAndAccumulators[positionIndex][legIndex].settledToken1 -
+                            chunkKeyToExpectedSettledToken1Difference[chunkKey],
+                    "Settled token1s did not decrease by the aggregated difference resulting from burning each position individually"
+                );
+
+                assertWithMsg(
+                    postburnGrossPremiaLast0 ==
+                        preburnPremiaAndAccumulators[positionIndex][legIndex].grossPremiaLast0 +
+                            chunkKeyToExpectedGrossPremia0Difference[chunkKey],
+                    "grossPremiaLast on token0 did not go down by the aggregated difference resulting from burning each position individually"
+                );
+                assertWithMsg(
+                    postburnGrossPremiaLast1 ==
+                        preburnPremiaAndAccumulators[positionIndex][legIndex].grossPremiaLast1 +
+                            chunkKeyToExpectedGrossPremia1Difference[chunkKey],
+                    "grossPremiaLast on token1 did not go down by the aggregated difference resulting from burning each position individually"
+                );
+            }
+        }
+    }
+
+    function _clear_accumulator_differences(TokenId[] memory positionsBurnt) internal {
+        for (uint positionIndex = 0; positionIndex < positionsBurnt.length; positionIndex++) {
+            TokenId position = positionsBurnt[positionIndex];
+            for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                bytes32 chunkKey = keccak256(
+                    abi.encodePacked(
+                        position.strike(legIndex),
+                        position.width(legIndex),
+                        position.tokenType(legIndex)
+                    )
+                );
+
+                chunkKeyToExpectedSettledToken0Difference[chunkKey] = 0;
+                chunkKeyToExpectedSettledToken1Difference[chunkKey] = 0;
+                chunkKeyToExpectedGrossPremia0Difference[chunkKey] = 0;
+                chunkKeyToExpectedGrossPremia1Difference[chunkKey] = 0;
             }
         }
     }
