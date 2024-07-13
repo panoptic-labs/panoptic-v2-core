@@ -1879,11 +1879,13 @@ contract FuzzDeployments is FuzzHelpers {
             ) = _get_token_balances(msg.sender);
 
             assertWithMsg(
-                burnersPostburnToken0Balance - burnersPreburnToken0Balance == token0DifferenceWhenBurningEach,
+                burnersPostburnToken0Balance - burnersPreburnToken0Balance ==
+                    token0DifferenceWhenBurningEach,
                 "Burners token0 balance did not increase by the same amount as if they had burned each position one-by-one"
             );
             assertWithMsg(
-                burnersPostburnToken1Balance - burnersPreburnToken1Balance == token1DifferenceWhenBurningEach,
+                burnersPostburnToken1Balance - burnersPreburnToken1Balance ==
+                    token1DifferenceWhenBurningEach,
                 "Burners token1 balance did not increase by the same amount as if they had burned each position one-by-one"
             );
 
