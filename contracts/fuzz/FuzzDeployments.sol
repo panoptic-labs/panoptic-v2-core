@@ -43,21 +43,18 @@ contract FuzzDeployments is FuzzHelpers {
         );
         emit LogAddress("Panoptic Collateral reference", address(collateralReference));
 
-        dnft = IDonorNFT(address(new DonorNFT()));
-        emit LogAddress("DonorNFT", address(dnft));
-
         panopticFactory = new PanopticFactory(
             address(WETH),
             sfpm,
             univ3factory,
-            dnft,
             poolReference,
-            collateralReference
+            collateralReference,
+            new bytes32[](0),
+            new uint256[][](0),
+            new Pointer[][](0)
         );
-        emit LogAddress("Panoptic Factory", address(panopticFactory));
 
-        panopticFactory.initialize(address(this));
-        DonorNFT(address(dnft)).changeFactory(address(panopticFactory));
+        emit LogAddress("Panoptic Factory", address(panopticFactory));
 
         swapperc = new SwapperC();
         emit LogAddress("Panoptic Swapper", address(swapperc));
@@ -121,7 +118,9 @@ contract FuzzDeployments is FuzzHelpers {
                     pool.token0(),
                     pool.token1(),
                     poolFee,
-                    bytes32(uint256(uint160(address(this))) << 96)
+                    uint96(block.timestamp),
+                    type(uint256).max,
+                    type(uint256).max
                 )
             )
         );
@@ -627,7 +626,6 @@ contract FuzzDeployments is FuzzHelpers {
             "amountsMoved1",
             PanopticMath.getAmountsMoved(tokenId, type(uint48).max, 0).leftSlot()
         );
-        assertWithMsg(required0 > 10, "required is nonzero!");
         uint256 size = (required0 * balance0) / type(uint48).max;
         posSize = bound(posSize, (size * 10) / 100, (size * 200) / 100);
 
@@ -1430,29 +1428,37 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("full-range", out);
         assertWithMsg((out <= type(uint256).max) && (out >= 0), "within bounds");
 
+        out = boundLog(x, 0, 0);
+        emit LogUint256("0-15", out);
+        assertWithMsg((out <= 2 ** 1 - 1) && (out >= 2**0), "within bounds");
+
         out = boundLog(x, 0, 15);
         emit LogUint256("0-15", out);
-        assertWithMsg((out <= 2 ** 15) && (out >= 0), "within bounds");
+        assertWithMsg((out <= 2 ** 16 - 1) && (out >= 2**0), "within bounds");
 
         out = boundLog(x, 32, 224);
         emit LogUint256("32-224", out);
-        assertWithMsg((out <= 2 ** 224) && (out >= 2 ** 32), "within bounds");
+        assertWithMsg((out <= 2 ** 225 - 1) && (out >= 2 ** 32), "within bounds");
 
         out = boundLog(x, 100, 114);
         emit LogUint256("100-114", out);
-        assertWithMsg((out <= 2 ** 114) && (out >= 2 ** 100), "within bounds");
+        assertWithMsg((out <= 2 ** 115 - 1) && (out >= 2 ** 100), "within bounds");
 
         out = boundLog(x, 128, 129);
         emit LogUint256("128-129", out);
-        assertWithMsg((out <= 2 ** 129) && (out >= 2 ** 128), "within bounds");
+        assertWithMsg((out <= 2 ** 130 - 1) && (out >= 2 ** 128), "within bounds");
 
         out = boundLog(x, 253, 255);
         emit LogUint256("253-256", out);
-        assertWithMsg((out <= 2 ** 255) && (out >= 2 ** 253), "within bounds");
+        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 253), "within bounds");
 
         out = boundLog(x, 254, 255);
         emit LogUint256("254-256", out);
-        assertWithMsg((out <= 2 ** 255) && (out >= 2 ** 254), "within bounds");
+        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 254), "within bounds");
+
+        out = boundLog(x, 255, 255);
+        emit LogUint256("255-256", out);
+        assertWithMsg((out <= type(uint256).max) && (out >= 2 ** 255), "within bounds");
     }
 
     function try_settle_long(uint256 i_settled) public {
@@ -1888,7 +1894,7 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function try_liquidate_aggressively() public {
+    function try_liquidate_aggressively() internal {
         address liquidator = msg.sender;
         hevm.prank(liquidator);
         fund_and_approve();

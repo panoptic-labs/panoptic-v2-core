@@ -11,10 +11,11 @@ cryticArgs:
 
 sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
 testMode: assertion
-seqLen: 500
-testLimit: 3000000
-shrinkLimit: 10000
-workers: 8
+seqLen: 250
+testLimit: 30000000
+shrinkLimit: 100
+codeSize: 0xfffffffff
+workers: 12
 corpusDir: contracts/fuzz/corpus
 #rpcBlock: 19582800
 coverageFormats: ["html"]

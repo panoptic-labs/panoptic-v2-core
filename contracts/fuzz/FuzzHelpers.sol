@@ -12,8 +12,6 @@ import {WETH9} from "./fuzz-mocks/WETH9.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {IDonorNFT} from "@tokens/interfaces/IDonorNFT.sol";
-import {DonorNFT} from "@periphery/DonorNFT.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
@@ -32,6 +30,7 @@ import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
+import {Pointer} from "@types/Pointer.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -281,7 +280,6 @@ contract FuzzHelpers is PropertiesAsserts {
     IUniswapV3Factory univ3factory;
     address poolReference;
     address collateralReference;
-    IDonorNFT dnft;
     PanopticFactory panopticFactory;
     PanopticPoolWrapper panopticPool;
     uint64 poolId;
@@ -340,23 +338,17 @@ contract FuzzHelpers is PropertiesAsserts {
         return min + (value % range);
     }
 
+    // bounds the input value between 2**min and 2**(max+1)-1
     function boundLog(uint256 value, uint8 min, uint8 max) internal returns (uint256) {
-        uint8 r = max - min;
-        uint256 rB = (value % r);
-        uint256 m0 = (value % 2 ** 128);
-        uint256 m1 = (value >> 128) % 2 ** min;
-        return m1 + Math.mulDiv(m0, 2 ** (rB + min), 2 ** 127);
+        uint256 range = uint256(max) - uint256(min) + 1;
+        uint256 m0 = value % 2 ** 128;
+        return
+            Math.mulDiv(
+                2 ** 255 + Math.mulDiv(2 ** 255 - 1, m0, 2 ** 128 - 1),
+                (2 ** (min + (value % range))),
+                2 ** 255
+            );
     }
-
-    /*
-    function boundLog(uint256 value, uint256 min, uint256 max) internal returns (uint256) {
-        uint256 r = mostSignificantBit(max - 1) - mostSignificantBit(min + 1) + 1;
-        uint256 rB = (value % r) + 1;
-        uint256 m = (value % 2 ** 128);
-        uint256 out = (min + 1) * Math.mulDiv(m, (2 ** rB), 2 ** 127);
-        return bound(out, min, max);
-    }
-   */
 
     function mostSignificantBit(uint256 x) internal pure returns (uint8 r) {
         require(x > 0);
