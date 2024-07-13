@@ -1725,7 +1725,9 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId[] memory positionsNew = userPositions[caller];
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             TokenId position = positionsToBurn[positionIndex];
-            AccumulatorDifference[] memory thisPositionsDifferences = new AccumulatorDifference[](position.countLegs());
+            AccumulatorDifference[] memory thisPositionsDifferences = new AccumulatorDifference[](
+                position.countLegs()
+            );
             positionsNew = _get_list_without_tokenid(positionsNew, position);
             panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
             for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
@@ -1767,10 +1769,10 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
-    mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken0Difference;
-    mapping(bytes32=>uint128) chunkKeyToExpectedSettledToken1Difference;
-    mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia0Difference;
-    mapping(bytes32=>uint128) chunkKeyToExpectedGrossPremia1Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedSettledToken0Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedSettledToken1Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedGrossPremia0Difference;
+    mapping(bytes32 => uint128) chunkKeyToExpectedGrossPremia1Difference;
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
@@ -1817,7 +1819,8 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 burnersPreburnToken0Balance,
             uint256 burnersPreburnToken1Balance
         ) = _get_token_balances(msg.sender);
-        PremiaAndAccumulatorsForLeg[][] memory preburnAccumulators = new PremiaAndAccumulatorsForLeg[][](preburnNumPositions);
+        PremiaAndAccumulatorsForLeg[][]
+            memory preburnAccumulators = new PremiaAndAccumulatorsForLeg[][](preburnNumPositions);
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             (uint128 posSize, , ) = panopticPool.optionPositionBalance(
                 msg.sender,
@@ -1834,14 +1837,16 @@ contract FuzzDeployments is FuzzHelpers {
 
         // Figure out what changes in settled tokens, burner token balances, and so on we expect
         // if we burn each individually
-        try this._simulate_burn_on_each_position(
-            msg.sender,
-            positionsToBurn,
-            tickLimitLow,
-            preburnPremiaAndAccumulators,
-            burnersPreburnToken0Balance,
-            burnersPreburnToken1Balance
-        ) {
+        try
+            this._simulate_burn_on_each_position(
+                msg.sender,
+                positionsToBurn,
+                tickLimitLow,
+                preburnPremiaAndAccumulators,
+                burnersPreburnToken0Balance,
+                burnersPreburnToken1Balance
+            )
+        {
             assertWithMsg(false, "The _simulate_burn_on_each_position helper should always revert");
         } catch (bytes memory _err) {
             (
@@ -1866,9 +1871,15 @@ contract FuzzDeployments is FuzzHelpers {
             TokenId[] memory emptyList;
             panopticPool.burnOptions(positionsToBurn, emptyList, tickLimitLow, -1 * tickLimitLow);
             */
-            panopticPool.burnOptions(positionsToBurn, retainedPositions, tickLimitLow, -1 * tickLimitLow);
+            panopticPool.burnOptions(
+                positionsToBurn,
+                retainedPositions,
+                tickLimitLow,
+                -1 * tickLimitLow
+            );
             assertWithMsg(
-                panopticPool.numberOfPositions(msg.sender) == preburnNumPositions - positionsToBurn.length,
+                panopticPool.numberOfPositions(msg.sender) ==
+                    preburnNumPositions - positionsToBurn.length,
                 "Not all positions were burned"
             );
 
@@ -1900,7 +1911,10 @@ contract FuzzDeployments is FuzzHelpers {
             );
             //  b. Then, with the aggregated expected differences, compare to the actual differences
             //     you get when you compare post-burn s_grossPremiumLast and s_settledTokens to pre-burn
-            _assert_burning_all_at_once_is_same_as_burning_individually(positionsToBurn, preburnPremiaAndAccumulators);
+            _assert_burning_all_at_once_is_same_as_burning_individually(
+                positionsToBurn,
+                preburnPremiaAndAccumulators
+            );
 
             // Clean-up:
             // - the user's positions are now just the ones we didn't burn
@@ -1933,12 +1947,12 @@ contract FuzzDeployments is FuzzHelpers {
                 chunkKeyToExpectedSettledToken1Difference[chunkKey] += settledToken1Difference[
                     positionIndex
                 ][legIndex];
-                chunkKeyToExpectedGrossPremia0Difference[
-                    chunkKey
-                ] += grossPremiaLast0Difference[positionIndex][legIndex];
-                chunkKeyToExpectedGrossPremia1Difference[
-                    chunkKey
-                ] += grossPremiaLast1Difference[positionIndex][legIndex];
+                chunkKeyToExpectedGrossPremia0Difference[chunkKey] += grossPremiaLast0Difference[
+                    positionIndex
+                ][legIndex];
+                chunkKeyToExpectedGrossPremia1Difference[chunkKey] += grossPremiaLast1Difference[
+                    positionIndex
+                ][legIndex];
             }
         }
     }
