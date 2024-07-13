@@ -1771,9 +1771,7 @@ contract FuzzDeployments is FuzzHelpers {
                 msg.sender,
                 positionsToBurn[positionIndex]
             );
-            preburnAccumulators[
-                positionIndex
-            ] = _get_preburn_accumulators_and_projected_premia(
+            preburnAccumulators[positionIndex] = _get_preburn_accumulators_and_projected_premia(
                 positionsToBurn[positionIndex],
                 msg.sender,
                 posSize
