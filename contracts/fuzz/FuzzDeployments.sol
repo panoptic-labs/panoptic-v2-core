@@ -872,7 +872,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("Minter", minter);
     }
 
-    function mint_option(
+    /* function mint_option(
         uint256 seller_index,
         bool asset,
         bool is_call,
@@ -921,7 +921,7 @@ contract FuzzDeployments is FuzzHelpers {
                 effLiqLimit
             );
         }
-    }
+    } */
 
     function mint_strategy_undefined(
         uint256 seller_index,
@@ -2045,15 +2045,16 @@ contract FuzzDeployments is FuzzHelpers {
             (, , uint128 grossPremiaLastToken0, uint128 grossPremiaLastToken1) = panopticPool
                 .premiaSettlementData(position, legIndex);
 
-            // TODO: you don't actually need this helper, and it returns an incorrect value -
-            // need to filter SFPM gross premia by pool.
+            // (Below is an old comment that i am leaving in case the "corrected" approach is still incorrect)
+            // TODO: you don't actually need the sfpm.getAccountPremiumGross helper, and it returns
+            // an incorrect value - need to filter SFPM gross premia by pool.
             // instead, you should getAccountPremium(), which returns a per-liquidity amount of premium owed to
             // position holders like the account+position you passed in
             // then, multiply by liquidity
             // that product is the total gross premia SFPM thinks is owed to the Pool the position is in, and is the value
             // the pool's grossPremiaLast should never exceed.
-            // OLD: LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
-            // TODO: Check that this new way of getting sfpmGrossPremia is correct:
+            // LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
+            // TODO: This is the new, corrected way i think - need to confirm that
             (, int24 currentTick, , , , , ) = pool.slot0();
             (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_account_premium(
                 legIndex,
