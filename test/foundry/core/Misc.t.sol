@@ -2094,6 +2094,154 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
     }
 
+    function test_Success_InsolventAtCurrentTick_down() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(1800));
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(0, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(10_430, Bob);
+
+        uint256 snapshot = vm.snapshot();
+
+        // mint succeeds
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.revertTo(snapshot);
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(1801));
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    function test_Success_InsolventAtCurrentTick_up() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1801));
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(0, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(10_430, Bob);
+
+        uint256 snapshot = vm.snapshot();
+
+        // mint succeeds
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.revertTo(snapshot);
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1802));
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
     function test_Fail_WithdrawWithOpenPositions_SolventReceiver_AccountInsolvent() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
