@@ -8,7 +8,6 @@ solc_version = '0.8.25'
 optimizer = true
 optimizer_runs = 1
 viaIR = false
-gas_limit = 9223372036854775807
 eth_rpc_url = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
 fs_permissions = [{ access = "read", path = "./"}]
 

@@ -243,7 +243,7 @@ library LeftRightLibrary {
     }
 
     /// @notice Subtract two LeftRight-encoded words; revert on overflow or underflow.
-    /// @notice For each slot, rectify difference `x - y` to 0 if negative.
+    /// @notice FOr each slot, rectify difference `x - y` to 0 if negative.
     /// @param x The minuend
     /// @param y The subtrahend
     /// @return z The difference `x - y`
