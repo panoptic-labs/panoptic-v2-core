@@ -7396,7 +7396,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(Constants.MAX_V3POOL_TICK) - int256(currentTick)
             )
         );
-        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 1800);
+        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 953);
         vm.store(
             address(pool),
             bytes32(0),
@@ -7569,7 +7569,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Bob);
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 1800);
+        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
         pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]);
