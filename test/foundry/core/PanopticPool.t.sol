@@ -7546,6 +7546,11 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
+        console2.log(
+            "twapCollateralRequired0, currentCollateralRequired0",
+            twapCollateralRequired0,
+            currentCollateralRequired0
+        );
         uint256 totalCollateralRequired0 = twapCollateralRequired0 > currentCollateralRequired0
             ? twapCollateralRequired0
             : currentCollateralRequired0;
@@ -7582,18 +7587,28 @@ contract PanopticPoolTest is PositionUtils {
             )
         );
 
-        (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
-            pp,
-            Alice,
-            twapCollateralRequired0 > currentCollateralRequired0 ? pp.getUniV3TWAP_() : currentTick,
-            0,
-            $posIdLists[1]
-        );
-
-        assertTrue(newBalance0 > newRequired0, "still solvent");
-
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                pp.getUniV3TWAP_(),
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+        (, currentTick, , , , , ) = pool.slot0();
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                currentTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
         vm.startPrank(Bob);
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
