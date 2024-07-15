@@ -2094,7 +2094,7 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
     }
 
-    function test_Success_InsolventAtCurrentTick_down() public {
+    function test_Success_InsolventAtCurrentTick_itmPut() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2120,14 +2120,16 @@ contract Misctest is Test, PositionUtils {
                 1,
                 1,
                 0,
-                0,
+                1,
                 0,
                 (0 / tickSpacing) * tickSpacing,
                 2
             )
         );
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(1800));
+        (, int24 staleTick, , , , , ) = uniPool.slot0();
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         vm.startPrank(Bob);
 
@@ -2137,7 +2139,9 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(10_430, Bob);
+
+        // deposit bare minimum
+        ct1.deposit(17_817, Bob);
 
         uint256 snapshot = vm.snapshot();
 
@@ -2149,12 +2153,67 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            staleTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(
+            totalCollateralBalance0 <= totalCollateralRequired0,
+            "Is liquidatable at current tick!"
+        );
+
+        vm.startPrank(Swapper);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
+        }
+
+        vm.startPrank(Alice);
+
+        // deal alice a bunch of collateral tokens without touching the supply
+        editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
+        editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
+            $posIdList
+        );
+
+        (uint256 after0, uint256 after1) = (
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            ct1.convertToAssets(ct1.balanceOf(Bob))
+        );
+
+        assertTrue((after0 > 0) || (after1 > 0), "no protocol loss");
 
         vm.revertTo(snapshot);
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(1801));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         vm.startPrank(Bob);
 
@@ -2168,7 +2227,7 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
-    function test_Success_InsolventAtCurrentTick_up() public {
+    function test_Success_InsolventAtCurrentTick_itmCall() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2194,14 +2253,16 @@ contract Misctest is Test, PositionUtils {
                 1,
                 1,
                 0,
-                1,
+                0,
                 0,
                 (0 / tickSpacing) * tickSpacing,
                 2
             )
         );
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1801));
+        (, int24 staleTick, , , , , ) = uniPool.slot0();
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
         vm.startPrank(Bob);
 
@@ -2211,7 +2272,9 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(10_430, Bob);
+
+        // deposit bare minimum
+        ct1.deposit(17_811, Bob);
 
         uint256 snapshot = vm.snapshot();
 
@@ -2223,12 +2286,67 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            staleTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(
+            totalCollateralBalance0 <= totalCollateralRequired0,
+            "Is liquidatable at current tick!"
+        );
+
+        vm.startPrank(Swapper);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
+        }
+
+        vm.startPrank(Alice);
+
+        // deal alice a bunch of collateral tokens without touching the supply
+        editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
+        editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
+            $posIdList
+        );
+
+        (uint256 after0, uint256 after1) = (
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            ct1.convertToAssets(ct1.balanceOf(Bob))
+        );
+
+        assertTrue((after0 > 0) || (after1 > 0), "no protocol loss");
 
         vm.revertTo(snapshot);
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1802));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         vm.startPrank(Bob);
 
