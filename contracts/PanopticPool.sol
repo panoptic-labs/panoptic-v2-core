@@ -1150,13 +1150,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
 
-        {
-            LeftRightSigned bonusAmounts = LeftRightSigned
-                .wrap(0)
-                .toRightSlot(int128(liquidationBonus0))
-                .toLeftSlot(int128(liquidationBonus1));
-            emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
-        }
+        LeftRightSigned bonusAmounts = LeftRightSigned
+            .wrap(0)
+            .toRightSlot(int128(liquidationBonus0))
+            .toLeftSlot(int128(liquidationBonus1));
+        emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
