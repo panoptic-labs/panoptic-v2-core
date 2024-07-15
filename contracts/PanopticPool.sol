@@ -788,30 +788,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
     }
 
-    /// @notice Update the internal tracking of the owner's position data upon burning a position.
-    /// @param owner The owner of the option position.
-    /// @param tokenId The option position to burn.
-    function _updatePositionDataBurn(address owner, TokenId tokenId) internal {
-        // reset balances and delete stored option data
-        s_positionBalance[owner][tokenId] = LeftRightUnsigned.wrap(0);
-
-        uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
-            if (tokenId.isLong(leg) == 0) {
-                // Check the liquidity spread, make sure that closing the option does not exceed the MAX_SPREAD allowed
-                (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
-                _checkLiquiditySpread(tokenId, leg, tickLower, tickUpper, MAX_SPREAD);
-            }
-            s_options[owner][tokenId][leg] = LeftRightUnsigned.wrap(0);
-            unchecked {
-                ++leg;
-            }
-        }
-
-        // Update the position list hash (hash = XOR of all keccak256(tokenId)). Remove hash by XOR'ing again
-        _updatePositionsHash(owner, tokenId, !ADD);
-    }
-
     /// @notice Validates the solvency of `user` at the fast oracle tick.
     /// @notice Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_SLOW_FAST_DELTA`.
     /// @dev Effectively, this means that the users must be solvent at both the fast and slow oracle ticks if one of them is stale to mint or burn options.
@@ -1534,19 +1510,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+            tokenId,
+            legIndex,
+            s_positionBalance[owner][tokenId].rightSlot()
+        );
+
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
         LeftRightUnsigned accumulatedPremium;
         {
-            (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
-
             uint256 tokenType = tokenId.tokenType(legIndex);
             (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
                 address(s_univ3pool),
                 address(this),
                 tokenType,
-                tickLower,
-                tickUpper,
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
                 currentTick,
                 1
             );
@@ -1563,11 +1543,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             accumulatedPremium = accumulatedPremium.sub(premiumAccumulatorsLast);
         }
 
-        uint256 liquidity = PanopticMath
-            .getLiquidityChunk(tokenId, legIndex, s_positionBalance[owner][tokenId].rightSlot())
-            .liquidity();
-
         unchecked {
+            uint256 liquidity = liquidityChunk.liquidity();
+
             // update the realized premia
             LeftRightSigned realizedPremia = LeftRightSigned
                 .wrap(0)
@@ -1650,6 +1628,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 grossCurrent1;
             {
                 uint256 tokenType = tokenId.tokenType(leg);
+                // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
                 (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
                     address(s_univ3pool),
                     address(this),
@@ -1667,8 +1646,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         .toLeftSlot(uint128(grossCurrent1));
                 }
             }
-            // verify base Liquidity limit only if new position is long
 
+            // verify base Liquidity limit only if new position is long
             // if position is long, ensure that new mints don't deplete strike beyond MAX_SPREAD
             // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
             uint256 totalLiquidity = _checkLiquiditySpread(
