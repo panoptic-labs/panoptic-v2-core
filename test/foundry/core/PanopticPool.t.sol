@@ -7530,7 +7530,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
 
-        (, uint256 totalCollateralRequired0) = ph.checkCollateral(
+        (, uint256 twapCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
             pp.getUniV3TWAP_(),
@@ -7538,6 +7538,17 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
+        (, uint256 currentCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Alice,
+            currentTick,
+            0,
+            $posIdLists[1]
+        );
+
+        uint256 totalCollateralRequired0 = twapCollateralRequired0 > currentCollateralRequired0
+            ? twapCollateralRequired0
+            : currentCollateralRequired0;
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
             (totalCollateralRequired0 * 10_001) / 10_000,
@@ -7566,6 +7577,16 @@ contract PanopticPoolTest is PositionUtils {
                 )
             )
         );
+
+        (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+            pp,
+            Alice,
+            pp.getUniV3TWAP_(),
+            0,
+            $posIdLists[1]
+        );
+
+        assertTrue(newBalance0 > newRequired0, "still solvent");
 
         vm.startPrank(Bob);
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
