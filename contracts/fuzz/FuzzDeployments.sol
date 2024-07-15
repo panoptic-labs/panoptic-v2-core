@@ -1435,8 +1435,8 @@ contract FuzzDeployments is FuzzHelpers {
         );
 
         (
-            uint128 totalProjectedProratedPremium0,
-            uint128 totalProjectedProratedPremium1
+            int128 totalProjectedProratedPremium0,
+            int128 totalProjectedProratedPremium1
         ) = _assert_each_legs_chunk_accumulators_correct(position, preburnPremiaAndAccumulators);
 
         (
@@ -1444,13 +1444,13 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 burnersPostburnToken1Balance
         ) = _get_token_balances(caller);
         assertWithMsg(
-            burnersPostburnToken0Balance ==
-                burnersPreburnToken0Balance + totalProjectedProratedPremium0,
+            int256(burnersPostburnToken0Balance) ==
+                int256(burnersPreburnToken0Balance) + int256(totalProjectedProratedPremium0),
             "Burners token0 balance did not increase by the amount the premia would indicate"
         );
         assertWithMsg(
-            burnersPostburnToken1Balance ==
-                burnersPreburnToken1Balance + totalProjectedProratedPremium1,
+            int256(burnersPostburnToken1Balance) ==
+                int256(burnersPreburnToken1Balance) + int256(totalProjectedProratedPremium1),
             "Burners token1 balance did not increase by the amount the premia would indicate"
         );
 
@@ -1585,16 +1585,18 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaAndAccumulatorsForLeg[] memory preburnPremiaAndAccumulators
     )
         internal
-        returns (uint128 totalProjectedProratedPremium0, uint128 totalProjectedProratedPremium1)
+        returns (int128 totalProjectedProratedPremium0, int128 totalProjectedProratedPremium1)
     {
         totalProjectedProratedPremium0 = 0;
         totalProjectedProratedPremium1 = 0;
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            totalProjectedProratedPremium0 += preburnPremiaAndAccumulators[legIndex]
-                .projectedProratedPremium0;
-            totalProjectedProratedPremium1 += preburnPremiaAndAccumulators[legIndex]
-                .projectedProratedPremium1;
+            totalProjectedProratedPremium0 += position.isLong(legIndex) == 1 ?
+                -1 * int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0) :
+                int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0);
+            totalProjectedProratedPremium1 += position.isLong(legIndex) == 1 ?
+                -1 * int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1) :
+                int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1);
 
             (
                 uint128 postburnSettledToken0,
@@ -1648,6 +1650,9 @@ contract FuzzDeployments is FuzzHelpers {
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
             //    TODO: I don't think this is correct. I think this is already prorated.
+            //    TODO: Answered with henry today -
+            //          the values to return for short legs is proratedPremium,
+            //          the values to return for long legs is idealPremium
             idealPremium0[legIndex] =
                 ((premiaCalcInputs[legIndex].premiumAccumulator0 -
                     premiaCalcInputs[legIndex].premiumGrowth0) *
@@ -1659,20 +1664,26 @@ contract FuzzDeployments is FuzzHelpers {
                     premiaCalcInputs[legIndex].liquidity) >>
                 64;
 
-            // 2. get proratedPremia - you should have been paid idealPremia * total settled tokens / total gross premia -
+            // 2. get proratedPremia:
+            //    - short legs should get idealPremia * total settled tokens / total gross premia;
             //    eg, your premia gets prorated by the seller-wide portion of settled tokens available
-            proratedPremium0[legIndex] = _prorate_ideal_premium(
-                idealPremium0[legIndex],
-                premiaCalcInputs[legIndex].premiumAccumulator0,
-                premiaAndAccumulators[legIndex].settledToken0,
-                premiaCalcInputs[legIndex].liquidity
-            );
-            proratedPremium1[legIndex] = _prorate_ideal_premium(
-                idealPremium1[legIndex],
-                premiaCalcInputs[legIndex].premiumAccumulator1,
-                premiaAndAccumulators[legIndex].settledToken1,
-                premiaCalcInputs[legIndex].liquidity
-            );
+            //   - long legs should just get their full idealPremia
+            proratedPremium0[legIndex] = position.isLong(legIndex) == 1 ?
+                idealPremium0[legIndex] :
+                _prorate_ideal_premium(
+                    idealPremium0[legIndex],
+                    premiaCalcInputs[legIndex].premiumAccumulator0,
+                    premiaAndAccumulators[legIndex].settledToken0,
+                    premiaCalcInputs[legIndex].liquidity
+                );
+            proratedPremium1[legIndex] = position.isLong(legIndex) == 1 ?
+                idealPremium1[legIndex] :
+                _prorate_ideal_premium(
+                    idealPremium1[legIndex],
+                    premiaCalcInputs[legIndex].premiumAccumulator1,
+                    premiaAndAccumulators[legIndex].settledToken1,
+                    premiaCalcInputs[legIndex].liquidity
+                );
         }
     }
 
@@ -1909,6 +1920,8 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 burnersPostburnToken0Balance,
             uint256 burnersPostburnToken1Balance
         ) = _get_token_balances(caller);
+        // TODO: You indeed must also consider more than just the premium in terms of tokens moving
+        // around - see the sfpm quote example in minting
         $postburnToken0Difference = burnersPostburnToken0Balance - burnersPreburnToken0Balance;
         $postburnToken1Difference = burnersPostburnToken1Balance - burnersPreburnToken1Balance;
 
@@ -1941,6 +1954,8 @@ contract FuzzDeployments is FuzzHelpers {
                         position.tokenType(legIndex)
                     )
                 );
+                // TODO: long legs should have a different sign than short legs -
+                // the premia should net against each other.
                 expectedSettledToken0DifferenceByChunk[chunkKey] += settledToken0Difference[
                     positionIndex
                 ][legIndex];
