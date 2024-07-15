@@ -146,9 +146,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the slow oracle tick.
-    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility.
-    int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
+    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the more oracle ticks (slow, current, and latest).
+    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
+    int256 internal constant MAX_SLOW_FAST_DELTA = 953;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -880,8 +880,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         medianData = _medianData;
 
         int24[] memory atTicks;
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
-        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
+        // Fall back to a conservative approach if there's high deviation between internal ticks:
+        // Check solvency at the slowOracleTick, currentTick, and lastObservedTick instead of just the fastOracleTick.
+        // Deviation is measured as the magnitude of a 3D vector:
+        // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
+        // This approach is more conservative than checking each tick difference individually,
+        // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
         if (
             int256(fastOracleTick - slowOracleTick) ** 2 +
                 int256(lastObservedTick - slowOracleTick) ** 2 +
@@ -898,8 +902,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             atTicks[0] = fastOracleTick;
         }
 
-        bool solvent = _checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer);
-        if (!solvent) revert Errors.AccountInsolvent();
+        if (!_checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer))
+            revert Errors.AccountInsolvent();
     }
 
     /// @notice Burns and handles the exercise of options.
@@ -1164,16 +1168,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             liquidatee,
             uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
         );
-        // ensure the owner is solvent (insolvent accounts are not permitted to pay premium unless they are being liquidated)
+
+        // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
 
-        {
-            LeftRightSigned bonusAmounts = LeftRightSigned
-                .wrap(0)
-                .toRightSlot(int128(liquidationBonus0))
-                .toLeftSlot(int128(liquidationBonus1));
-            emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
-        }
+        LeftRightSigned bonusAmounts = LeftRightSigned
+            .wrap(0)
+            .toRightSlot(int128(liquidationBonus0))
+            .toLeftSlot(int128(liquidationBonus1));
+        emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
@@ -1353,21 +1356,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionBalanceArray,
             portfolioPremium.leftSlot()
         );
-
-        return _checkSolvencyCross(tokenData0, tokenData1, atTick, buffer);
-    }
-
-    function _checkSolvencyCross(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        int24 atTick,
-        uint256 buffer
-    ) internal pure returns (bool) {
         (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
             tokenData0,
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
         );
+
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         unchecked {
             return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
@@ -1410,7 +1404,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
-            // If ticks have recently deviated more than +/- 20%, enforce covered mints
+            // If ticks have recently deviated more than +/- 10%, enforce covered mints
             if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
                 safeMode = true;
             }
