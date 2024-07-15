@@ -2345,7 +2345,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for covered mints
-        ct0.deposit(100200, Bob);
+        ct0.deposit(150504, Bob);
         ct1.deposit(0, Bob);
 
         pp.mintOptions(
@@ -2355,6 +2355,15 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
+
         (, currentTick, , , , , ) = uniPool.slot0();
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -2508,7 +2517,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for covered mints
         ct0.deposit(0, Bob);
-        ct1.deposit(100200, Bob);
+        ct1.deposit(150466, Bob);
 
         pp.mintOptions(
             $posIdList,
@@ -2517,6 +2526,15 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
+
         (, currentTick, , , , , ) = uniPool.slot0();
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -2736,7 +2754,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit only token1
         ct0.deposit(0, Bob);
-        ct1.deposit(100_200, Bob);
+        ct1.deposit(181_183, Bob); //
 
         uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
@@ -2751,6 +2769,15 @@ contract Misctest is Test, PositionUtils {
         );
         uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
     }
 
     function test_Success_SafeMode_burn() public {
