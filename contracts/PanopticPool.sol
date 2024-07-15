@@ -146,9 +146,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the slow oracle tick.
-    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility.
-    int256 internal constant MAX_SLOW_FAST_DELTA = 1800;
+    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the more oracle ticks (slow, current, and latest).
+    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
+    int256 internal constant MAX_SLOW_FAST_DELTA = 953;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -869,7 +869,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         int24[] memory atTicks;
         // If one of the ticks is too stale, we fall back to the more conservative tick, i.e,
-        // the user must be solvent at the fast and slow oracle ticks as well as the currentTick.
+        // the user must be solvent at the fast, slow oracle ticks as well as the currentTick and the last observed tick.
         if (
             int256(fastOracleTick - slowOracleTick) ** 2 +
                 int256(lastObservedTick - slowOracleTick) ** 2 +
