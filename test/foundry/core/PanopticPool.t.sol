@@ -7573,7 +7573,11 @@ contract PanopticPoolTest is PositionUtils {
             ct1.convertToShares(
                 PanopticMath.convert0to1(
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    Math.getSqrtRatioAtTick(
+                        twapCollateralRequired0 > currentCollateralRequired0
+                            ? pp.getUniV3TWAP_()
+                            : currentTick
+                    )
                 )
             )
         );
@@ -7581,7 +7585,7 @@ contract PanopticPoolTest is PositionUtils {
         (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            pp.getUniV3TWAP_(),
+            twapCollateralRequired0 > currentCollateralRequired0 ? pp.getUniV3TWAP_() : currentTick,
             0,
             $posIdLists[1]
         );
