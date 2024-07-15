@@ -1591,12 +1591,12 @@ contract FuzzDeployments is FuzzHelpers {
         totalProjectedProratedPremium1 = 0;
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            totalProjectedProratedPremium0 += position.isLong(legIndex) == 1 ?
-                -1 * int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0) :
-                int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0);
-            totalProjectedProratedPremium1 += position.isLong(legIndex) == 1 ?
-                -1 * int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1) :
-                int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1);
+            totalProjectedProratedPremium0 += position.isLong(legIndex) == 1
+                ? -1 * int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0)
+                : int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium0);
+            totalProjectedProratedPremium1 += position.isLong(legIndex) == 1
+                ? -1 * int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1)
+                : int128(preburnPremiaAndAccumulators[legIndex].projectedProratedPremium1);
 
             (
                 uint128 postburnSettledToken0,
@@ -1668,17 +1668,17 @@ contract FuzzDeployments is FuzzHelpers {
             //    - short legs should get idealPremia * total settled tokens / total gross premia;
             //    eg, your premia gets prorated by the seller-wide portion of settled tokens available
             //   - long legs should just get their full idealPremia
-            proratedPremium0[legIndex] = position.isLong(legIndex) == 1 ?
-                idealPremium0[legIndex] :
-                _prorate_ideal_premium(
+            proratedPremium0[legIndex] = position.isLong(legIndex) == 1
+                ? idealPremium0[legIndex]
+                : _prorate_ideal_premium(
                     idealPremium0[legIndex],
                     premiaCalcInputs[legIndex].premiumAccumulator0,
                     premiaAndAccumulators[legIndex].settledToken0,
                     premiaCalcInputs[legIndex].liquidity
                 );
-            proratedPremium1[legIndex] = position.isLong(legIndex) == 1 ?
-                idealPremium1[legIndex] :
-                _prorate_ideal_premium(
+            proratedPremium1[legIndex] = position.isLong(legIndex) == 1
+                ? idealPremium1[legIndex]
+                : _prorate_ideal_premium(
                     idealPremium1[legIndex],
                     premiaCalcInputs[legIndex].premiumAccumulator1,
                     premiaAndAccumulators[legIndex].settledToken1,
