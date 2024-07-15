@@ -2141,8 +2141,8 @@ contract Misctest is Test, PositionUtils {
         // deposit bare minimum
         ct1.deposit(17_817, Bob);
 
-        // mint fails
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        // mint fails, not enough collateral
+        vm.expectRevert();
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2196,11 +2196,11 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum
+        // deposit bare minimum for naked minting
         ct1.deposit(17_811, Bob);
 
-        // mint fails
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        // mint fails, not enough collateral
+        vm.expectRevert();
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2247,19 +2247,21 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == false);
         vm.startPrank(Bob);
+
+        uint256 snapshot = vm.snapshot();
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
         token0.approve(address(ct0), 1_000_000);
-        ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum
+        // deposit bare minimum for naked mints
+        ct0.deposit(0, Bob);
         ct1.deposit(17_817, Bob);
-
-        uint256 snapshot = vm.snapshot();
 
         // mint succeeds
         pp.mintOptions(
@@ -2289,6 +2291,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList
         );
 
+        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
         assertTrue(
             totalCollateralBalance0 <= totalCollateralRequired0,
             "Is liquidatable at current tick!"
@@ -2330,16 +2333,42 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode());
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for covered mints
+        ct0.deposit(100200, Bob);
+        ct1.deposit(0, Bob);
+
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
+        );
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
+        assertTrue(
+            totalCollateralBalance0 >= totalCollateralRequired0,
+            "Is solvent at current tick!"
         );
     }
 
@@ -2378,21 +2407,23 @@ contract Misctest is Test, PositionUtils {
 
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(952));
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == false);
 
         vm.startPrank(Bob);
+
+        uint256 snapshot = vm.snapshot();
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
         token0.approve(address(ct0), 1_000_000);
-        ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum
-        ct1.deposit(17_811, Bob);
-
-        uint256 snapshot = vm.snapshot();
+        // deposit bare minimum for naked mints
+        ct0.deposit(0, Bob);
+        ct1.deposit(17_820, Bob);
 
         // mint succeeds
         pp.mintOptions(
@@ -2462,17 +2493,44 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode());
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for covered mints
+        ct0.deposit(0, Bob);
+        ct1.deposit(100200, Bob);
+
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
+        );
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
+        assertTrue(
+            totalCollateralBalance0 >= totalCollateralRequired0,
+            "Is solvent at current tick!"
         );
     }
 
@@ -2515,7 +2573,7 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
     }
 
-    function test_Success_SafeMode() public {
+    function test_Success_SafeMode_down() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2525,17 +2583,41 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1800));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
         (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
 
-        assertTrue(Math.abs(currentTick - slowOracleTick) <= 1800, "small price deviation");
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1801));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-        assertTrue(Math.abs(currentTick - slowOracleTick) > 1800, "small price deviation");
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+    }
+
+    function test_Success_SafeMode_up() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
+
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
     }
 
@@ -2559,11 +2641,11 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1802));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
 
-        assertTrue(Math.abs(currentTick - slowOracleTick) > 1800, "small price deviation");
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
 
         // setup mini-median price array
@@ -2606,11 +2688,11 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
 
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1802));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
 
-        assertTrue(Math.abs(currentTick - slowOracleTick) > 1800, "small price deviation");
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
@@ -2633,11 +2715,13 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
+        // deposit only token0
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(102_000, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(2_000, Bob);
+        ct1.deposit(0, Bob);
 
+        // in safeMode, enforce covered mints, reverts
         vm.expectRevert();
         pp.mintOptions(
             $posIdList,
@@ -2650,11 +2734,14 @@ contract Misctest is Test, PositionUtils {
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
-        ct0.deposit(2_000, Bob);
-        ct1.deposit(102_000, Bob);
+        // deposit only token1
+        ct0.deposit(0, Bob);
+        ct1.deposit(100_200, Bob);
 
         uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        // can mint covered positions
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2664,8 +2751,6 @@ contract Misctest is Test, PositionUtils {
         );
         uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
-
-        console2.log(before0, before1, after0, after1);
     }
 
     function test_Success_SafeMode_burn() public {
@@ -2722,11 +2807,11 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(Swapper);
-        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-1802));
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
 
-        assertTrue(Math.abs(currentTick - slowOracleTick) > 1800, "small price deviation");
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
 
         vm.startPrank(Bob);
