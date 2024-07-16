@@ -1475,7 +1475,8 @@ contract FuzzDeployments is FuzzHelpers {
         if (totalProjectedProratedPremium0 > 0) {
             assertWithMsg(
                 int256(burnersPostburnToken0Balance) ==
-                    int256(burnersPreburnAssets.token0Balance) + int256(totalProjectedProratedPremium0),
+                    int256(burnersPreburnAssets.token0Balance) +
+                        int256(totalProjectedProratedPremium0),
                 "Burners token0 balance did not increase by the amount the premia would indicate"
             );
         } else {
@@ -1483,7 +1484,9 @@ contract FuzzDeployments is FuzzHelpers {
                 burnersPostburnToken0Balance == burnersPreburnAssets.token0Balance,
                 "Burners token0 balance changed despite having a net negative expected premia"
             );
-            uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(collToken0.balanceOf(caller));
+            uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
+                collToken0.balanceOf(caller)
+            );
             assertWithMsg(
                 int256(burnersPreburnAssets.assetsInCT0) + int256(totalProjectedProratedPremium0) ==
                     int256(burnersPostburnAssetsInCT0),
@@ -1491,10 +1494,11 @@ contract FuzzDeployments is FuzzHelpers {
             );
         }
 
-        if  (totalProjectedProratedPremium1 > 0) {
+        if (totalProjectedProratedPremium1 > 0) {
             assertWithMsg(
                 int256(burnersPostburnToken1Balance) ==
-                    int256(burnersPreburnAssets.token1Balance) + int256(totalProjectedProratedPremium1),
+                    int256(burnersPreburnAssets.token1Balance) +
+                        int256(totalProjectedProratedPremium1),
                 "Burners token1 balance did not increase by the amount the premia would indicate"
             );
         } else {
@@ -1502,7 +1506,9 @@ contract FuzzDeployments is FuzzHelpers {
                 burnersPostburnToken1Balance == burnersPreburnAssets.token1Balance,
                 "Burners token0 balance changed despite having a net negative expected premia"
             );
-            uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(collToken1.balanceOf(caller));
+            uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
+                collToken1.balanceOf(caller)
+            );
             assertWithMsg(
                 int256(burnersPreburnAssets.assetsInCT1) + int256(totalProjectedProratedPremium1) ==
                     int256(burnersPostburnAssetsInCT1),
@@ -1835,10 +1841,7 @@ contract FuzzDeployments is FuzzHelpers {
                 uint128[][] memory settledToken1Difference,
                 uint128[][] memory grossPremiaLast0Difference,
                 uint128[][] memory grossPremiaLast1Difference
-            ) = abi.decode(
-                    _err,
-                    (int256[], uint128[][], uint128[][], uint128[][], uint128[][])
-                );
+            ) = abi.decode(_err, (int256[], uint128[][], uint128[][], uint128[][], uint128[][]));
 
             // Then, prove that burning them all at once makes the same differences:
             // 1. burn
@@ -1869,8 +1872,12 @@ contract FuzzDeployments is FuzzHelpers {
                 uint256 burnersPostburnToken0Balance,
                 uint256 burnersPostburnToken1Balance
             ) = _get_token_balances(msg.sender);
-            uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-            uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
+            uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
+                collToken0.balanceOf(msg.sender)
+            );
+            uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
+                collToken1.balanceOf(msg.sender)
+            );
             assertWithMsg(
                 int256(burnersPostburnToken0Balance) - int256(burnersPreburnAssets.token0Balance) ==
                     underlyingAssetDifferences[0],
@@ -1883,11 +1890,13 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             assertWithMsg(
-                int256(burnersPreburnAssets.assetsInCT0) + underlyingAssetDifferences[2] == int256(burnersPostburnAssetsInCT0),
+                int256(burnersPreburnAssets.assetsInCT0) + underlyingAssetDifferences[2] ==
+                    int256(burnersPostburnAssetsInCT0),
                 "Burners assets in collToken0 did not change by the same amount as if they had burned each position one-by-one"
             );
             assertWithMsg(
-                int256(burnersPreburnAssets.assetsInCT1) + underlyingAssetDifferences[3] == int256(burnersPostburnAssetsInCT1),
+                int256(burnersPreburnAssets.assetsInCT1) + underlyingAssetDifferences[3] ==
+                    int256(burnersPostburnAssetsInCT1),
                 "Burners assets in collToken1 did not change by the same amount as if they had burned each position one-by-one"
             );
 
@@ -1967,20 +1976,32 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 burnersPostburnToken0Balance,
             uint256 burnersPostburnToken1Balance
         ) = _get_token_balances(caller);
-        uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(collToken0.balanceOf(caller));
-        uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(collToken1.balanceOf(caller));
+        uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
+            collToken0.balanceOf(caller)
+        );
+        uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
+            collToken1.balanceOf(caller)
+        );
 
         // TODO: For the token difference - you indeed must also consider more than just the premium
         // in terms of tokens moving around - see the sfpm quote example in minting
 
         // By arbitrary convention - first two members of underlyingAssetDifferences are the
         // difference in burner's balance of token0 and token1 respectively
-        $underlyingAssetDifferences[0] = int256(burnersPostburnToken0Balance) - int256(preburnAssets.token0Balance);
-        $underlyingAssetDifferences[1] =  int256(burnersPostburnToken1Balance) - int256(preburnAssets.token1Balance);
+        $underlyingAssetDifferences[0] =
+            int256(burnersPostburnToken0Balance) -
+            int256(preburnAssets.token0Balance);
+        $underlyingAssetDifferences[1] =
+            int256(burnersPostburnToken1Balance) -
+            int256(preburnAssets.token1Balance);
 
         // and second two are differences in the assets in the collateral trackers:
-        $underlyingAssetDifferences[2] = int256(burnersPostburnAssetsInCT0) - int256(preburnAssets.assetsInCT0);
-        $underlyingAssetDifferences[3] = int256(burnersPostburnAssetsInCT1) - int256(preburnAssets.assetsInCT1);
+        $underlyingAssetDifferences[2] =
+            int256(burnersPostburnAssetsInCT0) -
+            int256(preburnAssets.assetsInCT0);
+        $underlyingAssetDifferences[3] =
+            int256(burnersPostburnAssetsInCT1) -
+            int256(preburnAssets.assetsInCT1);
 
         revert BurnSimResults(
             $underlyingAssetDifferences,
