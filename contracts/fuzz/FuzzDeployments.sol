@@ -3633,11 +3633,12 @@ contract FuzzDeployments is FuzzHelpers {
     // burn an SFPM token ID at random
 
     function burn_option_SFPM_general(uint256) public {
+        TokenId activePosition;
         {
             // search for a tokenId that the current actor has minted
             uint256 totalPosLen = userPositionsSFPM[msg.sender].length;
             for (uint256 i; i < totalPosLen; i++) {
-                TokenId tokenIdCheck = userPositionsSFPM[msg.sender][i];
+                activePosition = userPositionsSFPM[msg.sender][i];
             }
         }
 
