@@ -245,6 +245,18 @@ contract PanopticPoolWrapper is PanopticPool {
 }
 
 contract FuzzHelpers is PropertiesAsserts {
+    // Used for safecasting
+    using Math for uint256;
+    using Math for int256;
+
+    error SwapSimulationResults(int256, int256, int24);
+
+    error UniMintSimulationResults(uint256, uint256, bool);
+
+    error UniMintAndCollectSimulationResults(uint256, uint256, uint128, uint128, bool);
+
+    error UniBurnAndCollectSimulationResults(uint256, uint256, uint128, uint128, bool);
+
     error SimulationResults(
         LeftRightUnsigned,
         LeftRightUnsigned,
@@ -335,6 +347,8 @@ contract FuzzHelpers is PropertiesAsserts {
     uint64 poolId;
 
     IUniswapV3Pool pool;
+    address token0;
+    address token1;
     uint24 poolFee;
     int24 poolTickSpacing;
     uint160 currentSqrtPriceX96;
@@ -454,6 +468,90 @@ contract FuzzHelpers is PropertiesAsserts {
     TokenId[] $positionListExercisor;
     TokenId[] $positionListExercisee;
 
+    /// temp storage SFPM
+    mapping(address => TokenId[]) userPositionsSFPMShort;
+    mapping(address => TokenId[]) userPositionsSFPMLong;
+
+    //
+    address $activeUser;
+
+    //
+    TokenId tokenIdShort;
+    TokenId tokenIdLong;
+    TokenId tokenIdBurn;
+    LiquidityChunk liquidityChunk;
+    //
+    uint128 $posLiquidity;
+    //
+    uint256 removedLiquidityBefore;
+    uint256 netLiquidityBefore;
+    uint256 removedLiquidityAfter;
+    uint256 netLiquidityAfter;
+
+    //
+    int256 feesBaseBefore0;
+    int256 feesBaseBefore1;
+    //
+    int256 feesBaseAfter0;
+    int256 feesBaseAfter1;
+    //
+    int256 amountToCollect0;
+    int256 amountToCollect1;
+
+    // -- ddd--
+    //
+    uint256 $feeGrowthInside0LastX128Before;
+    uint256 $feeGrowthInside1LastX128Before;
+    uint256 $feeGrowthInside0LastX128After;
+    uint256 $feeGrowthInside1LastX128After;
+    //
+    uint256 $amountMinted0;
+    uint256 $amountMinted1;
+    //
+    int256 $amountBurned0;
+    int256 $amountBurned1;
+    //
+    bool $shouldRevertSFPM;
+    int24 $tickLowerActive;
+    int24 $tickUpperActive;
+    uint128 $LiqAmountActive;
+    //
+    int128 oldFeesBase0;
+    int128 oldFeesBase1;
+    //
+    uint128 $collected0;
+    uint128 $collected1;
+    //
+    uint256 $amountRequested0;
+    uint256 $amountRequested1;
+    //
+    int128 $amountToCollect0;
+    int128 $amountToCollect1;
+    //
+    uint128 $recievedAmount0;
+    uint128 $recievedAmount1;
+
+    /// premium owed
+    uint128 $accountPremiumOwedBefore0;
+    uint128 $accountPremiumOwedBefore1;
+    //
+    uint128 $accountPremiumOwedAfter0;
+    uint128 $accountPremiumOwedAfter1;
+    /// premium gross
+    uint128 $accountPremiumGrossBefore0;
+    uint128 $accountPremiumGrossBefore1;
+    //
+    uint128 $accountPremiumGrossAfter0;
+    uint128 $accountPremiumGrossAfter1;
+    //
+    uint256 $accountPremiumOwedCalculated0;
+    uint256 $accountPremiumOwedCalculated1;
+    //
+    uint256 $accountPremiumGrossCalculated0;
+    uint256 $accountPremiumGrossCalculated1;
+
+    /// ^^ SFPM
+
     SwapperC swapperc;
 
     mapping(address => TokenId[]) userPositions;
@@ -480,14 +578,6 @@ contract FuzzHelpers is PropertiesAsserts {
     IERC20 WETH = IERC20(deployer.token1());
 
     ISwapRouter router = ISwapRouter(IUniSwapRouterDeployer(address(0xde0002)).sr());
-
-    function abs(int256 x) internal pure returns (uint256) {
-        if (x >= 0) {
-            return uint256(x);
-        } else {
-            return uint256(-x);
-        }
-    }
 
     function bound(uint256 value, uint256 _min, uint256 _max) internal pure returns (uint256) {
         uint256 range = _max - _min + 1;
@@ -570,6 +660,557 @@ contract FuzzHelpers is PropertiesAsserts {
     /////////////////////////////////////////////////////////////
     // Calculation helpers
     /////////////////////////////////////////////////////////////
+
+    // given an itm0 and itm1 values return the swapped amounts and swap direction
+    function _compute_swap_amounts(
+        int256 itm0,
+        int256 itm1
+    ) internal returns (int256 swapAmount, bool zeroForOne) {
+        if ((itm0 != 0) && (itm1 != 0)) {
+            (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+
+            int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
+
+            zeroForOne = net0 < 0;
+
+            swapAmount = -net0;
+        } else if (itm0 != 0) {
+            zeroForOne = itm0 < 0;
+            swapAmount = -itm0;
+        } else {
+            zeroForOne = itm1 > 0;
+            swapAmount = -itm1;
+        }
+    }
+
+    //
+
+    function quote_uni_CollectAndBurn() internal {
+        try this.uniswap_CollectAndBurn_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            bool sRevert;
+            ($amountBurned0, $amountBurned1, $recievedAmount0, $recievedAmount1, sRevert) = abi
+                .decode(results, (int256, int256, uint128, uint128, bool));
+
+            $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
+        }
+    }
+
+    function uniswap_CollectAndBurn_sim() external {
+        int256 burned0;
+        int256 burned1;
+
+        hevm.prank(address(sfpm));
+        try pool.burn($tickLowerActive, $tickUpperActive, $LiqAmountActive) returns (
+            uint256 amount0,
+            uint256 amount1
+        ) {
+            burned0 = int256(amount0);
+            burned1 = int256(amount1);
+        } catch {
+            revert UniBurnAndCollectSimulationResults(0, 0, 0, 0, true);
+        }
+
+        hevm.prank(address(sfpm));
+        try
+            pool.collect(
+                $activeUser, //recipient
+                $tickLowerActive,
+                $tickUpperActive,
+                uint128($amountToCollect0 + int128(burned0)),
+                uint128($amountToCollect1 + int128(burned1))
+            )
+        returns (uint128 received0, uint128 received1) {
+            revert UniBurnAndCollectSimulationResults(
+                uint256(burned0),
+                uint256(burned1),
+                received0,
+                received1,
+                false
+            );
+        } catch {
+            revert UniBurnAndCollectSimulationResults(0, 0, 0, 0, true);
+        }
+    }
+
+    //
+
+    function quote_uni_CollectAndMint() internal {
+        try this.uniswap_CollectAndMint_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            bool sRevert;
+            ($amountMinted0, $amountMinted1, $recievedAmount0, $recievedAmount1, sRevert) = abi
+                .decode(results, (uint256, uint256, uint128, uint128, bool));
+
+            $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
+        }
+    }
+
+    function uniswap_CollectAndMint_sim() external {
+        bytes memory mintdata = abi.encode(
+            CallbackLib.CallbackData({
+                // compute by reading values from univ3pool every time
+                poolFeatures: CallbackLib.PoolFeatures({
+                    token0: pool.token0(),
+                    token1: pool.token1(),
+                    fee: pool.fee()
+                }),
+                payer: $activeUser
+            })
+        );
+
+        uint256 minted0;
+        uint256 minted1;
+
+        hevm.prank(address(sfpm));
+        try
+            pool.mint(
+                $activeUser, //recipient
+                $tickLowerActive,
+                $tickUpperActive,
+                $LiqAmountActive,
+                mintdata
+            )
+        returns (uint256 amount0, uint256 amount1) {
+            minted0 = amount0;
+            minted1 = amount1;
+        } catch {
+            revert UniMintAndCollectSimulationResults(0, 0, 0, 0, true);
+        }
+
+        //
+        hevm.prank(address(sfpm));
+        try
+            pool.collect(
+                $activeUser, //recipient
+                $tickLowerActive,
+                $tickUpperActive,
+                uint128($amountToCollect0),
+                uint128($amountToCollect1)
+            )
+        returns (uint128 received0, uint128 received1) {
+            revert UniMintAndCollectSimulationResults(
+                minted0,
+                minted1,
+                received0,
+                received1,
+                false
+            );
+        } catch {
+            revert UniMintAndCollectSimulationResults(0, 0, 0, 0, true);
+        }
+    }
+
+    function quote_uni_mint() internal {
+        try this.uniswap_mint_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            bool sRevert;
+            ($amountMinted0, $amountMinted1, sRevert) = abi.decode(
+                results,
+                (uint256, uint256, bool)
+            );
+
+            $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
+        }
+    }
+
+    function uniswap_mint_sim() external {
+        bytes memory mintdata = abi.encode(
+            CallbackLib.CallbackData({
+                // compute by reading values from univ3pool every time
+                poolFeatures: CallbackLib.PoolFeatures({
+                    token0: pool.token0(),
+                    token1: pool.token1(),
+                    fee: pool.fee()
+                }),
+                payer: msg.sender
+            })
+        );
+
+        hevm.prank(address(sfpm));
+        try
+            pool.mint(
+                msg.sender, //recipient
+                $tickLowerActive,
+                $tickUpperActive,
+                $LiqAmountActive,
+                mintdata
+            )
+        returns (uint256 amount0, uint256 amount1) {
+            revert UniMintSimulationResults(amount0, amount1, false);
+        } catch {
+            revert UniMintSimulationResults(0, 0, false);
+        }
+    }
+
+    function simulate_swap(address recipient, bool zeroForOne, int256 amountSpecified) external {
+        hevm.prank(recipient);
+        IERC20(USDC).approve(address(sfpm), type(uint256).max);
+        hevm.prank(recipient);
+        IERC20(WETH).approve(address(sfpm), type(uint256).max);
+
+        int256 swap0;
+        int256 swap1;
+
+        if (amountSpecified != 0) {
+            hevm.prank(address(sfpm));
+            (int256 amt0, int256 amt1) = pool.swap(
+                recipient,
+                zeroForOne,
+                amountSpecified,
+                zeroForOne
+                    ? Constants.MIN_V3POOL_SQRT_RATIO + 1
+                    : Constants.MAX_V3POOL_SQRT_RATIO - 1,
+                abi.encode(
+                    CallbackLib.CallbackData({
+                        poolFeatures: CallbackLib.PoolFeatures({
+                            token0: token0,
+                            token1: token1,
+                            fee: poolFee
+                        }),
+                        payer: recipient
+                    })
+                )
+            );
+
+            swap0 = amt0;
+            swap1 = amt1;
+        }
+
+        // get current tick after swap
+        (, int24 tickAfterSwap, , , , , ) = pool.slot0();
+
+        revert SwapSimulationResults(swap0, swap1, tickAfterSwap);
+    }
+
+    function _execute_swap_simulation(
+        address recipient,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) internal returns (int256, int256, int24) {
+        try this.simulate_swap(recipient, zeroForOne, amountSpecified) {
+            assertWithMsg(false, "swap succeeded ??");
+        } catch (bytes memory results) {
+            bytes4 selector = bytes4(results);
+            require(selector == SwapSimulationResults.selector);
+            emit LogBytes("r", results);
+
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+
+            (int256 swap0, int256 swap1, int24 tickAfterSwap) = abi.decode(
+                results,
+                (int256, int256, int24)
+            );
+
+            return (swap0, swap1, tickAfterSwap);
+        }
+    }
+
+    /// asserts from foundry
+
+    int256 private constant INT256_MIN =
+        -57896044618658097711785492504343953926634992332820282019728792003956564819968;
+
+    function abs(int256 a) internal pure returns (uint256) {
+        // Required or it will fail when `a = type(int256).min`
+        if (a == INT256_MIN) {
+            return 57896044618658097711785492504343953926634992332820282019728792003956564819968;
+        }
+
+        return uint256(a > 0 ? a : -a);
+    }
+
+    function delta(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a > b ? a - b : b - a;
+    }
+
+    function delta(int256 a, int256 b) internal pure returns (uint256) {
+        // a and b are of the same sign
+        // this works thanks to two's complement, the left-most bit is the sign bit
+        if ((a ^ b) > -1) {
+            return delta(abs(a), abs(b));
+        }
+
+        // a and b are of opposite signs
+        return abs(a) + abs(b);
+    }
+
+    function percentDelta(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 absDelta = delta(a, b);
+
+        return (absDelta * 1e18) / b;
+    }
+
+    function percentDelta(int256 a, int256 b) internal pure returns (uint256) {
+        uint256 absDelta = delta(a, b);
+        uint256 absB = abs(b);
+
+        return (absDelta * 1e18) / absB;
+    }
+
+    function assertApproxEqRel(
+        int256 a,
+        int256 b,
+        uint256 maxPercentDelta, // An 18 decimal fixed point number, where 1e18 == 100%
+        string memory err
+    ) internal {
+        uint256 percentDelta = percentDelta(a, b);
+
+        if (percentDelta > maxPercentDelta) {
+            assertWithMsg(false, err);
+        }
+    }
+
+    function assertApproxEqRel(
+        uint256 a,
+        uint256 b,
+        uint256 maxPercentDelta, // An 18 decimal fixed point number, where 1e18 == 100%
+        string memory err
+    ) internal {
+        uint256 percentDelta = percentDelta(a, b);
+
+        if (percentDelta > maxPercentDelta) {
+            assertWithMsg(false, err);
+        }
+    }
+
+    /// ^^^ asserts from foundry
+
+    // for multiple legs
+    function _calculate_moved_amounts(
+        TokenId tokenId,
+        uint128 positionSize
+    ) internal returns (int256, int256) {
+        //
+        int256 moved0;
+        int256 moved1;
+
+        uint128 _positionSize = positionSize;
+        TokenId _tokenId = tokenId;
+
+        // update to latest current tick
+        (, currentTick, , , , , ) = pool.slot0();
+
+        //
+        uint256 numLegs = _tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; leg++) {
+            //create liquidity chunk object
+            LiquidityChunk currChunk = PanopticMath.getLiquidityChunk(_tokenId, leg, _positionSize);
+
+            // tick lower
+            emit LogInt256("tick lower", currChunk.tickLower());
+            // tick upper
+            emit LogInt256("tick upper", currChunk.tickUpper());
+            // amount of liquidity
+            emit LogUint256("liquidity", currChunk.liquidity());
+            // current tick
+            emit LogInt256("current tick", currentTick);
+
+            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                currentTick,
+                currChunk
+            );
+
+            // actual moved amounts when minting rounds up (round down when burning)
+
+            if (_tokenId.isLong(leg) == 1) {
+                moved0 -= int256(amount0);
+                moved1 -= int256(amount1);
+            } else {
+                moved0 += int256(amount0);
+                moved1 += int256(amount1);
+            }
+        }
+
+        return (moved0, moved1);
+    }
+
+    function _calculate_itm_amounts(
+        uint256 tokenType,
+        int256 moved0,
+        int256 moved1
+    ) internal returns (int256 itm0, int256 itm1) {
+        if (tokenType == 0) {
+            itm1 += moved1;
+        } else {
+            // tt = 1
+            itm0 += moved0;
+        }
+    }
+
+    function _calculate_moved_and_ITM_amounts(
+        TokenId tokenId,
+        uint128 positionSize,
+        bool roundUp
+    ) internal returns (int256, int256, int256, int256) {
+        //
+        int256 moved0;
+        int256 moved1;
+
+        //
+        int256 itm0;
+        int256 itm1;
+
+        uint128 _positionSize = positionSize;
+        TokenId _tokenId = tokenId;
+        bool _roundUp = roundUp;
+
+        // update to latest current tick
+        (, currentTick, , , , , ) = pool.slot0();
+
+        //
+        uint256 numLegs = _tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; leg++) {
+            //create liquidity chunk object
+            LiquidityChunk currChunk = PanopticMath.getLiquidityChunk(_tokenId, leg, _positionSize);
+
+            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                currentTick,
+                currChunk
+            );
+
+            if (_tokenId.isLong(leg) == 1) {
+                moved0 -= int256(amount0);
+                moved1 -= int256(amount1);
+            } else {
+                moved0 += int256(amount0);
+                moved1 += int256(amount1);
+            }
+
+            if (_tokenId.tokenType(leg) == 0) {
+                itm1 += int256(amount1);
+            } else {
+                // tt = 1
+                itm0 += int256(amount0);
+            }
+
+            //
+            emit LogUint256("_tokenId.tokenType(leg)", _tokenId.tokenType(leg));
+
+            // amounts
+            emit LogUint256("amount0", amount0);
+            emit LogUint256("amount1", amount1);
+        }
+
+        return (moved0, moved1, itm0, itm1);
+    }
+
+    function getPremiaDeltasChecked(
+        uint256 netLiquidity,
+        uint256 removedLiquidity,
+        uint128 collected0,
+        uint128 collected1
+    ) external returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross) {
+        // premia spread equations are graphed and documented here: https://www.desmos.com/calculator/mdeqob2m04
+        // explains how we get from the premium per liquidity (calculated here) to the total premia collected and the multiplier
+        // as well as how the value of VEGOID affects the premia
+        // note that the "base" premium is just a common factor shared between the owed (long) and gross (short)
+        // premia, and is only seperated to simplify the calculation
+        // (the graphed equations include this factor without separating it)
+        uint256 totalLiquidity = netLiquidity + removedLiquidity;
+
+        uint256 premium0X64_base;
+        uint256 premium1X64_base;
+
+        emit LogUint256("inside premia deltas checked removed liq", removedLiquidity);
+        emit LogUint256("inside premia deltas checked netLiq", netLiquidity);
+
+        {
+            // compute the base premium as collected * total / net^2 (from Eqn 3)
+            premium0X64_base = Math.mulDiv(collected0, totalLiquidity * 2 ** 64, netLiquidity ** 2);
+            premium1X64_base = Math.mulDiv(collected1, totalLiquidity * 2 ** 64, netLiquidity ** 2);
+        }
+
+        {
+            uint128 premium0X64_owed;
+            uint128 premium1X64_owed;
+            {
+                // compute the owed premium (from Eqn 3)
+                uint256 numerator = netLiquidity + (removedLiquidity / 2 ** 2);
+
+                premium0X64_owed = Math
+                    .mulDiv(premium0X64_base, numerator, totalLiquidity)
+                    .toUint128Capped();
+                premium1X64_owed = Math
+                    .mulDiv(premium1X64_base, numerator, totalLiquidity)
+                    .toUint128Capped();
+
+                deltaPremiumOwed = LeftRightUnsigned
+                    .wrap(0)
+                    .toRightSlot(premium0X64_owed)
+                    .toLeftSlot(premium1X64_owed);
+            }
+        }
+
+        {
+            uint128 premium0X64_gross;
+            uint128 premium1X64_gross;
+            {
+                // compute the gross premium (from Eqn 4)
+                uint256 numerator = totalLiquidity ** 2 -
+                    totalLiquidity *
+                    removedLiquidity +
+                    ((removedLiquidity ** 2) / 2 ** (2));
+
+                premium0X64_gross = Math
+                    .mulDiv(premium0X64_base, numerator, totalLiquidity ** 2)
+                    .toUint128Capped();
+                premium1X64_gross = Math
+                    .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
+                    .toUint128Capped();
+
+                deltaPremiumGross = LeftRightUnsigned
+                    .wrap(0)
+                    .toRightSlot(premium0X64_gross)
+                    .toLeftSlot(premium1X64_gross);
+            }
+        }
+    }
+
+    uint256 MAX_UINT128 = type(uint128).max;
+
+    // takes a premia accumulator and adds the computed amounts
+    // checks for freeze if one side is equivalent to uint128.max
+    // or ensures there isn't an overflow if the amounts roll over
+    function incrementPremiaAccumulator(
+        uint256 premiumOwed0,
+        uint256 premiumOwed1,
+        uint256 deltaPremiumOwed0,
+        uint256 deltaPremiumOwed1,
+        uint256 premiumGross0,
+        uint256 premiumGross1,
+        uint256 deltaPremiumGross0,
+        uint256 deltaPremiumGross1
+    ) internal returns (uint256 owed0, uint256 owed1, uint256 gross0, uint256 gross1) {
+        // add together the new owed premiums
+        uint256 newOwed0 = premiumOwed0 + deltaPremiumOwed0;
+        uint256 newOwed1 = premiumOwed1 + deltaPremiumOwed1;
+
+        // add together the new gross premiums
+        uint256 newGross0 = premiumGross0 + deltaPremiumGross0;
+        uint256 newGross1 = premiumGross1 + deltaPremiumGross1;
+
+        bool r_Enabled = !(newOwed0 > MAX_UINT128 || newGross0 > MAX_UINT128);
+        bool l_Enabled = !(newOwed1 > MAX_UINT128 || newGross1 > MAX_UINT128);
+
+        // assign final values and check for cap / overflow
+        owed0 = newOwed0 > MAX_UINT128 ? MAX_UINT128 : newOwed0;
+        owed1 = newOwed1 > MAX_UINT128 ? MAX_UINT128 : newOwed1;
+        //
+        gross0 = newGross0 > MAX_UINT128 ? MAX_UINT128 : newGross0;
+        gross1 = newGross1 > MAX_UINT128 ? MAX_UINT128 : newGross1;
+    }
 
     function _getSolvencyBalances(
         LeftRightUnsigned tokenData0,
@@ -1098,8 +1739,14 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
-                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                            ? PanopticMath.convert0to1(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                 ) * 13_333) / 10_000) * $ratios[i]
             );
             emit LogUint256("2", 2);
@@ -1174,14 +1821,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                ITMCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                ITMCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                                ? PanopticMath.convert0to1(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                                : PanopticMath.convert1to0(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
                     ) * 13_333) / 10_000) * $ratios[i]
                 );
             }
