@@ -486,11 +486,271 @@ contract PanopticPoolActions is CollateralActions {
     //////////////////////////////////////////////////////////////*/
 
     /*//////////////////////////////////////////////////////////////
+                          SETTLE LONG PREMIUM
+    //////////////////////////////////////////////////////////////*/
+
+    function try_settle_long(uint256 position, bool search) public {
+        $allPositionOwners = new address[](0);
+        $allPositions = new TokenId[](0);
+        for (uint256 i = 0; i < actors.length; ++i) {
+            for (uint256 j = 0; j < userPositions[actors[i]].length; ++j) {
+                $allPositionOwners.push(actors[i]);
+                $allPositions.push(userPositions[actors[i]][j]);
+            }
+        }
+
+        // find a position with at least one long leg
+        if (search) {
+            bool isLong;
+            for (
+                uint256 i = bound(position, 0, $allPositions.length - 1);
+                i < $allPositions.length;
+                ++i
+            ) {
+                for (uint256 j = 0; j < $allPositions[i].countLegs(); ++j) {
+                    if ($allPositions[i].isLong(j) == 1) {
+                        $tokenIdActive = $allPositions[i];
+                        $settlee = $allPositionOwners[i];
+
+                        // pick a random leg
+                        $settleIndex = bound(position, 0, $allPositions[i].countLegs() - 1);
+                        isLong = true;
+                        break;
+                    }
+                }
+            }
+            if (!isLong) {
+                ($settlee, $tokenIdActive, $settleIndex) = (
+                    $allPositionOwners[bound(position, 0, $allPositions.length - 1)],
+                    $allPositions[bound(position, 0, $allPositions.length - 1)],
+                    bound(
+                        position,
+                        0,
+                        $allPositions[bound(position, 0, $allPositions.length - 1)].countLegs() - 1
+                    )
+                );
+            }
+        } else {
+            ($settlee, $tokenIdActive, $settleIndex) = (
+                $allPositionOwners[bound(position, 0, $allPositions.length - 1)],
+                $allPositions[bound(position, 0, $allPositions.length - 1)],
+                bound(
+                    position,
+                    0,
+                    $allPositions[bound(position, 0, $allPositions.length - 1)].countLegs() - 1
+                )
+            );
+        }
+
+        if ($tokenIdActive.isLong($settleIndex) != 1) {
+            $shouldRevert = true;
+        }
+
+        // 1. calculate what the premium settled out to settlee _should_ be
+        // NOTE: this is basically trying to get re-calc a value in s_options -
+        //       probably derived from logic in closePosition / getPremium
+        (uint128 premium0, uint128 premium1) = _calc_premium_for_each_token(
+            $settlee,
+            $tokenIdActive,
+            $settleIndex
+        );
+
+        ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
+            $settlee,
+            false,
+            userPositions[$settlee]
+        );
+
+        $tokenData0 = collToken0.getAccountMarginDetails(
+            $settlee,
+            $fastOracleTick,
+            $posBalanceArray,
+            $premia0
+        );
+        $tokenData1 = collToken1.getAccountMarginDetails(
+            $settlee,
+            $fastOracleTick,
+            $posBalanceArray,
+            $premia1
+        );
+
+        $fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            pool,
+            observationIndex,
+            observationCardinality,
+            3,
+            1
+        );
+
+        ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
+            60,
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            pool
+        );
+
+        $totalAssets0 = collToken0.totalAssets();
+        $totalAssets1 = collToken1.totalAssets();
+        $totalSupply0 = collToken0.totalSupply();
+        $totalSupply1 = collToken1.totalSupply();
+        if (!(premium0 > $tokenData0.rightSlot()) || premium1 > $tokenData1.rightSlot()) {
+            $balanceCross =
+                Math.mulDiv(
+                    $tokenData0.rightSlot(),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                ) +
+                Math.mulDiv96(
+                    $tokenData1.rightSlot(),
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                );
+
+            $thresholdCross =
+                Math.mulDivRoundingUp(
+                    uint256($tokenData1.leftSlot()),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                ) +
+                Math.mulDiv96RoundingUp(
+                    $tokenData0.leftSlot(),
+                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+                );
+            $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+
+            emit LogBool("revert due to collateral shortfall at fast oracle tick", $shouldRevert);
+
+            if (Math.abs(int256($slowOracleTick) - $fastOracleTick) > 1800) {
+                $tokenData0 = collToken0.getAccountMarginDetails(
+                    $settlee,
+                    $slowOracleTick,
+                    $posBalanceArray,
+                    $premia0
+                );
+                $tokenData1 = collToken1.getAccountMarginDetails(
+                    $settlee,
+                    $slowOracleTick,
+                    $posBalanceArray,
+                    $premia1
+                );
+
+                $balanceCross =
+                    Math.mulDiv(
+                        $tokenData1.rightSlot(),
+                        2 ** 96,
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    ) +
+                    Math.mulDiv96(
+                        $tokenData0.rightSlot(),
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    );
+
+                $thresholdCross =
+                    Math.mulDivRoundingUp(
+                        uint256($tokenData1.leftSlot()),
+                        2 ** 96,
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    ) +
+                    Math.mulDiv96RoundingUp(
+                        $tokenData0.leftSlot(),
+                        TickMath.getSqrtRatioAtTick($slowOracleTick)
+                    );
+
+                $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+
+                emit LogBool(
+                    "revert due to collateral shortfall at slow oracle tick",
+                    $shouldRevert
+                );
+            }
+        } else {
+            $shouldRevert = true;
+
+            emit LogBool("revert due to insufficient collateral to cover delta", $shouldRevert);
+        }
+
+        // 2. get users balance in CT before any settling occurs
+        $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf($settlee)));
+        $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf($settlee)));
+
+        (uint128 settledForChunkBefore0, uint128 settledForChunkBefore1, , ) = panopticPool
+            .premiaSettlementData($tokenIdActive, $settleIndex);
+
+        // 3. trigger a settlement of long premium
+        hevm.prank(msg.sender);
+        try
+            panopticPool.settleLongPremium(
+                _move_tokenid_to_end(userPositions[$settlee], $tokenIdActive),
+                $settlee,
+                $settleIndex
+            )
+        {
+            assertWithMsg(!$shouldRevert, "SettleLongPremium: missing revert");
+        } catch {
+            assertWithMsg($shouldRevert, "SettleLongPremium: unexpected revert");
+        }
+
+        // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
+        (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool
+            .premiaSettlementData($tokenIdActive, $settleIndex);
+
+        assertWithMsg(
+            settledForChunkAfter0 == (settledForChunkBefore0 + premium0) &&
+                settledForChunkAfter1 == (settledForChunkBefore1 + premium1),
+            "Settled tokens for chunk recorded in CT did not increase by calculated premium"
+        );
+
+        // 5. get users balance in CT after, and assert it reduced by appropriate amounts
+        assertWithMsg(
+            ($balance0Origin - int256(collToken0.convertToAssets(collToken0.balanceOf($settlee))) ==
+                int256(uint256(premium0))) &&
+                ($balance1Origin -
+                    int256(collToken1.convertToAssets(collToken1.balanceOf($settlee))) ==
+                    int256(uint256(premium1))),
+            "User receiving settled long premia had their assets in the CT decrease by an amount other than the calculated premiums"
+        );
+    }
+
+    function _calc_premium_for_each_token(
+        address settlee,
+        TokenId position,
+        uint256 longIndex
+    ) internal returns (uint128 premium0, uint128 premium1) {
+        (uint128 numContractsOfPosition, , ) = panopticPool.optionPositionBalance(
+            settlee,
+            position
+        );
+        uint128 liquidity = PanopticMath
+            .getLiquidityChunk(position, longIndex, numContractsOfPosition)
+            .liquidity();
+
+        (uint128 optionData0, uint128 optionData1) = panopticPool.optionData(
+            position,
+            settlee,
+            longIndex
+        );
+
+        (, currentTick, , , , , ) = pool.slot0();
+        uint256 tokenType = position.tokenType(longIndex);
+        (int24 tickLower, int24 tickUpper) = position.asTicks(longIndex);
+        (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
+            address(pool),
+            address(panopticPool),
+            tokenType,
+            tickLower,
+            tickUpper,
+            currentTick,
+            1
+        );
+        premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
+        premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
+        emit LogUint256("premium0-calc", premium0);
+        emit LogUint256("premium1-calc", premium1);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              FORCE EXERCISE
     //////////////////////////////////////////////////////////////*/
 
     function force_exercise(uint256 position, bool search) public {
-        // assertWithMsg($allPositionCount < 5, "APC > 5");
         $allPositionOwners = new address[](0);
         $allPositions = new TokenId[](0);
         for (uint256 i = 0; i < actors.length; ++i) {
@@ -503,7 +763,11 @@ contract PanopticPoolActions is CollateralActions {
         // find a position with at least one long leg - reasonably high probability of being exercisable
         if (search) {
             bool isLong;
-            for (uint256 i = bound(position, 0, 0); i < $allPositions.length; ++i) {
+            for (
+                uint256 i = bound(position, 0, $allPositions.length - 1);
+                i < $allPositions.length;
+                ++i
+            ) {
                 for (uint256 j = 0; j < $allPositions[i].countLegs(); ++j) {
                     if ($allPositions[i].isLong(j) == 1) {
                         $tokenIdActive = $allPositions[i];
@@ -512,11 +776,9 @@ contract PanopticPoolActions is CollateralActions {
                         break;
                     }
                 }
-                // if (isLong) assertWithMsg(false, "searchFound");
                 if (isLong) break;
             }
             if (!isLong) {
-                // assertWithMsg($allPositions.length < 5, "No long positions found");
                 ($exercisee, $tokenIdActive) = (
                     $allPositionOwners[bound(position, 0, $allPositions.length - 1)],
                     $allPositions[bound(position, 0, $allPositions.length - 1)]
@@ -565,9 +827,7 @@ contract PanopticPoolActions is CollateralActions {
                 $positionListExercisee,
                 $positionListExercisor
             )
-        {
-            assertWithMsg(false, "force exercise pass");
-        } catch (bytes memory reason) {
+        {} catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
             assertWithMsg($shouldRevert, "Force exercise failed");
 

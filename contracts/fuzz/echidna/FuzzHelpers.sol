@@ -217,6 +217,30 @@ contract PanopticPoolWrapper is PanopticPool {
         return (premiasByLeg, netExchanged);
     }
 
+    function premiaSettlementData(
+        TokenId tokenId,
+        uint256 leg
+    ) public view returns (uint128, uint128, uint128, uint128) {
+        bytes32 chunkKey = keccak256(
+            abi.encodePacked(tokenId.strike(leg), tokenId.width(leg), tokenId.tokenType(leg))
+        );
+
+        LeftRightUnsigned settled = s_settledTokens[chunkKey];
+        LeftRightUnsigned gross = s_grossPremiumLast[chunkKey];
+
+        return (settled.rightSlot(), settled.leftSlot(), gross.rightSlot(), gross.leftSlot());
+    }
+
+    function optionData(
+        TokenId tokenId,
+        address account,
+        uint256 leg
+    ) public view returns (uint128, uint128) {
+        LeftRightUnsigned legData = s_options[account][tokenId][leg];
+
+        return (legData.rightSlot(), legData.leftSlot());
+    }
+
     constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
 }
 
@@ -421,6 +445,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
     int256 $allPositionCount;
     int256 $failedPositionCount;
+
+    address $settlee;
+    uint256 $settleIndex;
 
     address $exercisee;
     TokenId[] $touchedId;
@@ -650,6 +677,24 @@ contract FuzzHelpers is PropertiesAsserts {
                 out_idx++;
             }
         }
+    }
+
+    function _move_tokenid_to_end(
+        TokenId[] memory list,
+        TokenId target
+    ) internal pure returns (TokenId[] memory out) {
+        uint256 l = list.length;
+        out = new TokenId[](l);
+
+        uint256 idx = 0;
+        for (uint i = 0; i < l; i++) {
+            if (keccak256(abi.encode(list[i])) != keccak256(abi.encode(target))) {
+                out[idx] = list[i];
+                idx++;
+            }
+        }
+
+        out[l - 1] = target;
     }
 
     function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
