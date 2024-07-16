@@ -1444,13 +1444,16 @@ contract FuzzDeployments is FuzzHelpers {
 
         try this._simulate_sfpm_burn(position, posSize, tickLimitLow) {
             assertWithMsg(false, "_simulate_sfpm_burn should always revert");
-        } catch(bytes memory _err) {
-            (int128 expectedToken0Difference, int128 expectedToken1Difference) = _calc_total_expected_token_difference(
-                preburnPremiaAndAccumulators,
-                _err,
-                position,
-                posSize
-            );
+        } catch (bytes memory _err) {
+            (
+                int128 expectedToken0Difference,
+                int128 expectedToken1Difference
+            ) = _calc_total_expected_token_difference(
+                    preburnPremiaAndAccumulators,
+                    _err,
+                    position,
+                    posSize
+                );
 
             // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
             // alignment with our projections:
@@ -1472,7 +1475,7 @@ contract FuzzDeployments is FuzzHelpers {
         bytes memory _sfpm_burn_result,
         TokenId position,
         uint128 posSize
-    ) internal returns(int128 expectedToken0Difference, int128 expectedToken1Difference) {
+    ) internal returns (int128 expectedToken0Difference, int128 expectedToken1Difference) {
         // We calculate the expected token difference for burning by first getting the net premia:
         (
             int128 totalProjectedProratedPremium0,
@@ -1483,23 +1486,29 @@ contract FuzzDeployments is FuzzHelpers {
         expectedToken1Difference = totalProjectedProratedPremium1;
 
         // We then add any expected tokens for burning an ITM position in the SFPM
-        (int128 token0Swapped, int128 token1Swapped) = abi.decode(_sfpm_burn_result, (int128, int128));
+        (int128 token0Swapped, int128 token1Swapped) = abi.decode(
+            _sfpm_burn_result,
+            (int128, int128)
+        );
         expectedToken0Difference += token0Swapped;
         expectedToken1Difference += token1Swapped;
 
         // And finally, we also add any underlying amounts of long legs,
         // minus the underlying amounts of any short legs.
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(position, posSize);
+        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+            .computeExercisedAmounts(position, posSize);
         expectedToken0Difference += longAmounts.rightSlot() - shortAmounts.rightSlot();
         expectedToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
     }
 
-    error SFPMBurnSimResult(
-        int128 token0Swapped,
-        int128 token1Swapped
-    );
+    error SFPMBurnSimResult(int128 token0Swapped, int128 token1Swapped);
     LeftRightSigned $totalSwapped;
-    function _simulate_sfpm_burn(TokenId position, uint128 positionSize, int24 tickLimitLow) external {
+
+    function _simulate_sfpm_burn(
+        TokenId position,
+        uint128 positionSize,
+        int24 tickLimitLow
+    ) external {
         hevm.prank(address(panopticPool));
         (, $totalSwapped) = sfpm.burnTokenizedPosition(
             position,
@@ -1507,10 +1516,7 @@ contract FuzzDeployments is FuzzHelpers {
             tickLimitLow,
             -1 * tickLimitLow
         );
-        revert SFPMBurnSimResult(
-            $totalSwapped.rightSlot(),
-            $totalSwapped.leftSlot()
-        );
+        revert SFPMBurnSimResult($totalSwapped.rightSlot(), $totalSwapped.leftSlot());
     }
 
     function _compare_against_preburn_assets(
@@ -1527,8 +1533,7 @@ contract FuzzDeployments is FuzzHelpers {
         if (expectedToken0Difference > 0) {
             assertWithMsg(
                 int256(burnersPostburnToken0Balance) ==
-                    int256(burnersPreburnAssets.token0Balance) +
-                        int256(expectedToken0Difference),
+                    int256(burnersPreburnAssets.token0Balance) + int256(expectedToken0Difference),
                 "Burners token0 balance did not increase by the amount the premia would indicate"
             );
         } else {
@@ -1549,8 +1554,7 @@ contract FuzzDeployments is FuzzHelpers {
         if (expectedToken1Difference > 0) {
             assertWithMsg(
                 int256(burnersPostburnToken1Balance) ==
-                    int256(burnersPreburnAssets.token1Balance) +
-                        int256(expectedToken1Difference),
+                    int256(burnersPreburnAssets.token1Balance) + int256(expectedToken1Difference),
                 "Burners token1 balance did not increase by the amount the premia would indicate"
             );
         } else {
