@@ -15,12 +15,16 @@ contract PanopticPoolActions is CollateralActions {
         uint256[4] memory widthSeeds,
         int256[4] memory strikeSeeds,
         uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
         uint256[4] memory assets,
-        bool[4] memory distributions,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
         uint256 positionSize,
         uint256 numLegs
     ) public {
         emit LogAddress("actor", msg.sender);
+
+        ($tickLimitLow, $tickLimitHigh) = (tickLimitSeeds[0], tickLimitSeeds[1]);
 
         $numLegs = bound(numLegs, 1, 4);
 
@@ -44,7 +48,8 @@ contract PanopticPoolActions is CollateralActions {
             $isLongs[i] = bound(isLongs[i], 0, 4);
             $isLongs[i] = $isLongs[i] > 1 ? 0 : $isLongs[i];
             $assets[i] = bound(assets[i], 0, 1);
-            $ratios[i] = bound(ratioSeeds[i], 1, 127);
+            $ratios[i] = distributions[4] ? 1 : bound(ratioSeeds[i], 1, 127);
+            $riskPartners[i] = distributions[2] ? i : bound(riskPartnerSeeds[i], 0, $numLegs - 1);
 
             if ($isLongs[i] == 0) {
                 ($widths[i], $strikes[i]) = getValidSW(
@@ -145,7 +150,7 @@ contract PanopticPoolActions is CollateralActions {
                     $assets[i],
                     $isLongs[i],
                     $tokenTypes[i],
-                    i,
+                    $riskPartners[i],
                     $strikes[i],
                     $widths[i]
                 );
@@ -433,13 +438,14 @@ contract PanopticPoolActions is CollateralActions {
                 userPositions[msg.sender],
                 uint128($positionSizeActive),
                 type(uint64).max,
-                TickMath.MAX_TICK,
-                TickMath.MIN_TICK
+                $tickLimitLow,
+                $tickLimitHigh
             )
         {
-            for (uint256 i = 0; i < $numLegs; ++i) {
-                // assertWithMsg($isLongs[i] != 1, "minted long!");
-            }
+            // assertWithMsg(false, "minted!");
+            // for (uint256 i = 0; i < $numLegs; ++i) {
+            //     assertWithMsg($isLongs[i] != 1, "minted long!");
+            // }
             $allPositionCount++;
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {

@@ -440,6 +440,9 @@ contract FuzzHelpers is PropertiesAsserts {
     int24 $tickLower;
     int24 $tickUpper;
 
+    int24 $tickLimitLow;
+    int24 $tickLimitHigh;
+
     address[] actors;
     address pool_manipulator;
 
@@ -1077,6 +1080,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 Math.getSqrtRatioAtTick($strikes[i])
             );
             uint256 baseCR = uint256($isLongs[i] == 0 ? 2_000 : 1_000) * 2 ** 117;
+
             emit LogUint256("baseCR", baseCR);
             if ($assets[i] != $tokenTypes[i]) {
                 baseCR = $tokenTypes[i] == 0
@@ -1089,6 +1093,24 @@ contract FuzzHelpers is PropertiesAsserts {
 
             emit LogInt256("fastOracleTick", $fastOracleTick);
             emit LogUint256("tokenTypes[i]", $tokenTypes[i]);
+
+            if ($riskPartners[i] != i) {
+                if (
+                    $riskPartners[$riskPartners[i]] != i && $ratios[i] == $ratios[$riskPartners[i]]
+                ) {
+                    $shouldRevert = true;
+                } else if (
+                    $isLongs[i] == $isLongs[$riskPartners[i]] &&
+                    $tokenTypes[i] == $tokenTypes[$riskPartners[i]]
+                ) {
+                    if ($isLongs[i] == 1) $shouldRevert = true;
+                    baseCR /= 2;
+                } else if ($isLongs[i] == 0 && $tokenTypes[i] != $tokenTypes[$riskPartners[i]]) {
+                    // spreads are complicated to get collateral multipliers for, and should be covered by the default sizing range (as a small efficiency improvement)
+                } else {
+                    $shouldRevert = true;
+                }
+            }
 
             sizeMultiplierX128 += Math.mulDiv(
                 10_000 * 2 ** 117,
@@ -1357,8 +1379,8 @@ contract FuzzHelpers is PropertiesAsserts {
             sfpm.mintTokenizedPosition(
                 $tokenIdActive,
                 $positionSizeActive,
-                TickMath.MAX_TICK,
-                TickMath.MIN_TICK
+                $tickLimitLow,
+                $tickLimitHigh
             )
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             (int24 slowTick, ) = panopticHelper.computeInternalMedian(

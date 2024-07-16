@@ -14,8 +14,8 @@ testMode: assertion
 seqLen: 500
 testLimit: 3000000
 shrinkLimit: 0
-workers: 32
-corpusDir: test/echidna/corpus
+# workers: 32
+corpusDir: fuzz/echidna/corpus
 #rpcBlock: 19582800
 coverageFormats: ["html"]
 # format: text
