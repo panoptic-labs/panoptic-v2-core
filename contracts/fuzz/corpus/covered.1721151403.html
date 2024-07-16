@@ -497,9 +497,9 @@
   70 | *   | <span class='executed'>    Slot0 public override slot0;</span>
   71 |     | <span class='neutral'></span>
   72 |     | <span class='neutral'>    /// @inheritdoc IUniswapV3PoolState</span>
-  73 | *   | <span class='executed'>    uint256 public override feeGrowthGlobal0X128;</span>
+  73 |     | <span class='unexecuted'>    uint256 public override feeGrowthGlobal0X128;</span>
   74 |     | <span class='unexecuted'>    /// @inheritdoc IUniswapV3PoolState</span>
-  75 | *   | <span class='executed'>    uint256 public override feeGrowthGlobal1X128;</span>
+  75 |     | <span class='unexecuted'>    uint256 public override feeGrowthGlobal1X128;</span>
   76 |     | <span class='neutral'></span>
   77 |     | <span class='unexecuted'>    // accumulated protocol fees in token0/token1 units</span>
   78 |     | <span class='neutral'>    struct ProtocolFees {</span>
@@ -688,7 +688,7 @@
  261 | *   | <span class='executed'>        uint16 observationCardinalityNextNew = observations.grow(</span>
  262 | *   | <span class='executed'>            observationCardinalityNextOld,</span>
  263 | *   | <span class='executed'>            observationCardinalityNext</span>
- 264 |     | <span class='neutral'>        );</span>
+ 264 | *   | <span class='executed'>        );</span>
  265 | *   | <span class='executed'>        slot0.observationCardinalityNext = observationCardinalityNextNew;</span>
  266 | *   | <span class='executed'>        if (observationCardinalityNextOld != observationCardinalityNextNew)</span>
  267 | *   | <span class='executed'>            emit IncreaseObservationCardinalityNext(observationCardinalityNextOld, observationCardinalityNextNew);</span>
@@ -700,7 +700,7 @@
  273 | *   | <span class='executed'>        if (slot0.sqrtPriceX96 != 0) revert AI();</span>
  274 |     | <span class='neutral'></span>
  275 | *   | <span class='executed'>        int24 tick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);</span>
- 276 | *   | <span class='executed'></span>
+ 276 |     | <span class='neutral'></span>
  277 | *   | <span class='executed'>        (uint16 cardinality, uint16 cardinalityNext) = observations.initialize(_blockTimestamp());</span>
  278 |     | <span class='neutral'></span>
  279 |     | <span class='unexecuted'>        slot0 = Slot0({</span>
@@ -713,18 +713,18 @@
  286 |     | <span class='neutral'>            unlocked: true</span>
  287 |     | <span class='neutral'>        });</span>
  288 |     | <span class='neutral'></span>
- 289 | *   | <span class='executed'>        emit Initialize(sqrtPriceX96, tick);</span>
- 290 | *   | <span class='executed'>    }</span>
+ 289 |     | <span class='unexecuted'>        emit Initialize(sqrtPriceX96, tick);</span>
+ 290 |     | <span class='neutral'>    }</span>
  291 |     | <span class='neutral'></span>
  292 | *   | <span class='executed'>    struct ModifyPositionParams {</span>
  293 | *   | <span class='executed'>        // the address that owns the position</span>
  294 | *   | <span class='executed'>        address owner;</span>
  295 | *   | <span class='executed'>        // the lower and upper tick of the position</span>
- 296 | *   | <span class='executed'>        int24 tickLower;</span>
+ 296 |     | <span class='neutral'>        int24 tickLower;</span>
  297 | *   | <span class='executed'>        int24 tickUpper;</span>
  298 | *   | <span class='executed'>        // any change in liquidity</span>
  299 | *   | <span class='executed'>        int128 liquidityDelta;</span>
- 300 |     | <span class='neutral'>    }</span>
+ 300 | *   | <span class='executed'>    }</span>
  301 |     | <span class='neutral'></span>
  302 | *   | <span class='executed'>    /// @dev Effect some changes to a position</span>
  303 | *   | <span class='executed'>    /// @param params the position details and the change to the position&#39;s liquidity to effect</span>
@@ -738,7 +738,7 @@
  311 | *   | <span class='executed'>            Position.Info storage position,</span>
  312 | *   | <span class='executed'>            int256 amount0,</span>
  313 | *   | <span class='executed'>            int256 amount1</span>
- 314 | *   | <span class='executed'>        )</span>
+ 314 |     | <span class='neutral'>        )</span>
  315 | *   | <span class='executed'>    {</span>
  316 | *   | <span class='executed'>        checkTicks(params.tickLower, params.tickUpper);</span>
  317 |     | <span class='neutral'></span>
@@ -749,26 +749,26 @@
  322 | *   | <span class='executed'>            params.tickLower,</span>
  323 | *   | <span class='executed'>            params.tickUpper,</span>
  324 | *   | <span class='executed'>            params.liquidityDelta,</span>
- 325 | *   | <span class='executed'>            _slot0.tick</span>
- 326 | *   | <span class='executed'>        );</span>
+ 325 |     | <span class='neutral'>            _slot0.tick</span>
+ 326 |     | <span class='neutral'>        );</span>
  327 |     | <span class='neutral'></span>
  328 | *   | <span class='executed'>        if (params.liquidityDelta != 0) {</span>
  329 | *   | <span class='executed'>            if (_slot0.tick &lt; params.tickLower) {</span>
- 330 |     | <span class='neutral'>                // current tick is below the passed range; liquidity can only become in range by crossing from left to</span>
- 331 | *   | <span class='executed'>                // right, when we&#39;ll need _more_ token0 (it&#39;s becoming more valuable) so user must provide it</span>
+ 330 | *   | <span class='executed'>                // current tick is below the passed range; liquidity can only become in range by crossing from left to</span>
+ 331 |     | <span class='neutral'>                // right, when we&#39;ll need _more_ token0 (it&#39;s becoming more valuable) so user must provide it</span>
  332 | *   | <span class='executed'>                amount0 = SqrtPriceMath.getAmount0Delta(</span>
  333 | *   | <span class='executed'>                    TickMath.getSqrtRatioAtTick(params.tickLower),</span>
  334 | *   | <span class='executed'>                    TickMath.getSqrtRatioAtTick(params.tickUpper),</span>
  335 | *   | <span class='executed'>                    params.liquidityDelta</span>
  336 | *   | <span class='executed'>                );</span>
  337 | *   | <span class='executed'>            } else if (_slot0.tick &lt; params.tickUpper) {</span>
- 338 |     | <span class='neutral'>                // current tick is inside the passed range</span>
+ 338 | *   | <span class='executed'>                // current tick is inside the passed range</span>
  339 | *   | <span class='executed'>                uint128 liquidityBefore = liquidity; // SLOAD for gas optimization</span>
  340 |     | <span class='neutral'></span>
- 341 | *   | <span class='executed'>                // write an oracle entry</span>
+ 341 |     | <span class='neutral'>                // write an oracle entry</span>
  342 | *   | <span class='executed'>                (slot0.observationIndex, slot0.observationCardinality) = observations.write(</span>
  343 | *   | <span class='executed'>                    _slot0.observationIndex,</span>
- 344 |     | <span class='neutral'>                    _blockTimestamp(),</span>
+ 344 | *   | <span class='executed'>                    _blockTimestamp(),</span>
  345 | *   | <span class='executed'>                    _slot0.tick,</span>
  346 | *   | <span class='executed'>                    liquidityBefore,</span>
  347 | *   | <span class='executed'>                    _slot0.observationCardinality,</span>
@@ -785,18 +785,18 @@
  358 | *   | <span class='executed'>                    _slot0.sqrtPriceX96,</span>
  359 | *   | <span class='executed'>                    params.liquidityDelta</span>
  360 | *   | <span class='executed'>                );</span>
- 361 |     | <span class='neutral'></span>
+ 361 | *   | <span class='executed'></span>
  362 | *   | <span class='executed'>                liquidity = params.liquidityDelta &lt; 0</span>
  363 | *   | <span class='executed'>                    ? liquidityBefore - uint128(-params.liquidityDelta)</span>
  364 | *   | <span class='executed'>                    : liquidityBefore + uint128(params.liquidityDelta);</span>
- 365 |     | <span class='neutral'>            } else {</span>
+ 365 | *   | <span class='executed'>            } else {</span>
  366 | *   | <span class='executed'>                // current tick is above the passed range; liquidity can only become in range by crossing from right to</span>
  367 | *   | <span class='executed'>                // left, when we&#39;ll need _more_ token1 (it&#39;s becoming more valuable) so user must provide it</span>
  368 | *   | <span class='executed'>                amount1 = SqrtPriceMath.getAmount1Delta(</span>
  369 | *   | <span class='executed'>                    TickMath.getSqrtRatioAtTick(params.tickLower),</span>
  370 | *   | <span class='executed'>                    TickMath.getSqrtRatioAtTick(params.tickUpper),</span>
  371 | *   | <span class='executed'>                    params.liquidityDelta</span>
- 372 | *   | <span class='executed'>                );</span>
+ 372 |     | <span class='neutral'>                );</span>
  373 | *   | <span class='executed'>            }</span>
  374 |     | <span class='neutral'>        }</span>
  375 |     | <span class='neutral'>    }</span>
@@ -811,7 +811,7 @@
  384 | *   | <span class='executed'>        int24 tickLower,</span>
  385 | *   | <span class='executed'>        int24 tickUpper,</span>
  386 | *   | <span class='executed'>        int128 liquidityDelta,</span>
- 387 |     | <span class='neutral'>        int24 tick</span>
+ 387 | *   | <span class='executed'>        int24 tick</span>
  388 | *   | <span class='executed'>    ) private returns (Position.Info storage position) {</span>
  389 | *   | <span class='executed'>        position = positions.get(owner, tickLower, tickUpper);</span>
  390 |     | <span class='neutral'></span>
@@ -819,18 +819,18 @@
  392 | *   | <span class='executed'>        uint256 _feeGrowthGlobal1X128 = feeGrowthGlobal1X128; // SLOAD for gas optimization</span>
  393 |     | <span class='neutral'></span>
  394 | *   | <span class='executed'>        // if we need to update the ticks, do it</span>
- 395 | *   | <span class='executed'>        bool flippedLower;</span>
+ 395 |     | <span class='neutral'>        bool flippedLower;</span>
  396 | *   | <span class='executed'>        bool flippedUpper;</span>
  397 | *   | <span class='executed'>        if (liquidityDelta != 0) {</span>
  398 | *   | <span class='executed'>            uint32 time = _blockTimestamp();</span>
  399 | *   | <span class='executed'>            (int56 tickCumulative, uint160 secondsPerLiquidityCumulativeX128) = observations.observeSingle(</span>
- 400 |     | <span class='neutral'>                time,</span>
+ 400 | *   | <span class='executed'>                time,</span>
  401 |     | <span class='neutral'>                0,</span>
  402 | *   | <span class='executed'>                slot0.tick,</span>
  403 | *   | <span class='executed'>                slot0.observationIndex,</span>
  404 | *   | <span class='executed'>                liquidity,</span>
  405 | *   | <span class='executed'>                slot0.observationCardinality</span>
- 406 | *   | <span class='executed'>            );</span>
+ 406 |     | <span class='neutral'>            );</span>
  407 |     | <span class='neutral'></span>
  408 | *   | <span class='executed'>            flippedLower = ticks.update(</span>
  409 | *   | <span class='executed'>                tickLower,</span>
@@ -839,7 +839,7 @@
  412 | *   | <span class='executed'>                _feeGrowthGlobal0X128,</span>
  413 | *   | <span class='executed'>                _feeGrowthGlobal1X128,</span>
  414 | *   | <span class='executed'>                secondsPerLiquidityCumulativeX128,</span>
- 415 |     | <span class='neutral'>                tickCumulative,</span>
+ 415 | *   | <span class='executed'>                tickCumulative,</span>
  416 | *   | <span class='executed'>                time,</span>
  417 | *   | <span class='executed'>                false,</span>
  418 | *   | <span class='executed'>                maxLiquidityPerTick</span>
@@ -863,7 +863,7 @@
  436 | *   | <span class='executed'>            if (flippedUpper) {</span>
  437 | *   | <span class='executed'>                tickBitmap.flipTick(tickUpper, tickSpacing);</span>
  438 |     | <span class='neutral'>            }</span>
- 439 |     | <span class='neutral'>        }</span>
+ 439 | *   | <span class='executed'>        }</span>
  440 |     | <span class='neutral'></span>
  441 | *   | <span class='executed'>        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = ticks.getFeeGrowthInside(</span>
  442 | *   | <span class='executed'>            tickLower,</span>
@@ -871,7 +871,7 @@
  444 | *   | <span class='executed'>            tick,</span>
  445 | *   | <span class='executed'>            _feeGrowthGlobal0X128,</span>
  446 | *   | <span class='executed'>            _feeGrowthGlobal1X128</span>
- 447 |     | <span class='neutral'>        );</span>
+ 447 | *   | <span class='executed'>        );</span>
  448 |     | <span class='neutral'></span>
  449 | *   | <span class='executed'>        position.update(liquidityDelta, feeGrowthInside0X128, feeGrowthInside1X128);</span>
  450 |     | <span class='neutral'></span>
@@ -879,11 +879,11 @@
  452 | *   | <span class='executed'>        if (liquidityDelta &lt; 0) {</span>
  453 | *   | <span class='executed'>            if (flippedLower) {</span>
  454 | *   | <span class='executed'>                ticks.clear(tickLower);</span>
- 455 |     | <span class='neutral'>            }</span>
+ 455 | *   | <span class='executed'>            }</span>
  456 | *   | <span class='executed'>            if (flippedUpper) {</span>
  457 | *   | <span class='executed'>                ticks.clear(tickUpper);</span>
  458 |     | <span class='neutral'>            }</span>
- 459 |     | <span class='neutral'>        }</span>
+ 459 | *   | <span class='executed'>        }</span>
  460 |     | <span class='neutral'>    }</span>
  461 |     | <span class='neutral'></span>
  462 | *   | <span class='executed'>    /// @inheritdoc IUniswapV3PoolActions</span>
@@ -892,7 +892,7 @@
  465 | *   | <span class='executed'>        address recipient,</span>
  466 | *   | <span class='executed'>        int24 tickLower,</span>
  467 | *   | <span class='executed'>        int24 tickUpper,</span>
- 468 |     | <span class='neutral'>        uint128 amount,</span>
+ 468 | *   | <span class='executed'>        uint128 amount,</span>
  469 | *   | <span class='executed'>        bytes calldata data</span>
  470 | *   | <span class='executed'>    ) external override lock returns (uint256 amount0, uint256 amount1) {</span>
  471 | *   | <span class='executed'>        require(amount &gt; 0);</span>
@@ -921,11 +921,11 @@
  494 |     | <span class='neutral'></span>
  495 | *   | <span class='executed'>    /// @inheritdoc IUniswapV3PoolActions</span>
  496 | *   | <span class='executed'>    function collect(</span>
- 497 | *   | <span class='executed'>        address recipient,</span>
+ 497 |     | <span class='neutral'>        address recipient,</span>
  498 | *   | <span class='executed'>        int24 tickLower,</span>
  499 | *   | <span class='executed'>        int24 tickUpper,</span>
- 500 |     | <span class='neutral'>        uint128 amount0Requested,</span>
- 501 |     | <span class='neutral'>        uint128 amount1Requested</span>
+ 500 | *   | <span class='executed'>        uint128 amount0Requested,</span>
+ 501 | *   | <span class='executed'>        uint128 amount1Requested</span>
  502 | *   | <span class='executed'>    ) external override lock returns (uint128 amount0, uint128 amount1) {</span>
  503 |     | <span class='neutral'>        // we don&#39;t need to checkTicks here, because invalid positions will never have non-zero tokensOwed{0,1}</span>
  504 | *   | <span class='executed'>        Position.Info storage position = positions.get(msg.sender, tickLower, tickUpper);</span>
@@ -942,7 +942,7 @@
  515 | *   | <span class='executed'>                position.tokensOwed1 -= amount1;</span>
  516 | *   | <span class='executed'>                TransferHelper.safeTransfer(token1, recipient, amount1);</span>
  517 |     | <span class='neutral'>            }</span>
- 518 | *   | <span class='executed'>        }</span>
+ 518 |     | <span class='neutral'>        }</span>
  519 |     | <span class='neutral'></span>
  520 | *   | <span class='executed'>        emit Collect(msg.sender, recipient, tickLower, tickUpper, amount0, amount1);</span>
  521 |     | <span class='neutral'>    }</span>
@@ -954,15 +954,15 @@
  527 | *   | <span class='executed'>        int24 tickUpper,</span>
  528 | *   | <span class='executed'>        uint128 amount</span>
  529 | *   | <span class='executed'>    ) external override lock returns (uint256 amount0, uint256 amount1) {</span>
- 530 | *   | <span class='executed'>        unchecked {</span>
+ 530 |     | <span class='neutral'>        unchecked {</span>
  531 | *   | <span class='executed'>            (Position.Info storage position, int256 amount0Int, int256 amount1Int) = _modifyPosition(</span>
  532 | *   | <span class='executed'>                ModifyPositionParams({</span>
  533 | *   | <span class='executed'>                    owner: msg.sender,</span>
- 534 |     | <span class='neutral'>                    tickLower: tickLower,</span>
+ 534 | *   | <span class='executed'>                    tickLower: tickLower,</span>
  535 | *   | <span class='executed'>                    tickUpper: tickUpper,</span>
  536 | *   | <span class='executed'>                    liquidityDelta: -int256(uint256(amount)).toInt128()</span>
- 537 |     | <span class='neutral'>                })</span>
- 538 | *   | <span class='executed'>            );</span>
+ 537 | *   | <span class='executed'>                })</span>
+ 538 |     | <span class='neutral'>            );</span>
  539 |     | <span class='neutral'></span>
  540 | *   | <span class='executed'>            amount0 = uint256(-amount0Int);</span>
  541 | *   | <span class='executed'>            amount1 = uint256(-amount1Int);</span>
@@ -972,60 +972,60 @@
  545 | *   | <span class='executed'>                    position.tokensOwed0 + uint128(amount0),</span>
  546 | *   | <span class='executed'>                    position.tokensOwed1 + uint128(amount1)</span>
  547 | *   | <span class='executed'>                );</span>
- 548 | *   | <span class='executed'>            }</span>
- 549 |     | <span class='neutral'></span>
- 550 | *r  | <span class='executed'>            emit Burn(msg.sender, tickLower, tickUpper, amount, amount0, amount1);</span>
- 551 |     | <span class='neutral'>        }</span>
+ 548 |     | <span class='neutral'>            }</span>
+ 549 | *   | <span class='executed'></span>
+ 550 | *   | <span class='executed'>            emit Burn(msg.sender, tickLower, tickUpper, amount, amount0, amount1);</span>
+ 551 | *   | <span class='executed'>        }</span>
  552 |     | <span class='neutral'>    }</span>
- 553 | *   | <span class='executed'></span>
- 554 |     | <span class='neutral'>    struct SwapCache {</span>
- 555 | *   | <span class='executed'>        // the protocol fee for the input token</span>
+ 553 |     | <span class='neutral'></span>
+ 554 | *   | <span class='executed'>    struct SwapCache {</span>
+ 555 | *r  | <span class='executed'>        // the protocol fee for the input token</span>
  556 | *   | <span class='executed'>        uint8 feeProtocol;</span>
- 557 | *r  | <span class='executed'>        // liquidity at the beginning of the swap</span>
+ 557 | *   | <span class='executed'>        // liquidity at the beginning of the swap</span>
  558 | *   | <span class='executed'>        uint128 liquidityStart;</span>
  559 | *   | <span class='executed'>        // the timestamp of the current block</span>
- 560 | *   | <span class='executed'>        uint32 blockTimestamp;</span>
+ 560 | *r  | <span class='executed'>        uint32 blockTimestamp;</span>
  561 | *   | <span class='executed'>        // the current value of the tick accumulator, computed only if we cross an initialized tick</span>
  562 | *   | <span class='executed'>        int56 tickCumulative;</span>
  563 | *   | <span class='executed'>        // the current value of seconds per liquidity accumulator, computed only if we cross an initialized tick</span>
  564 | *   | <span class='executed'>        uint160 secondsPerLiquidityCumulativeX128;</span>
  565 | *   | <span class='executed'>        // whether we&#39;ve computed and cached the above two accumulators</span>
  566 | *   | <span class='executed'>        bool computedLatestObservation;</span>
- 567 | *   | <span class='executed'>    }</span>
+ 567 |     | <span class='neutral'>    }</span>
  568 |     | <span class='neutral'></span>
- 569 | *r  | <span class='executed'>    // the top level state of the swap, the results of which are recorded in storage at the end</span>
+ 569 | *   | <span class='executed'>    // the top level state of the swap, the results of which are recorded in storage at the end</span>
  570 | *   | <span class='executed'>    struct SwapState {</span>
- 571 | *   | <span class='executed'>        // the amount remaining to be swapped in/out of the input/output asset</span>
+ 571 | *r  | <span class='executed'>        // the amount remaining to be swapped in/out of the input/output asset</span>
  572 | *   | <span class='executed'>        int256 amountSpecifiedRemaining;</span>
  573 | *   | <span class='executed'>        // the amount already swapped out/in of the output/input asset</span>
  574 | *   | <span class='executed'>        int256 amountCalculated;</span>
  575 | *   | <span class='executed'>        // current sqrt(price)</span>
  576 | *   | <span class='executed'>        uint160 sqrtPriceX96;</span>
  577 | *   | <span class='executed'>        // the tick associated with the current price</span>
- 578 |     | <span class='neutral'>        int24 tick;</span>
+ 578 | *   | <span class='executed'>        int24 tick;</span>
  579 | *   | <span class='executed'>        // the global fee growth of the input token</span>
  580 | *   | <span class='executed'>        uint256 feeGrowthGlobalX128;</span>
- 581 | *r  | <span class='executed'>        // amount of input token paid as protocol fee</span>
+ 581 | *   | <span class='executed'>        // amount of input token paid as protocol fee</span>
  582 |     | <span class='neutral'>        uint128 protocolFee;</span>
  583 | *   | <span class='executed'>        // the current liquidity in range</span>
  584 | *   | <span class='executed'>        uint128 liquidity;</span>
- 585 | *   | <span class='executed'>    }</span>
+ 585 |     | <span class='neutral'>    }</span>
  586 |     | <span class='neutral'></span>
- 587 | *   | <span class='executed'>    struct StepComputations {</span>
+ 587 | *r  | <span class='executed'>    struct StepComputations {</span>
  588 | *   | <span class='executed'>        // the price at the beginning of the step</span>
  589 | *   | <span class='executed'>        uint160 sqrtPriceStartX96;</span>
  590 | *   | <span class='executed'>        // the next tick to swap to from the current tick in the swap direction</span>
  591 | *   | <span class='executed'>        int24 tickNext;</span>
  592 | *   | <span class='executed'>        // whether tickNext is initialized or not</span>
  593 | *   | <span class='executed'>        bool initialized;</span>
- 594 |     | <span class='unexecuted'>        // sqrt(price) for the next tick (1/0)</span>
- 595 |     | <span class='unexecuted'>        uint160 sqrtPriceNextX96;</span>
- 596 |     | <span class='unexecuted'>        // how much is being swapped in in this step</span>
+ 594 | *   | <span class='executed'>        // sqrt(price) for the next tick (1/0)</span>
+ 595 | *   | <span class='executed'>        uint160 sqrtPriceNextX96;</span>
+ 596 | *   | <span class='executed'>        // how much is being swapped in in this step</span>
  597 |     | <span class='unexecuted'>        uint256 amountIn;</span>
  598 |     | <span class='unexecuted'>        // how much is being swapped out</span>
  599 |     | <span class='unexecuted'>        uint256 amountOut;</span>
  600 |     | <span class='unexecuted'>        // how much fee is being paid in</span>
- 601 |     | <span class='neutral'>        uint256 feeAmount;</span>
+ 601 |     | <span class='unexecuted'>        uint256 feeAmount;</span>
  602 |     | <span class='neutral'>    }</span>
  603 |     | <span class='neutral'></span>
  604 |     | <span class='unexecuted'>    /// @inheritdoc IUniswapV3PoolActions</span>
@@ -1033,8 +1033,8 @@
  606 |     | <span class='neutral'>        address recipient,</span>
  607 |     | <span class='neutral'>        bool zeroForOne,</span>
  608 |     | <span class='unexecuted'>        int256 amountSpecified,</span>
- 609 |     | <span class='unexecuted'>        uint160 sqrtPriceLimitX96,</span>
- 610 |     | <span class='unexecuted'>        bytes calldata data</span>
+ 609 |     | <span class='neutral'>        uint160 sqrtPriceLimitX96,</span>
+ 610 |     | <span class='neutral'>        bytes calldata data</span>
  611 | *   | <span class='executed'>    ) external override noDelegateCall returns (int256 amount0, int256 amount1) {</span>
  612 | *   | <span class='executed'>        if (amountSpecified == 0) revert AS();</span>
  613 |     | <span class='neutral'></span>
@@ -1045,19 +1045,19 @@
  618 | *   | <span class='executed'>            zeroForOne</span>
  619 | *   | <span class='executed'>                ? sqrtPriceLimitX96 &lt; slot0Start.sqrtPriceX96 &amp;&amp; sqrtPriceLimitX96 &gt; TickMath.MIN_SQRT_RATIO</span>
  620 | *   | <span class='executed'>                : sqrtPriceLimitX96 &gt; slot0Start.sqrtPriceX96 &amp;&amp; sqrtPriceLimitX96 &lt; TickMath.MAX_SQRT_RATIO,</span>
- 621 | *   | <span class='executed'>            &#39;SPL&#39;</span>
+ 621 |     | <span class='neutral'>            &#39;SPL&#39;</span>
  622 |     | <span class='neutral'>        );</span>
  623 |     | <span class='neutral'></span>
  624 | *   | <span class='executed'>        slot0.unlocked = false;</span>
  625 |     | <span class='neutral'></span>
  626 | *   | <span class='executed'>        SwapCache memory cache = SwapCache({</span>
  627 | *   | <span class='executed'>            liquidityStart: liquidity,</span>
- 628 |     | <span class='neutral'>            blockTimestamp: _blockTimestamp(),</span>
+ 628 | *   | <span class='executed'>            blockTimestamp: _blockTimestamp(),</span>
  629 | *   | <span class='executed'>            feeProtocol: zeroForOne ? (slot0Start.feeProtocol % 16) : (slot0Start.feeProtocol &gt;&gt; 4),</span>
  630 | *   | <span class='executed'>            secondsPerLiquidityCumulativeX128: 0,</span>
  631 | *   | <span class='executed'>            tickCumulative: 0,</span>
  632 | *   | <span class='executed'>            computedLatestObservation: false</span>
- 633 | *   | <span class='executed'>        });</span>
+ 633 |     | <span class='neutral'>        });</span>
  634 |     | <span class='neutral'></span>
  635 | *   | <span class='executed'>        bool exactInput = amountSpecified &gt; 0;</span>
  636 |     | <span class='neutral'></span>
@@ -1073,7 +1073,7 @@
  646 |     | <span class='neutral'></span>
  647 | *   | <span class='executed'>        // continue swapping as long as we haven&#39;t used the entire input/output and haven&#39;t reached the price limit</span>
  648 | *   | <span class='executed'>        while (state.amountSpecifiedRemaining != 0 &amp;&amp; state.sqrtPriceX96 != sqrtPriceLimitX96) {</span>
- 649 | *   | <span class='executed'>            StepComputations memory step;</span>
+ 649 |     | <span class='neutral'>            StepComputations memory step;</span>
  650 |     | <span class='neutral'></span>
  651 | *   | <span class='executed'>            step.sqrtPriceStartX96 = state.sqrtPriceX96;</span>
  652 |     | <span class='neutral'></span>
@@ -1083,7 +1083,7 @@
  656 | *   | <span class='executed'>                zeroForOne</span>
  657 |     | <span class='neutral'>            );</span>
  658 |     | <span class='neutral'></span>
- 659 | *   | <span class='executed'>            // ensure that we do not overshoot the min/max tick, as the tick bitmap is not aware of these bounds</span>
+ 659 |     | <span class='neutral'>            // ensure that we do not overshoot the min/max tick, as the tick bitmap is not aware of these bounds</span>
  660 | *   | <span class='executed'>            if (step.tickNext &lt; TickMath.MIN_TICK) {</span>
  661 | *   | <span class='executed'>                step.tickNext = TickMath.MIN_TICK;</span>
  662 | *   | <span class='executed'>            } else if (step.tickNext &gt; TickMath.MAX_TICK) {</span>
@@ -1102,42 +1102,42 @@
  675 | *   | <span class='executed'>                state.liquidity,</span>
  676 | *   | <span class='executed'>                state.amountSpecifiedRemaining,</span>
  677 | *   | <span class='executed'>                fee</span>
- 678 | *   | <span class='executed'>            );</span>
+ 678 |     | <span class='neutral'>            );</span>
  679 |     | <span class='neutral'></span>
  680 | *   | <span class='executed'>            if (exactInput) {</span>
  681 | *   | <span class='executed'>                // safe because we test that amountSpecified &gt; amountIn + feeAmount in SwapMath</span>
- 682 |     | <span class='neutral'>                unchecked {</span>
+ 682 | *   | <span class='executed'>                unchecked {</span>
  683 | *   | <span class='executed'>                    state.amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();</span>
  684 |     | <span class='neutral'>                }</span>
  685 | *   | <span class='executed'>                state.amountCalculated -= step.amountOut.toInt256();</span>
- 686 |     | <span class='neutral'>            } else {</span>
+ 686 | *   | <span class='executed'>            } else {</span>
  687 |     | <span class='neutral'>                unchecked {</span>
  688 | *   | <span class='executed'>                    state.amountSpecifiedRemaining += step.amountOut.toInt256();</span>
  689 |     | <span class='neutral'>                }</span>
  690 | *   | <span class='executed'>                state.amountCalculated += (step.amountIn + step.feeAmount).toInt256();</span>
- 691 |     | <span class='neutral'>            }</span>
+ 691 | *   | <span class='executed'>            }</span>
  692 |     | <span class='neutral'></span>
  693 | *   | <span class='executed'>            // if the protocol fee is on, calculate how much is owed, decrement feeAmount, and increment protocolFee</span>
  694 | *   | <span class='executed'>            if (cache.feeProtocol &gt; 0) {</span>
  695 | *   | <span class='executed'>                unchecked {</span>
- 696 |     | <span class='unexecuted'>                    uint256 delta = step.feeAmount / cache.feeProtocol;</span>
+ 696 | *   | <span class='executed'>                    uint256 delta = step.feeAmount / cache.feeProtocol;</span>
  697 | *   | <span class='executed'>                    step.feeAmount -= delta;</span>
- 698 | *   | <span class='executed'>                    state.protocolFee += uint128(delta);</span>
+ 698 |     | <span class='unexecuted'>                    state.protocolFee += uint128(delta);</span>
  699 |     | <span class='neutral'>                }</span>
- 700 | *   | <span class='executed'>            }</span>
+ 700 |     | <span class='neutral'>            }</span>
  701 |     | <span class='neutral'></span>
- 702 |     | <span class='neutral'>            // update global fee tracker</span>
+ 702 | *   | <span class='executed'>            // update global fee tracker</span>
  703 | *   | <span class='executed'>            if (state.liquidity &gt; 0) {</span>
- 704 |     | <span class='neutral'>                unchecked {</span>
+ 704 | *   | <span class='executed'>                unchecked {</span>
  705 | *   | <span class='executed'>                    state.feeGrowthGlobalX128 += FullMath.mulDiv(step.feeAmount, FixedPoint128.Q128, state.liquidity);</span>
- 706 |     | <span class='neutral'>                }</span>
+ 706 | *   | <span class='executed'>                }</span>
  707 |     | <span class='neutral'>            }</span>
  708 |     | <span class='neutral'></span>
- 709 |     | <span class='neutral'>            // shift tick if we reached the next price</span>
+ 709 | *   | <span class='executed'>            // shift tick if we reached the next price</span>
  710 | *   | <span class='executed'>            if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {</span>
  711 |     | <span class='neutral'>                // if the tick is initialized, run the tick transition</span>
  712 | *   | <span class='executed'>                if (step.initialized) {</span>
- 713 | *   | <span class='executed'>                    // check for the placeholder value, which we replace with the actual value the first time the swap</span>
+ 713 |     | <span class='neutral'>                    // check for the placeholder value, which we replace with the actual value the first time the swap</span>
  714 | *   | <span class='executed'>                    // crosses an initialized tick</span>
  715 | *   | <span class='executed'>                    if (!cache.computedLatestObservation) {</span>
  716 | *   | <span class='executed'>                        (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(</span>
@@ -1147,7 +1147,7 @@
  720 | *   | <span class='executed'>                            slot0Start.observationIndex,</span>
  721 | *   | <span class='executed'>                            cache.liquidityStart,</span>
  722 | *   | <span class='executed'>                            slot0Start.observationCardinality</span>
- 723 |     | <span class='neutral'>                        );</span>
+ 723 | *   | <span class='executed'>                        );</span>
  724 | *   | <span class='executed'>                        cache.computedLatestObservation = true;</span>
  725 |     | <span class='neutral'>                    }</span>
  726 | *   | <span class='executed'>                    int128 liquidityNet = ticks.cross(</span>
@@ -1157,17 +1157,17 @@
  730 | *   | <span class='executed'>                        cache.secondsPerLiquidityCumulativeX128,</span>
  731 | *   | <span class='executed'>                        cache.tickCumulative,</span>
  732 | *   | <span class='executed'>                        cache.blockTimestamp</span>
- 733 |     | <span class='neutral'>                    );</span>
- 734 | *   | <span class='executed'>                    // if we&#39;re moving leftward, we interpret liquidityNet as the opposite sign</span>
- 735 |     | <span class='neutral'>                    // safe because liquidityNet cannot be type(int128).min</span>
+ 733 |     | <span class='unexecuted'>                    );</span>
+ 734 |     | <span class='unexecuted'>                    // if we&#39;re moving leftward, we interpret liquidityNet as the opposite sign</span>
+ 735 | *   | <span class='executed'>                    // safe because liquidityNet cannot be type(int128).min</span>
  736 |     | <span class='neutral'>                    unchecked {</span>
  737 | *   | <span class='executed'>                        if (zeroForOne) liquidityNet = -liquidityNet;</span>
- 738 | *   | <span class='executed'>                    }</span>
+ 738 |     | <span class='neutral'>                    }</span>
  739 |     | <span class='neutral'></span>
  740 | *   | <span class='executed'>                    state.liquidity = liquidityNet &lt; 0</span>
  741 | *   | <span class='executed'>                        ? state.liquidity - uint128(-liquidityNet)</span>
  742 | *   | <span class='executed'>                        : state.liquidity + uint128(liquidityNet);</span>
- 743 | *   | <span class='executed'>                }</span>
+ 743 |     | <span class='neutral'>                }</span>
  744 |     | <span class='neutral'></span>
  745 | *   | <span class='executed'>                unchecked {</span>
  746 | *   | <span class='executed'>                    state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;</span>
@@ -1175,7 +1175,7 @@
  748 | *   | <span class='executed'>            } else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {</span>
  749 | *   | <span class='executed'>                // recompute unless we&#39;re on a lower tick boundary (i.e. already transitioned ticks), and haven&#39;t moved</span>
  750 | *   | <span class='executed'>                state.tick = TickMath.getTickAtSqrtRatio(state.sqrtPriceX96);</span>
- 751 | *   | <span class='executed'>            }</span>
+ 751 |     | <span class='neutral'>            }</span>
  752 | *   | <span class='executed'>        }</span>
  753 |     | <span class='neutral'></span>
  754 | *   | <span class='executed'>        // update tick and write an oracle entry if the tick change</span>
@@ -1187,40 +1187,40 @@
  760 | *   | <span class='executed'>                cache.liquidityStart,</span>
  761 | *   | <span class='executed'>                slot0Start.observationCardinality,</span>
  762 | *   | <span class='executed'>                slot0Start.observationCardinalityNext</span>
- 763 |     | <span class='neutral'>            );</span>
+ 763 | *   | <span class='executed'>            );</span>
  764 | *   | <span class='executed'>            (slot0.sqrtPriceX96, slot0.tick, slot0.observationIndex, slot0.observationCardinality) = (</span>
  765 | *   | <span class='executed'>                state.sqrtPriceX96,</span>
  766 | *   | <span class='executed'>                state.tick,</span>
- 767 |     | <span class='neutral'>                observationIndex,</span>
- 768 | *   | <span class='executed'>                observationCardinality</span>
- 769 | *   | <span class='executed'>            );</span>
- 770 |     | <span class='neutral'>        } else {</span>
+ 767 | *   | <span class='executed'>                observationIndex,</span>
+ 768 |     | <span class='neutral'>                observationCardinality</span>
+ 769 |     | <span class='neutral'>            );</span>
+ 770 | *   | <span class='executed'>        } else {</span>
  771 | *   | <span class='executed'>            // otherwise just update the price</span>
  772 | *   | <span class='executed'>            slot0.sqrtPriceX96 = state.sqrtPriceX96;</span>
  773 |     | <span class='neutral'>        }</span>
- 774 |     | <span class='neutral'></span>
- 775 |     | <span class='neutral'>        // update liquidity if it changed</span>
+ 774 | *   | <span class='executed'></span>
+ 775 | *   | <span class='executed'>        // update liquidity if it changed</span>
  776 | *   | <span class='executed'>        if (cache.liquidityStart != state.liquidity) liquidity = state.liquidity;</span>
  777 |     | <span class='neutral'></span>
  778 | *   | <span class='executed'>        // update fee growth global and, if necessary, protocol fees</span>
  779 | *   | <span class='executed'>        // overflow is acceptable, protocol has to withdraw before it hits type(uint128).max fees</span>
  780 | *   | <span class='executed'>        if (zeroForOne) {</span>
  781 | *   | <span class='executed'>            feeGrowthGlobal0X128 = state.feeGrowthGlobalX128;</span>
- 782 |     | <span class='neutral'>            unchecked {</span>
+ 782 | *   | <span class='executed'>            unchecked {</span>
  783 | *   | <span class='executed'>                if (state.protocolFee &gt; 0) protocolFees.token0 += state.protocolFee;</span>
  784 |     | <span class='neutral'>            }</span>
  785 |     | <span class='neutral'>        } else {</span>
  786 | *   | <span class='executed'>            feeGrowthGlobal1X128 = state.feeGrowthGlobalX128;</span>
- 787 | *   | <span class='executed'>            unchecked {</span>
+ 787 |     | <span class='neutral'>            unchecked {</span>
  788 | *   | <span class='executed'>                if (state.protocolFee &gt; 0) protocolFees.token1 += state.protocolFee;</span>
  789 | *   | <span class='executed'>            }</span>
  790 |     | <span class='neutral'>        }</span>
- 791 |     | <span class='neutral'></span>
- 792 | *   | <span class='executed'>        unchecked {</span>
+ 791 | *   | <span class='executed'></span>
+ 792 |     | <span class='neutral'>        unchecked {</span>
  793 | *   | <span class='executed'>            (amount0, amount1) = zeroForOne == exactInput</span>
  794 | *   | <span class='executed'>                ? (amountSpecified - state.amountSpecifiedRemaining, state.amountCalculated)</span>
  795 | *   | <span class='executed'>                : (state.amountCalculated, amountSpecified - state.amountSpecifiedRemaining);</span>
- 796 | *   | <span class='executed'>        }</span>
+ 796 |     | <span class='neutral'>        }</span>
  797 |     | <span class='neutral'></span>
  798 | *   | <span class='executed'>        // do the transfers and collect payment</span>
  799 | *   | <span class='executed'>        if (zeroForOne) {</span>
@@ -1234,7 +1234,7 @@
  807 | *   | <span class='executed'>        } else {</span>
  808 | *   | <span class='executed'>            unchecked {</span>
  809 | *   | <span class='executed'>                if (amount0 &lt; 0) TransferHelper.safeTransfer(token0, recipient, uint256(-amount0));</span>
- 810 |     | <span class='neutral'>            }</span>
+ 810 | *   | <span class='executed'>            }</span>
  811 |     | <span class='neutral'></span>
  812 | *   | <span class='executed'>            uint256 balance1Before = balance1();</span>
  813 | *   | <span class='executed'>            IUniswapV3SwapCallback(msg.sender).uniswapV3SwapCallback(amount0, amount1, data);</span>
@@ -1245,20 +1245,20 @@
  818 | *   | <span class='executed'>        slot0.unlocked = true;</span>
  819 |     | <span class='neutral'>    }</span>
  820 |     | <span class='neutral'></span>
- 821 | *   | <span class='executed'>    /// @inheritdoc IUniswapV3PoolActions</span>
- 822 | *   | <span class='executed'>    function flash(</span>
- 823 | *   | <span class='executed'>        address recipient,</span>
+ 821 |     | <span class='neutral'>    /// @inheritdoc IUniswapV3PoolActions</span>
+ 822 |     | <span class='unexecuted'>    function flash(</span>
+ 823 |     | <span class='neutral'>        address recipient,</span>
  824 | *   | <span class='executed'>        uint256 amount0,</span>
  825 | *   | <span class='executed'>        uint256 amount1,</span>
  826 | *   | <span class='executed'>        bytes calldata data</span>
  827 | *   | <span class='executed'>    ) external override lock noDelegateCall {</span>
  828 | *   | <span class='executed'>        uint128 _liquidity = liquidity;</span>
- 829 |     | <span class='unexecuted'>        if (_liquidity &lt;= 0) revert L();</span>
+ 829 | *   | <span class='executed'>        if (_liquidity &lt;= 0) revert L();</span>
  830 |     | <span class='neutral'></span>
  831 | *   | <span class='executed'>        uint256 fee0 = FullMath.mulDivRoundingUp(amount0, fee, 1e6);</span>
  832 | *   | <span class='executed'>        uint256 fee1 = FullMath.mulDivRoundingUp(amount1, fee, 1e6);</span>
  833 | *   | <span class='executed'>        uint256 balance0Before = balance0();</span>
- 834 | *   | <span class='executed'>        uint256 balance1Before = balance1();</span>
+ 834 |     | <span class='unexecuted'>        uint256 balance1Before = balance1();</span>
  835 |     | <span class='neutral'></span>
  836 | *   | <span class='executed'>        if (amount0 &gt; 0) TransferHelper.safeTransfer(token0, recipient, amount0);</span>
  837 | *   | <span class='executed'>        if (amount1 &gt; 0) TransferHelper.safeTransfer(token1, recipient, amount1);</span>
@@ -1267,11 +1267,11 @@
  840 |     | <span class='neutral'></span>
  841 | *   | <span class='executed'>        uint256 balance0After = balance0();</span>
  842 | *   | <span class='executed'>        uint256 balance1After = balance1();</span>
- 843 |     | <span class='neutral'></span>
+ 843 | *   | <span class='executed'></span>
  844 | *   | <span class='executed'>        if (balance0Before + fee0 &gt; balance0After) revert F0();</span>
  845 | *   | <span class='executed'>        if (balance1Before + fee1 &gt; balance1After) revert F1();</span>
  846 |     | <span class='neutral'></span>
- 847 | *   | <span class='executed'>        unchecked {</span>
+ 847 |     | <span class='neutral'>        unchecked {</span>
  848 | *   | <span class='executed'>            // sub is safe because we know balanceAfter is gt balanceBefore by at least fee</span>
  849 | *   | <span class='executed'>            uint256 paid0 = balance0After - balance0Before;</span>
  850 | *   | <span class='executed'>            uint256 paid1 = balance1After - balance1Before;</span>
@@ -1281,7 +1281,7 @@
  854 | *   | <span class='executed'>                uint256 pFees0 = feeProtocol0 == 0 ? 0 : paid0 / feeProtocol0;</span>
  855 | *   | <span class='executed'>                if (uint128(pFees0) &gt; 0) protocolFees.token0 += uint128(pFees0);</span>
  856 | *   | <span class='executed'>                feeGrowthGlobal0X128 += FullMath.mulDiv(paid0 - pFees0, FixedPoint128.Q128, _liquidity);</span>
- 857 |     | <span class='neutral'>            }</span>
+ 857 | *   | <span class='executed'>            }</span>
  858 | *   | <span class='executed'>            if (paid1 &gt; 0) {</span>
  859 | *   | <span class='executed'>                uint8 feeProtocol1 = slot0.feeProtocol &gt;&gt; 4;</span>
  860 | *   | <span class='executed'>                uint256 pFees1 = feeProtocol1 == 0 ? 0 : paid1 / feeProtocol1;</span>
@@ -1290,23 +1290,23 @@
  863 |     | <span class='neutral'>            }</span>
  864 |     | <span class='neutral'></span>
  865 | *   | <span class='executed'>            emit Flash(msg.sender, recipient, amount0, amount1, paid0, paid1);</span>
- 866 |     | <span class='neutral'>        }</span>
- 867 | *   | <span class='executed'>    }</span>
+ 866 | *   | <span class='executed'>        }</span>
+ 867 |     | <span class='neutral'>    }</span>
  868 |     | <span class='neutral'></span>
  869 | *   | <span class='executed'>    /// @inheritdoc IUniswapV3PoolOwnerActions</span>
  870 | *   | <span class='executed'>    function setFeeProtocol(uint8 feeProtocol0, uint8 feeProtocol1) external override lock onlyFactoryOwner {</span>
  871 | *   | <span class='executed'>        unchecked {</span>
- 872 |     | <span class='unexecuted'>            require(</span>
+ 872 | *   | <span class='executed'>            require(</span>
  873 | *   | <span class='executed'>                (feeProtocol0 == 0 || (feeProtocol0 &gt;= 4 &amp;&amp; feeProtocol0 &lt;= 10)) &amp;&amp;</span>
  874 | *   | <span class='executed'>                    (feeProtocol1 == 0 || (feeProtocol1 &gt;= 4 &amp;&amp; feeProtocol1 &lt;= 10))</span>
- 875 |     | <span class='neutral'>            );</span>
+ 875 | *   | <span class='executed'>            );</span>
  876 | *   | <span class='executed'>            uint8 feeProtocolOld = slot0.feeProtocol;</span>
  877 | *   | <span class='executed'>            slot0.feeProtocol = feeProtocol0 + (feeProtocol1 &lt;&lt; 4);</span>
  878 | *   | <span class='executed'>            emit SetFeeProtocol(feeProtocolOld % 16, feeProtocolOld &gt;&gt; 4, feeProtocol0, feeProtocol1);</span>
  879 | *   | <span class='executed'>        }</span>
  880 |     | <span class='neutral'>    }</span>
  881 |     | <span class='neutral'></span>
- 882 | *   | <span class='executed'>    /// @inheritdoc IUniswapV3PoolOwnerActions</span>
+ 882 |     | <span class='neutral'>    /// @inheritdoc IUniswapV3PoolOwnerActions</span>
  883 | *   | <span class='executed'>    function collectProtocol(</span>
  884 | *   | <span class='executed'>        address recipient,</span>
  885 | *   | <span class='executed'>        uint128 amount0Requested,</span>
@@ -1320,8 +1320,8 @@
  893 | *   | <span class='executed'>                if (amount0 == protocolFees.token0) amount0--; // ensure that the slot is not cleared, for gas savings</span>
  894 | *   | <span class='executed'>                protocolFees.token0 -= amount0;</span>
  895 | *   | <span class='executed'>                TransferHelper.safeTransfer(token0, recipient, amount0);</span>
- 896 |     | <span class='neutral'>            }</span>
- 897 | *   | <span class='executed'>            if (amount1 &gt; 0) {</span>
+ 896 | *   | <span class='executed'>            }</span>
+ 897 |     | <span class='unexecuted'>            if (amount1 &gt; 0) {</span>
  898 | *   | <span class='executed'>                if (amount1 == protocolFees.token1) amount1--; // ensure that the slot is not cleared, for gas savings</span>
  899 | *   | <span class='executed'>                protocolFees.token1 -= amount1;</span>
  900 | *   | <span class='executed'>                TransferHelper.safeTransfer(token1, recipient, amount1);</span>
@@ -2864,7 +2864,7 @@
  53 |     | <span class='neutral'>        uint128 liquidityNext;</span>
  54 | *   | <span class='executed'>        if (liquidityDelta == 0) {</span>
  55 | *   | <span class='executed'>            if (_self.liquidity &lt;= 0) revert NP(); // disallow pokes for 0 liquidity positions</span>
- 56 |     | <span class='unexecuted'>            liquidityNext = _self.liquidity;</span>
+ 56 | *   | <span class='executed'>            liquidityNext = _self.liquidity;</span>
  57 |     | <span class='neutral'>        } else {</span>
  58 | *   | <span class='executed'>            liquidityNext = liquidityDelta &lt; 0</span>
  59 | *   | <span class='executed'>                ? _self.liquidity - uint128(-liquidityDelta)</span>
@@ -3920,7 +3920,7 @@
  55 |     | <span class='unexecuted'>        buffer[1] = &quot;x&quot;;</span>
  56 | *   | <span class='executed'>        for (uint256 i = 2 * length + 1; i &gt; 1; --i) {</span>
  57 | *   | <span class='executed'>            buffer[i] = _SYMBOLS[value &amp; 0xf];</span>
- 58 |     | <span class='unexecuted'>            value &gt;&gt;= 4;</span>
+ 58 | *   | <span class='executed'>            value &gt;&gt;= 4;</span>
  59 |     | <span class='unexecuted'>        }</span>
  60 | *   | <span class='executed'>        require(value == 0, &quot;Strings: hex length insufficient&quot;);</span>
  61 | *   | <span class='executed'>        return string(buffer);</span>
@@ -6292,7 +6292,7 @@
    49 |     | <span class='neutral'>        int24 atTick,</span>
    50 |     | <span class='neutral'>        uint256 tokenType,</span>
    51 |     | <span class='neutral'>        TokenId[] calldata positionIdList</span>
-   52 |     | <span class='unexecuted'>    ) public view returns (uint256, uint256) {</span>
+   52 |     | <span class='unexecuted'>    ) public returns (uint256, uint256) {</span>
    53 |     | <span class='neutral'>        // Compute premia for all options (includes short+long premium)</span>
    54 |     | <span class='unexecuted'>        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool</span>
    55 |     | <span class='unexecuted'>            .calculateAccumulatedFeesBatch(account, false, positionIdList);</span>
@@ -6327,7 +6327,7 @@
    84 |     | <span class='neutral'>        address account,</span>
    85 |     | <span class='neutral'>        int24 tick,</span>
    86 |     | <span class='neutral'>        TokenId[] calldata positionIdList</span>
-   87 |     | <span class='unexecuted'>    ) internal view returns (int256) {</span>
+   87 |     | <span class='unexecuted'>    ) internal returns (int256) {</span>
    88 |     | <span class='unexecuted'>        (uint256 balanceCross, uint256 requiredCross) = checkCollateral(</span>
    89 |     | <span class='unexecuted'>            PanopticPool(pool),</span>
    90 |     | <span class='unexecuted'>            account,</span>
@@ -6372,7 +6372,7 @@
   129 |     | <span class='neutral'>        address pool,</span>
   130 |     | <span class='neutral'>        address account,</span>
   131 |     | <span class='neutral'>        TokenId[] calldata positionIdList</span>
-  132 |     | <span class='unexecuted'>    ) public view returns (int24 liquidationTick) {</span>
+  132 |     | <span class='unexecuted'>    ) public returns (int24 liquidationTick) {</span>
   133 |     | <span class='neutral'>        // initialize right and left bounds from current tick</span>
   134 |     | <span class='unexecuted'>        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();</span>
   135 |     | <span class='unexecuted'>        int24 x0 = currentTick - 10000;</span>
@@ -6420,7 +6420,7 @@
   177 |     | <span class='neutral'>        address pool,</span>
   178 |     | <span class='neutral'>        address account,</span>
   179 |     | <span class='neutral'>        TokenId[] calldata positionIdList</span>
-  180 |     | <span class='unexecuted'>    ) public view returns (int24 liquidationTick) {</span>
+  180 |     | <span class='unexecuted'>    ) public returns (int24 liquidationTick) {</span>
   181 |     | <span class='neutral'>        // initialize right and left bounds from current tick</span>
   182 |     | <span class='unexecuted'>        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();</span>
   183 |     | <span class='unexecuted'>        int24 x0 = currentTick;</span>

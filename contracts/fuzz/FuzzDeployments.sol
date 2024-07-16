@@ -268,6 +268,8 @@ contract FuzzDeployments is FuzzHelpers {
         int24 width;
         int24 strike;
 
+        (, currentTick, , , , , ) = pool.slot0();
+
         if (is_atm) {
             (width, strike) = getATMSW(
                 width_in,
@@ -309,7 +311,9 @@ contract FuzzDeployments is FuzzHelpers {
         int256[4] memory strike_in
     ) internal returns (TokenId out) {
         out = TokenId.wrap(poolId);
-        numLegs = bound(numLegs, 1, 4);
+        //numLegs = bound(numLegs, 1, numLegs);
+
+        (, currentTick, , , , , ) = pool.slot0();
 
         // The parameters come from the function parameters
         for (uint256 i = 0; i < numLegs; i++) {
@@ -2018,123 +2022,925 @@ contract FuzzDeployments is FuzzHelpers {
 
     /// SFPM direct interactions
 
-    // valid token id wrapper
-    // add to minting positions at random (generate invalid tokenID see if mint succeeds ??)
-
     ////////////////////////////////////////////////////
     // Mint
     ////////////////////////////////////////////////////
 
     // mint option sfpm standard mint (store this position in mapping)
-    // check: the netLiquidity added, liquidity added in uniswap
-    // multiple legs
-    function mint_option_SFPM_netLiquidity_singleSell(
+    // ** add moved amts check
+    function mint_option_SFPM_singleShort(
         bool asset,
         bool is_call,
+        bool is_otm,
+        bool is_atm,
         uint24 width,
         int256 strike,
         uint128 positionSize
     ) public {
-        // must be
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
-            false,
-            false,
+            is_otm,
+            is_atm,
             width,
             strike
         );
 
-        int256 totalMoved0;
-        int256 totalMoved1;
+        // get the amount of liquidity being deposited
+        liquidityChunk = PanopticMath.getLiquidityChunk(tokenIdShort, 0, positionSize);
 
-        int24 tickLimitLow = int24(887272);
-        int24 tickLimitHigh = int24(-887272);
+        // simulate the mint and get the actual moved amounts
+        $tickLowerActive = liquidityChunk.tickLower();
+        $tickUpperActive = liquidityChunk.tickUpper();
+        $LiqAmountActive = liquidityChunk.liquidity();
 
-        {
-            // get moved amounts
-            // moved amounts is faulty function
-            // reverts for some reason
-            (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+        ($posLiquidity, , , , ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    address(sfpm),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            )
+        );
 
-            // get itm amounts
-            (int256 itm0, int256 itm1) = _calculate_itm_amounts(
-                tokenIdSell.tokenType(0),
-                moved0,
-                moved1
-            );
-
-            (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
-
-            hevm.prank(msg.sender);
-            fund_and_approve();
-
-            (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
-                msg.sender,
-                zeroForOne,
-                swapAmount
-            );
-
-            // total moved
-            totalMoved0 = moved0 + swap0;
-            totalMoved1 = moved1 + swap1;
+        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // only burn if there is pre-existing liquidity at this chunk
+        if ($posLiquidity != 0) {
+            hevm.prank(address(sfpm));
+            pool.burn($tickLowerActive, $tickUpperActive, 0);
         }
 
-        // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        // get the amount of liquidity within that range present in uniswap already
+        bytes32 positionKey = keccak256(
+            abi.encodePacked(address(sfpm), liquidityChunk.tickLower(), liquidityChunk.tickUpper())
+        );
 
-        emit LogInt256("bal before 0", balBefore0);
-        emit LogInt256("bal before 1", balBefore1);
+        (uint128 liquidityBefore, , , , ) = pool.positions(positionKey);
 
-        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
-            // check final balances
-            // int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
-            // int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
+            address(pool),
+            msg.sender,
+            tokenIdShort.tokenType(0),
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper()
+        );
 
-            // emit LogInt256("bal after 0", balAfter0);
-            // emit LogInt256("bal after 1", balAfter1);
+        removedLiquidityBefore = accountLiquiditiesBefore.leftSlot();
+        netLiquidityBefore = accountLiquiditiesBefore.rightSlot();
 
-            // assertWithMsg((balBefore0 - totalMoved0) == balAfter0, "bal 0 delta invalid");
-            // assertWithMsg((balBefore1 - totalMoved1) == balAfter1, "bal 1 delta invalid");
+        emit LogInt256("liquidityChunk.tickLower()", liquidityChunk.tickLower());
+        emit LogInt256("liquidityChunk.tickUpper()", liquidityChunk.tickUpper());
 
-            (int24 tickLower, int24 tickUpper) = tokenIdSell.asTicks(0);
+        // s_accountFeesBase before
+        // check s_accountFeesBase is updated correctly
+        (oldFeesBase0, oldFeesBase1) = sfpm.getAccountFeesBase(
+            address(pool),
+            msg.sender,
+            tokenIdShort.tokenType(0),
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper()
+        );
 
-            // check the net liquidity added
-            LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
-                address(pool),
-                msg.sender,
-                tokenIdSell.tokenType(0),
-                tickLower,
-                tickUpper
+        (, $feeGrowthInside0LastX128Before, $feeGrowthInside1LastX128Before, , ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    address(sfpm),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            )
+        );
+
+        emit LogUint256("feeGrowthInside0LastX128Before before", $feeGrowthInside0LastX128Before);
+        emit LogUint256("feeGrowthInside1LastX128Before before", $feeGrowthInside1LastX128Before);
+
+        {
+            //
+            int128 newFeesBaseRoundDown0 = int128(
+                int256(Math.mulDiv128($feeGrowthInside0LastX128Before, netLiquidityBefore))
+            );
+            int128 newFeesBaseRoundDown1 = int128(
+                int256(Math.mulDiv128($feeGrowthInside1LastX128Before, netLiquidityBefore))
             );
 
-            /// /// /// /// ///
+            emit LogInt256("newFeesBaseRoundDown0", newFeesBaseRoundDown0);
+            emit LogInt256("newFeesBaseRoundDown1", newFeesBaseRoundDown1);
 
-            uint256 removedLiquidity = accountLiquidities.leftSlot();
-            uint256 netLiquidity = accountLiquidities.rightSlot();
+            emit LogInt256("newFeesBaseRoundDown0", newFeesBaseRoundDown0);
+            emit LogInt256("newFeesBaseRoundDown1", newFeesBaseRoundDown1);
 
-            emit LogUint256("removedLiquidity", removedLiquidity);
-            emit LogUint256("netLiquidity", netLiquidity);
+            //
+            $amountToCollect0 = int128(Math.max(newFeesBaseRoundDown0 - oldFeesBase0, 0));
+            $amountToCollect1 = int128(Math.max(newFeesBaseRoundDown1 - oldFeesBase1, 0));
 
-            assertWithMsg(false, "x xx x x x");
+            // get the minted amounts (true moved amounts)
+            // also get the true collected amounts
+            quote_uni_CollectAndMint();
+        }
+
+        // get premium gross/owed before (compute with max tick to get value stored in sfpm currently)
+        // after check if stored value matches this value
+        {
+            ($accountPremiumGrossBefore0, $accountPremiumGrossBefore1) = sfpm.getAccountPremium(
+                address(pool),
+                $activeUser,
+                tokenIdShort.tokenType(0),
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
+                type(int24).max,
+                0 // short to check gross
+            );
+
+            // get gross premium
+            emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumGrossBefore0);
+            emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumGrossBefore1);
+        }
+
+        {
+            // owed premium
+            ($accountPremiumOwedBefore0, $accountPremiumOwedBefore1) = sfpm.getAccountPremium(
+                address(pool),
+                $activeUser,
+                tokenIdShort.tokenType(0),
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
+                type(int24).max,
+                0 // long to check owed
+            );
+
+            // get owed premium
+            emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumOwedBefore0);
+            emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumOwedBefore1);
+        }
+
+        hevm.prank(msg.sender);
+        try
+            sfpm.mintTokenizedPosition(tokenIdShort, positionSize, int24(-887272), int24(887272))
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+            // store the current actor
+            $activeUser = msg.sender;
+
+            // copy return into storage
+            $collectedByLeg = collectedByLeg;
+            $totalSwapped = totalSwapped;
+
+            // check the net liquidity added
+            {
+                LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
+                    address(pool),
+                    msg.sender,
+                    tokenIdShort.tokenType(0),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                );
+
+                removedLiquidityAfter = accountLiquiditiesAfter.leftSlot();
+                netLiquidityAfter = accountLiquiditiesAfter.rightSlot();
+
+                emit LogUint256("removedLiquidityBefore", removedLiquidityBefore);
+                emit LogUint256("netLiquidityBefore", netLiquidityBefore);
+
+                emit LogUint256("removedLiquidityAfter", removedLiquidityAfter);
+                emit LogUint256("netLiquidityAfter", netLiquidityAfter);
+
+                // check the liquidity tracked is the same as the liquidity computed
+                assertWithMsg(
+                    netLiquidityAfter == $LiqAmountActive + netLiquidityBefore,
+                    "invalid net liquidity"
+                );
+
+                // ensure the removed liquidity remains the same
+                assertWithMsg(
+                    removedLiquidityBefore == removedLiquidityAfter,
+                    "invalid removed liquidity"
+                );
+            }
 
             // check the liquidity deposited within uniswap
+            {
+                (uint128 liquidityDeployed, , , , ) = pool.positions(positionKey);
 
-            // add minted option to mapping of minted SFPM positions
-        } catch {}
+                emit LogUint256("liquidityBefore", liquidityBefore);
+                emit LogUint256("$LiqAmountActive", $LiqAmountActive);
+                emit LogUint256("liquidityDeployed", liquidityDeployed);
+
+                assertWithMsg(
+                    liquidityBefore + $LiqAmountActive == liquidityDeployed,
+                    "invalid uniswap liq"
+                );
+            }
+
+            // check stored fees base for this position
+            {
+                (, $feeGrowthInside0LastX128After, $feeGrowthInside1LastX128After, , ) = pool
+                    .positions(
+                        keccak256(
+                            abi.encodePacked(
+                                address(sfpm),
+                                liquidityChunk.tickLower(),
+                                liquidityChunk.tickUpper()
+                            )
+                        )
+                    );
+
+                emit LogUint256("feeGrowthInside0LastX128After", $feeGrowthInside0LastX128After);
+                emit LogUint256("feeGrowthInside1LastX128After", $feeGrowthInside1LastX128After);
+
+                // new fees base
+                int128 newFeesBase0 = int128(
+                    int256(
+                        Math.mulDiv128RoundingUp($feeGrowthInside0LastX128After, netLiquidityAfter)
+                    )
+                );
+                int128 newFeesBase1 = int128(
+                    int256(
+                        Math.mulDiv128RoundingUp($feeGrowthInside1LastX128After, netLiquidityAfter)
+                    )
+                );
+
+                // check newly stored feesBase
+
+                (int128 feesBase0, int128 feesBase1) = sfpm.getAccountFeesBase(
+                    address(pool),
+                    msg.sender,
+                    tokenIdShort.tokenType(0),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                );
+
+                emit LogInt256("oldFeesBase0", oldFeesBase0);
+                emit LogInt256("oldFeesBase1", oldFeesBase1);
+
+                emit LogInt256("newFeesBase0", newFeesBase0);
+                emit LogInt256("newFeesBase1", newFeesBase1);
+
+                emit LogInt256("feesBase0", feesBase0);
+                emit LogInt256("feesBase1", feesBase1);
+
+                assertWithMsg(newFeesBase0 == feesBase0, "invalid fees base 0");
+                assertWithMsg(newFeesBase1 == feesBase1, "invalid fees base 1");
+            }
+
+            /// compute and verify the amounts to collect
+            /// collected the amounts using starting liquidity
+            {
+                // ensure amountToCollect is always positive
+                assertWithMsg($amountToCollect0 >= 0, "amountToCollect0 invalid");
+                assertWithMsg($amountToCollect1 >= 0, "amountToCollect1 invalid");
+
+                $collected0 = $amountMinted0 < 0
+                    ? $recievedAmount0 - uint128($amountMinted0)
+                    : $recievedAmount0;
+                $collected1 = $amountMinted1 < 0
+                    ? $recievedAmount1 - uint128($amountMinted1)
+                    : $recievedAmount1;
+
+                emit LogInt256("amountToCollect0", $amountToCollect0);
+                emit LogInt256("amountToCollect1", $amountToCollect1);
+
+                emit LogUint256("receivedAmount0", $recievedAmount0);
+                emit LogUint256("receivedAmount1", $recievedAmount1);
+
+                emit LogUint256("amountMinted0", $amountMinted0);
+                emit LogUint256("amountMinted1", $amountMinted1);
+
+                emit LogUint256("collected0", $collected0);
+                emit LogUint256("collected1", $collected1);
+
+                emit LogUint256("collectedByLeg[0].rightSlot()", $collectedByLeg[0].rightSlot());
+                emit LogUint256("collectedByLeg[0].leftSlot()", $collectedByLeg[0].leftSlot());
+
+                assertWithMsg($collected0 == $collectedByLeg[0].rightSlot(), "invalid collected 0");
+                assertWithMsg($collected1 == $collectedByLeg[0].leftSlot(), "invalid collected 1");
+
+                {
+                    // get premium gross
+                    ($accountPremiumGrossAfter0, $accountPremiumGrossAfter1) = sfpm
+                        .getAccountPremium(
+                            address(pool),
+                            $activeUser,
+                            tokenIdShort.tokenType(0),
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            type(int24).max,
+                            0 // to query gross
+                        );
+
+                    // get premium owed
+                    ($accountPremiumOwedAfter0, $accountPremiumOwedAfter1) = sfpm.getAccountPremium(
+                        address(pool),
+                        $activeUser,
+                        tokenIdShort.tokenType(0),
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        type(int24).max,
+                        1 // to query owed
+                    );
+
+                    // gross
+                    emit LogUint256("$accountPremiumGrossAfter0", $accountPremiumGrossAfter0);
+                    emit LogUint256("$accountPremiumGrossAfter1", $accountPremiumGrossAfter1);
+                    // owed
+                    emit LogUint256("$accountPremiumOwedAfter0", $accountPremiumOwedAfter0);
+                    emit LogUint256("$accountPremiumOwedAfter1", $accountPremiumOwedAfter1);
+
+                    if ($collected0 != 0 || $collected1 != 0) {
+                        LeftRightUnsigned deltaPremiumOwed;
+                        LeftRightUnsigned deltaPremiumGross;
+
+                        /// assert premia values before and after
+                        // add previous s_accountPremiumOwed by new amounts (if previously uint128 max ensure it doesn't overflow)
+                        try
+                            this.getPremiaDeltasChecked(
+                                netLiquidityBefore,
+                                removedLiquidityBefore,
+                                $collected0,
+                                $collected1
+                            )
+                        returns (
+                            LeftRightUnsigned deltaPremiumOwedR,
+                            LeftRightUnsigned deltaPremiumGrossR
+                        ) {
+                            // pass
+                            deltaPremiumOwed = deltaPremiumOwedR;
+                            deltaPremiumGross = deltaPremiumGrossR;
+                        } catch {
+                            assertWithMsg(false, "fail  in premia calc");
+                        }
+
+                        emit LogUint256(
+                            "deltaPremiumOwed.rightSlot()",
+                            deltaPremiumOwed.rightSlot()
+                        );
+
+                        emit LogUint256("deltaPremiumOwed.leftSlot()", deltaPremiumOwed.leftSlot());
+
+                        emit LogUint256(
+                            "deltaPremiumGross.rightSlot()",
+                            deltaPremiumGross.rightSlot()
+                        );
+                        emit LogUint256(
+                            "deltaPremiumGross.leftSlot()",
+                            deltaPremiumGross.leftSlot()
+                        );
+
+                        // ensure getAccountPremium up to the current touch(max tick) vals match
+                        // against the externally computed premia values
+                        (
+                            $accountPremiumGrossCalculated0,
+                            $accountPremiumGrossCalculated1,
+                            $accountPremiumOwedCalculated0,
+                            $accountPremiumOwedCalculated1
+                        ) = incrementPremiaAccumulator(
+                            $accountPremiumGrossBefore0,
+                            $accountPremiumGrossBefore1,
+                            //
+                            deltaPremiumOwed.rightSlot(),
+                            deltaPremiumOwed.leftSlot(),
+                            //
+                            $accountPremiumOwedBefore0,
+                            $accountPremiumOwedBefore1,
+                            //
+                            deltaPremiumGross.rightSlot(),
+                            deltaPremiumGross.leftSlot()
+                        );
+
+                        emit LogUint256(
+                            "$accountPremiumGrossCalculated0",
+                            $accountPremiumGrossCalculated0
+                        );
+                        emit LogUint256(
+                            "$accountPremiumGrossCalculated0",
+                            $accountPremiumGrossCalculated1
+                        );
+                        //
+                        emit LogUint256(
+                            "$accountPremiumOwedCalculated0",
+                            $accountPremiumOwedCalculated0
+                        );
+                        emit LogUint256(
+                            "$accountPremiumOwedCalculated1",
+                            $accountPremiumOwedCalculated1
+                        );
+
+                        // check calculated gross matches up with stored
+                        assertWithMsg(
+                            $accountPremiumGrossCalculated0 == $accountPremiumGrossAfter0,
+                            "invalid gross 0"
+                        );
+                        assertWithMsg(
+                            $accountPremiumGrossCalculated1 == $accountPremiumGrossAfter1,
+                            "invalid gross 1"
+                        );
+
+                        // check owed matches up with stored
+                        assertWithMsg(
+                            $accountPremiumOwedCalculated0 == $accountPremiumOwedAfter0,
+                            "invalid owed 0"
+                        );
+                        assertWithMsg(
+                            $accountPremiumOwedCalculated1 == $accountPremiumOwedAfter1,
+                            "invalid owed 1"
+                        );
+                    } else {
+                        // gross checks
+                        assertWithMsg(
+                            $accountPremiumGrossBefore0 == $accountPremiumGrossAfter0,
+                            "invalid gross 0 -> no collect"
+                        );
+                        assertWithMsg(
+                            $accountPremiumGrossBefore1 == $accountPremiumGrossAfter1,
+                            "invalid gross 1 -> no collect"
+                        );
+
+                        // owed checks
+                        assertWithMsg(
+                            $accountPremiumOwedBefore0 == $accountPremiumOwedAfter0,
+                            "invalid owed 0 -> no collect"
+                        );
+                        assertWithMsg(
+                            $accountPremiumOwedBefore1 == $accountPremiumOwedAfter1,
+                            "invalid owed 1 -> no collect"
+                        );
+                    }
+                }
+            }
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdShort);
+        } catch {
+            // @note if it fails ensure the amount of liquidity being minted was valid
+            // that the user has enough tokens to cover the mint and the mint is non-zero liq
+        }
     }
 
-    // function mint_option_SFPM_
+    // buy attempt (mint a long position)
+    // finds a matching short position which was minted by the user
+    // deducts net from existing short position and adds to removed liquidity
+    // ** add moved amts check
+    function mint_option_SFPM_singleLong(uint128 positionSize) public {
+        {
+            // search for a tokenId that the current actor has sold
+            uint256 totalPosLen = userPositionsSFPM[msg.sender].length;
+            for (uint256 i; i < totalPosLen; i++) {
+                TokenId tokenIdCheck = userPositionsSFPM[msg.sender][i];
 
-    // wrapper to check the net liquidity
+                // check if this is a short
+                if (!(tokenIdCheck.isLong(0) == 0)) {
+                    tokenIdLong = tokenIdCheck;
+                }
+            }
 
-    // wrapper to check collected fees
+            // if no tokenIdLong is set then return execution
+            // as there were no matching short positions for the user to buy
+            if (tokenIdLong.poolId() == uint256(0)) {
+                return ();
+            }
+        }
+
+        // get the amount of liquidity being deposited
+        liquidityChunk = PanopticMath.getLiquidityChunk(tokenIdLong, 0, positionSize);
+
+        // simulate the mint and get the actual moved amounts
+        $tickLowerActive = liquidityChunk.tickLower();
+        $tickUpperActive = liquidityChunk.tickUpper();
+        $LiqAmountActive = liquidityChunk.liquidity();
+
+        ($posLiquidity, , , , ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    address(sfpm),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            )
+        );
+
+        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // only poke if there is pre-existing liquidity at this chunk
+        if ($posLiquidity != 0) {
+            hevm.prank(address(sfpm));
+            pool.burn($tickLowerActive, $tickUpperActive, 0);
+        }
+
+        // get the amount of liquidity within that range present in uniswap already
+        bytes32 positionKey = keccak256(
+            abi.encodePacked(address(sfpm), liquidityChunk.tickLower(), liquidityChunk.tickUpper())
+        );
+
+        (uint128 liquidityBefore, , , , ) = pool.positions(positionKey);
+
+        LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
+            address(pool),
+            msg.sender,
+            tokenIdLong.tokenType(0),
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper()
+        );
+
+        removedLiquidityBefore = accountLiquiditiesBefore.leftSlot();
+        netLiquidityBefore = accountLiquiditiesBefore.rightSlot();
+
+        emit LogInt256("liquidityChunk.tickLower()", liquidityChunk.tickLower());
+        emit LogInt256("liquidityChunk.tickUpper()", liquidityChunk.tickUpper());
+
+        // s_accountFeesBase before
+        // check s_accountFeesBase is updated correctly
+        (oldFeesBase0, oldFeesBase1) = sfpm.getAccountFeesBase(
+            address(pool),
+            msg.sender,
+            tokenIdLong.tokenType(0),
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper()
+        );
+
+        (, $feeGrowthInside0LastX128Before, $feeGrowthInside1LastX128Before, , ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    address(sfpm),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            )
+        );
+
+        emit LogUint256("feeGrowthInside0LastX128Before before", $feeGrowthInside0LastX128Before);
+        emit LogUint256("feeGrowthInside1LastX128Before before", $feeGrowthInside1LastX128Before);
+
+        {
+            //
+            int128 newFeesBaseRoundDown0 = int128(
+                int256(Math.mulDiv128($feeGrowthInside0LastX128Before, netLiquidityBefore))
+            );
+            int128 newFeesBaseRoundDown1 = int128(
+                int256(Math.mulDiv128($feeGrowthInside1LastX128Before, netLiquidityBefore))
+            );
+
+            emit LogInt256("newFeesBaseRoundDown0", newFeesBaseRoundDown0);
+            emit LogInt256("newFeesBaseRoundDown1", newFeesBaseRoundDown1);
+
+            emit LogInt256("newFeesBaseRoundDown0", newFeesBaseRoundDown0);
+            emit LogInt256("newFeesBaseRoundDown1", newFeesBaseRoundDown1);
+
+            //
+            $amountToCollect0 = int128(Math.max(newFeesBaseRoundDown0 - oldFeesBase0, 0));
+            $amountToCollect1 = int128(Math.max(newFeesBaseRoundDown1 - oldFeesBase1, 0));
+
+            // correct amount to collect as this is burning liq (long pos)
+            $amountToCollect0 += int128($amountBurned0);
+            $amountToCollect1 += int128($amountBurned1);
+
+            // get the burned amounts (true moved amounts)
+            // also get the true collected amounts
+            quote_uni_CollectAndBurn();
+        }
+
+        // get premium gross/owed before (compute with max tick to get value stored in sfpm currently)
+        // after check if stored value matches this value
+        {
+            ($accountPremiumGrossBefore0, $accountPremiumGrossBefore1) = sfpm.getAccountPremium(
+                address(pool),
+                $activeUser,
+                tokenIdLong.tokenType(0),
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
+                type(int24).max,
+                0 // short to check gross
+            );
+
+            // get gross premium
+            emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumGrossBefore0);
+            emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumGrossBefore1);
+        }
+
+        {
+            // owed premium
+            ($accountPremiumOwedBefore0, $accountPremiumOwedBefore1) = sfpm.getAccountPremium(
+                address(pool),
+                $activeUser,
+                tokenIdLong.tokenType(0),
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
+                type(int24).max,
+                0 // long to check owed
+            );
+
+            // get owed premium
+            emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumOwedBefore0);
+            emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumOwedBefore1);
+        }
+
+        hevm.prank(msg.sender);
+        try
+            sfpm.mintTokenizedPosition(tokenIdLong, positionSize, int24(-887272), int24(887272))
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+            // @note if chunk liquidity is greater than net liquidity throw an invariant failure
+
+            // store the current actor
+            $activeUser = msg.sender;
+
+            // copy return into storage
+            $collectedByLeg = collectedByLeg;
+            $totalSwapped = totalSwapped;
+
+            // check the net liquidity added
+            {
+                LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
+                    address(pool),
+                    msg.sender,
+                    tokenIdLong.tokenType(0),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                );
+
+                removedLiquidityAfter = accountLiquiditiesAfter.leftSlot();
+                netLiquidityAfter = accountLiquiditiesAfter.rightSlot();
+
+                emit LogUint256("removedLiquidityBefore", removedLiquidityBefore);
+                emit LogUint256("netLiquidityBefore", netLiquidityBefore);
+
+                emit LogUint256("removedLiquidityAfter", removedLiquidityAfter);
+                emit LogUint256("netLiquidityAfter", netLiquidityAfter);
+
+                // check the liquidity tracked is the same as the liquidity computed
+                assertWithMsg(
+                    netLiquidityAfter == netLiquidityBefore - $LiqAmountActive,
+                    "invalid net liquidity"
+                );
+
+                // ensure the removed liquidity remains the same
+                assertWithMsg(
+                    removedLiquidityBefore + $LiqAmountActive == removedLiquidityAfter,
+                    "invalid removed liquidity"
+                );
+            }
+
+            // check the liquidity deposited within uniswap
+            {
+                (uint128 liquidityDeployed, , , , ) = pool.positions(positionKey);
+
+                emit LogUint256("liquidityBefore", liquidityBefore);
+                emit LogUint256("$LiqAmountActive", $LiqAmountActive);
+                emit LogUint256("liquidityDeployed", liquidityDeployed);
+
+                assertWithMsg(
+                    liquidityBefore - $LiqAmountActive == liquidityDeployed,
+                    "invalid uniswap liq"
+                );
+            }
+
+            // check stored fees base for this position
+            {
+                (, $feeGrowthInside0LastX128After, $feeGrowthInside1LastX128After, , ) = pool
+                    .positions(
+                        keccak256(
+                            abi.encodePacked(
+                                address(sfpm),
+                                liquidityChunk.tickLower(),
+                                liquidityChunk.tickUpper()
+                            )
+                        )
+                    );
+
+                emit LogUint256("feeGrowthInside0LastX128After", $feeGrowthInside0LastX128After);
+                emit LogUint256("feeGrowthInside1LastX128After", $feeGrowthInside1LastX128After);
+
+                // new fees base
+                int128 newFeesBase0 = int128(
+                    int256(
+                        Math.mulDiv128RoundingUp($feeGrowthInside0LastX128After, netLiquidityAfter)
+                    )
+                );
+                int128 newFeesBase1 = int128(
+                    int256(
+                        Math.mulDiv128RoundingUp($feeGrowthInside1LastX128After, netLiquidityAfter)
+                    )
+                );
+
+                // check newly stored feesBase
+
+                (int128 feesBase0, int128 feesBase1) = sfpm.getAccountFeesBase(
+                    address(pool),
+                    msg.sender,
+                    tokenIdLong.tokenType(0),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                );
+
+                emit LogInt256("oldFeesBase0", oldFeesBase0);
+                emit LogInt256("oldFeesBase1", oldFeesBase1);
+
+                emit LogInt256("newFeesBase0", newFeesBase0);
+                emit LogInt256("newFeesBase1", newFeesBase1);
+
+                emit LogInt256("feesBase0", feesBase0);
+                emit LogInt256("feesBase1", feesBase1);
+
+                assertWithMsg(newFeesBase0 == feesBase0, "invalid fees base 0");
+                assertWithMsg(newFeesBase1 == feesBase1, "invalid fees base 1");
+            }
+
+            /// compute and verify the amounts to collect
+            /// collected the amounts using starting liquidity
+            {
+                // ensure amountToCollect is always positive
+                assertWithMsg($amountToCollect0 >= 0, "amountToCollect0 invalid");
+                assertWithMsg($amountToCollect1 >= 0, "amountToCollect1 invalid");
+
+                $collected0 = $recievedAmount0 - uint128(int128($amountBurned0));
+                $collected1 = $recievedAmount1 - uint128(int128($amountBurned1));
+
+                emit LogInt256("amountToCollect0", $amountToCollect0);
+                emit LogInt256("amountToCollect1", $amountToCollect1);
+
+                emit LogUint256("receivedAmount0", $recievedAmount0);
+                emit LogUint256("receivedAmount1", $recievedAmount1);
+
+                emit LogUint256("amountMinted0", $amountMinted0);
+                emit LogUint256("amountMinted1", $amountMinted1);
+
+                emit LogUint256("collected0", $collected0);
+                emit LogUint256("collected1", $collected1);
+
+                emit LogUint256("collectedByLeg[0].rightSlot()", $collectedByLeg[0].rightSlot());
+                emit LogUint256("collectedByLeg[0].leftSlot()", $collectedByLeg[0].leftSlot());
+
+                assertWithMsg($collected0 == $collectedByLeg[0].rightSlot(), "invalid collected 0");
+                assertWithMsg($collected1 == $collectedByLeg[0].leftSlot(), "invalid collected 1");
+
+                {
+                    // get premium gross
+                    ($accountPremiumGrossAfter0, $accountPremiumGrossAfter1) = sfpm
+                        .getAccountPremium(
+                            address(pool),
+                            $activeUser,
+                            tokenIdShort.tokenType(0),
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            type(int24).max,
+                            0 // to query gross
+                        );
+
+                    // get premium owed
+                    ($accountPremiumOwedAfter0, $accountPremiumOwedAfter1) = sfpm.getAccountPremium(
+                        address(pool),
+                        $activeUser,
+                        tokenIdShort.tokenType(0),
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        type(int24).max,
+                        1 // to query owed
+                    );
+
+                    // gross
+                    emit LogUint256("$accountPremiumGrossAfter0", $accountPremiumGrossAfter0);
+                    emit LogUint256("$accountPremiumGrossAfter1", $accountPremiumGrossAfter1);
+                    // owed
+                    emit LogUint256("$accountPremiumOwedAfter0", $accountPremiumOwedAfter0);
+                    emit LogUint256("$accountPremiumOwedAfter1", $accountPremiumOwedAfter1);
+
+                    if ($collected0 != 0 || $collected1 != 0) {
+                        LeftRightUnsigned deltaPremiumOwed;
+                        LeftRightUnsigned deltaPremiumGross;
+
+                        /// assert premia values before and after
+                        // add previous s_accountPremiumOwed by new amounts (if previously uint128 max ensure it doesn't overflow)
+                        try
+                            this.getPremiaDeltasChecked(
+                                netLiquidityBefore,
+                                removedLiquidityBefore,
+                                $collected0,
+                                $collected1
+                            )
+                        returns (
+                            LeftRightUnsigned deltaPremiumOwedR,
+                            LeftRightUnsigned deltaPremiumGrossR
+                        ) {
+                            // pass
+                            deltaPremiumOwed = deltaPremiumOwedR;
+                            deltaPremiumGross = deltaPremiumGrossR;
+                        } catch {
+                            assertWithMsg(false, "fail  in premia calc");
+                        }
+
+                        emit LogUint256(
+                            "deltaPremiumOwed.rightSlot()",
+                            deltaPremiumOwed.rightSlot()
+                        );
+
+                        emit LogUint256("deltaPremiumOwed.leftSlot()", deltaPremiumOwed.leftSlot());
+
+                        emit LogUint256(
+                            "deltaPremiumGross.rightSlot()",
+                            deltaPremiumGross.rightSlot()
+                        );
+                        emit LogUint256(
+                            "deltaPremiumGross.leftSlot()",
+                            deltaPremiumGross.leftSlot()
+                        );
+
+                        // ensure getAccountPremium up to the current touch(max tick) vals match
+                        // against the externally computed premia values
+                        (
+                            $accountPremiumGrossCalculated0,
+                            $accountPremiumGrossCalculated1,
+                            //
+                            $accountPremiumOwedCalculated0,
+                            $accountPremiumOwedCalculated0
+                        ) = incrementPremiaAccumulator(
+                            $accountPremiumGrossBefore0,
+                            $accountPremiumGrossBefore1,
+                            //
+                            deltaPremiumOwed.rightSlot(),
+                            deltaPremiumOwed.leftSlot(),
+                            //
+                            $accountPremiumOwedBefore0,
+                            $accountPremiumOwedBefore1,
+                            //
+                            deltaPremiumGross.rightSlot(),
+                            deltaPremiumGross.leftSlot()
+                        );
+
+                        emit LogUint256(
+                            "$accountPremiumGrossCalculated0",
+                            $accountPremiumGrossCalculated0
+                        );
+                        emit LogUint256(
+                            "$accountPremiumGrossCalculated0",
+                            $accountPremiumGrossCalculated1
+                        );
+                        //
+                        emit LogUint256(
+                            "$accountPremiumOwedCalculated0",
+                            $accountPremiumOwedCalculated0
+                        );
+                        emit LogUint256(
+                            "$accountPremiumOwedCalculated1",
+                            $accountPremiumOwedCalculated1
+                        );
+
+                        // check calculated gross matches up with stored
+                        assertWithMsg(
+                            $accountPremiumGrossCalculated0 == $accountPremiumGrossAfter0,
+                            "invalid gross 0"
+                        );
+                        assertWithMsg(
+                            $accountPremiumGrossCalculated1 == $accountPremiumGrossAfter1,
+                            "invalid gross 1"
+                        );
+
+                        // check owed matches up with stored
+                        assertWithMsg(
+                            $accountPremiumOwedCalculated0 == $accountPremiumOwedAfter0,
+                            "invalid gross 0"
+                        );
+                        assertWithMsg(
+                            $accountPremiumOwedCalculated1 == $accountPremiumOwedAfter1,
+                            "invalid gross 1"
+                        );
+                    } else {
+                        // gross checks
+                        assertWithMsg(
+                            $accountPremiumGrossBefore0 == $accountPremiumGrossAfter0,
+                            "invalid gross 0 -> no collect"
+                        );
+                        assertWithMsg(
+                            $accountPremiumGrossBefore1 == $accountPremiumGrossAfter1,
+                            "invalid gross 1 -> no collect"
+                        );
+
+                        // owed checks
+                        assertWithMsg(
+                            $accountPremiumOwedBefore0 == $accountPremiumOwedAfter0,
+                            "invalid owed 0 -> no collect"
+                        );
+                        assertWithMsg(
+                            $accountPremiumOwedBefore1 == $accountPremiumOwedAfter1,
+                            "invalid owed 1 -> no collect"
+                        );
+                    }
+                }
+            }
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdLong);
+
+            // reset the tokenIdLong for next iteration
+            tokenIdLong = TokenId.wrap(uint256(0));
+        } catch {
+            // @note if it fails ensure the amount of liquidity being minted was valid
+            // that chunk lquidity < net liquidity (should be valid)
+        }
+    }
+
+    /// *** general multiple mints of longs + shorts (random / use helpers)
+    // check for should revert flag and bound so that it is a valid event
 
     // mint SFPM Swap At Mint = true, and ITM = true
     function mint_option_SFPM_swapT_ITMT(
+        uint256 minter_index,
         bool asset,
         bool is_call,
         bool is_long,
@@ -2142,8 +2948,15 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint128 positionSize
     ) public {
+        minter_index = bound(minter_index, 0, 4);
+        if (actors[minter_index] == msg.sender) {
+            minter_index = bound(minter_index + 1, 0, 4);
+        }
+
+        address minter = actors[minter_index];
+
         // must be
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        TokenId tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2163,54 +2976,82 @@ contract FuzzDeployments is FuzzHelpers {
             // get moved amounts
             // moved amounts is faulty function
             // reverts for some reason
-            (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+            (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdShort, positionSize);
+
+            emit LogInt256("moved0", moved0);
+            emit LogInt256("moved1", moved1);
 
             // get itm amounts
             (int256 itm0, int256 itm1) = _calculate_itm_amounts(
-                tokenIdSell.tokenType(0),
+                tokenIdShort.tokenType(0),
                 moved0,
                 moved1
             );
 
+            emit LogInt256("itm0", itm0);
+            emit LogInt256("itm1", itm1);
+
             (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
 
-            hevm.prank(msg.sender);
+            hevm.prank(minter);
             fund_and_approve();
 
             (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
-                msg.sender,
+                minter,
                 zeroForOne,
                 swapAmount
             );
 
+            emit LogInt256("swap0", swap0);
+            emit LogInt256("swap1", swap1);
+
             // total moved
             totalMoved0 = moved0 + swap0;
             totalMoved1 = moved1 + swap1;
+
+            emit LogInt256("totalMoved0", totalMoved0);
+            emit LogInt256("totalMoved1", totalMoved1);
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(minter));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(minter));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+        hevm.prank(minter);
+        try sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(minter));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(minter));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
-            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+            assertApproxEqRel(
+                balBefore0 - totalMoved0,
+                balAfter0,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 0 delta invalid"
+            );
+
+            assertApproxEqRel(
+                balBefore1 - totalMoved1,
+                balAfter1,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 1 delta invalid"
+            );
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[minter].push(tokenIdShort);
         } catch {}
     }
 
     // mint SFPM regular mint Swap At Mint = false, and ITM = false
     function mint_option_SFPM_swapF_ITMF(
+        uint256 minter_index,
         bool asset,
         bool is_call,
         bool is_long,
@@ -2218,8 +3059,14 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint128 positionSize
     ) public {
+        if (actors[minter_index] == msg.sender) {
+            minter_index = bound(minter_index + 1, 0, 4);
+        }
+
+        address minter = actors[minter_index];
+
         // must be
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        TokenId tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2229,44 +3076,59 @@ contract FuzzDeployments is FuzzHelpers {
             strike
         );
 
+        (, currentTick, , , , , ) = pool.slot0();
+
+        emit LogInt256("pre-mint Tick", currentTick);
+
         int256 moved0;
         int256 moved1;
 
         int24 tickLimitLow = int24(-887272);
         int24 tickLimitHigh = int24(887272);
 
-        hevm.prank(msg.sender);
-        fund_and_approve();
-
         {
             // get moved amounts
             // moved amounts is faulty function
             // reverts for some reason
-            (moved0, moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+            (moved0, moved1) = _calculate_moved_amounts(tokenIdShort, positionSize);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf(minter));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf(minter));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        hevm.prank(msg.sender);
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+        hevm.prank(minter);
+        try sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf(minter));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf(minter));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
-            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+            assertApproxEqRel(
+                balBefore0 - moved0,
+                balAfter0,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 0 delta invalid"
+            );
+
+            assertApproxEqRel(
+                balBefore1 - moved1,
+                balAfter1,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 1 delta invalid"
+            );
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdShort);
         } catch {}
     }
 
@@ -2279,8 +3141,7 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint128 positionSize
     ) public {
-        // must be
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        TokenId tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2296,14 +3157,9 @@ contract FuzzDeployments is FuzzHelpers {
         int24 tickLimitLow = int24(887272);
         int24 tickLimitHigh = int24(-887272);
 
-        hevm.prank(msg.sender);
-        fund_and_approve();
-
         {
             // get moved amounts
-            // moved amounts is faulty function
-            // reverts for some reason
-            (moved0, moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+            (moved0, moved1) = _calculate_moved_amounts(tokenIdShort, positionSize);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2318,7 +3174,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         hevm.prank(msg.sender);
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+        try sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
@@ -2326,8 +3182,22 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
-            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+            assertApproxEqRel(
+                balBefore0 - moved0,
+                balAfter0,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 0 delta invalid"
+            );
+
+            assertApproxEqRel(
+                balBefore1 - moved1,
+                balAfter1,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 1 delta invalid"
+            );
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdShort);
         } catch {}
     }
 
@@ -2340,11 +3210,7 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike,
         uint128 positionSize
     ) public {
-        hevm.prank(msg.sender);
-        fund_and_approve();
-
-        // must be
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        TokenId tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2362,7 +3228,10 @@ contract FuzzDeployments is FuzzHelpers {
 
         {
             // get moved amounts
-            (moved0, moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+            (moved0, moved1) = _calculate_moved_amounts(tokenIdShort, positionSize);
+
+            emit LogInt256("moved0", moved0);
+            emit LogInt256("moved1", moved1);
         }
 
         // current balances
@@ -2374,7 +3243,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         hevm.prank(msg.sender);
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+        try sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
@@ -2382,8 +3251,22 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqAbs((balBefore0 - moved0), balAfter0, "bal 0 delta invalid");
-            assertApproxEqAbs((balBefore1 - moved1), balAfter1, "bal 1 delta invalid");
+            assertApproxEqRel(
+                balBefore0 - moved0,
+                balAfter0,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 0 delta invalid"
+            );
+
+            assertApproxEqRel(
+                balBefore1 - moved1,
+                balAfter1,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 1 delta invalid"
+            );
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdShort);
         } catch {}
     }
 
@@ -2391,8 +3274,6 @@ contract FuzzDeployments is FuzzHelpers {
     function mint_option_SFPM_nettingSwap(
         bool asset0,
         bool asset1,
-        bool isCall0,
-        bool isCall1,
         bool isATM0,
         bool isATM1,
         uint24 width0,
@@ -2401,18 +3282,15 @@ contract FuzzDeployments is FuzzHelpers {
         int256 strike1,
         uint128 positionSize
     ) public {
-        hevm.prank(msg.sender);
-        fund_and_approve();
-
         // generate double leg shorts
         // dynamic numeraire and token type
-        TokenId tokenIdSell = _generate_multiple_leg_tokenid(
+        TokenId tokenIdShort = _generate_multiple_leg_tokenid(
             2,
             [asset0, asset1, false, false],
-            [isCall0, isCall1, false, false],
+            [true, false, false, false],
             [false, false, false, false],
             [false, false, false, false],
-            [false, isATM0, isATM1, false],
+            [isATM0, isATM1, false, false],
             [width0, width1, 0, 0],
             [strike0, strike1, 0, 0]
         );
@@ -2429,7 +3307,7 @@ contract FuzzDeployments is FuzzHelpers {
                 int256 moved1,
                 int256 itm0,
                 int256 itm1
-            ) = _calculate_moved_and_ITM_amounts(tokenIdSell, positionSize);
+            ) = _calculate_moved_and_ITM_amounts(tokenIdShort, positionSize, false);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2437,9 +3315,6 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogInt256("itm1", itm1);
 
             (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
-
-            hevm.prank(msg.sender);
-            fund_and_approve();
 
             emit LogInt256("swapAmount", swapAmount);
             emit LogBool("zeroForOne", zeroForOne);
@@ -2468,9 +3343,11 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
-        // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
+        // get price before swap
+        (currentSqrtPriceX96, , , , , , ) = pool.slot0();
+
         hevm.prank(msg.sender);
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+        try sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitHigh, tickLimitLow) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
@@ -2478,10 +3355,29 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqAbs((balBefore0 - totalMoved0), balAfter0, "bal 0 delta invalid");
-            assertApproxEqAbs((balBefore1 - totalMoved1), balAfter1, "bal 1 delta invalid");
+            assertApproxEqRel(
+                balBefore0 - totalMoved0,
+                balAfter0,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 0 delta invalid"
+            );
 
-            // assertWithMsg(false, "x xxxxx xxx");
+            assertApproxEqRel(
+                balBefore1 - totalMoved1,
+                balAfter1,
+                1e21, // 1e+21 -> assert value is within 0.01%
+                "bal 1 delta invalid"
+            );
+
+            int256 convertedMoved1to0 = PanopticMath.convert1to0(totalMoved1, currentSqrtPriceX96);
+            emit LogInt256("value of total moved 1 to 0", convertedMoved1to0);
+
+            // disabled as on low liq pools the swap won't occur at a single price (tick liquidity will roll over)
+            // ensure that only token 0 was moved as this was a netting swap
+            // assertWithMsg(totalMoved0 == convertedMoved1to0, "invalid conversion");
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdShort);
         } catch {}
     }
 
@@ -2561,7 +3457,8 @@ contract FuzzDeployments is FuzzHelpers {
         int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
         int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
 
-        // check asset balances of user before and after
+        // round up on mint ** check the actual tokens moved by the mint and make sure
+        // it doesn't exceed 127 bits ( (2 ** 127) - 1)
         (int256 expectedMoved0, int256 expectedMoved1) = _calculate_moved_amounts(
             tokenId,
             positionSize
@@ -2599,7 +3496,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         address minter = actors[minter_index];
 
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        TokenId tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2608,7 +3505,7 @@ contract FuzzDeployments is FuzzHelpers {
             width,
             strike
         );
-        TokenId tokenIdBuy = _generate_single_leg_tokenid(
+        TokenId tokenIdLong = _generate_single_leg_tokenid(
             asset,
             is_call,
             true,
@@ -2621,13 +3518,13 @@ contract FuzzDeployments is FuzzHelpers {
         int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
         int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
 
-        (int24 tickLower, int24 tickUpper) = tokenIdSell.asTicks(0);
+        (int24 tickLower, int24 tickUpper) = tokenIdShort.asTicks(0);
 
         // check there is no pre-existing liquidity at this chunk deployed by the minter
         LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
             address(pool),
             minter,
-            tokenIdSell.tokenType(0),
+            tokenIdShort.tokenType(0),
             tickLower,
             tickUpper
         );
@@ -2640,11 +3537,11 @@ contract FuzzDeployments is FuzzHelpers {
         //
         if (netLiquidity != 0) {
             // mint a small amount of liquidity at this chunk
-            sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh);
+            sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitLow, tickLimitHigh);
         }
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        try sfpm.mintTokenizedPosition(tokenIdBuy, positionSize + 1, tickLimitLow, tickLimitHigh) {
+        try sfpm.mintTokenizedPosition(tokenIdLong, positionSize + 1, tickLimitLow, tickLimitHigh) {
             // log liquidity amounts at positionSize and positionSize + 1 (rounding ?? **)
             assertWithMsg(false, "Can't purchase more chunk liquidity than is available!");
         } catch {}
@@ -2664,7 +3561,7 @@ contract FuzzDeployments is FuzzHelpers {
         bool slippageDirection,
         int24 randTick
     ) public {
-        TokenId tokenIdSell = _generate_single_leg_tokenid(
+        TokenId tokenIdShort = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2677,11 +3574,11 @@ contract FuzzDeployments is FuzzHelpers {
         // get moved amounts
         // moved amounts is faulty function
         // reverts for some reason
-        (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdSell, positionSize);
+        (int256 moved0, int256 moved1) = _calculate_moved_amounts(tokenIdShort, positionSize);
 
         // get itm amounts
         (int256 itm0, int256 itm1) = _calculate_itm_amounts(
-            tokenIdSell.tokenType(0),
+            tokenIdShort.tokenType(0),
             moved0,
             moved1
         );
@@ -2696,13 +3593,6 @@ contract FuzzDeployments is FuzzHelpers {
             zeroForOne,
             swapAmount
         );
-
-        // total moved
-        // int256 totalMoved0 = moved0 + swap0;
-        // int256 totalMoved1 = moved1 + swap1;
-
-        // generate tick limits which exceed the slippage bounds
-        // using the current tick after swap
 
         int24 tickLimitLow;
         int24 tickLimitHigh;
@@ -2729,218 +3619,468 @@ contract FuzzDeployments is FuzzHelpers {
         }
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        try sfpm.mintTokenizedPosition(tokenIdSell, positionSize, tickLimitLow, tickLimitHigh) {
+        try sfpm.mintTokenizedPosition(tokenIdShort, positionSize, tickLimitLow, tickLimitHigh) {
             assertWithMsg(false, "Can't mint an option which defies the slippage bounds");
         } catch {}
     }
 
-    // sell an option and check ending balances
-
-    // mint SFPM isLong == 1 (purchase a chunk they sold themselves)
-    // then check balances
-    // check status of position in uniswap
-    // when selling the chunk liquidity should be deposited in uniswap
-    // when buying it should be removed
-    // check user s_accountLiquidity values
-    // check user feesbase
-    // function mint_option_SFPM_self_purchase(
-    //     uint256 minter_index,
-    //     bool asset,
-    //     bool is_call,
-    //     bool is_long,
-    //     bool is_otm,
-    //     bool is_atm,
-    //     bool swapAtMint,
-    //     uint24 width,
-    //     int256 strike,
-    //     uint128 positionSize
-    // ) public {
-    //     minter_index = bound(minter_index, 0, 4);
-    //     if (actors[minter_index] == msg.sender) {
-    //         minter_index = bound(minter_index + 1, 0, 4);
-    //     }
-
-    //     address minter = actors[minter_index];
-
-    //     // get user token balances
-    //     uint256 balanceBefore0 = IERC20(token0).balanceOf(minter);
-    //     emit LogUint256("User balance before 0", balanceBefore0);
-    //     uint256 balanceBefore1 = IERC20(token1).balanceOf(minter);
-    //     emit LogUint256("User balance before 1", balanceBefore1);
-
-    //     userPositionsSFPM[minter].push(tokenId);
-
-    //     emit LogUint256("positionSize", positionSize);
-
-    //     // check asset balances of user before and after
-    //     (uint256 expectedMoved0, uint256 expectedMoved1) = _calculate_moved_amounts(
-    //         tokenId,
-    //         positionSize
-    //     );
-    //     emit LogUint256("expected moved0", expectedMoved0);
-    //     emit LogUint256("expected moved1", expectedMoved1);
-
-    //     int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
-    //     int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
-    //     emit LogInt256("tickLimitLow", tickLimitLow);
-    //     emit LogInt256("tickLimitHigh", tickLimitHigh);
-
-    //     TokenId tokenIdShort = _generate_single_leg_tokenid(
-    //         asset,
-    //         is_call,
-    //         false,
-    //         is_otm,
-    //         is_atm,
-    //         width,
-    //         strike
-    //     );
-    //     TokenId tokenIdLong = _generate_single_leg_tokenid(
-    //         asset,
-    //         is_call,
-    //         true,
-    //         is_otm,
-    //         is_atm,
-    //         width,
-    //         strike
-    //     );
-
-    //     int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
-    //     int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
-
-    //     // **
-    //     // helper to return the swapped amounts if ITM
-    //     // check ending moved balances and swapped amounts
-    //     // **
-
-    //     // before mint check the chunks removed|net liquidity (getAccountLiquidity)
-
-    //     //
-    // }
-
-    // user can only purchase chunks they have sold themselves
-    // use one actor to sell and then attempt to buy with another actor
-
-    // randomy purchase a sold chunk
-    // look through the mapping userPositionsSFPM and try to purchase one at random
-    // make it a mapping of actor => array of positions minted
-    // get the amount of liquidity on the position to determine the optimal position size to mint
-    // must always be less than
-
-    // function _mint_option_SFPM(
-    //     address minter,
-    //     TokenId tokenId,
-    //     uint128 positionSize,
-    //     bool swapAtMint
-    // ) internal {
-    //     // get user token balances
-    //     uint256 balanceBefore0 = IERC20(token0).balanceOf(minter);
-    //     emit LogUint256("User balance before 0", balanceBefore0);
-    //     uint256 balanceBefore1 = IERC20(token1).balanceOf(minter);
-    //     emit LogUint256("User balance before 1", balanceBefore1);
-
-    //     userPositionsSFPM[minter].push(tokenId);
-
-    //     emit LogUint256("positionSize", positionSize);
-
-    //     // check asset balances of user before and after
-    //     (uint256 expectedMoved0, uint256 expectedMoved1) = _calculate_moved_amounts(
-    //         tokenId,
-    //         positionSize
-    //     );
-    //     emit LogUint256("expected moved0", expectedMoved0);
-    //     emit LogUint256("expected moved1", expectedMoved1);
-
-    //     int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
-    //     int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
-    //     emit LogInt256("tickLimitLow", tickLimitLow);
-    //     emit LogInt256("tickLimitHigh", tickLimitHigh);
-
-    //     if () {
-    //         try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
-    //             assertWithMsg(
-    //                 false,
-    //                 ""
-    //             );
-    //         } catch {}
-
-    //         // return
-    //     }
-
-    //     // default case
-    //     {
-    //         fund_and_approve();
-
-    //         try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
-    //             //assertWithMsg(false, "suceeded call check");
-    //         } catch (bytes memory _err) {
-    //             emit LogBytes("err", _err);
-    //             assertWithMsg(false, "check err");
-    //         }
-    //     }
-
-    //     // *******
-    //     // check if itm and swap at mint
-    //     // then get the itm and swapped amounts
-    //     // *******
-
-    //     //
-    //     uint256 balanceAfter0 = IERC20(token0).balanceOf(minter);
-    //     emit LogUint256("User balance after 0", balanceAfter0);
-    //     uint256 balanceAfter1 = IERC20(token1).balanceOf(minter);
-    //     emit LogUint256("User balance after 1", balanceAfter1);
-
-    //     assertWithMsg(false, "after the fact");
-    // }
-
-    // // generate SFPM positions (doesn't consider existing pp generated positions)
-    // // single leg
-    // function mint_option_SPFM_RAND(
-    //     uint256 minter_index,
-    //     bool asset,
-    //     bool is_call,
-    //     bool is_long,
-    //     bool is_otm,
-    //     bool is_atm,
-    //     bool swapAtMint,
-    //     uint24 width,
-    //     int256 strike,
-    //     uint128 posSize
-    // ) public {
-    //     minter_index = bound(minter_index, 0, 4);
-    //     if (actors[minter_index] == msg.sender) {
-    //         minter_index = bound(minter_index + 1, 0, 4);
-    //     }
-
-    //     address minter = actors[minter_index];
-
-    //     if (!is_long) {
-    //         // Mint a short position
-    //         _mint_option_SFPM(
-    //             minter,
-    //             _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
-    //             posSize,
-    //             swapAtMint
-    //         );
-    //     } else {
-    //         // Mint a short position first, then a long position
-    //         _mint_option_SFPM(
-    //             minter,
-    //             _generate_single_leg_tokenid(asset, is_call, false, is_otm, is_atm, width, strike),
-    //             posSize,
-    //             swapAtMint
-    //         );
-    //         _mint_option_SFPM(
-    //             minter,
-    //             _generate_single_leg_tokenid(asset, is_call, true, is_otm, is_atm, width, strike),
-    //             posSize,
-    //             swapAtMint
-    //         );
-    //     }
-    // }
-
     ////////////////////////////////////////////////////
     // Burn
     ////////////////////////////////////////////////////
+
+    /// *** general burns randomly of any tokenId
+
+    // burn an SFPM token ID at random
+
+    function burn_option_SFPM_general(uint256) public {
+        {
+            // search for a tokenId that the current actor has minted
+            uint256 totalPosLen = userPositionsSFPM[msg.sender].length;
+            for (uint256 i; i < totalPosLen; i++) {
+                TokenId tokenIdCheck = userPositionsSFPM[msg.sender][i];
+            }
+        }
+
+        // get the amount of liquidity being deposited
+        liquidityChunk = PanopticMath.getLiquidityChunk(tokenIdLong, 0, positionSize);
+
+        // simulate the mint and get the actual moved amounts
+        $tickLowerActive = liquidityChunk.tickLower();
+        $tickUpperActive = liquidityChunk.tickUpper();
+        $LiqAmountActive = liquidityChunk.liquidity();
+
+        ($posLiquidity, , , , ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    address(sfpm),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            )
+        );
+
+        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // only poke if there is pre-existing liquidity at this chunk
+        if ($posLiquidity != 0) {
+            hevm.prank(address(sfpm));
+            pool.burn($tickLowerActive, $tickUpperActive, 0);
+        }
+
+        // get the amount of liquidity within that range present in uniswap already
+        bytes32 positionKey = keccak256(
+            abi.encodePacked(address(sfpm), liquidityChunk.tickLower(), liquidityChunk.tickUpper())
+        );
+
+        (uint128 liquidityBefore, , , , ) = pool.positions(positionKey);
+
+        LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
+            address(pool),
+            msg.sender,
+            tokenIdLong.tokenType(0),
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper()
+        );
+
+        removedLiquidityBefore = accountLiquiditiesBefore.leftSlot();
+        netLiquidityBefore = accountLiquiditiesBefore.rightSlot();
+
+        emit LogInt256("liquidityChunk.tickLower()", liquidityChunk.tickLower());
+        emit LogInt256("liquidityChunk.tickUpper()", liquidityChunk.tickUpper());
+
+        // s_accountFeesBase before
+        // check s_accountFeesBase is updated correctly
+        (oldFeesBase0, oldFeesBase1) = sfpm.getAccountFeesBase(
+            address(pool),
+            msg.sender,
+            tokenIdLong.tokenType(0),
+            liquidityChunk.tickLower(),
+            liquidityChunk.tickUpper()
+        );
+
+        (, $feeGrowthInside0LastX128Before, $feeGrowthInside1LastX128Before, , ) = pool.positions(
+            keccak256(
+                abi.encodePacked(
+                    address(sfpm),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                )
+            )
+        );
+
+        emit LogUint256("feeGrowthInside0LastX128Before before", $feeGrowthInside0LastX128Before);
+        emit LogUint256("feeGrowthInside1LastX128Before before", $feeGrowthInside1LastX128Before);
+
+        {
+            //
+            int128 newFeesBaseRoundDown0 = int128(
+                int256(Math.mulDiv128($feeGrowthInside0LastX128Before, netLiquidityBefore))
+            );
+            int128 newFeesBaseRoundDown1 = int128(
+                int256(Math.mulDiv128($feeGrowthInside1LastX128Before, netLiquidityBefore))
+            );
+
+            emit LogInt256("newFeesBaseRoundDown0", newFeesBaseRoundDown0);
+            emit LogInt256("newFeesBaseRoundDown1", newFeesBaseRoundDown1);
+
+            emit LogInt256("newFeesBaseRoundDown0", newFeesBaseRoundDown0);
+            emit LogInt256("newFeesBaseRoundDown1", newFeesBaseRoundDown1);
+
+            //
+            $amountToCollect0 = int128(Math.max(newFeesBaseRoundDown0 - oldFeesBase0, 0));
+            $amountToCollect1 = int128(Math.max(newFeesBaseRoundDown1 - oldFeesBase1, 0));
+
+            // correct amount to collect as this is burning liq (long pos)
+            $amountToCollect0 += int128($amountBurned0);
+            $amountToCollect1 += int128($amountBurned1);
+
+            // get the burned amounts (true moved amounts)
+            // also get the true collected amounts
+            quote_uni_CollectAndBurn();
+        }
+
+        // get premium gross/owed before (compute with max tick to get value stored in sfpm currently)
+        // after check if stored value matches this value
+        {
+            ($accountPremiumGrossBefore0, $accountPremiumGrossBefore1) = sfpm.getAccountPremium(
+                address(pool),
+                $activeUser,
+                tokenIdLong.tokenType(0),
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
+                type(int24).max,
+                0 // short to check gross
+            );
+
+            // get gross premium
+            emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumGrossBefore0);
+            emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumGrossBefore1);
+        }
+
+        {
+            // owed premium
+            ($accountPremiumOwedBefore0, $accountPremiumOwedBefore1) = sfpm.getAccountPremium(
+                address(pool),
+                $activeUser,
+                tokenIdLong.tokenType(0),
+                liquidityChunk.tickLower(),
+                liquidityChunk.tickUpper(),
+                type(int24).max,
+                0 // long to check owed
+            );
+
+            // get owed premium
+            emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumOwedBefore0);
+            emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumOwedBefore1);
+        }
+
+        hevm.prank(msg.sender);
+        try
+            sfpm.mintTokenizedPosition(tokenIdLong, positionSize, int24(-887272), int24(887272))
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+            // @note if chunk liquidity is greater than net liquidity throw an invariant failure
+
+            // store the current actor
+            $activeUser = msg.sender;
+
+            // copy return into storage
+            $collectedByLeg = collectedByLeg;
+            $totalSwapped = totalSwapped;
+
+            // check the net liquidity added
+            {
+                LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
+                    address(pool),
+                    msg.sender,
+                    tokenIdLong.tokenType(0),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                );
+
+                removedLiquidityAfter = accountLiquiditiesAfter.leftSlot();
+                netLiquidityAfter = accountLiquiditiesAfter.rightSlot();
+
+                emit LogUint256("removedLiquidityBefore", removedLiquidityBefore);
+                emit LogUint256("netLiquidityBefore", netLiquidityBefore);
+
+                emit LogUint256("removedLiquidityAfter", removedLiquidityAfter);
+                emit LogUint256("netLiquidityAfter", netLiquidityAfter);
+
+                // check the liquidity tracked is the same as the liquidity computed
+                assertWithMsg(
+                    netLiquidityAfter == netLiquidityBefore - $LiqAmountActive,
+                    "invalid net liquidity"
+                );
+
+                // ensure the removed liquidity remains the same
+                assertWithMsg(
+                    removedLiquidityBefore + $LiqAmountActive == removedLiquidityAfter,
+                    "invalid removed liquidity"
+                );
+            }
+
+            // check the liquidity deposited within uniswap
+            {
+                (uint128 liquidityDeployed, , , , ) = pool.positions(positionKey);
+
+                emit LogUint256("liquidityBefore", liquidityBefore);
+                emit LogUint256("$LiqAmountActive", $LiqAmountActive);
+                emit LogUint256("liquidityDeployed", liquidityDeployed);
+
+                assertWithMsg(
+                    liquidityBefore - $LiqAmountActive == liquidityDeployed,
+                    "invalid uniswap liq"
+                );
+            }
+
+            // check stored fees base for this position
+            {
+                (, $feeGrowthInside0LastX128After, $feeGrowthInside1LastX128After, , ) = pool
+                    .positions(
+                        keccak256(
+                            abi.encodePacked(
+                                address(sfpm),
+                                liquidityChunk.tickLower(),
+                                liquidityChunk.tickUpper()
+                            )
+                        )
+                    );
+
+                emit LogUint256("feeGrowthInside0LastX128After", $feeGrowthInside0LastX128After);
+                emit LogUint256("feeGrowthInside1LastX128After", $feeGrowthInside1LastX128After);
+
+                // new fees base
+                int128 newFeesBase0 = int128(
+                    int256(
+                        Math.mulDiv128RoundingUp($feeGrowthInside0LastX128After, netLiquidityAfter)
+                    )
+                );
+                int128 newFeesBase1 = int128(
+                    int256(
+                        Math.mulDiv128RoundingUp($feeGrowthInside1LastX128After, netLiquidityAfter)
+                    )
+                );
+
+                // check newly stored feesBase
+
+                (int128 feesBase0, int128 feesBase1) = sfpm.getAccountFeesBase(
+                    address(pool),
+                    msg.sender,
+                    tokenIdLong.tokenType(0),
+                    liquidityChunk.tickLower(),
+                    liquidityChunk.tickUpper()
+                );
+
+                emit LogInt256("oldFeesBase0", oldFeesBase0);
+                emit LogInt256("oldFeesBase1", oldFeesBase1);
+
+                emit LogInt256("newFeesBase0", newFeesBase0);
+                emit LogInt256("newFeesBase1", newFeesBase1);
+
+                emit LogInt256("feesBase0", feesBase0);
+                emit LogInt256("feesBase1", feesBase1);
+
+                assertWithMsg(newFeesBase0 == feesBase0, "invalid fees base 0");
+                assertWithMsg(newFeesBase1 == feesBase1, "invalid fees base 1");
+            }
+
+            /// compute and verify the amounts to collect
+            /// collected the amounts using starting liquidity
+            {
+                // ensure amountToCollect is always positive
+                assertWithMsg($amountToCollect0 >= 0, "amountToCollect0 invalid");
+                assertWithMsg($amountToCollect1 >= 0, "amountToCollect1 invalid");
+
+                $collected0 = $recievedAmount0 - uint128(int128($amountBurned0));
+                $collected1 = $recievedAmount1 - uint128(int128($amountBurned1));
+
+                emit LogInt256("amountToCollect0", $amountToCollect0);
+                emit LogInt256("amountToCollect1", $amountToCollect1);
+
+                emit LogUint256("receivedAmount0", $recievedAmount0);
+                emit LogUint256("receivedAmount1", $recievedAmount1);
+
+                emit LogUint256("amountMinted0", $amountMinted0);
+                emit LogUint256("amountMinted1", $amountMinted1);
+
+                emit LogUint256("collected0", $collected0);
+                emit LogUint256("collected1", $collected1);
+
+                emit LogUint256("collectedByLeg[0].rightSlot()", $collectedByLeg[0].rightSlot());
+                emit LogUint256("collectedByLeg[0].leftSlot()", $collectedByLeg[0].leftSlot());
+
+                assertWithMsg($collected0 == $collectedByLeg[0].rightSlot(), "invalid collected 0");
+                assertWithMsg($collected1 == $collectedByLeg[0].leftSlot(), "invalid collected 1");
+
+                {
+                    // get premium gross
+                    ($accountPremiumGrossAfter0, $accountPremiumGrossAfter1) = sfpm
+                        .getAccountPremium(
+                            address(pool),
+                            $activeUser,
+                            tokenIdShort.tokenType(0),
+                            liquidityChunk.tickLower(),
+                            liquidityChunk.tickUpper(),
+                            type(int24).max,
+                            0 // to query gross
+                        );
+
+                    // get premium owed
+                    ($accountPremiumOwedAfter0, $accountPremiumOwedAfter1) = sfpm.getAccountPremium(
+                        address(pool),
+                        $activeUser,
+                        tokenIdShort.tokenType(0),
+                        liquidityChunk.tickLower(),
+                        liquidityChunk.tickUpper(),
+                        type(int24).max,
+                        1 // to query owed
+                    );
+
+                    // gross
+                    emit LogUint256("$accountPremiumGrossAfter0", $accountPremiumGrossAfter0);
+                    emit LogUint256("$accountPremiumGrossAfter1", $accountPremiumGrossAfter1);
+                    // owed
+                    emit LogUint256("$accountPremiumOwedAfter0", $accountPremiumOwedAfter0);
+                    emit LogUint256("$accountPremiumOwedAfter1", $accountPremiumOwedAfter1);
+
+                    if ($collected0 != 0 || $collected1 != 0) {
+                        LeftRightUnsigned deltaPremiumOwed;
+                        LeftRightUnsigned deltaPremiumGross;
+
+                        /// assert premia values before and after
+                        // add previous s_accountPremiumOwed by new amounts (if previously uint128 max ensure it doesn't overflow)
+                        try
+                            this.getPremiaDeltasChecked(
+                                netLiquidityBefore,
+                                removedLiquidityBefore,
+                                $collected0,
+                                $collected1
+                            )
+                        returns (
+                            LeftRightUnsigned deltaPremiumOwedR,
+                            LeftRightUnsigned deltaPremiumGrossR
+                        ) {
+                            // pass
+                            deltaPremiumOwed = deltaPremiumOwedR;
+                            deltaPremiumGross = deltaPremiumGrossR;
+                        } catch {
+                            assertWithMsg(false, "fail  in premia calc");
+                        }
+
+                        emit LogUint256(
+                            "deltaPremiumOwed.rightSlot()",
+                            deltaPremiumOwed.rightSlot()
+                        );
+
+                        emit LogUint256("deltaPremiumOwed.leftSlot()", deltaPremiumOwed.leftSlot());
+
+                        emit LogUint256(
+                            "deltaPremiumGross.rightSlot()",
+                            deltaPremiumGross.rightSlot()
+                        );
+                        emit LogUint256(
+                            "deltaPremiumGross.leftSlot()",
+                            deltaPremiumGross.leftSlot()
+                        );
+
+                        // ensure getAccountPremium up to the current touch(max tick) vals match
+                        // against the externally computed premia values
+                        (
+                            $accountPremiumGrossCalculated0,
+                            $accountPremiumGrossCalculated1,
+                            //
+                            $accountPremiumOwedCalculated0,
+                            $accountPremiumOwedCalculated0
+                        ) = incrementPremiaAccumulator(
+                            $accountPremiumGrossBefore0,
+                            $accountPremiumGrossBefore1,
+                            //
+                            deltaPremiumOwed.rightSlot(),
+                            deltaPremiumOwed.leftSlot(),
+                            //
+                            $accountPremiumOwedBefore0,
+                            $accountPremiumOwedBefore1,
+                            //
+                            deltaPremiumGross.rightSlot(),
+                            deltaPremiumGross.leftSlot()
+                        );
+
+                        emit LogUint256(
+                            "$accountPremiumGrossCalculated0",
+                            $accountPremiumGrossCalculated0
+                        );
+                        emit LogUint256(
+                            "$accountPremiumGrossCalculated0",
+                            $accountPremiumGrossCalculated1
+                        );
+                        //
+                        emit LogUint256(
+                            "$accountPremiumOwedCalculated0",
+                            $accountPremiumOwedCalculated0
+                        );
+                        emit LogUint256(
+                            "$accountPremiumOwedCalculated1",
+                            $accountPremiumOwedCalculated1
+                        );
+
+                        // check calculated gross matches up with stored
+                        assertWithMsg(
+                            $accountPremiumGrossCalculated0 == $accountPremiumGrossAfter0,
+                            "invalid gross 0"
+                        );
+                        assertWithMsg(
+                            $accountPremiumGrossCalculated1 == $accountPremiumGrossAfter1,
+                            "invalid gross 1"
+                        );
+
+                        // check owed matches up with stored
+                        assertWithMsg(
+                            $accountPremiumOwedCalculated0 == $accountPremiumOwedAfter0,
+                            "invalid gross 0"
+                        );
+                        assertWithMsg(
+                            $accountPremiumOwedCalculated1 == $accountPremiumOwedAfter1,
+                            "invalid gross 1"
+                        );
+                    } else {
+                        // gross checks
+                        assertWithMsg(
+                            $accountPremiumGrossBefore0 == $accountPremiumGrossAfter0,
+                            "invalid gross 0 -> no collect"
+                        );
+                        assertWithMsg(
+                            $accountPremiumGrossBefore1 == $accountPremiumGrossAfter1,
+                            "invalid gross 1 -> no collect"
+                        );
+
+                        // owed checks
+                        assertWithMsg(
+                            $accountPremiumOwedBefore0 == $accountPremiumOwedAfter0,
+                            "invalid owed 0 -> no collect"
+                        );
+                        assertWithMsg(
+                            $accountPremiumOwedBefore1 == $accountPremiumOwedAfter1,
+                            "invalid owed 1 -> no collect"
+                        );
+                    }
+                }
+            }
+
+            // add minted option to mapping of minted SFPM positions (to grab for burn)
+            userPositionsSFPM[msg.sender].push(tokenIdLong);
+
+            // reset the tokenIdLong for next iteration
+            tokenIdLong = TokenId.wrap(uint256(0));
+        } catch {
+            // @note if it fails ensure the amount of liquidity being minted was valid
+            // that chunk lquidity < net liquidity (should be valid)
+        }
+    }
+
+    // burn a chunk that you own and preform all checks against it
+    // check the moved amounts
+    // check liq was burned in uniswap if short pos
+    // check liq was returned back to uniswap if a long pos
+    // try to burn a chunk that you don't own
 
     /////////////////////////////////////////////////////////////
     // Legacy functions (deactivated)

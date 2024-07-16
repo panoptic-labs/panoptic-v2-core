@@ -382,7 +382,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
+    ) external returns (int128 premium0, int128 premium1, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
@@ -432,7 +432,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         bool computeAllPremia,
         bool includePendingPremium,
         int24 atTick
-    ) internal view returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
+    ) internal returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
         uint256 pLength = positionIdList.length;
         balances = new uint256[2][](pLength);
 
@@ -857,7 +857,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData) {
+    ) internal returns (uint256 medianData) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -1268,7 +1268,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick,
         int24 atTick,
         uint256 buffer
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         (
             LeftRightSigned portfolioPremium,
             uint256[2][] memory positionBalanceArray
@@ -1483,7 +1483,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
-        view
         returns (
             LeftRightSigned[4] memory premiaByLeg,
             uint256[2][4] memory premiumAccumulatorsByLeg

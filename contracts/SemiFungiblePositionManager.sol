@@ -20,6 +20,8 @@ import {LeftRightUnsigned, LeftRightSigned, LeftRightLibrary} from "@types/LeftR
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
+import {PropertiesAsserts} from "./fuzz/PropertiesHelper.sol";
+
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
 //                    ,,,,,,,                           ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,                            ,,,,,,
@@ -69,7 +71,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs
-contract SemiFungiblePositionManager is ERC1155, Multicall {
+contract SemiFungiblePositionManager is ERC1155, Multicall, PropertiesAsserts {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -1068,6 +1070,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 : _burnLiquidity(liquidityChunk, univ3pool); // from msg.sender to Uniswap
             // add the moved liquidity chunk to amount we need to collect from uniswap:
 
+            (, int24 currentTick, , , , , ) = univ3pool.slot0();
+            // current tick
+            emit LogInt256("current tick", currentTick);
+
             // Is this _leg ITM?
             // if tokenType is 1, and we transacted some token0: then this leg is ITM!
             if (tokenType == 1) {
@@ -1080,6 +1086,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 itmAmounts = itmAmounts.toLeftSlot(moved.leftSlot());
             }
         }
+
+        emit LogUint256("gross 0 before", s_accountPremiumGross[positionKey].rightSlot());
+        emit LogUint256("gross 1 before", s_accountPremiumGross[positionKey].leftSlot());
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
@@ -1117,6 +1126,16 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             LeftRightUnsigned deltaPremiumGross
         ) = _getPremiaDeltas(currentLiquidity, collectedAmounts);
 
+        emit LogUint256("deltaPremiumOwed.rightSlot() real", deltaPremiumOwed.rightSlot());
+        emit LogUint256("deltaPremiumOwed.leftSlot() real", deltaPremiumOwed.leftSlot());
+
+        emit LogUint256("deltaPremiumGross.rightSlot() real", deltaPremiumGross.rightSlot());
+        emit LogUint256("deltaPremiumGross.leftSlot() real", deltaPremiumGross.leftSlot());
+
+        // collected amts real
+        emit LogUint256("collected 0 real", collectedAmounts.rightSlot());
+        emit LogUint256("collected 1 real", collectedAmounts.leftSlot());
+
         // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
         // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
         // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
@@ -1140,7 +1159,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint128 liquidity,
         LiquidityChunk liquidityChunk,
         bool roundUp
-    ) private view returns (LeftRightSigned feesBase) {
+    ) private returns (LeftRightSigned feesBase) {
         // now collect fee growth within the liquidity chunk in `liquidityChunk`
         // this is the fee accumulated in Uniswap for this chunk of liquidity
 
@@ -1155,6 +1174,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     )
                 )
             );
+
+        emit LogUint256("feeGrowthInside0LastX128", feeGrowthInside0LastX128);
+        emit LogUint256("feeGrowthInside1LastX128", feeGrowthInside1LastX128);
+        //
+        emit LogUint256("liquidity", liquidity);
 
         // (feegrowth * liquidity) / 2 ** 128
         /// @dev here we're converting the value to an int128 even though all values (feeGrowth, liquidity, Q128) are strictly positive.
@@ -1321,11 +1345,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     function _getPremiaDeltas(
         LeftRightUnsigned currentLiquidity,
         LeftRightUnsigned collectedAmounts
-    )
-        private
-        pure
-        returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross)
-    {
+    ) private returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross) {
         // extract liquidity values
         uint256 removedLiquidity = currentLiquidity.leftSlot();
         uint256 netLiquidity = currentLiquidity.rightSlot();
@@ -1341,6 +1361,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             uint256 premium0X64_base;
             uint256 premium1X64_base;
+
+            emit LogUint256("inside premia deltas removed liq", removedLiquidity);
+            emit LogUint256("inside premia deltas netLiq", netLiquidity);
 
             {
                 uint128 collected0 = collectedAmounts.rightSlot();
@@ -1454,7 +1477,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 tickUpper,
         int24 atTick,
         uint256 isLong
-    ) external view returns (uint128, uint128) {
+    ) external returns (uint128, uint128) {
         bytes32 positionKey = keccak256(
             abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper)
         );

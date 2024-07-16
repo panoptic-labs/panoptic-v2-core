@@ -287,8 +287,16 @@ library LeftRightLibrary {
         uint128 z_yR = (uint256(y.rightSlot()) + dy.rightSlot()).toUint128Capped();
         uint128 z_yL = (uint256(y.leftSlot()) + dy.leftSlot()).toUint128Capped();
 
+        // if gross0 is max or owed0 is max then r is enabled
+
+        // if gross1 is max or owed1 is max then l is enabled
+
         bool r_Enabled = !(z_xR == type(uint128).max || z_yR == type(uint128).max);
         bool l_Enabled = !(z_xL == type(uint128).max || z_yL == type(uint128).max);
+
+        //  if r is enabled then we freeze gross0 and owed0 in place
+
+        // if l is enabled then  we freeze gross1 and owed1 in place
 
         return (
             LeftRightUnsigned.wrap(0).toRightSlot(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
