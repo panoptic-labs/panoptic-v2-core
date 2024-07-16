@@ -572,7 +572,6 @@ contract FuzzDeployments is FuzzHelpers {
         log_tokenid_leg(out, 1);
     }
 
-    // TODO: getProperSize -> get_proper_size
     function getProperSize(
         TokenId tokenId,
         address minter,
@@ -1443,27 +1442,80 @@ contract FuzzDeployments is FuzzHelpers {
             "Burning a position did not decrease the position counter"
         );
 
-        (
-            int128 totalProjectedProratedPremium0,
-            int128 totalProjectedProratedPremium1
-        ) = _assert_each_legs_chunk_accumulators_correct(position, preburnPremiaAndAccumulators);
+        try this._simulate_sfpm_burn(position, posSize, tickLimitLow) {
+            assertWithMsg(false, "_simulate_sfpm_burn should always revert");
+        } catch(bytes memory _err) {
+            (int128 expectedToken0Difference, int128 expectedToken1Difference) = _calc_total_expected_token_difference(
+                preburnPremiaAndAccumulators,
+                _err,
+                position,
+                posSize
+            );
 
-        _compare_against_preburn_assets(
-            totalProjectedProratedPremium0,
-            totalProjectedProratedPremium1,
-            burnersPreburnAssets,
-            caller
-        );
+            // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
+            // alignment with our projections:
+            _compare_against_preburn_assets(
+                expectedToken0Difference,
+                expectedToken1Difference,
+                burnersPreburnAssets,
+                caller
+            );
+        }
 
         // Keep userPositions up-to-date for other tests' benefit -
         // some of the caller's positions no longer exist:
         userPositions[caller] = positionsNew;
     }
 
-    // TODO: Have to consider collateral returned affecting the postburnTokenBalance
+    function _calc_total_expected_token_difference(
+        PremiaAndAccumulatorsForLeg[] memory preburnPremiaAndAccumulators,
+        bytes memory _sfpm_burn_result,
+        TokenId position,
+        uint128 posSize
+    ) internal returns(int128 expectedToken0Difference, int128 expectedToken1Difference) {
+        // We calculate the expected token difference for burning by first getting the net premia:
+        (
+            int128 totalProjectedProratedPremium0,
+            int128 totalProjectedProratedPremium1
+        ) = _assert_each_legs_chunk_accumulators_correct(position, preburnPremiaAndAccumulators);
+
+        expectedToken0Difference = totalProjectedProratedPremium0;
+        expectedToken1Difference = totalProjectedProratedPremium1;
+
+        // We then add any expected tokens for burning an ITM position in the SFPM
+        (int128 token0Swapped, int128 token1Swapped) = abi.decode(_sfpm_burn_result, (int128, int128));
+        expectedToken0Difference += token0Swapped;
+        expectedToken1Difference += token1Swapped;
+
+        // And finally, we also add any underlying amounts of long legs,
+        // minus the underlying amounts of any short legs.
+        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(position, posSize);
+        expectedToken0Difference += longAmounts.rightSlot() - shortAmounts.rightSlot();
+        expectedToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
+    }
+
+    error SFPMBurnSimResult(
+        int128 token0Swapped,
+        int128 token1Swapped
+    );
+    LeftRightSigned $totalSwapped;
+    function _simulate_sfpm_burn(TokenId position, uint128 positionSize, int24 tickLimitLow) external {
+        hevm.prank(address(panopticPool));
+        (, $totalSwapped) = sfpm.burnTokenizedPosition(
+            position,
+            positionSize,
+            tickLimitLow,
+            -1 * tickLimitLow
+        );
+        revert SFPMBurnSimResult(
+            $totalSwapped.rightSlot(),
+            $totalSwapped.leftSlot()
+        );
+    }
+
     function _compare_against_preburn_assets(
-        int128 totalProjectedProratedPremium0,
-        int128 totalProjectedProratedPremium1,
+        int128 expectedToken0Difference,
+        int128 expectedToken1Difference,
         PreburnAssets memory burnersPreburnAssets,
         address caller
     ) internal {
@@ -1472,11 +1524,11 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 burnersPostburnToken1Balance
         ) = _get_token_balances(caller);
 
-        if (totalProjectedProratedPremium0 > 0) {
+        if (expectedToken0Difference > 0) {
             assertWithMsg(
                 int256(burnersPostburnToken0Balance) ==
                     int256(burnersPreburnAssets.token0Balance) +
-                        int256(totalProjectedProratedPremium0),
+                        int256(expectedToken0Difference),
                 "Burners token0 balance did not increase by the amount the premia would indicate"
             );
         } else {
@@ -1488,17 +1540,17 @@ contract FuzzDeployments is FuzzHelpers {
                 collToken0.balanceOf(caller)
             );
             assertWithMsg(
-                int256(burnersPreburnAssets.assetsInCT0) + int256(totalProjectedProratedPremium0) ==
+                int256(burnersPreburnAssets.assetsInCT0) + int256(expectedToken0Difference) ==
                     int256(burnersPostburnAssetsInCT0),
                 "Burners assets in collToken0 were not deducted the net premia"
             );
         }
 
-        if (totalProjectedProratedPremium1 > 0) {
+        if (expectedToken1Difference > 0) {
             assertWithMsg(
                 int256(burnersPostburnToken1Balance) ==
                     int256(burnersPreburnAssets.token1Balance) +
-                        int256(totalProjectedProratedPremium1),
+                        int256(expectedToken1Difference),
                 "Burners token1 balance did not increase by the amount the premia would indicate"
             );
         } else {
@@ -1510,7 +1562,7 @@ contract FuzzDeployments is FuzzHelpers {
                 collToken1.balanceOf(caller)
             );
             assertWithMsg(
-                int256(burnersPreburnAssets.assetsInCT1) + int256(totalProjectedProratedPremium1) ==
+                int256(burnersPreburnAssets.assetsInCT1) + int256(expectedToken1Difference) ==
                     int256(burnersPostburnAssetsInCT1),
                 "Burners assets in collToken1 were not deducted the net premia"
             );
@@ -1707,10 +1759,6 @@ contract FuzzDeployments is FuzzHelpers {
     {
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
-            //    TODO: I don't think this is correct. I think this is already prorated.
-            //    TODO: Answered with henry today -
-            //          the values to return for short legs is proratedPremium,
-            //          the values to return for long legs is idealPremium
             idealPremium0[legIndex] =
                 ((premiaCalcInputs[legIndex].premiumAccumulator0 -
                     premiaCalcInputs[legIndex].premiumGrowth0) *
@@ -1865,9 +1913,8 @@ contract FuzzDeployments is FuzzHelpers {
                 "Not all positions were burned"
             );
 
-            // 2. Assert: Same effect on burner's token balance as burning each one individually
-            // TODO: Also get the assets in the CollateralTracker here, and check that it changed as
-            // expected (either by 0, or went down by the total net premia if longPremia > shortPremia)
+            // 2. Assert: Same effect on burner's token balance, and assets in CTs, as burning each
+            //            position individually
             (
                 uint256 burnersPostburnToken0Balance,
                 uint256 burnersPostburnToken1Balance
@@ -1984,9 +2031,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
             collToken1.balanceOf(caller)
         );
-
-        // TODO: For the token difference - you indeed must also consider more than just the premium
-        // in terms of tokens moving around - see the sfpm quote example in minting
 
         // By arbitrary convention - first two members of underlyingAssetDifferences are the
         // difference in burner's balance of token0 and token1 respectively
@@ -2202,10 +2246,6 @@ contract FuzzDeployments is FuzzHelpers {
             hevm.prank(msg.sender);
             panopticPool.settleLongPremium(settleesPositionsReorg, settlee, longIndex);
 
-            // TODO: Why, in the following two assertions, don't we have to prorate premium0
-            //       by the portion of available tokens over total owed?
-            //       (maybe because its already prorated? See TODO in _calc_premia_from_preburn_values about why a
-            //        similar calculation might be _incorrect_ because it applies proration)
             // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
             (uint128 settledForChunkAfter0, uint128 settledForChunkAfter1, , ) = panopticPool
                 .premiaSettlementData(userPositions[settlee][i], longIndex);
