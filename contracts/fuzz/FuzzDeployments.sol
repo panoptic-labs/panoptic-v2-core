@@ -1445,10 +1445,11 @@ contract FuzzDeployments is FuzzHelpers {
         try this._simulate_sfpm_burn(position, posSize, tickLimitLow) {
             assertWithMsg(false, "_simulate_sfpm_burn should always revert");
         } catch (bytes memory _err) {
+            // Make assertions about each leg's chunk differences, and get expected token diffs:
             (
                 int128 expectedToken0Difference,
                 int128 expectedToken1Difference
-            ) = _calc_total_expected_token_difference(
+            ) = _assert_and_get_expected_token_difference(
                     preburnPremiaAndAccumulators,
                     _err,
                     position,
@@ -1466,11 +1467,11 @@ contract FuzzDeployments is FuzzHelpers {
         }
 
         // Keep userPositions up-to-date for other tests' benefit -
-        // some of the caller's positions no longer exist:
+        // one of the caller's positions no longer exist:
         userPositions[caller] = positionsNew;
     }
 
-    function _calc_total_expected_token_difference(
+    function _assert_and_get_expected_token_difference(
         PremiaAndAccumulatorsForLeg[] memory preburnPremiaAndAccumulators,
         bytes memory _sfpm_burn_result,
         TokenId position,
