@@ -4514,10 +4514,6 @@ contract PanopticPoolTest is PositionUtils {
             ? (notionalVals1[0] * int24(2 * (fee / 100))) / 10_000
             : -((notionalVals1[0] * int24(2 * (fee / 100))) / 10_000);
 
-        console2.log("ITMSpread", ITMSpread);
-        console2.log("notionalVals[0]", notionalVals[0]);
-        console2.log("notionalVals[1]", notionalVals[1]);
-        console2.log("tokensOwed0", tokensOwed0);
         assertApproxEqAbs(
             int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
             -ITMSpread -
@@ -4530,10 +4526,6 @@ contract PanopticPoolTest is PositionUtils {
             "Incorrect token0 delta"
         );
 
-        console2.log("ITMSpread1", ITMSpread1);
-        console2.log("notionalVals1[0]", notionalVals1[0]);
-        console2.log("notionalVals1[1]", notionalVals1[1]);
-        console2.log("tokensOwed1", tokensOwed1);
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
             -ITMSpread1 - notionalVals1[0] - notionalVals1[1] + int256(uint256(tokensOwed1)),
@@ -5417,7 +5409,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_getRefundAmounts(
+    function test_Success_getExerciseDeltas(
         uint256 x,
         uint256 balance0,
         uint256 balance1,
@@ -5425,68 +5417,124 @@ contract PanopticPoolTest is PositionUtils {
         int256 refund1,
         int256 atTickSeed
     ) public {
-        _initPool(x);
+        unchecked {
+            _initPool(x);
 
-        balance0 = bound(balance0, 0, type(uint104).max);
-        balance1 = bound(balance1, 0, type(uint104).max);
-        refund0 = bound(
-            refund0,
-            -int256(uint256(type(uint104).max)),
-            int256(uint256(type(uint104).max))
-        );
-        refund1 = bound(
-            refund1,
-            -int256(uint256(type(uint104).max)),
-            int256(uint256(type(uint104).max))
-        );
-        // possible for the amounts used here to overflow beyond these ticks
-        // convert0To1 is tested on the full tickrange elsewhere
-        atTick = int24(bound(atTickSeed, -159_000, 159_000));
-
-        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(int24(atTick));
-
-        vm.startPrank(Charlie);
-        ct0.deposit(balance0, Charlie);
-        ct1.deposit(balance1, Charlie);
-
-        int256 shortage = refund0 - int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
-
-        if (shortage > 0) {
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
-                Charlie,
-                LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick),
-                ct0,
-                ct1
+            balance0 = bound(balance0, 0, type(uint104).max);
+            balance1 = bound(balance1, 0, type(uint104).max);
+            refund0 = bound(
+                refund0,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
             );
-
-            refund0 = refund0 - shortage;
-            refund1 = PanopticMath.convert0to1(shortage, sqrtPriceX96) + refund1;
-
-            assertEq(refundAmounts.rightSlot(), refund0);
-            assertEq(refundAmounts.leftSlot(), refund1);
-            // if there is a shortage of token1, it won't be reached since it's only considered possible to have a shortage
-            // of one token with force exercises. If there is a shortage of both the account is insolvent and it will fail
-            // when trying to transfer the tokens
-            return;
-        }
-
-        shortage = refund1 - int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
-
-        if (shortage > 0) {
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
-                Charlie,
-                LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick),
-                ct0,
-                ct1
+            refund1 = bound(
+                refund1,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
             );
+            // possible for the amounts used here to overflow beyond these ticks
+            // convert0To1 is tested on the full tickrange elsewhere
+            atTick = int24(bound(atTickSeed, -159_000, 159_000));
 
-            refund1 = refund1 - shortage;
-            refund0 = PanopticMath.convert1to0(shortage, sqrtPriceX96) + refund0;
+            uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(int24(atTick));
 
-            assertEq(refundAmounts.rightSlot(), refund0);
-            assertEq(refundAmounts.leftSlot(), refund1);
+            vm.startPrank(Charlie);
+            ct0.deposit(balance0, Charlie);
+            ct1.deposit(balance1, Charlie);
+
+            int256 shortage = int256(
+                Math.mulDivRoundingUp(
+                    ct0.convertToShares(type(uint104).max),
+                    ct0.totalAssets(),
+                    ct0.totalSupply()
+                )
+            ) +
+                refund0 -
+                int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
+
+            if (shortage > 0) {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
+                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
+
+                refund0 = int128(refund0) - int128(shortage);
+                refund1 =
+                    int128(PanopticMath.convert0to1(shortage, sqrtPriceX96)) +
+                    int128(refund1);
+
+                assertEq(refundAmounts.rightSlot(), refund0);
+                assertEq(refundAmounts.leftSlot(), refund1);
+
+                // if there is a shortage of token1, it won't be reached since it's only considered possible to have a shortage
+                // of one token with force exercises. If there is a shortage of both the account is insolvent and it will fail
+                // when trying to transfer the tokens
+                return;
+            }
+
+            shortage =
+                int256(
+                    Math.mulDivRoundingUp(
+                        ct1.convertToShares(type(uint104).max),
+                        ct1.totalAssets(),
+                        ct1.totalSupply()
+                    )
+                ) +
+                refund1 -
+                int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
+
+            if (shortage > 0) {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
+                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
+
+                refund1 = int128(refund1) - shortage;
+                refund0 =
+                    int128(PanopticMath.convert1to0(shortage, sqrtPriceX96)) +
+                    int128(refund0);
+
+                assertEq(refundAmounts.rightSlot(), refund0);
+                assertEq(refundAmounts.leftSlot(), refund1);
+
+                return;
+            }
+            {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    LeftRightUnsigned
+                        .wrap(0)
+                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
+                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
+
+                assertEq(refundAmounts.rightSlot(), int128(refund0));
+                assertEq(refundAmounts.leftSlot(), int128(refund1));
+            }
         }
     }
 
