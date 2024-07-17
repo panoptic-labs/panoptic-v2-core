@@ -1157,37 +1157,31 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
-
-        // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
-        // and the long legs (from which the exercise cost is computed)
-        (LeftRightSigned longAmounts, LeftRightSigned delegatedAmounts) = PanopticMath
-            .computeExercisedAmounts(touchedId[0], positionBalance);
-
         int24 twapTick = getUniV3TWAP();
-
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-        {
-            // add the premia to the delegated amounts to ensure the user has enough collateral to exercise
-            (LeftRightSigned positionPremia, ) = _calculateAccumulatedPremia(
-                account,
-                touchedId,
-                COMPUTE_LONG_PREMIA,
-                ONLY_AVAILABLE_PREMIUM,
-                currentTick
-            );
-
-            // long premia is represented as negative so subtract it to increase it for the delegated amounts
-            delegatedAmounts = delegatedAmounts.sub(positionPremia);
-        }
 
         // on forced exercise, the price *must* be outside the position's range for at least 1 leg
         touchedId[0].validateIsExercisable(twapTick);
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
+        LeftRightUnsigned delegatedShares = LeftRightUnsigned
+            .wrap(0)
+            .toRightSlot(
+                uint128((s_collateralToken0.delegate(account, uint256(type(uint104).max) * 10_000)))
+            )
+            .toLeftSlot(
+                uint128(s_collateralToken1.delegate(account, uint256(type(uint104).max) * 10_000))
+            );
+
+        uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
+
+        // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
+        // and the long legs (from which the exercise cost is computed)
+        (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
+            touchedId[0],
+            positionBalance
+        );
+
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
@@ -1203,34 +1197,23 @@ contract PanopticPool is ERC1155Holder, Multicall {
             longAmounts
         );
 
-        LeftRightSigned refundAmounts = delegatedAmounts.add(exerciseFees);
-
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = PanopticMath.getRefundAmounts(
+        LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
             account,
-            refundAmounts,
+            delegatedShares,
+            exerciseFees,
             twapTick,
             s_collateralToken0,
             s_collateralToken1
         );
 
-        unchecked {
-            // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-            s_collateralToken0.refund(
-                account,
-                msg.sender,
-                refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
-            );
-            s_collateralToken1.refund(
-                account,
-                msg.sender,
-                refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
-            );
-        }
+        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
+        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
+        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
-        // refund the protocol any virtual shares after settling the difference with the exercisor
-        s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.refund(account, uint128(delegatedAmounts.leftSlot()));
+        // revoke the virual shares that were delegated after settling the difference with the exercisor
+        s_collateralToken0.revoke(account, delegatedShares.rightSlot());
+        s_collateralToken1.revoke(account, delegatedShares.leftSlot());
 
         _validateSolvency(account, positionIdListExercisee, NO_BUFFER);
 
