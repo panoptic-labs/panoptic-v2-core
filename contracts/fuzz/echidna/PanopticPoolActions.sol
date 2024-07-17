@@ -223,6 +223,8 @@ contract PanopticPoolActions is CollateralActions {
             $positionSizeActive
         );
 
+        //checked
+
         // intrinsic val
         $colDelta0 = -($totalSwapped.rightSlot() -
             ($shortAmounts.rightSlot() - $longAmounts.rightSlot()));
@@ -261,6 +263,8 @@ contract PanopticPoolActions is CollateralActions {
         $colDelta0 -= $commission0;
         $colDelta1 -= $commission1;
 
+        // checked, NOFAIL
+
         ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
             msg.sender,
             false,
@@ -272,12 +276,14 @@ contract PanopticPoolActions is CollateralActions {
 
         $poolAssets0 = uint256(int256($poolAssets0) + $colDelta0);
         $poolAssets1 = uint256(int256($poolAssets1) + $colDelta1);
-        $inAMM0 = uint256(int256($inAMM0) - $shortAmounts.rightSlot() + $longAmounts.rightSlot());
-        $inAMM1 = uint256(int256($inAMM1) - $shortAmounts.leftSlot() + $longAmounts.leftSlot());
+
+        $inAMM0 = uint256(int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot());
+        $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
 
         $poolUtil0 = ($inAMM0 * 10_000) / $poolAssets0;
         $poolUtil1 = ($inAMM1 * 10_000) / $poolAssets1;
 
+        // checked, FAIL
         unchecked {
             $posBalanceArray.push(
                 [
@@ -442,10 +448,6 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLimitHigh
             )
         {
-            // assertWithMsg(false, "minted!");
-            // for (uint256 i = 0; i < $numLegs; ++i) {
-            //     assertWithMsg($isLongs[i] != 1, "minted long!");
-            // }
             $allPositionCount++;
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
@@ -692,6 +694,7 @@ contract PanopticPoolActions is CollateralActions {
             assertWithMsg(!$shouldRevert, "SettleLongPremium: missing revert");
         } catch {
             assertWithMsg($shouldRevert, "SettleLongPremium: unexpected revert");
+            revert();
         }
 
         // 4. get accumulated settledTokens for each CT and ensure it increased by calc'ed premium amount
@@ -833,11 +836,39 @@ contract PanopticPoolActions is CollateralActions {
                 $positionListExercisee,
                 $positionListExercisor
             )
-        {} catch (bytes memory reason) {
+        {
+            assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
+        } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
-            assertWithMsg($shouldRevert, "Force exercise failed");
 
-            revert();
+            // check if the revert is due to an insufficient amount of tokens from the exercisor
+            if (keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))) {
+                hevm.prank(address(panopticPool));
+                collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+                hevm.prank(address(panopticPool));
+                collToken1.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+
+                $balance0Origin = int256(collToken0.balanceOf(msg.sender));
+                $balance1Origin = int256(collToken1.balanceOf(msg.sender));
+
+                hevm.prank(msg.sender);
+                try
+                    panopticPool.forceExercise(
+                        $exercisee,
+                        $touchedId,
+                        $positionListExercisee,
+                        $positionListExercisor
+                    )
+                {
+                    assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
+                } catch {
+                    assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
+                    revert();
+                }
+            } else {
+                assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
+                revert();
+            }
         }
 
         ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(
@@ -906,6 +937,41 @@ contract PanopticPoolActions is CollateralActions {
             "ForceExercise: Exercisor delegation does not match exercisee's token1 delta compared to burn"
         );
 
+        emit LogInt256("cDelta0", cDelta0);
+        emit LogInt256(
+            "cDeltaToken0",
+            (
+                int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee - $colDelta0 > 0
+                    ? int8(1)
+                    : -1
+            ) *
+                int256(
+                    collToken0.convertToAssets(
+                        uint256(
+                            Math.abs(
+                                int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee
+                            ) - $colDelta0
+                        )
+                    )
+                )
+        );
+        emit LogInt256(
+            "cDeltaToken1",
+            (
+                int256(collToken1.balanceOf($exercisee)) - $balance1Exercisee - $colDelta1 > 0
+                    ? int8(1)
+                    : -1
+            ) *
+                int256(
+                    collToken1.convertToAssets(
+                        uint256(
+                            Math.abs(
+                                int256(collToken1.balanceOf($exercisee)) - $balance1Exercisee
+                            ) - $colDelta1
+                        )
+                    )
+                )
+        );
         assertWithMsg(
             cDelta0 >= 0,
             "ForceExercise: Sanity check - Exercisee token value is lower than before"

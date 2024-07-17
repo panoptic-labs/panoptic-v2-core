@@ -29,4 +29,4 @@ out
 docs
 
 crytic-export
-contracts/fuzz/corpus
+contracts/fuzz/echidna/corpus

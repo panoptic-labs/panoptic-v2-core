@@ -26,6 +26,7 @@ import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {Constants} from "@libraries/Constants.sol";
+import {Errors} from "@libraries/Errors.sol";
 
 interface IHevm {
     function warp(uint256 newTimestamp) external;
@@ -431,6 +432,7 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256[2][] $posBalanceArray;
 
     bool $shouldRevert;
+    bool $sfpmRevert;
 
     int24 $fastOracleTick;
     int24 $slowOracleTick;
@@ -1310,6 +1312,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 .decode(results, (LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool));
 
             $shouldRevert = $shouldRevert || sRevert;
+            $sfpmRevert = sRevert;
         }
     }
 
