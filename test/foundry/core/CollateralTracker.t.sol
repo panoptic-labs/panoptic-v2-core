@@ -125,15 +125,15 @@ contract PanopticPoolHarness is PanopticPool {
         // Start and store the collateral token0/1
         _initalizeCollateralPair(token0, token1, uniswapPool);
 
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = uniswapPool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
 
-        (int24 slowOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            uniswapPool,
-            observationIndex,
-            observationCardinality,
-            SLOW_ORACLE_CARDINALITY,
-            SLOW_ORACLE_PERIOD
-        );
+        ) = uniswapPool.slot0();
 
         unchecked {
             s_miniMedian =
@@ -141,8 +141,8 @@ contract PanopticPoolHarness is PanopticPool {
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_miniMedian initialization for format of this magic number
                 (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(slowOracleTick)) << 24) + // add to slot 4
-                (uint256(uint24(slowOracleTick))); // add to slot 3
+                (uint256(uint24(currentTick)) << 24) + // add to slot 4
+                (uint256(uint24(currentTick))); // add to slot 3
         }
 
         // Approve transfers of Panoptic Pool funds by SFPM

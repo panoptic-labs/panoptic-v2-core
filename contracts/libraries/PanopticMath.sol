@@ -112,7 +112,7 @@ library PanopticMath {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          ORACLE CALCULATIONS
+                              UTILITIES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Update an existing account's "positions hash" with a new single position `tokenId`.
@@ -144,6 +144,59 @@ library PanopticMath {
         }
     }
 
+    /*//////////////////////////////////////////////////////////////
+                          ORACLE CALCULATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Gets several ticks from Uniswap regarding the underlying pair.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
+    function getOracleTicks(
+        IUniswapV3Pool univ3pool,
+        uint256 FAST_ORACLE_CARDINALITY,
+        uint256 FAST_ORACLE_PERIOD,
+        uint256 MEDIAN_PERIOD,
+        uint256 miniMedian
+    )
+        external
+        view
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
+    {
+        uint16 observationIndex;
+        uint16 observationCardinality;
+
+        IUniswapV3Pool _univ3pool = univ3pool;
+        (, currentTick, observationIndex, observationCardinality, , , ) = univ3pool.slot0();
+
+        {
+            (fastOracleTick, latestObservation) = computeMedianObservedPrice(
+                _univ3pool,
+                observationIndex,
+                observationCardinality,
+                FAST_ORACLE_CARDINALITY,
+                FAST_ORACLE_PERIOD
+            );
+        }
+        {
+            (slowOracleTick, medianData) = computeInternalMedian(
+                observationIndex,
+                observationCardinality,
+                MEDIAN_PERIOD,
+                miniMedian,
+                _univ3pool
+            );
+        }
+    }
+
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
     /// @dev Used when we need a manipulation-resistant TWAP price.
     /// @dev Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
@@ -164,7 +217,7 @@ library PanopticMath {
         uint256 observationCardinality,
         uint256 cardinality,
         uint256 period
-    ) external view returns (int24, int24) {
+    ) internal view returns (int24, int24) {
         unchecked {
             int256[] memory tickCumulatives = new int256[](cardinality + 1);
 
@@ -207,7 +260,7 @@ library PanopticMath {
         uint256 period,
         uint256 medianData,
         IUniswapV3Pool univ3pool
-    ) external view returns (int24 medianTick, uint256 updatedMedianData) {
+    ) internal view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick =
