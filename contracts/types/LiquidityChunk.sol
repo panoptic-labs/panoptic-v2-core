@@ -11,7 +11,7 @@ using LiquidityChunkLibrary for LiquidityChunk global;
 /// @author Axicon Labs Limited
 ///
 /// @notice A liquidity chunk is an amount of `liquidity` (an amount of WETH, e.g.) deployed between two ticks: `tickLower` and `tickUpper`
-/// into a concentrated liquidity AMM .
+/// into a concentrated liquidity AMM.
 //
 //                liquidity
 //                    ▲      liquidity chunk
@@ -50,11 +50,11 @@ using LiquidityChunkLibrary for LiquidityChunk global;
 //        <--- most significant bit        least significant bit --->
 //
 library LiquidityChunkLibrary {
-    /// @notice AND mask to strip the `tickLower` value from a packed LiquidityChunk
+    /// @notice AND mask to strip the `tickLower` value from a packed LiquidityChunk.
     uint256 internal constant CLEAR_TL_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
-    /// @notice AND mask to strip the `tickUpper` value from a packed LiquidityChunk
+    /// @notice AND mask to strip the `tickUpper` value from a packed LiquidityChunk.
     uint256 internal constant CLEAR_TU_MASK =
         0xFFFFFF000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 

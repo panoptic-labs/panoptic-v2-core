@@ -56,19 +56,19 @@ contract PanopticFactory is FactoryNFT, Multicall {
                          CONSTANTS & IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The Uniswap V3 factory contract to use
+    /// @notice The Uniswap V3 factory contract to use.
     IUniswapV3Factory internal immutable UNIV3_FACTORY;
 
-    /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools
+    /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools.
     SemiFungiblePositionManager internal immutable SFPM;
 
-    /// @notice Reference implementation of the `PanopticPool` to clone
+    /// @notice Reference implementation of the `PanopticPool` to clone.
     address internal immutable POOL_REFERENCE;
 
-    /// @notice Reference implementation of the `CollateralTracker` to clone
+    /// @notice Reference implementation of the `CollateralTracker` to clone.
     address internal immutable COLLATERAL_REFERENCE;
 
-    /// @notice Address of the Wrapped Ether (or other numeraire token) contract
+    /// @notice Address of the Wrapped Ether (or other numeraire token) contract.
     address internal immutable WETH;
 
     /// @notice An amount of `WETH` deployed when initializing the SFPM against a new AMM pool.
@@ -79,14 +79,14 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev Deploy 1e6 worth of tokens if not WETH.
     uint256 internal constant FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN = 1e6;
 
-    /// @notice The `observationCardinalityNext` to set on the Uniswap pool when a new PanopticPool is deployed
+    /// @notice The `observationCardinalityNext` to set on the Uniswap pool when a new PanopticPool is deployed.
     uint16 internal constant CARDINALITY_INCREASE = 100;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools
+    /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
     mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
@@ -114,7 +114,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     ) FactoryNFT(properties, indices, pointers) {
         WETH = _WETH9;
         SFPM = _SFPM;
-        // We store the Uniswap Factory contract - later we can use this to verify uniswap pools
         UNIV3_FACTORY = _univ3Factory;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
@@ -159,10 +158,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified uniquely by the incoming parameters.
-    /// @dev Pool deployment is restricted to the factory owner until transferred to the zero address.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
-    /// @dev Salt used in PanopticPool CREATE2 is [leading 20 msg.sender chars][leading 20 pool address chars][salt]
+    /// @dev Salt used in PanopticPool CREATE2 is [leading 20 msg.sender chars][leading 20 pool address chars][salt].
     /// @param token0 Address of token0 for the underlying Uniswap v3 pool
     /// @param token1 Address of token1 for the underlying Uniswap v3 pool
     /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
@@ -226,7 +224,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
-        // The SFPM will `safeTransferFrom` tokens from the donor during the mint callback
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
         if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();
@@ -252,8 +249,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Find the salt which would give a Panoptic Pool the highest rarity within the search parameters.
     /// @dev The rarity is defined in terms of how many leading zeros the Panoptic pool address has.
     /// @dev Note that the final salt may overflow if too many loops are given relative to the amount in `salt`.
-    /// @param deployerAddress address of the account that deploys the new PanopticPool
-    /// @param v3Pool address of the underlying UniswapV3Pool
+    /// @param deployerAddress Address of the account that deploys the new PanopticPool
+    /// @param v3Pool Address of the underlying UniswapV3Pool
     /// @param salt Salt value ([96-bit nonce]) to start from, useful as a checkpoint across multiple calls
     /// @param loops The number of mining operations starting from 'salt' in trying to find the highest rarity
     /// @param minTargetRarity The minimum target rarity to mine for. The internal loop stops when this is reached *or* when no more iterations
@@ -398,7 +395,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
     /// @notice Return the address of the Panoptic Pool associated with 'univ3pool'.
     /// @param univ3pool The Uniswap V3 pool address to query
-    /// @return Address of the Panoptic Pool associated with 'univ3pool'.
+    /// @return Address of the Panoptic Pool associated with 'univ3pool'
     function getPanopticPool(IUniswapV3Pool univ3pool) external view returns (PanopticPool) {
         return s_getPanopticPool[univ3pool];
     }

@@ -425,6 +425,49 @@ contract Misctest is Test, PositionUtils {
         );
     }
 
+    function test_fail_mint0liquidity_SFPM() public {
+        vm.startPrank(Seller);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                -224040,
+                3540
+            )
+        );
+
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        vm.startPrank(Alice);
+        $posIdList[0] = TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            0,
+            1,
+            0,
+            1,
+            0,
+            0,
+            -224040,
+            3540
+        );
+
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+    }
+
     function test_success_MintBurnCallSpread() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -535,6 +578,81 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+    }
+
+    // are delegations for ITM positions sufficient?
+    function test_success_exercise_crossDelegate() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Seller);
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        $posIdList[0] = TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            15,
+            1
+        );
+
+        vm.startPrank(Alice);
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        editCollateral(ct1, Alice, 0);
+
+        vm.startPrank(Swapper);
+
+        PanopticMath.twapFilter(uniPool, 600);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+
+        PanopticMath.twapFilter(uniPool, 600);
+
+        vm.startPrank(Bob);
+        pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
     }
 
     function test_success_ITMspreadfee_0_01bp() public {
@@ -1397,7 +1515,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            258_335,
+            258_334,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1496,7 +1614,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            516_671,
+            516_670,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -1622,7 +1740,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_007,
+            275_006,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -1672,7 +1790,7 @@ contract Misctest is Test, PositionUtils {
             // @TODO might have to tweak this if rounding is changed upstream
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(104) : int256(105),
+                i == 0 ? int256(107) : int256(108),
                 "Buyer paid premium twice"
             );
 
@@ -1808,7 +1926,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Bob)) - assetsBefore0,
-            250_000,
+            249_999,
             "Incorrect Bob Delta 0"
         );
         assertEq(
@@ -1855,7 +1973,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0,
-            533_333,
+            533_332,
             "Incorrect Alice Delta 0"
         );
         assertEq(
@@ -1887,7 +2005,7 @@ contract Misctest is Test, PositionUtils {
 
         assertEq(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) - assetsBefore0,
-            275_000,
+            274_999,
             "Incorrect Charlie Delta 0"
         );
         assertEq(
@@ -2088,6 +2206,65 @@ contract Misctest is Test, PositionUtils {
 
         vm.expectRevert(Errors.NotEnoughCollateral.selector);
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
+    }
+
+    function test_success_NotionalRounding() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                int24(-665450),
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
+
+        (, , uint256[2][] memory positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+            Bob,
+            false,
+            $posIdList
+        );
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            positionBalanceArray,
+            0
+        );
+
+        LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            positionBalanceArray,
+            0
+        );
+        (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+            tokenData0,
+            tokenData1,
+            0,
+            currentTick
+        );
+
+        assertTrue(required0 > 0, "zero collateral requirement");
+        assertTrue(required0 <= balance0, "account is solvent");
+
+        pp.burnOptions($posIdList[0], new TokenId[](0), int24(887272), int24(-887272));
     }
 
     function test_success_PremiumRollover() public {
