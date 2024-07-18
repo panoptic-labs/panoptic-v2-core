@@ -146,9 +146,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the more oracle ticks (slow, current, and latest).
+    /// @notice The maximum allowed cumulative delta between: the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_SLOW_FAST_DELTA = 953;
+    int256 internal constant MAX_TICKS_DELTA = 953;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -670,7 +670,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1
+    /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens.
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
@@ -878,7 +878,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Validates the solvency of `user`.
-    /// @dev Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_SLOW_FAST_DELTA`.
+    /// @dev Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_TICKS_DELTA`.
     /// @dev Effectively, this means that the users must be solvent at both the fast and slow oracle ticks if one of them is stale to mint or burn options.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
@@ -913,7 +913,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int256(fastOracleTick - slowOracleTick) ** 2 +
                 int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
-            MAX_SLOW_FAST_DELTA ** 2
+            MAX_TICKS_DELTA ** 2
         ) {
             atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
@@ -929,7 +929,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             revert Errors.AccountInsolvent();
     }
 
-    /// @notice Burns and handles the exercise of options.
+    /// @notice Gets several ticks from Uniswap regarding the underlying pair.
     /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
@@ -1339,7 +1339,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 numberOfTicks = atTicks.length;
         bool solvent = true;
-        for (uint256 i; i < numberOfTicks; ++i) {
+        for (uint256 i; i < numberOfTicks; ) {
             solvent =
                 solvent &&
                 _checkCrossBalances(
@@ -1349,6 +1349,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     portfolioPremium,
                     buffer
                 );
+            unchecked {
+                ++i;
+            }
         }
         return solvent;
     }
@@ -1428,7 +1431,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
             // If ticks have recently deviated more than +/- 10%, enforce covered mints
-            if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
+            if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
                 safeMode = true;
             }
         }
