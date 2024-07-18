@@ -646,7 +646,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitLow The lower slippage limit on the tick.
     /// @param tickLimitHigh The upper slippage limit on the tick.
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1.
+    /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens.
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
@@ -654,6 +654,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
+        bool safeMode = _isSafeMode();
+        // if safeMode, enforce covered deployment
+        if (safeMode) {
+            if (tickLimitLow > tickLimitHigh) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -667,7 +675,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
-        return poolUtilizations;
+        if (safeMode) {
+            return uint128(10_000) + uint128(10_000 << 64);
+        } else {
+            return poolUtilizations;
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
@@ -900,6 +912,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
             LeftRightSigned paidAmounts
         )
     {
+        {
+            bool safeMode = _isSafeMode();
+            // if safeMode, enforce covered at assignment
+            if (safeMode) {
+                if (tickLimitLow > tickLimitHigh) {
+                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+                }
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -1288,6 +1310,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe mode when true where all newly minted positions must be fully collateralized
+    function _isSafeMode() internal view returns (bool safeMode) {
+        // check if the price has deviated too much recently.
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        unchecked {
+            uint256 medianData = s_miniMedian;
+            int24 medianTick = (int24(
+                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
+
+            // If ticks have recently deviated more than +/- 10%, enforce covered mints
+            if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
+                safeMode = true;
+            }
+        }
+        return (safeMode);
+    }
+
     /*//////////////////////////////////////////////////////////////
                  POSITIONS HASH GENERATION & VALIDATION
     //////////////////////////////////////////////////////////////*/
@@ -1359,7 +1400,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Get the collateral token corresponding to token0 of the AMM pool.
     /// @return collateralToken Collateral token corresponding to token0 in the AMM
-    function collateralToken0() external view returns (CollateralTracker collateralToken) {
+    function collateralToken0() external view returns (CollateralTracker) {
         return s_collateralToken0;
     }
 
@@ -1369,10 +1410,37 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return s_collateralToken1;
     }
 
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    function isSafeMode() external view returns (bool) {
+        return _isSafeMode();
+    }
+
+    /// @notice Computes and returns all oracle ticks.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian`
+    function getOracleTicks()
+        external
+        view
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
+    {
+        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = _getOracleTicks();
+        medianData = s_miniMedian;
+    }
+
     /// @notice Get the current number of open positions for an account
     /// @param user The account to query
     /// @return _numberOfPositions Number of open positions for `user`
-    function numberOfPositions(address user) public view returns (uint256 _numberOfPositions) {
+    function numberOfPositions(address user) external view returns (uint256 _numberOfPositions) {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 
