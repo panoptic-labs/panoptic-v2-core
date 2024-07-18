@@ -2271,7 +2271,6 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
-
         // deposit bare minimum for naked minting
         ct1.deposit(17_811, Bob);
 
@@ -2329,7 +2328,6 @@ contract Misctest is Test, PositionUtils {
 
         uint256 snapshot = vm.snapshot();
 
-
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
@@ -2339,7 +2337,6 @@ contract Misctest is Test, PositionUtils {
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
         ct1.deposit(17_817, Bob);
-
 
         // mint succeeds
         pp.mintOptions(
@@ -2428,7 +2425,6 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(150504, Bob);
         ct1.deposit(0, Bob);
 
-
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2461,7 +2457,6 @@ contract Misctest is Test, PositionUtils {
             totalCollateralBalance0 >= totalCollateralRequired0,
             "Is solvent at current tick!"
         );
-
     }
 
     function test_Success_InsolventAtCurrentTick_itmCall() public {
@@ -2507,7 +2502,6 @@ contract Misctest is Test, PositionUtils {
 
         uint256 snapshot = vm.snapshot();
 
-
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
@@ -2517,7 +2511,6 @@ contract Misctest is Test, PositionUtils {
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
         ct1.deposit(17_820, Bob);
-
 
         // mint succeeds
         pp.mintOptions(

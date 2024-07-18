@@ -2672,7 +2672,6 @@ contract PanopticPoolTest is PositionUtils {
                 TokenId[] memory posIdList = new TokenId[](1);
                 posIdList[0] = tokenId;
 
-
                 pp.mintOptions(
                     posIdList,
                     positionSize,
