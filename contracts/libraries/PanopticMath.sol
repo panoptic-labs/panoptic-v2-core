@@ -920,7 +920,8 @@ library PanopticMath {
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
     /// @param exercisee Address of the force exercisee
-    /// @param delegatedShares The amount of virtual shares delegated to the exercisor that must be returned to the protocol
+    /// @param delegated0 The amount of virtual token0 shares delegated to the exercisor that must be returned to the protocol
+    /// @param delegated1 The amount of virtual token1 shares delegated to the exercisor that must be returned to the protocol
     /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param collateral0 CollateralTracker for token0
@@ -928,7 +929,8 @@ library PanopticMath {
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
         address exercisee,
-        LeftRightUnsigned delegatedShares,
+        uint256 delegated0,
+        uint256 delegated1,
         LeftRightSigned exerciseFees,
         int24 atTick,
         CollateralTracker collateral0,
@@ -939,7 +941,7 @@ library PanopticMath {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
             int256 balanceShortage = int256(
                 Math.mulDivRoundingUp(
-                    delegatedShares.rightSlot(),
+                    delegated0,
                     collateral0.totalAssets(),
                     collateral0.totalSupply()
                 )
@@ -964,7 +966,7 @@ library PanopticMath {
             balanceShortage =
                 int256(
                     Math.mulDivRoundingUp(
-                        delegatedShares.leftSlot(),
+                        delegated1,
                         collateral1.totalAssets(),
                         collateral1.totalSupply()
                     )

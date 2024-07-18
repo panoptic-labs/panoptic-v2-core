@@ -5465,10 +5465,8 @@ contract PanopticPoolTest is PositionUtils {
             if (shortage > 0) {
                 LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
                     Charlie,
-                    LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
-                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
+                    ct0.convertToShares(type(uint104).max),
+                    ct1.convertToShares(type(uint104).max),
                     LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
                         int128(refund1)
                     ),
@@ -5505,10 +5503,8 @@ contract PanopticPoolTest is PositionUtils {
             if (shortage > 0) {
                 LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
                     Charlie,
-                    LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
-                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
+                    ct0.convertToShares(type(uint104).max),
+                    ct1.convertToShares(type(uint104).max),
                     LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
                         int128(refund1)
                     ),
@@ -5530,10 +5526,8 @@ contract PanopticPoolTest is PositionUtils {
             {
                 LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
                     Charlie,
-                    LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(uint128(ct0.convertToShares(type(uint104).max)))
-                        .toLeftSlot(uint128(ct1.convertToShares(type(uint104).max))),
+                    ct0.convertToShares(type(uint104).max),
+                    ct1.convertToShares(type(uint104).max),
                     LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
                         int128(refund1)
                     ),
