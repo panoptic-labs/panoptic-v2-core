@@ -127,7 +127,7 @@ contract PanopticPoolHarness is PanopticPool {
 
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = uniswapPool.slot0();
 
-        int24 slowOracleTick = PanopticMath.computeMedianObservedPrice(
+        (int24 slowOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             uniswapPool,
             observationIndex,
             observationCardinality,

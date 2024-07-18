@@ -157,18 +157,19 @@ library PanopticMath {
     /// @param cardinality The number of `periods` to in the median price array, should be odd
     /// @param period The number of observations to average to compute one entry in the median price array
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
+    /// @return The latest observation in the Uniswap pool
     function computeMedianObservedPrice(
         IUniswapV3Pool univ3pool,
         uint256 observationIndex,
         uint256 observationCardinality,
         uint256 cardinality,
         uint256 period
-    ) external view returns (int24) {
+    ) external view returns (int24, int24) {
         unchecked {
             int256[] memory tickCumulatives = new int256[](cardinality + 1);
 
             uint256[] memory timestamps = new uint256[](cardinality + 1);
-            // get the last 4 timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
+            // get the last "cardinality" timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
             for (uint256 i = 0; i < cardinality + 1; ++i) {
                 (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
                     uint256(
@@ -187,7 +188,7 @@ library PanopticMath {
             }
 
             // get the median of the `ticks` array (assuming `cardinality` is odd)
-            return int24(Math.sort(ticks)[cardinality / 2]);
+            return (int24(Math.sort(ticks)[cardinality / 2]), int24(ticks[0]));
         }
     }
 
