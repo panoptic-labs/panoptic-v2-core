@@ -657,7 +657,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
-
         // update premium settlement info
         _updateSettlementPostMint(
             tokenId,
