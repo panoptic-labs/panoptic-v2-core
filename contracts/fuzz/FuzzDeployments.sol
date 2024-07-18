@@ -1368,13 +1368,7 @@ contract FuzzDeployments is FuzzHelpers {
             return;
         }
 
-        _try_burning_and_check_balances(
-            caller,
-            position,
-            positionsNew,
-            posSize,
-            tickLimitLow
-        );
+        _try_burning_and_check_balances(caller, position, positionsNew, posSize, tickLimitLow);
     }
 
     function _try_burning_zero_size_position(
@@ -1426,14 +1420,18 @@ contract FuzzDeployments is FuzzHelpers {
         try this._simulate_sfpm_burn(position, posSize, tickLimitLow) {
             assertWithMsg(false, "_simulate_sfpm_burn should always revert");
         } catch (bytes memory sfpm_sim_result) {
-            AccumulatorsForLeg[] memory preburnAccumulators = new AccumulatorsForLeg[](position.countLegs());
-            PremiaCalcInputs[] memory premiaCalcInputs = new PremiaCalcInputs[](position.countLegs());
+            AccumulatorsForLeg[] memory preburnAccumulators = new AccumulatorsForLeg[](
+                position.countLegs()
+            );
+            PremiaCalcInputs[] memory premiaCalcInputs = new PremiaCalcInputs[](
+                position.countLegs()
+            );
 
             (preburnAccumulators, premiaCalcInputs) = _get_preburn_accumulators(
-                    position,
-                    caller,
-                    posSize
-                );
+                position,
+                caller,
+                posSize
+            );
             _burn_and_assert_accumulator_and_token_differences(
                 position,
                 premiaCalcInputs,
@@ -1476,12 +1474,12 @@ contract FuzzDeployments is FuzzHelpers {
             int128 expectedNonPremiaToken0Difference,
             int128 expectedNonPremiaToken1Difference
         ) = _project_premia_from_preburn_values(
-            position,
-            premiaCalcInputs,
-            preburnAccumulators,
-            sfpm_sim_result,
-            posSize
-        );
+                position,
+                premiaCalcInputs,
+                preburnAccumulators,
+                sfpm_sim_result,
+                posSize
+            );
 
         assertWithMsg(false, "projected premia");
 
@@ -1537,19 +1535,25 @@ contract FuzzDeployments is FuzzHelpers {
         assertWithMsg(false, "compared against preburn");
     }
 
-    function _prank_and_burn(address caller, TokenId position, TokenId[] memory positionsNew, int24 tickLimitLow) internal {
+    function _prank_and_burn(
+        address caller,
+        TokenId position,
+        TokenId[] memory positionsNew,
+        int24 tickLimitLow
+    ) internal {
         hevm.prank(caller);
         panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
     }
 
-    function _get_preburn_values(address caller) internal view returns(PreburnValues memory) {
-        return PreburnValues({
-            token0Balance: IERC20(pool.token0()).balanceOf(caller),
-            token1Balance: IERC20(pool.token0()).balanceOf(caller),
-            assetsInCT0: collToken0.convertToAssets(collToken0.balanceOf(caller)),
-            assetsInCT1: collToken1.convertToAssets(collToken1.balanceOf(caller)),
-            positionsOpened: panopticPool.numberOfPositions(caller)
-        });
+    function _get_preburn_values(address caller) internal view returns (PreburnValues memory) {
+        return
+            PreburnValues({
+                token0Balance: IERC20(pool.token0()).balanceOf(caller),
+                token1Balance: IERC20(pool.token0()).balanceOf(caller),
+                assetsInCT0: collToken0.convertToAssets(collToken0.balanceOf(caller)),
+                assetsInCT1: collToken1.convertToAssets(collToken1.balanceOf(caller)),
+                positionsOpened: panopticPool.numberOfPositions(caller)
+            });
     }
 
     error SFPMBurnSimResult(
@@ -1567,12 +1571,8 @@ contract FuzzDeployments is FuzzHelpers {
         uint128[] memory token0CollectedByLeg = new uint128[](position.countLegs());
         uint128[] memory token1CollectedByLeg = new uint128[](position.countLegs());
         hevm.prank(address(panopticPool));
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm.burnTokenizedPosition(
-            position,
-            positionSize,
-            tickLimitLow,
-            -1 * tickLimitLow
-        );
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+            .burnTokenizedPosition(position, positionSize, tickLimitLow, -1 * tickLimitLow);
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             token0CollectedByLeg[legIndex] = collectedByLeg[legIndex].rightSlot();
             token1CollectedByLeg[legIndex] = collectedByLeg[legIndex].leftSlot();
@@ -1589,7 +1589,14 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId position,
         address seller,
         uint128 posSize
-    ) internal view returns (AccumulatorsForLeg[] memory accumulators, PremiaCalcInputs[] memory premiaCalcInputs) {
+    )
+        internal
+        view
+        returns (
+            AccumulatorsForLeg[] memory accumulators,
+            PremiaCalcInputs[] memory premiaCalcInputs
+        )
+    {
         uint256 numLegs = position.countLegs();
 
         accumulators = new AccumulatorsForLeg[](numLegs);
@@ -1624,10 +1631,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 posSize
     )
         internal
-        returns (
-            int128 expectedNonPremiaToken0Difference,
-            int128 expectedNonPremiaToken1Difference
-        )
+        returns (int128 expectedNonPremiaToken0Difference, int128 expectedNonPremiaToken1Difference)
     {
         // We add any expected tokens for burning an ITM position in the SFPM
         expectedNonPremiaToken0Difference = token0Swapped;
@@ -1678,15 +1682,11 @@ contract FuzzDeployments is FuzzHelpers {
             int128 token1Swapped,
             uint128[] memory token0CollectedByLeg,
             uint128[] memory token1CollectedByLeg
-        ) = abi.decode(
-            sfpm_sim_result,
-            (int128, int128, uint128[], uint128[])
-        );
+        ) = abi.decode(sfpm_sim_result, (int128, int128, uint128[], uint128[]));
         assertWithMsg(false, "decoded the abi");
 
         projectedPremia = new PremiaProjection[](position.countLegs());
         assertWithMsg(false, "set up the projectedPremia");
-
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             assertWithMsg(false, "made it into the for loop");
@@ -1724,12 +1724,15 @@ contract FuzzDeployments is FuzzHelpers {
                 );
         }
 
-        (expectedToken0Difference, expectedToken1Difference) = _get_expected_nonpremia_token_difference(
-                token0Swapped,
-                token1Swapped,
-                position,
-                posSize
-            );
+        (
+            expectedToken0Difference,
+            expectedToken1Difference
+        ) = _get_expected_nonpremia_token_difference(
+            token0Swapped,
+            token1Swapped,
+            position,
+            posSize
+        );
     }
 
     function _prorate_ideal_premium(
@@ -1775,27 +1778,22 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaProjection[] memory projectedPremia,
         bytes memory sfpm_sim_result
     ) internal {
-        (
-            ,
-            ,
-            uint128[] memory token0CollectedByLeg,
-            uint128[] memory token1CollectedByLeg
-        ) = abi.decode(
-            sfpm_sim_result,
-            (int128, int128, uint128[], uint128[])
-        );
+        (, , uint128[] memory token0CollectedByLeg, uint128[] memory token1CollectedByLeg) = abi
+            .decode(sfpm_sim_result, (int128, int128, uint128[], uint128[]));
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             int256 expectedSettledToken0DifferenceForChunk = Math.min(
                 int256(
-                    (position.isLong(legIndex) == 1 ? -1 : int8(1)) * int128(projectedPremia[legIndex].proratedPremium0) -
-                    int128(token0CollectedByLeg[legIndex])
+                    (position.isLong(legIndex) == 1 ? -1 : int8(1)) *
+                        int128(projectedPremia[legIndex].proratedPremium0) -
+                        int128(token0CollectedByLeg[legIndex])
                 ),
                 0
             );
             int256 expectedSettledToken1DifferenceForChunk = Math.min(
                 int256(
-                    (position.isLong(legIndex) == 1 ? -1 : int8(1)) * int128(projectedPremia[legIndex].proratedPremium1) -
-                    int128(token1CollectedByLeg[legIndex])
+                    (position.isLong(legIndex) == 1 ? -1 : int8(1)) *
+                        int128(projectedPremia[legIndex].proratedPremium1) -
+                        int128(token1CollectedByLeg[legIndex])
                 ),
                 0
             );
@@ -1809,12 +1807,14 @@ contract FuzzDeployments is FuzzHelpers {
 
             assertWithMsg(
                 int256(int128(postburnSettledToken0)) ==
-                    int256(int128(preburnAccumulators[legIndex].settledToken0)) - expectedSettledToken0DifferenceForChunk,
+                    int256(int128(preburnAccumulators[legIndex].settledToken0)) -
+                        expectedSettledToken0DifferenceForChunk,
                 "Settled token0s, plus tokens collected, did not decrease by the amount of total (prorated) premium paid out"
             );
             assertWithMsg(
                 int256(int128(postburnSettledToken1)) ==
-                    int256(int128(preburnAccumulators[legIndex].settledToken1)) - expectedSettledToken1DifferenceForChunk,
+                    int256(int128(preburnAccumulators[legIndex].settledToken1)) -
+                        expectedSettledToken1DifferenceForChunk,
                 "Settled token1s, plus tokens collected, did not decrease by the amount of total (prorated) premium paid out"
             );
 
@@ -1846,8 +1846,10 @@ contract FuzzDeployments is FuzzHelpers {
             "Burning a position did not decrease the position counter"
         );
 
-        (int128 totalProjectedProratedPremium0, int128 totalProjectedProratedPremium1) =
-            _net_up_prorated_premia(position, projectedPremia);
+        (
+            int128 totalProjectedProratedPremium0,
+            int128 totalProjectedProratedPremium1
+        ) = _net_up_prorated_premia(position, projectedPremia);
 
         (
             uint256 burnersPostburnToken0Balance,
@@ -2012,14 +2014,15 @@ contract FuzzDeployments is FuzzHelpers {
             assetsInCT1: collToken1.convertToAssets(collToken1.balanceOf(msg.sender)),
             positionsOpened: preburnNumPositions
         });
-        AccumulatorsForLeg[][]
-            memory preburnAccumulators = new AccumulatorsForLeg[][](preburnNumPositions);
+        AccumulatorsForLeg[][] memory preburnAccumulators = new AccumulatorsForLeg[][](
+            preburnNumPositions
+        );
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             (uint128 posSize, , ) = panopticPool.optionPositionBalance(
                 msg.sender,
                 positionsToBurn[positionIndex]
             );
-            (preburnAccumulators[positionIndex],) = _get_preburn_accumulators(
+            (preburnAccumulators[positionIndex], ) = _get_preburn_accumulators(
                 positionsToBurn[positionIndex],
                 msg.sender,
                 posSize
