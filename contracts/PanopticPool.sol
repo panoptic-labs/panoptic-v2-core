@@ -647,7 +647,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1
+    /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens.
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
@@ -669,7 +669,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
-        return poolUtilizations;
+        if (safeMode) {
+            return uint128(10_000) + uint128(10_000 << 64);
+        } else {
+            return poolUtilizations;
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
