@@ -2271,6 +2271,7 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
+
         // deposit bare minimum for naked minting
         ct1.deposit(17_811, Bob);
 
@@ -2328,6 +2329,7 @@ contract Misctest is Test, PositionUtils {
 
         uint256 snapshot = vm.snapshot();
 
+
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
@@ -2337,6 +2339,7 @@ contract Misctest is Test, PositionUtils {
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
         ct1.deposit(17_817, Bob);
+
 
         // mint succeeds
         pp.mintOptions(
@@ -2367,6 +2370,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
+
         assertTrue(
             totalCollateralBalance0 <= totalCollateralRequired0,
             "Is liquidatable at current tick!"
@@ -2408,6 +2412,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
         console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
         assertTrue(pp.isSafeMode());
 
@@ -2423,6 +2428,7 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(150504, Bob);
         ct1.deposit(0, Bob);
 
+
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2430,6 +2436,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+
         (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
             Bob,
             $posIdList[0]
@@ -2454,6 +2461,7 @@ contract Misctest is Test, PositionUtils {
             totalCollateralBalance0 >= totalCollateralRequired0,
             "Is solvent at current tick!"
         );
+
     }
 
     function test_Success_InsolventAtCurrentTick_itmCall() public {
@@ -2499,6 +2507,7 @@ contract Misctest is Test, PositionUtils {
 
         uint256 snapshot = vm.snapshot();
 
+
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
@@ -2508,6 +2517,7 @@ contract Misctest is Test, PositionUtils {
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
         ct1.deposit(17_820, Bob);
+
 
         // mint succeeds
         pp.mintOptions(
@@ -2601,6 +2611,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+
         (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
             Bob,
             $posIdList[0]
