@@ -363,7 +363,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Determines if account is solvent.
     /// @dev Checks whether account is solvent with `BP_DECREASE_BUFFER` according to `_validateSolvency`.
-    /// @dev Can be called externallt to identify insolvent and near-insolvent accounts before they are liquidated.
+    /// @dev Can be called externally to identify insolvent and near-insolvent accounts before they are liquidated.
     /// @dev Reverts if account is not solvent with `BP_DECREASE_BUFFER`.
     /// @param user The account to check for solvency
     /// @param positionIdList The list of all option positions held by `user`

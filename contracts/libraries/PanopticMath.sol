@@ -444,7 +444,7 @@ library PanopticMath {
             TokenId tokenId = positionIdList[i];
             uint128 positionSize = userBalance[tokenId].rightSlot();
 
-            LeftRightSigned _coveredAmounts = computeCoveredAmounts(tokenId, positionSize);
+            LeftRightSigned _coveredAmounts = _computeCoveredAmounts(tokenId, positionSize);
 
             coveredAmounts = coveredAmounts.add(_coveredAmounts);
 
@@ -733,7 +733,7 @@ library PanopticMath {
     /// @param tokenId The option position identifier
     /// @param positionSize The number of positions minted
     /// @return coveredAmounts Left-right packed word where where rightSlot = covered amount for token0 and leftSlot = covered amount for token1
-    function computeCoveredAmounts(
+    function _computeCoveredAmounts(
         TokenId tokenId,
         uint128 positionSize
     ) internal pure returns (LeftRightSigned coveredAmounts) {
