@@ -447,7 +447,7 @@ library PanopticMath {
 
     /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
     /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
-    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token1)
+    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
     /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
     /// @param sqrtPriceX96 The sqrt price at which to convert between token0/token1
     /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
@@ -473,7 +473,7 @@ library PanopticMath {
 
     /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
     /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
-    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token1)
+    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
     /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
     /// @param tick The tick at which to convert between token0/token1
     /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
@@ -545,11 +545,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token0 to convert into token1
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
-    /// @return The converted `amount` of token0 represented in terms of token1
+    /// @param amount The amount of token1 to convert into token0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
+    /// @return The converted `amount` of token1 represented in terms of token0
     function convert1to0(int256 amount, uint160 sqrtPriceX96) internal pure returns (int256) {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
@@ -918,61 +918,76 @@ library PanopticMath {
         }
     }
 
-    /// @notice Returns the original delegated value to a user at a certain tick based on the available collateral from the exercised user.
-    /// @param refunder Address of the user the refund is coming from (the force exercisee)
-    /// @param refundValues Token values to refund at the given tick(atTick) rightSlot = token0 left = token1
+    /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
+    /// @param exercisee Address of the force exercisee
+    /// @param delegatedShares The amount of virtual shares delegated to the exercisor that must be returned to the protocol
+    /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param collateral0 CollateralTracker for token0
     /// @param collateral1 CollateralTracker for token1
-    /// @return The LeftRight-packed amount of token0/token1 to refund to the user
-    function getRefundAmounts(
-        address refunder,
-        LeftRightSigned refundValues,
+    /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
+    function getExerciseDeltas(
+        address exercisee,
+        LeftRightUnsigned delegatedShares,
+        LeftRightSigned exerciseFees,
         int24 atTick,
         CollateralTracker collateral0,
         CollateralTracker collateral1
     ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
-            // if the refunder lacks sufficient token0 to pay back the refundee, have them pay back the equivalent value in token1
-            // NOTE: it is possible for refunds to be negative when the exercise fee is higher than the delegated amounts. This is expected behavior
-            int256 balanceShortage = refundValues.rightSlot() -
-                int256(collateral0.convertToAssets(collateral0.balanceOf(refunder)));
+            // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
+            int256 balanceShortage = int256(
+                Math.mulDivRoundingUp(
+                    delegatedShares.rightSlot(),
+                    collateral0.totalAssets(),
+                    collateral0.totalSupply()
+                )
+            ) -
+                int256(collateral0.convertToAssets(collateral0.balanceOf(exercisee))) +
+                exerciseFees.rightSlot();
 
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(int128(refundValues.rightSlot() - balanceShortage))
+                        .toRightSlot(int128(exerciseFees.rightSlot() - balanceShortage))
                         .toLeftSlot(
                             int128(
                                 int256(
                                     PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.leftSlot()
+                                ) + exerciseFees.leftSlot()
                             )
                         );
             }
 
             balanceShortage =
-                refundValues.leftSlot() -
-                int256(collateral1.convertToAssets(collateral1.balanceOf(refunder)));
+                int256(
+                    Math.mulDivRoundingUp(
+                        delegatedShares.leftSlot(),
+                        collateral1.totalAssets(),
+                        collateral1.totalSupply()
+                    )
+                ) -
+                int256(collateral1.convertToAssets(collateral1.balanceOf(exercisee))) +
+                exerciseFees.leftSlot();
 
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
                         .wrap(0)
-                        .toLeftSlot(int128(refundValues.leftSlot() - balanceShortage))
+                        .toLeftSlot(int128(exerciseFees.leftSlot() - balanceShortage))
                         .toRightSlot(
                             int128(
                                 int256(
                                     PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
-                                ) + refundValues.rightSlot()
+                                ) + exerciseFees.rightSlot()
                             )
                         );
             }
         }
 
-        // otherwise, we can just refund the original amounts requested with no problems
-        return refundValues;
+        // otherwise, no need to deviate from the original exercise fee deltas
+        return exerciseFees;
     }
 }
