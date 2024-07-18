@@ -1470,14 +1470,12 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             assertWithMsg(false, "compared against preburn");
-
         }
 
         // Keep userPositions up-to-date for other tests' benefit -
         // one of the caller's positions no longer exist:
         userPositions[caller] = positionsNew;
         assertWithMsg(false, "cleared");
-
     }
 
     function _assert_and_get_expected_token_difference(
@@ -1764,8 +1762,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnLiquidity
     ) internal pure returns (uint128) {
         // Prevent division by zero
-        if (preburnSettledTokens == 0)
-            return 0;
+        if (preburnSettledTokens == 0) return 0;
 
         // TODO: do we need to swap preburnGrossPremium and preburnSettledTokens? I thought you
         // prorate, conceptually, by the portion available out of what is owed in total.
@@ -2029,10 +2026,18 @@ contract FuzzDeployments is FuzzHelpers {
         // That's OK - we'll just evaluate it twice in the caller - no need to be efficient
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             TokenId position = positionsToBurn[positionIndex];
-            $settledToken0DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
-            $settledToken1DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
-            $grossPremiaLast0DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
-            $grossPremiaLast1DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
+            $settledToken0DifferenceForLegsChunk[positionIndex] = new int128[](
+                position.countLegs()
+            );
+            $settledToken1DifferenceForLegsChunk[positionIndex] = new int128[](
+                position.countLegs()
+            );
+            $grossPremiaLast0DifferenceForLegsChunk[positionIndex] = new int128[](
+                position.countLegs()
+            );
+            $grossPremiaLast1DifferenceForLegsChunk[positionIndex] = new int128[](
+                position.countLegs()
+            );
             for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
                 (
                     uint128 postburnSettledToken0,
