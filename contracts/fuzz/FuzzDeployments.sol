@@ -1445,6 +1445,8 @@ contract FuzzDeployments is FuzzHelpers {
         try this._simulate_sfpm_burn(position, posSize, tickLimitLow) {
             assertWithMsg(false, "_simulate_sfpm_burn should always revert");
         } catch (bytes memory _err) {
+            emit LogBytes("_err", _err);
+            assertWithMsg(false, "got sfpm sim done");
             // Make assertions about each leg's chunk differences, and get expected token diffs:
             (
                 int128 expectedToken0Difference,
@@ -1456,6 +1458,8 @@ contract FuzzDeployments is FuzzHelpers {
                     posSize
                 );
 
+            assertWithMsg(false, "made the per-leg assertions");
+
             // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
             // alignment with our projections:
             _compare_against_preburn_assets(
@@ -1464,11 +1468,16 @@ contract FuzzDeployments is FuzzHelpers {
                 burnersPreburnAssets,
                 caller
             );
+
+            assertWithMsg(false, "compared against preburn");
+
         }
 
         // Keep userPositions up-to-date for other tests' benefit -
         // one of the caller's positions no longer exist:
         userPositions[caller] = positionsNew;
+        assertWithMsg(false, "cleared");
+
     }
 
     function _assert_and_get_expected_token_difference(
@@ -1619,7 +1628,6 @@ contract FuzzDeployments is FuzzHelpers {
                 premiumAccumulator1
             );
         }
-
         (
             uint128[] memory idealPremium0,
             uint128[] memory idealPremium1,
@@ -1695,6 +1703,84 @@ contract FuzzDeployments is FuzzHelpers {
         premiaCalcInputs[legIndex].premiumGrowth1 = premiumGrowth1;
     }
 
+    function _calc_premia_from_preburn_values(
+        TokenId position,
+        PremiaCalcInputs[] memory premiaCalcInputs,
+        PremiaAndAccumulatorsForLeg[] memory premiaAndAccumulators
+    )
+        internal
+        view
+        returns (
+            uint128[] memory idealPremium0,
+            uint128[] memory idealPremium1,
+            uint128[] memory proratedPremium0,
+            uint128[] memory proratedPremium1
+        )
+    {
+        idealPremium0 = new uint128[](position.countLegs());
+        idealPremium1 = new uint128[](position.countLegs());
+        proratedPremium0 = new uint128[](position.countLegs());
+        proratedPremium1 = new uint128[](position.countLegs());
+        for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+            // 1. get idealPremia - how much premia should you have been owed based on your position?
+            idealPremium0[legIndex] =
+                ((premiaCalcInputs[legIndex].premiumAccumulator0 -
+                    premiaCalcInputs[legIndex].premiumGrowth0) *
+                    premiaCalcInputs[legIndex].liquidity) >>
+                64;
+            idealPremium1[legIndex] =
+                ((premiaCalcInputs[legIndex].premiumAccumulator1 -
+                    premiaCalcInputs[legIndex].premiumGrowth1) *
+                    premiaCalcInputs[legIndex].liquidity) >>
+                64;
+
+            // 2. get proratedPremia:
+            //    - short legs should get idealPremia * total settled tokens / total gross premia;
+            //    eg, your premia gets prorated by the seller-wide portion of settled tokens available
+            //   - long legs should just get their full idealPremia
+            proratedPremium0[legIndex] = position.isLong(legIndex) == 1
+                ? idealPremium0[legIndex]
+                : _prorate_ideal_premium(
+                    idealPremium0[legIndex],
+                    premiaCalcInputs[legIndex].premiumAccumulator0,
+                    premiaAndAccumulators[legIndex].settledToken0,
+                    premiaCalcInputs[legIndex].liquidity
+                );
+            proratedPremium1[legIndex] = position.isLong(legIndex) == 1
+                ? idealPremium1[legIndex]
+                : _prorate_ideal_premium(
+                    idealPremium1[legIndex],
+                    premiaCalcInputs[legIndex].premiumAccumulator1,
+                    premiaAndAccumulators[legIndex].settledToken1,
+                    premiaCalcInputs[legIndex].liquidity
+                );
+        }
+    }
+
+    function _prorate_ideal_premium(
+        uint256 idealPremium,
+        uint128 preburnGrossPremium,
+        uint128 preburnSettledTokens,
+        uint128 preburnLiquidity
+    ) internal pure returns (uint128) {
+        // Prevent division by zero
+        if (preburnSettledTokens == 0)
+            return 0;
+
+        // TODO: do we need to swap preburnGrossPremium and preburnSettledTokens? I thought you
+        // prorate, conceptually, by the portion available out of what is owed in total.
+        // TODO: if so, then we should check if preburnGrossPremium in the `if` above, not
+        // preburnSettledTokens
+        return
+            uint128(
+                Math.min(
+                    ((idealPremium * (preburnGrossPremium * preburnLiquidity)) >> 64) /
+                        preburnSettledTokens,
+                    idealPremium
+                )
+            );
+    }
+
     function _assert_each_legs_chunk_accumulators_correct(
         TokenId position,
         PremiaAndAccumulatorsForLeg[] memory preburnPremiaAndAccumulators
@@ -1746,72 +1832,6 @@ contract FuzzDeployments is FuzzHelpers {
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
         }
-    }
-
-    function _calc_premia_from_preburn_values(
-        TokenId position,
-        PremiaCalcInputs[] memory premiaCalcInputs,
-        PremiaAndAccumulatorsForLeg[] memory premiaAndAccumulators
-    )
-        internal
-        view
-        returns (
-            uint128[] memory idealPremium0,
-            uint128[] memory idealPremium1,
-            uint128[] memory proratedPremium0,
-            uint128[] memory proratedPremium1
-        )
-    {
-        for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            // 1. get idealPremia - how much premia should you have been owed based on your position?
-            idealPremium0[legIndex] =
-                ((premiaCalcInputs[legIndex].premiumAccumulator0 -
-                    premiaCalcInputs[legIndex].premiumGrowth0) *
-                    premiaCalcInputs[legIndex].liquidity) >>
-                64;
-            idealPremium1[legIndex] =
-                ((premiaCalcInputs[legIndex].premiumAccumulator1 -
-                    premiaCalcInputs[legIndex].premiumGrowth1) *
-                    premiaCalcInputs[legIndex].liquidity) >>
-                64;
-
-            // 2. get proratedPremia:
-            //    - short legs should get idealPremia * total settled tokens / total gross premia;
-            //    eg, your premia gets prorated by the seller-wide portion of settled tokens available
-            //   - long legs should just get their full idealPremia
-            proratedPremium0[legIndex] = position.isLong(legIndex) == 1
-                ? idealPremium0[legIndex]
-                : _prorate_ideal_premium(
-                    idealPremium0[legIndex],
-                    premiaCalcInputs[legIndex].premiumAccumulator0,
-                    premiaAndAccumulators[legIndex].settledToken0,
-                    premiaCalcInputs[legIndex].liquidity
-                );
-            proratedPremium1[legIndex] = position.isLong(legIndex) == 1
-                ? idealPremium1[legIndex]
-                : _prorate_ideal_premium(
-                    idealPremium1[legIndex],
-                    premiaCalcInputs[legIndex].premiumAccumulator1,
-                    premiaAndAccumulators[legIndex].settledToken1,
-                    premiaCalcInputs[legIndex].liquidity
-                );
-        }
-    }
-
-    function _prorate_ideal_premium(
-        uint256 idealPremium,
-        uint128 preburnGrossPremium,
-        uint128 preburnSettledTokens,
-        uint128 preburnLiquidity
-    ) internal pure returns (uint128) {
-        return
-            uint128(
-                Math.min(
-                    ((idealPremium * (preburnGrossPremium * preburnLiquidity)) >> 64) /
-                        preburnSettledTokens,
-                    idealPremium
-                )
-            );
     }
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
@@ -1991,7 +2011,12 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaAndAccumulatorsForLeg[][] memory premiaAndAccumulators,
         PreburnAssets memory preburnAssets
     ) external {
-        // TODO: do we have to initialise the $ arrays here?
+        // Initialise storage arrays we'll be temporarily storing stuff in:
+        $settledToken0DifferenceForLegsChunk = new int128[][](positionsToBurn.length);
+        $settledToken1DifferenceForLegsChunk = new int128[][](positionsToBurn.length);
+        $grossPremiaLast0DifferenceForLegsChunk = new int128[][](positionsToBurn.length);
+        $grossPremiaLast1DifferenceForLegsChunk = new int128[][](positionsToBurn.length);
+
         TokenId[] memory positionsNew = userPositions[caller];
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             TokenId position = positionsToBurn[positionIndex];
@@ -2004,6 +2029,10 @@ contract FuzzDeployments is FuzzHelpers {
         // That's OK - we'll just evaluate it twice in the caller - no need to be efficient
         for (uint positionIndex = 0; positionIndex < positionsToBurn.length; positionIndex++) {
             TokenId position = positionsToBurn[positionIndex];
+            $settledToken0DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
+            $settledToken1DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
+            $grossPremiaLast0DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
+            $grossPremiaLast1DifferenceForLegsChunk[positionIndex] = new int128[](position.countLegs());
             for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
                 (
                     uint128 postburnSettledToken0,
@@ -2037,6 +2066,7 @@ contract FuzzDeployments is FuzzHelpers {
             collToken1.balanceOf(caller)
         );
 
+        $underlyingAssetDifferences = new int256[](4);
         // By arbitrary convention - first two members of underlyingAssetDifferences are the
         // difference in burner's balance of token0 and token1 respectively
         $underlyingAssetDifferences[0] =
