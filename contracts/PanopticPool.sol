@@ -1397,7 +1397,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
-    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    /// @return safeMode a boolean flag, triggers safe mode when true where all newly minted positions must be fully collateralized
     function _isSafeMode() internal view returns (bool safeMode) {
         // check if the price has deviated too much recently.
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
