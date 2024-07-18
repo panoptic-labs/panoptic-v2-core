@@ -1404,7 +1404,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
             // If ticks have recently deviated more than +/- 10%, enforce covered mints
-            if (Math.abs(currentTick - medianTick) > MAX_SLOW_FAST_DELTA) {
+            if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
                 safeMode = true;
             }
         }
