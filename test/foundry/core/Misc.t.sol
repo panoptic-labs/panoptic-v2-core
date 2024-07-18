@@ -2212,7 +2212,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(998502));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.AccountInsolvent.selector);
+        vm.expectRevert(Errors.NotEnoughCollateral.selector);
         pp.validateCollateralWithdrawable(Bob, $posIdList);
     }
 
@@ -3228,7 +3228,7 @@ contract Misctest is Test, PositionUtils {
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts($posIdList[0], 1e10);
-        LeftRightSigned coveredAmounts = PanopticMath.computeCoveredAmounts($posIdList[0], 1e10);
+        LeftRightSigned coveredAmounts = PanopticMath._computeCoveredAmounts($posIdList[0], 1e10);
 
         uint128 fees0 = uint128(
             (
