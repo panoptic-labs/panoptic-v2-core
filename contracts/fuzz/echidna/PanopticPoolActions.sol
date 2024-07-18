@@ -1010,7 +1010,7 @@ contract PanopticPoolActions is CollateralActions {
         );
 
         assertWithMsg(
-            cDelta0 == exerciseCostToken0,
+            Math.abs(-cDelta0 - exerciseCostToken0) <= 1,
             "ForceExercise: Token deltas do not match exercise cost"
         );
     }

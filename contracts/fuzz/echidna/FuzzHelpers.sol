@@ -1293,7 +1293,14 @@ contract FuzzHelpers is PropertiesAsserts {
                 $netTokenTransfers0 -= int256(amount1);
                 $spreadRatio =
                     (($removedLiquidity + liquidityChunk.liquidity()) * (2 ** 32)) /
-                    uint256(Math.max(1, $netLiquidity));
+                    uint256(
+                        Math.max(
+                            1,
+                            uint256(
+                                int256($netLiquidity) - int256(uint256(liquidityChunk.liquidity()))
+                            )
+                        )
+                    );
                 emit LogUint256("$spreadRatioL", $spreadRatio);
 
                 $shouldRevert = $shouldRevert ? $shouldRevert : $spreadRatio > 9 * (2 ** 32);
