@@ -198,6 +198,10 @@ contract PanopticPoolActions is CollateralActions {
             : $maxTransfer0 > int256(USDC.balanceOf(address(panopticPool))) ||
                 $maxTransfer1 > int256(WETH.balanceOf(address(panopticPool)));
 
+        emit LogUint256("maxTransfer0", uint256($maxTransfer0));
+        emit LogUint256("maxTransfer1", uint256($maxTransfer1));
+        emit LogInt256("pool balance 0", int256(USDC.balanceOf(address(panopticPool))));
+        emit LogInt256("pool balance 1", int256(WETH.balanceOf(address(panopticPool))));
         emit LogBool("should revert due to insufficient pool tokens", $shouldRevert);
 
         // position has already been minted
@@ -809,6 +813,8 @@ contract PanopticPoolActions is CollateralActions {
             $tokenIdActive
         );
 
+        userPositions[$exercisee] = $positionListExercisee;
+
         (, currentTick, , , , , ) = pool.slot0();
         $twapTick = PanopticMath.twapFilter(pool, 600);
 
@@ -899,8 +905,11 @@ contract PanopticPoolActions is CollateralActions {
             int256(
                 collToken0.convertToAssets(
                     uint256(
-                        Math.abs(int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee) -
-                            $colDelta0
+                        Math.abs(
+                            int256(collToken0.balanceOf($exercisee)) -
+                                $balance0Exercisee -
+                                $colDelta0
+                        )
                     )
                 )
             );
@@ -915,14 +924,29 @@ contract PanopticPoolActions is CollateralActions {
                     collToken1.convertToAssets(
                         uint256(
                             Math.abs(
-                                int256(collToken1.balanceOf($exercisee)) - $balance1Exercisee
-                            ) - $colDelta1
+                                int256(collToken1.balanceOf($exercisee)) -
+                                    $balance1Exercisee -
+                                    $colDelta1
+                            )
                         )
                     )
                 ),
             TickMath.getSqrtRatioAtTick($twapTick)
         );
 
+        emit LogInt256(
+            "exercisor delegation",
+            int256(collToken0.balanceOf(msg.sender)) - $balance0Origin
+        );
+        emit LogInt256("exercisor balance", int256(collToken0.balanceOf(msg.sender)));
+        emit LogInt256("exercisor origin", $balance0Origin);
+        emit LogInt256(
+            "exercisee delegation",
+            int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee - $colDelta0
+        );
+        emit LogInt256("exercisee balance", int256(collToken0.balanceOf($exercisee)));
+        emit LogInt256("exercisee origin", $balance0Exercisee);
+        emit LogInt256("$colDelta0", $colDelta0);
         // ensure that any differences from post-burn balances in the exercisee are:
         // a) matched exactly by a change in the exercisor's balance
         // b) roughly equivalent in value to the force exercise fee
@@ -938,6 +962,7 @@ contract PanopticPoolActions is CollateralActions {
         );
 
         emit LogInt256("cDelta0", cDelta0);
+
         emit LogInt256(
             "cDeltaToken0",
             (
@@ -949,8 +974,10 @@ contract PanopticPoolActions is CollateralActions {
                     collToken0.convertToAssets(
                         uint256(
                             Math.abs(
-                                int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee
-                            ) - $colDelta0
+                                int256(collToken0.balanceOf($exercisee)) -
+                                    $balance0Exercisee -
+                                    $colDelta0
+                            )
                         )
                     )
                 )
@@ -966,8 +993,10 @@ contract PanopticPoolActions is CollateralActions {
                     collToken1.convertToAssets(
                         uint256(
                             Math.abs(
-                                int256(collToken1.balanceOf($exercisee)) - $balance1Exercisee
-                            ) - $colDelta1
+                                int256(collToken1.balanceOf($exercisee)) -
+                                    $balance1Exercisee -
+                                    $colDelta1
+                            )
                         )
                     )
                 )

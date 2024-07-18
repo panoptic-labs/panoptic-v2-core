@@ -1246,6 +1246,9 @@ contract FuzzHelpers is PropertiesAsserts {
             emit LogInt256("liquidityChunk.tickUpper()", liquidityChunk.tickUpper());
             emit LogUint256("liquidityChunk.liquidity()", liquidityChunk.liquidity());
 
+            $tickLower = liquidityChunk.tickLower();
+            $tickUpper = liquidityChunk.tickUpper();
+
             (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
                 currentTick,
                 liquidityChunk
@@ -1294,6 +1297,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 emit LogUint256("$spreadRatioL", $spreadRatio);
 
                 $shouldRevert = $shouldRevert ? $shouldRevert : $spreadRatio > 9 * (2 ** 32);
+                emit LogBool("should revert due to spread ratio", $shouldRevert);
             }
 
             $maxTransfer0 = Math.max($maxTransfer0, $netTokenTransfers0);
