@@ -834,6 +834,9 @@ contract PanopticPoolActions is CollateralActions {
 
         quote_pp_burn();
 
+        // it is impossible for a user to force exercise themselves - position list validation will fail
+        if (msg.sender == $exercisee) $shouldRevert = true;
+
         hevm.prank(msg.sender);
         try
             panopticPool.forceExercise(
