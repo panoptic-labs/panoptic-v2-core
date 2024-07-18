@@ -1434,19 +1434,17 @@ contract FuzzDeployments is FuzzHelpers {
                 posSize
             );
 
-        hevm.prank(caller);
-        panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
-
-        assertWithMsg(
-            panopticPool.numberOfPositions(caller) == positionsOpened - 1,
-            "Burning a position did not decrease the position counter"
-        );
-
         try this._simulate_sfpm_burn(position, posSize, tickLimitLow) {
             assertWithMsg(false, "_simulate_sfpm_burn should always revert");
         } catch (bytes memory _err) {
-            emit LogBytes("_err", _err);
-            assertWithMsg(false, "got sfpm sim done");
+            hevm.prank(caller);
+            panopticPool.burnOptions(position, positionsNew, tickLimitLow, -1 * tickLimitLow);
+
+            assertWithMsg(
+                panopticPool.numberOfPositions(caller) == positionsOpened - 1,
+                "Burning a position did not decrease the position counter"
+            );
+
             // Make assertions about each leg's chunk differences, and get expected token diffs:
             (
                 int128 expectedToken0Difference,
@@ -1764,18 +1762,14 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnLiquidity
     ) internal pure returns (uint128) {
         // Prevent division by zero
-        if (preburnSettledTokens == 0)
+        if (preburnGrossPremium == 0)
             return 0;
 
-        // TODO: do we need to swap preburnGrossPremium and preburnSettledTokens? I thought you
-        // prorate, conceptually, by the portion available out of what is owed in total.
-        // TODO: if so, then we should check if preburnGrossPremium in the `if` above, not
-        // preburnSettledTokens
         return
             uint128(
                 Math.min(
-                    ((idealPremium * (preburnGrossPremium * preburnLiquidity)) >> 64) /
-                        preburnSettledTokens,
+                    ((idealPremium * (preburnSettledTokens * preburnLiquidity)) >> 64) /
+                        preburnGrossPremium,
                     idealPremium
                 )
             );
