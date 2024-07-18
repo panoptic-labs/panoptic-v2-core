@@ -1527,7 +1527,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.assertMinCollateralValues(assets0 + 1, assets1);
     }
 
@@ -1539,7 +1539,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.assertMinCollateralValues(assets0, assets1 + 1);
     }
 
@@ -1551,7 +1551,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 assets0 = ct0.convertToAssets(ct0.balanceOf(Bob));
         uint256 assets1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.assertMinCollateralValues(assets0 + 1, assets1 + 1);
     }
 
@@ -2681,7 +2681,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -2834,7 +2834,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -2995,7 +2995,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -3210,7 +3210,7 @@ contract PanopticPoolTest is PositionUtils {
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
             .slot0();
 
-        fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -3599,7 +3599,7 @@ contract PanopticPoolTest is PositionUtils {
         );
     }
 
-    function test_Fail_mintOptions_OTMShortCall_NotEnoughCollateral(
+    function test_Fail_mintOptions_OTMShortCall_AccountInsolvent(
         uint256 x,
         uint256 widthSeed,
         int256 strikeSeed,
@@ -3644,7 +3644,7 @@ contract PanopticPoolTest is PositionUtils {
             Charlie
         );
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.mintOptions(
             posIdList,
             uint128(positionSize),
@@ -4768,7 +4768,7 @@ contract PanopticPoolTest is PositionUtils {
             int256 balanceDelta1 = int256(ct1.balanceOf(Alice)) -
                 int256(lastCollateralBalance1[Alice]);
             (, , observationIndex, observationCardinality, , , ) = pool.slot0();
-            int24 _fastOracleTick = PanopticMath.computeMedianObservedPrice(
+            (int24 _fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
                 pool,
                 observationIndex,
                 observationCardinality,

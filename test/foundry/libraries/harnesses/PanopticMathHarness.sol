@@ -89,7 +89,7 @@ contract PanopticMathHarness is Test {
         uint256 cardinality,
         uint256 period
     ) public view returns (int24) {
-        int24 lastMedianObservation = PanopticMath.computeMedianObservedPrice(
+        (int24 lastMedianObservation, ) = PanopticMath.computeMedianObservedPrice(
             univ3pool,
             observationIndex,
             observationCardinality,
