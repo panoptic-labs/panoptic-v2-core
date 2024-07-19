@@ -1645,21 +1645,25 @@ contract FuzzDeployments is FuzzHelpers {
         expectedNonPremiaToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
     }
 
-    function _decode_sfpm_sim(bytes memory sfpm_sim_result) internal pure returns(
-        int128 token0Swapped,
-        int128 token1Swapped,
-        uint128[] memory token0CollectedByLeg,
-        uint128[] memory token1CollectedByLeg
-    ) {
+    function _decode_sfpm_sim(
+        bytes memory sfpm_sim_result
+    )
+        internal
+        pure
+        returns (
+            int128 token0Swapped,
+            int128 token1Swapped,
+            uint128[] memory token0CollectedByLeg,
+            uint128[] memory token1CollectedByLeg
+        )
+    {
         assembly ("memory-safe") {
             sfpm_sim_result := add(sfpm_sim_result, 0x04)
         }
-        (
-            token0Swapped,
-            token1Swapped,
-            token0CollectedByLeg,
-            token1CollectedByLeg
-        ) = abi.decode(sfpm_sim_result, (int128, int128, uint128[], uint128[]));
+        (token0Swapped, token1Swapped, token0CollectedByLeg, token1CollectedByLeg) = abi.decode(
+            sfpm_sim_result,
+            (int128, int128, uint128[], uint128[])
+        );
     }
 
     function _project_premia_from_preburn_values(
@@ -1774,7 +1778,12 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaProjection[] memory projectedPremia,
         bytes memory sfpm_sim_result
     ) internal {
-        (, , uint128[] memory token0CollectedByLeg, uint128[] memory token1CollectedByLeg) = _decode_sfpm_sim(sfpm_sim_result);
+        (
+            ,
+            ,
+            uint128[] memory token0CollectedByLeg,
+            uint128[] memory token1CollectedByLeg
+        ) = _decode_sfpm_sim(sfpm_sim_result);
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             int256 expectedSettledToken0DifferenceForChunk = Math.min(
                 int256(
