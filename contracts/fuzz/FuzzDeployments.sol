@@ -1481,11 +1481,7 @@ contract FuzzDeployments is FuzzHelpers {
                 posSize
             );
 
-        assertWithMsg(false, "projected premia");
-
         _prank_and_burn(caller, position, positionsNew, tickLimitLow);
-
-        assertWithMsg(false, "pranked");
 
         _make_assertions(
             position,
@@ -1509,8 +1505,7 @@ contract FuzzDeployments is FuzzHelpers {
         PreburnValues memory burnersPreburnValues,
         address caller
     ) internal {
-        assertWithMsg(false, "starting the per-leg assertions");
-
+        // TODO: Investigate invariant failure in here
         // Make assertions about each leg's chunk differences, and get expected token diffs:
         _assert_each_legs_chunk_accumulators_correct(
             position,
@@ -1600,7 +1595,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 numLegs = position.countLegs();
 
         accumulators = new AccumulatorsForLeg[](numLegs);
-        PremiaCalcInputs[] memory premiaCalcInputs = new PremiaCalcInputs[](numLegs);
+        premiaCalcInputs = new PremiaCalcInputs[](numLegs);
 
         (, int24 preburnCurrentTick, , , , , ) = pool.slot0();
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
@@ -1612,15 +1607,20 @@ contract FuzzDeployments is FuzzHelpers {
                 position
             );
 
-            _set_premia_calc_inputs(
-                premiaCalcInputs,
+            premiaCalcInputs[legIndex].premiumAccumulator0 = premiumAccumulator0;
+            premiaCalcInputs[legIndex].premiumAccumulator1 = premiumAccumulator1;
+
+            premiaCalcInputs[legIndex].liquidity = PanopticMath
+                .getLiquidityChunk(position, legIndex, posSize)
+                .liquidity();
+
+            (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
                 position,
-                legIndex,
                 seller,
-                posSize,
-                premiumAccumulator0,
-                premiumAccumulator1
+                legIndex
             );
+            premiaCalcInputs[legIndex].premiumGrowth0 = premiumGrowth0;
+            premiaCalcInputs[legIndex].premiumGrowth1 = premiumGrowth1;
         }
     }
 
@@ -1645,6 +1645,23 @@ contract FuzzDeployments is FuzzHelpers {
         expectedNonPremiaToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
     }
 
+    function _decode_sfpm_sim(bytes memory sfpm_sim_result) internal pure returns(
+        int128 token0Swapped,
+        int128 token1Swapped,
+        uint128[] memory token0CollectedByLeg,
+        uint128[] memory token1CollectedByLeg
+    ) {
+        assembly ("memory-safe") {
+            sfpm_sim_result := add(sfpm_sim_result, 0x04)
+        }
+        (
+            token0Swapped,
+            token1Swapped,
+            token0CollectedByLeg,
+            token1CollectedByLeg
+        ) = abi.decode(sfpm_sim_result, (int128, int128, uint128[], uint128[]));
+    }
+
     function _project_premia_from_preburn_values(
         TokenId position,
         PremiaCalcInputs[] memory premiaCalcInputs,
@@ -1659,37 +1676,16 @@ contract FuzzDeployments is FuzzHelpers {
             int128 expectedToken1Difference
         )
     {
-        /* TODO TODO TODO: There is a silent revert happening between here and
-         the for loop.
-         Likely an ABI decoding err or something like that.
-         The revert reason returns 0x, somehow.
-         Must figure out.
-         Example bytes:
-         "
-         0x6567f56d0000000000000000000000000000000000000000000000000000000000000000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80e1c000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000fd000000000000000000000000000000000000000000000000000000000000010b
-         "
-         I think its more likely that my _simulate_sfpm_burn is wrong, and the example bytes is an
-         example of how i tried to transmit the return values (from the simulated call) via revert incorrectly,
-         rather than my decoding below being incorrect
-        */
-        // assertWithMsg(false, "made it into the method");
-
-        emit LogBytes("sfpm_sim_result", sfpm_sim_result);
-        assertWithMsg(false, "heres the sfpm sim res");
-
         (
             int128 token0Swapped,
             int128 token1Swapped,
             uint128[] memory token0CollectedByLeg,
             uint128[] memory token1CollectedByLeg
-        ) = abi.decode(sfpm_sim_result, (int128, int128, uint128[], uint128[]));
-        assertWithMsg(false, "decoded the abi");
+        ) = _decode_sfpm_sim(sfpm_sim_result);
 
         projectedPremia = new PremiaProjection[](position.countLegs());
-        assertWithMsg(false, "set up the projectedPremia");
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-            assertWithMsg(false, "made it into the for loop");
             // 1. get idealPremia - how much premia should you have been owed based on your position?
             projectedPremia[legIndex].idealPremium0 =
                 ((premiaCalcInputs[legIndex].premiumAccumulator0 -
@@ -1778,8 +1774,7 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaProjection[] memory projectedPremia,
         bytes memory sfpm_sim_result
     ) internal {
-        (, , uint128[] memory token0CollectedByLeg, uint128[] memory token1CollectedByLeg) = abi
-            .decode(sfpm_sim_result, (int128, int128, uint128[], uint128[]));
+        (, , uint128[] memory token0CollectedByLeg, uint128[] memory token1CollectedByLeg) = _decode_sfpm_sim(sfpm_sim_result);
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             int256 expectedSettledToken0DifferenceForChunk = Math.min(
                 int256(
@@ -1941,31 +1936,6 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].grossPremiaLast1 = grossPremiaLastToken1;
     }
 
-    function _set_premia_calc_inputs(
-        PremiaCalcInputs[] memory premiaCalcInputs,
-        TokenId position,
-        uint legIndex,
-        address seller,
-        uint128 posSize,
-        uint128 premiumAccumulator0,
-        uint128 premiumAccumulator1
-    ) internal view {
-        premiaCalcInputs[legIndex].premiumAccumulator0 = premiumAccumulator0;
-        premiaCalcInputs[legIndex].premiumAccumulator1 = premiumAccumulator1;
-
-        premiaCalcInputs[legIndex].liquidity = PanopticMath
-            .getLiquidityChunk(position, legIndex, posSize)
-            .liquidity();
-
-        (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
-            position,
-            seller,
-            legIndex
-        );
-        premiaCalcInputs[legIndex].premiumGrowth0 = premiumGrowth0;
-        premiaCalcInputs[legIndex].premiumGrowth1 = premiumGrowth1;
-    }
-
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
     /// @custom:property PANO-BURN-004 After burning some options, the number of positions of the user should go down proportionally
     /// @custom:precondition The user has at least one position open
@@ -2042,6 +2012,9 @@ contract FuzzDeployments is FuzzHelpers {
         {
             assertWithMsg(false, "The _simulate_burn_on_each_position helper should always revert");
         } catch (bytes memory _err) {
+            assembly ("memory-safe") {
+                _err := add(_err, 0x04)
+            }
             (
                 int256[] memory underlyingAssetDifferences,
                 int128[][] memory settledToken0Difference,
