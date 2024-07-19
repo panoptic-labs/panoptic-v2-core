@@ -1611,9 +1611,16 @@ contract FuzzDeployments is FuzzHelpers {
             premiaCalcInputs[legIndex].premiumAccumulator0 = premiumAccumulator0;
             premiaCalcInputs[legIndex].premiumAccumulator1 = premiumAccumulator1;
 
-            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(position, legIndex, posSize);
+            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                position,
+                legIndex,
+                posSize
+            );
             premiaCalcInputs[legIndex].positionLiquidity = liquidityChunk.liquidity();
-            premiaCalcInputs[legIndex].totalShortLiquidity = _get_total_short_liquidity(position, liquidityChunk);
+            premiaCalcInputs[legIndex].totalShortLiquidity = _get_total_short_liquidity(
+                position,
+                liquidityChunk
+            );
 
             (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
                 position,
@@ -1625,7 +1632,10 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _get_total_short_liquidity(TokenId position, LiquidityChunk liqChunk) internal view returns(uint128) {
+    function _get_total_short_liquidity(
+        TokenId position,
+        LiquidityChunk liqChunk
+    ) internal view returns (uint128) {
         LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
             address(pool),
             address(panopticPool),
@@ -1790,21 +1800,22 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("preburnLiquidity", preburnPositionLiquidity);
         emit LogUint256("preburnLiquidity", preburnShortLiquidity);
         emit LogUint256("idealPremium * preburnSettledTokens", idealPremium * preburnSettledTokens);
-        emit LogUint256("(preburnGrossPremium - preburnGrossPremiumLast)", (preburnGrossPremium - preburnGrossPremiumLast));
+        emit LogUint256(
+            "(preburnGrossPremium - preburnGrossPremiumLast)",
+            (preburnGrossPremium - preburnGrossPremiumLast)
+        );
         /* assertWithMsg(false, "vals"); */
 
         return
             uint128(
                 Math.min(
-                    (
-                        idealPremium * preburnSettledTokens * preburnPositionLiquidity /
-                        (preburnGrossPremium - preburnGrossPremiumLast) * preburnShortLiquidity
-                    ),
+                    (((idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
+                        (preburnGrossPremium - preburnGrossPremiumLast)) * preburnShortLiquidity),
                     idealPremium
                 )
             );
 
-            /*
+        /*
             OLD:
             Math.min(
                 ((idealPremium * (preburnSettledTokens * preburnLiquidity)) >> 64) /
@@ -1868,10 +1879,7 @@ contract FuzzDeployments is FuzzHelpers {
                     int128(projectedPremia[legIndex].proratedPremium1)) -
                     int128(token1CollectedByLeg[legIndex])
             );
-            emit LogInt256(
-                "int256(position.isLong(legIndex))",
-                int256(position.isLong(legIndex))
-            );
+            emit LogInt256("int256(position.isLong(legIndex))", int256(position.isLong(legIndex)));
             emit LogInt256(
                 "int256(int128(projectedPremia[legIndex].proratedPremium1))",
                 int256(int128(projectedPremia[legIndex].proratedPremium1))
@@ -1894,16 +1902,23 @@ contract FuzzDeployments is FuzzHelpers {
                         expectedSettledToken0DifferenceForChunk,
                 "Settled token0s, plus tokens collected, did not decrease by the amount of total (prorated) premium paid out"
             );
-            emit LogInt256("int256(int128(postburnSettledToken1))", int256(int128(postburnSettledToken1)));
+            emit LogInt256(
+                "int256(int128(postburnSettledToken1))",
+                int256(int128(postburnSettledToken1))
+            );
             emit LogInt256(
                 "int256(int128(preburnAccumulators[legIndex].settledToken1))",
-                 int256(int128(preburnAccumulators[legIndex].settledToken1))
-             );
-            emit LogInt256("expectedSettledToken1DifferenceForChunk", expectedSettledToken1DifferenceForChunk);
+                int256(int128(preburnAccumulators[legIndex].settledToken1))
+            );
+            emit LogInt256(
+                "expectedSettledToken1DifferenceForChunk",
+                expectedSettledToken1DifferenceForChunk
+            );
 
             emit LogInt256(
                 "int256(int128(preburnAccumulators[legIndex].settledToken1)) - expectedSettledToken1DifferenceForChunk",
-                int256(int128(preburnAccumulators[legIndex].settledToken1)) - expectedSettledToken1DifferenceForChunk
+                int256(int128(preburnAccumulators[legIndex].settledToken1)) -
+                    expectedSettledToken1DifferenceForChunk
             );
 
             assertWithMsg(
