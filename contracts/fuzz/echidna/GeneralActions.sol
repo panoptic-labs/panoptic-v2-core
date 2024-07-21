@@ -71,7 +71,6 @@ contract GeneralActions is FuzzHelpers {
         int256[4] memory strike_in
     ) internal returns (TokenId out) {
         out = TokenId.wrap(poolId);
-        //numLegs = bound(numLegs, 1, numLegs);
 
         (, currentTick, , , , , ) = pool.slot0();
 

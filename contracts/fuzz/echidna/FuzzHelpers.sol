@@ -334,6 +334,11 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
 
+    uint256 MAX_UINT128 = type(uint128).max;
+
+    int256 private constant INT256_MIN =
+        -57896044618658097711785492504343953926634992332820282019728792003956564819968;
+
     address[] $allPositionOwners;
     TokenId[] $allPositions;
 
@@ -468,87 +473,104 @@ contract FuzzHelpers is PropertiesAsserts {
     TokenId[] $positionListExercisor;
     TokenId[] $positionListExercisee;
 
-    /// temp storage SFPM
+    /// *** storage SFPM ***
+
     mapping(address => TokenId[]) userPositionsSFPMShort;
     mapping(address => TokenId[]) userPositionsSFPMLong;
 
-    //
+    // current user
     address $activeUser;
 
-    //
-    TokenId tokenIdShort;
-    TokenId tokenIdLong;
-    TokenId tokenIdBurn;
-    LiquidityChunk liquidityChunk;
-    //
-    uint128 $posLiquidity;
-    //
-    uint256 removedLiquidityBefore;
-    uint256 netLiquidityBefore;
-    uint256 removedLiquidityAfter;
-    uint256 netLiquidityAfter;
+    // The active tokenId
+    TokenId $activeTokenId;
 
-    //
-    int256 feesBaseBefore0;
-    int256 feesBaseBefore1;
-    //
-    int256 feesBaseAfter0;
-    int256 feesBaseAfter1;
-    //
-    int256 amountToCollect0;
-    int256 amountToCollect1;
+    // active number of legs
+    uint256 $activeNumLegs;
 
-    // -- ddd--
-    //
-    uint256 $feeGrowthInside0LastX128Before;
-    uint256 $feeGrowthInside1LastX128Before;
-    uint256 $feeGrowthInside0LastX128After;
-    uint256 $feeGrowthInside1LastX128After;
-    //
-    uint256 $amountMinted0;
-    uint256 $amountMinted1;
-    //
-    int256 $amountBurned0;
-    int256 $amountBurned1;
-    //
-    bool $shouldRevertSFPM;
+    // position key
+    bytes32[4] $positionKey;
+
+    // current leg index
+    uint256 $activeLegIndex;
+
+    // current pos bounds
     int24 $tickLowerActive;
     int24 $tickUpperActive;
     uint128 $LiqAmountActive;
-    //
-    int128 oldFeesBase0;
-    int128 oldFeesBase1;
-    //
-    uint128 $collected0;
-    uint128 $collected1;
-    //
-    uint256 $amountRequested0;
-    uint256 $amountRequested1;
-    //
-    int128 $amountToCollect0;
-    int128 $amountToCollect1;
-    //
-    uint128 $recievedAmount0;
-    uint128 $recievedAmount1;
 
+    // pos bounds of tokenId
+    int24[4] $sTickLower;
+    int24[4] $sTickUpper;
+    uint128[4] $sLiqAmounts;
+
+    // liquidity storage
+    LiquidityChunk[4] $liquidityChunk;
+    uint128[4] $posLiquidity;
+    uint256[4] $removedLiquidityBefore;
+    uint256[4] $netLiquidityBefore;
+    uint256[4] $removedLiquidityAfter;
+    uint256[4] $netLiquidityAfter;
+
+    // uni liq
+    uint128[4] uniLiquidityBefore;
+    uint128[4] uniLiquidityAfter;
+
+    //fees base storage
+    int128[4] $oldFeesBase0;
+    int128[4] $oldFeesBase1;
+    int128[4] $newFeesBase0;
+    int128[4] $newFeesBase1;
+    int128[4] $newFeesBaseRoundDown0;
+    int128[4] $newFeesBaseRoundDown1;
+    int128[4] $newFeesBaseRoundUp0;
+    int128[4] $newFeesBaseRoundUp1;
+
+    // feegrowths
+    uint256[4] $feeGrowthInside0LastX128Before;
+    uint256[4] $feeGrowthInside1LastX128Before;
+    uint256[4] $feeGrowthInside0LastX128After;
+    uint256[4] $feeGrowthInside1LastX128After;
+
+    // amounts minted and burned
+    uint256[4] $amountMinted0;
+    uint256[4] $amountMinted1;
+    int256[4] $amountBurned0;
+    int256[4] $amountBurned1;
+
+    // amounts to collect
+    uint128[4] $collected0;
+    uint128[4] $collected1;
+    int128[4] $amountToCollect0;
+    int128[4] $amountToCollect1;
+    uint128[4] $recievedAmount0;
+    uint128[4] $recievedAmount1;
+
+    /// premium storage
     /// premium owed
-    uint128 $accountPremiumOwedBefore0;
-    uint128 $accountPremiumOwedBefore1;
+    uint128[4] $accountPremiumOwedBefore0;
+    uint128[4] $accountPremiumOwedBefore1;
     //
-    uint128 $accountPremiumOwedAfter0;
-    uint128 $accountPremiumOwedAfter1;
+    uint128[4] $accountPremiumOwedAfter0;
+    uint128[4] $accountPremiumOwedAfter1;
     /// premium gross
-    uint128 $accountPremiumGrossBefore0;
-    uint128 $accountPremiumGrossBefore1;
+    uint128[4] $accountPremiumGrossBefore0;
+    uint128[4] $accountPremiumGrossBefore1;
     //
-    uint128 $accountPremiumGrossAfter0;
-    uint128 $accountPremiumGrossAfter1;
+    uint128[4] $accountPremiumGrossAfter0;
+    uint128[4] $accountPremiumGrossAfter1;
     //
-    uint256 $accountPremiumOwedCalculated0;
-    uint256 $accountPremiumOwedCalculated1;
+    uint256[4] $accountPremiumOwedCalculated0;
+    uint256[4] $accountPremiumOwedCalculated1;
     //
-    uint256 $accountPremiumGrossCalculated0;
-    uint256 $accountPremiumGrossCalculated1;
+    uint256[4] $accountPremiumGrossCalculated0;
+    uint256[4] $accountPremiumGrossCalculated1;
+
+    // final returns
+    LeftRightUnsigned[4] $sCollectedByLeg;
+    LeftRightSigned[4] $sTotalSwapped;
+
+    // test flags
+    bool $shouldRevertSFPM;
 
     /// ^^ SFPM
 
@@ -595,6 +617,69 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
         return ((a <= b) ? a : b);
+    }
+
+    function abs(int256 a) internal pure returns (uint256) {
+        // Required or it will fail when `a = type(int256).min`
+        if (a == INT256_MIN) {
+            return 57896044618658097711785492504343953926634992332820282019728792003956564819968;
+        }
+
+        return uint256(a > 0 ? a : -a);
+    }
+
+    function delta(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a > b ? a - b : b - a;
+    }
+
+    function delta(int256 a, int256 b) internal pure returns (uint256) {
+        // a and b are of the same sign
+        // this works thanks to two's complement, the left-most bit is the sign bit
+        if ((a ^ b) > -1) {
+            return delta(abs(a), abs(b));
+        }
+
+        // a and b are of opposite signs
+        return abs(a) + abs(b);
+    }
+
+    function percentDelta(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 absDelta = delta(a, b);
+
+        return (absDelta * 1e18) / b;
+    }
+
+    function percentDelta(int256 a, int256 b) internal pure returns (uint256) {
+        uint256 absDelta = delta(a, b);
+        uint256 absB = abs(b);
+
+        return (absDelta * 1e18) / absB;
+    }
+
+    function assertApproxEqRel(
+        int256 a,
+        int256 b,
+        uint256 maxPercentDelta, // An 18 decimal fixed point number, where 1e18 == 100%
+        string memory err
+    ) internal {
+        uint256 percentDelta = percentDelta(a, b);
+
+        if (percentDelta > maxPercentDelta) {
+            assertWithMsg(false, err);
+        }
+    }
+
+    function assertApproxEqRel(
+        uint256 a,
+        uint256 b,
+        uint256 maxPercentDelta, // An 18 decimal fixed point number, where 1e18 == 100%
+        string memory err
+    ) internal {
+        uint256 percentDelta = percentDelta(a, b);
+
+        if (percentDelta > maxPercentDelta) {
+            assertWithMsg(false, err);
+        }
     }
 
     function deal_USDC(address to, uint256 amt) internal {
@@ -683,8 +768,6 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    //
-
     function quote_uni_CollectAndBurn() internal {
         try this.uniswap_CollectAndBurn_sim() {} catch (bytes memory results) {
             emit LogBytes("r", results);
@@ -692,8 +775,13 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
             bool sRevert;
-            ($amountBurned0, $amountBurned1, $recievedAmount0, $recievedAmount1, sRevert) = abi
-                .decode(results, (int256, int256, uint128, uint128, bool));
+            (
+                $amountBurned0[$activeLegIndex],
+                $amountBurned1[$activeLegIndex],
+                $recievedAmount0[$activeLegIndex],
+                $recievedAmount1[$activeLegIndex],
+                sRevert
+            ) = abi.decode(results, (int256, int256, uint128, uint128, bool));
 
             $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
         }
@@ -720,8 +808,8 @@ contract FuzzHelpers is PropertiesAsserts {
                 $activeUser, //recipient
                 $tickLowerActive,
                 $tickUpperActive,
-                uint128($amountToCollect0 + int128(burned0)),
-                uint128($amountToCollect1 + int128(burned1))
+                uint128($amountToCollect0[$activeLegIndex] + int128(burned0)),
+                uint128($amountToCollect1[$activeLegIndex] + int128(burned1))
             )
         returns (uint128 received0, uint128 received1) {
             revert UniBurnAndCollectSimulationResults(
@@ -736,8 +824,6 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    //
-
     function quote_uni_CollectAndMint() internal {
         try this.uniswap_CollectAndMint_sim() {} catch (bytes memory results) {
             emit LogBytes("r", results);
@@ -745,8 +831,13 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
             bool sRevert;
-            ($amountMinted0, $amountMinted1, $recievedAmount0, $recievedAmount1, sRevert) = abi
-                .decode(results, (uint256, uint256, uint128, uint128, bool));
+            (
+                $amountMinted0[$activeLegIndex],
+                $amountMinted1[$activeLegIndex],
+                $recievedAmount0[$activeLegIndex],
+                $recievedAmount1[$activeLegIndex],
+                sRevert
+            ) = abi.decode(results, (uint256, uint256, uint128, uint128, bool));
 
             $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
         }
@@ -791,8 +882,8 @@ contract FuzzHelpers is PropertiesAsserts {
                 $activeUser, //recipient
                 $tickLowerActive,
                 $tickUpperActive,
-                uint128($amountToCollect0),
-                uint128($amountToCollect1)
+                uint128($amountToCollect0[$activeLegIndex]),
+                uint128($amountToCollect1[$activeLegIndex])
             )
         returns (uint128 received0, uint128 received1) {
             revert UniMintAndCollectSimulationResults(
@@ -814,10 +905,8 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
             bool sRevert;
-            ($amountMinted0, $amountMinted1, sRevert) = abi.decode(
-                results,
-                (uint256, uint256, bool)
-            );
+            ($amountMinted0[$activeLegIndex], $amountMinted1[$activeLegIndex], sRevert) = abi
+                .decode(results, (uint256, uint256, bool));
 
             $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
         }
@@ -916,76 +1005,6 @@ contract FuzzHelpers is PropertiesAsserts {
             return (swap0, swap1, tickAfterSwap);
         }
     }
-
-    /// asserts from foundry
-
-    int256 private constant INT256_MIN =
-        -57896044618658097711785492504343953926634992332820282019728792003956564819968;
-
-    function abs(int256 a) internal pure returns (uint256) {
-        // Required or it will fail when `a = type(int256).min`
-        if (a == INT256_MIN) {
-            return 57896044618658097711785492504343953926634992332820282019728792003956564819968;
-        }
-
-        return uint256(a > 0 ? a : -a);
-    }
-
-    function delta(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a > b ? a - b : b - a;
-    }
-
-    function delta(int256 a, int256 b) internal pure returns (uint256) {
-        // a and b are of the same sign
-        // this works thanks to two's complement, the left-most bit is the sign bit
-        if ((a ^ b) > -1) {
-            return delta(abs(a), abs(b));
-        }
-
-        // a and b are of opposite signs
-        return abs(a) + abs(b);
-    }
-
-    function percentDelta(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 absDelta = delta(a, b);
-
-        return (absDelta * 1e18) / b;
-    }
-
-    function percentDelta(int256 a, int256 b) internal pure returns (uint256) {
-        uint256 absDelta = delta(a, b);
-        uint256 absB = abs(b);
-
-        return (absDelta * 1e18) / absB;
-    }
-
-    function assertApproxEqRel(
-        int256 a,
-        int256 b,
-        uint256 maxPercentDelta, // An 18 decimal fixed point number, where 1e18 == 100%
-        string memory err
-    ) internal {
-        uint256 percentDelta = percentDelta(a, b);
-
-        if (percentDelta > maxPercentDelta) {
-            assertWithMsg(false, err);
-        }
-    }
-
-    function assertApproxEqRel(
-        uint256 a,
-        uint256 b,
-        uint256 maxPercentDelta, // An 18 decimal fixed point number, where 1e18 == 100%
-        string memory err
-    ) internal {
-        uint256 percentDelta = percentDelta(a, b);
-
-        if (percentDelta > maxPercentDelta) {
-            assertWithMsg(false, err);
-        }
-    }
-
-    /// ^^^ asserts from foundry
 
     // for multiple legs
     function _calculate_moved_amounts(
@@ -1177,8 +1196,6 @@ contract FuzzHelpers is PropertiesAsserts {
             }
         }
     }
-
-    uint256 MAX_UINT128 = type(uint128).max;
 
     // takes a premia accumulator and adds the computed amounts
     // checks for freeze if one side is equivalent to uint128.max
