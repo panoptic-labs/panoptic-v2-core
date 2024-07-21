@@ -34,7 +34,7 @@ contract SFPMActions is GeneralActions {
             numLegs,
             asset_in,
             is_call_in,
-            false, // generate short
+            [false, false, false, false], // generate short
             is_otm_in,
             is_atm_in,
             width_in,
@@ -43,7 +43,9 @@ contract SFPMActions is GeneralActions {
 
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs - 1; i++) {
-            $activeLegIndex = $activeNumLegs - 1;
+            $activeLegIndex = i;
+
+            emit LogUint256("active leg index: ", $activeLegIndex);
 
             {
                 // get the amount of liquidity being deposited
@@ -53,15 +55,15 @@ contract SFPMActions is GeneralActions {
                     positionSize
                 );
 
-                $sTickLower[i] = $liquidityChunk[i].tickLower();
-                $sTickUpper[i] = $liquidityChunk[i].tickUpper();
-                $sLiqAmounts[i] = $liquidityChunk[i].liquidity();
+                $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
+                $sTickUpper[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickUpper();
+                $sLiqAmounts[$activeLegIndex] = $liquidityChunk[$activeLegIndex].liquidity();
 
                 // store the active position details
                 {
-                    $tickLowerActive = $sTickLower[i];
-                    $tickUpperActive = $sTickUpper[i];
-                    $LiqAmountActive = $sLiqAmounts[i];
+                    $tickLowerActive = $sTickLower[$activeLegIndex];
+                    $tickUpperActive = $sTickUpper[$activeLegIndex];
+                    $LiqAmountActive = $sLiqAmounts[$activeLegIndex];
                 }
 
                 // emit positional bounds and liquidity
@@ -78,7 +80,7 @@ contract SFPMActions is GeneralActions {
 
                 // poke uniswap pool to update tokens owed - needed because swap happens after mint
                 // only poke if there is pre-existing liquidity at this chunk
-                if ($posLiquidity[i] != 0) {
+                if ($posLiquidity[$activeLegIndex] != 0) {
                     hevm.prank(address(sfpm));
                     pool.burn($tickLowerActive, $tickUpperActive, 0);
                 }
@@ -86,10 +88,12 @@ contract SFPMActions is GeneralActions {
 
             {
                 // get the amount of liquidity within that range present in uniswap already
-                $positionKey[i] = keccak256(
+                $positionKey[$activeLegIndex] = keccak256(
                     abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                 );
-                (uniLiquidityBefore[i], , , , ) = pool.positions($positionKey[i]);
+                (uniLiquidityBefore[$activeLegIndex], , , , ) = pool.positions(
+                    $positionKey[$activeLegIndex]
+                );
 
                 // get SFPM stored account liquidity before
                 LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
@@ -102,30 +106,31 @@ contract SFPMActions is GeneralActions {
 
                 // store the removed and net liquidity for the chunk
                 //  before mint
-                $removedLiquidityBefore[i] = accountLiquiditiesBefore.leftSlot();
-                $netLiquidityBefore[i] = accountLiquiditiesBefore.rightSlot();
+                $removedLiquidityBefore[$activeLegIndex] = accountLiquiditiesBefore.leftSlot();
+                $netLiquidityBefore[$activeLegIndex] = accountLiquiditiesBefore.rightSlot();
             }
 
             {
                 // s_accountFeesBase before
                 // check s_accountFeesBase is updated correctly
-                ($oldFeesBase0[i], $oldFeesBase1[i]) = sfpm.getAccountFeesBase(
-                    address(pool),
-                    $activeUser,
-                    $activeTokenId.tokenType(i),
-                    $tickLowerActive,
-                    $tickUpperActive
-                );
+                ($oldFeesBase0[$activeLegIndex], $oldFeesBase1[$activeLegIndex]) = sfpm
+                    .getAccountFeesBase(
+                        address(pool),
+                        $activeUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $tickLowerActive,
+                        $tickUpperActive
+                    );
 
-                emit LogInt256("pre-mint feesbase 0", $oldFeesBase0[i]);
-                emit LogInt256("pre-mint feesbase 1", $oldFeesBase1[i]);
+                emit LogInt256("pre-mint feesbase 0", $oldFeesBase0[$activeLegIndex]);
+                emit LogInt256("pre-mint feesbase 1", $oldFeesBase1[$activeLegIndex]);
             }
 
             {
                 (
                     ,
-                    $feeGrowthInside0LastX128Before[i],
-                    $feeGrowthInside1LastX128Before[i],
+                    $feeGrowthInside0LastX128Before[$activeLegIndex],
+                    $feeGrowthInside1LastX128Before[$activeLegIndex],
                     ,
 
                 ) = pool.positions(
@@ -135,35 +140,47 @@ contract SFPMActions is GeneralActions {
                 // after touch
                 emit LogUint256(
                     "pre-mint feeGrowthInside0LastX128",
-                    $feeGrowthInside0LastX128Before[i]
+                    $feeGrowthInside0LastX128Before[$activeLegIndex]
                 );
                 emit LogUint256(
                     "pre-mint feeGrowthInside1LastX128",
-                    $feeGrowthInside1LastX128Before[i]
+                    $feeGrowthInside1LastX128Before[$activeLegIndex]
                 );
             }
 
             {
-                $newFeesBaseRoundDown0[i] = int128(
+                $newFeesBaseRoundDown0[$activeLegIndex] = int128(
                     int256(
-                        Math.mulDiv128($feeGrowthInside0LastX128Before[i], $netLiquidityBefore[i])
+                        Math.mulDiv128(
+                            $feeGrowthInside0LastX128Before[$activeLegIndex],
+                            $netLiquidityBefore[$activeLegIndex]
+                        )
                     )
                 );
-                $newFeesBaseRoundDown1[i] = int128(
+                $newFeesBaseRoundDown1[$activeLegIndex] = int128(
                     int256(
-                        Math.mulDiv128($feeGrowthInside1LastX128Before[i], $netLiquidityBefore[i])
+                        Math.mulDiv128(
+                            $feeGrowthInside1LastX128Before[i],
+                            $netLiquidityBefore[$activeLegIndex]
+                        )
                     )
                 );
 
-                emit LogInt256("newFeesBaseRoundDown0", $newFeesBaseRoundDown0[i]);
-                emit LogInt256("newFeesBaseRoundDown1", $newFeesBaseRoundDown1[i]);
+                emit LogInt256("newFeesBaseRoundDown0", $newFeesBaseRoundDown0[$activeLegIndex]);
+                emit LogInt256("newFeesBaseRoundDown1", $newFeesBaseRoundDown1[$activeLegIndex]);
 
                 //
                 $amountToCollect0[$activeLegIndex] = int128(
-                    Math.max($newFeesBaseRoundDown0[i] - $oldFeesBase0[i], 0)
+                    Math.max(
+                        $newFeesBaseRoundDown0[$activeLegIndex] - $oldFeesBase0[$activeLegIndex],
+                        0
+                    )
                 );
                 $amountToCollect1[$activeLegIndex] = int128(
-                    Math.max($newFeesBaseRoundDown0[i] - $oldFeesBase1[i], 0)
+                    Math.max(
+                        $newFeesBaseRoundDown0[$activeLegIndex] - $oldFeesBase1[$activeLegIndex],
+                        0
+                    )
                 );
 
                 emit LogInt256("$amountToCollect0", $amountToCollect0[$activeLegIndex]);
@@ -178,36 +195,52 @@ contract SFPMActions is GeneralActions {
             // get premium gross/owed before (compute with max tick to get value stored in sfpm currently)
             // after check if stored value matches this value
             {
-                ($accountPremiumGrossBefore0[i], $accountPremiumGrossBefore1[i]) = sfpm
-                    .getAccountPremium(
-                        address(pool),
-                        $activeUser,
-                        $activeTokenId.tokenType(i),
-                        $tickLowerActive,
-                        $tickUpperActive,
-                        type(int24).max,
-                        0 // short to check gross
-                    );
+                (
+                    $accountPremiumGrossBefore0[$activeLegIndex],
+                    $accountPremiumGrossBefore1[$activeLegIndex]
+                ) = sfpm.getAccountPremium(
+                    address(pool),
+                    $activeUser,
+                    $activeTokenId.tokenType($activeLegIndex),
+                    $tickLowerActive,
+                    $tickUpperActive,
+                    type(int24).max,
+                    0 // short to check gross
+                );
 
                 // get gross premium
-                emit LogUint256("$accountPremiumGrossBefore0", $accountPremiumGrossBefore0[i]);
-                emit LogUint256("$accountPremiumGrossBefore1", $accountPremiumGrossBefore1[i]);
+                emit LogUint256(
+                    "$accountPremiumGrossBefore0",
+                    $accountPremiumGrossBefore0[$activeLegIndex]
+                );
+                emit LogUint256(
+                    "$accountPremiumGrossBefore1",
+                    $accountPremiumGrossBefore1[$activeLegIndex]
+                );
 
                 // owed premium
-                ($accountPremiumOwedBefore0[i], $accountPremiumOwedBefore1[i]) = sfpm
-                    .getAccountPremium(
-                        address(pool),
-                        $activeUser,
-                        $activeTokenId.tokenType(i),
-                        $tickLowerActive,
-                        $tickUpperActive,
-                        type(int24).max,
-                        1 // long to check owed
-                    );
+                (
+                    $accountPremiumOwedBefore0[$activeLegIndex],
+                    $accountPremiumOwedBefore1[$activeLegIndex]
+                ) = sfpm.getAccountPremium(
+                    address(pool),
+                    $activeUser,
+                    $activeTokenId.tokenType($activeLegIndex),
+                    $tickLowerActive,
+                    $tickUpperActive,
+                    type(int24).max,
+                    1 // long to check owed
+                );
 
                 // get owed premium
-                emit LogUint256("$accountPremiumOwedBefore0", $accountPremiumOwedBefore0[i]);
-                emit LogUint256("$accountPremiumOwedBefore1", $accountPremiumOwedBefore1[i]);
+                emit LogUint256(
+                    "$accountPremiumOwedBefore0",
+                    $accountPremiumOwedBefore0[$activeLegIndex]
+                );
+                emit LogUint256(
+                    "$accountPremiumOwedBefore1",
+                    $accountPremiumOwedBefore1[$activeLegIndex]
+                );
             }
         }
 
@@ -225,12 +258,35 @@ contract SFPMActions is GeneralActions {
 
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs - 1; i++) {
-                $activeLegIndex = $activeNumLegs - 1;
+                $activeLegIndex = i;
+
+                emit LogUint256("active leg index: ", $activeLegIndex);
 
                 {
                     $tickLowerActive = $sTickLower[$activeLegIndex];
                     $tickUpperActive = $sTickUpper[$activeLegIndex];
                     $LiqAmountActive = $sLiqAmounts[$activeLegIndex];
+
+                    emit LogInt256("$tickLowerActive", $tickLowerActive);
+                    emit LogInt256("$tickUpperActive", $tickUpperActive);
+                    emit LogUint256("$LiqAmountActive", $LiqAmountActive);
+                }
+
+                // check the liquidity deposited within uniswap
+                {
+                    (uniLiquidityAfter[$activeLegIndex], , , , ) = pool.positions(
+                        $positionKey[$activeLegIndex]
+                    );
+
+                    emit LogUint256("liquidityBefore", uniLiquidityBefore[$activeLegIndex]);
+                    emit LogUint256("$LiqAmountActive", $sLiqAmounts[$activeLegIndex]);
+                    emit LogUint256("liquidityDeployed", uniLiquidityAfter[$activeLegIndex]);
+
+                    assertWithMsg(
+                        uniLiquidityBefore[$activeLegIndex] + $sLiqAmounts[$activeLegIndex] ==
+                            uniLiquidityAfter[$activeLegIndex],
+                        "invalid uniswap liq"
+                    );
                 }
 
                 // check the net liquidity added
@@ -270,23 +326,6 @@ contract SFPMActions is GeneralActions {
                         $removedLiquidityBefore[$activeLegIndex] ==
                             $removedLiquidityAfter[$activeLegIndex],
                         "invalid removed liquidity"
-                    );
-                }
-
-                // check the liquidity deposited within uniswap
-                {
-                    (uniLiquidityAfter[$activeLegIndex], , , , ) = pool.positions(
-                        $positionKey[$activeLegIndex]
-                    );
-
-                    emit LogUint256("liquidityBefore", uniLiquidityBefore[$activeLegIndex]);
-                    emit LogUint256("$LiqAmountActive", $sLiqAmounts[$activeLegIndex]);
-                    emit LogUint256("liquidityDeployed", uniLiquidityAfter[$activeLegIndex]);
-
-                    assertWithMsg(
-                        uniLiquidityBefore[$activeLegIndex] + $sLiqAmounts[$activeLegIndex] ==
-                            uniLiquidityAfter[$activeLegIndex],
-                        "invalid uniswap liq"
                     );
                 }
 
@@ -593,7 +632,7 @@ contract SFPMActions is GeneralActions {
 
     // buy attempt (mint a long position)
     // finds a matching short position which was minted by the user
-    // either multiple within the same tokenId or randomly in other tokenId
+    // either multiple within the same tokenId or randomly within other tokenId's
     // ** add moved amts check
     // function mint_option_SFPM_multiLong(uint256 randIndex, uint128 positionSize) public {
     //     // store the current actor
