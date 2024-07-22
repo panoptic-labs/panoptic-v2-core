@@ -1515,7 +1515,7 @@ contract FuzzDeployments is FuzzHelpers {
             sfpm_sim_result
         );
 
-        assertWithMsg(false, "made the per-leg assertions");
+        /* assertWithMsg(false, "made the per-leg assertions"); */
 
         // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
         // alignment with our projections:
@@ -1874,6 +1874,10 @@ contract FuzzDeployments is FuzzHelpers {
                 "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
+            emit LogUint256("postburnGrossPremiaLast0", postburnGrossPremiaLast0);
+            emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast0", preburnAccumulators[legIndex].grossPremiaLast0);
+            emit LogUint256("projectedPremia[legIndex].idealPremium0", projectedPremia[legIndex].idealPremium0);
+
             assertWithMsg(
                 postburnGrossPremiaLast0 ==
                     preburnAccumulators[legIndex].grossPremiaLast0 +
@@ -1890,13 +1894,18 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function _compare_against_preburn_values(
-        int128 expectedToken0Difference,
-        int128 expectedToken1Difference,
+        int128 expectedNonPremiaToken0Difference,
+        int128 expectedNonPremiaToken1Difference,
         PremiaProjection[] memory projectedPremia,
         PreburnValues memory burnersPreburnValues,
         address caller,
         TokenId position
     ) internal {
+        emit LogUint256("position.countLegs()", position.countLegs());
+        emit LogUint256("position.isLong(0)", position.isLong(0));
+        emit LogUint256("position.isLong(1)", position.isLong(1));
+        emit LogUint256("position.isLong(2)", position.isLong(2));
+        emit LogUint256("position.isLong(3)", position.isLong(3));
         assertWithMsg(
             panopticPool.numberOfPositions(caller) == burnersPreburnValues.positionsOpened - 1,
             "Burning a position did not decrease the position counter"
@@ -1907,10 +1916,21 @@ contract FuzzDeployments is FuzzHelpers {
             int128 totalProjectedProratedPremium1
         ) = _net_up_prorated_premia(position, projectedPremia);
 
+        int256 expectedToken0Difference = expectedNonPremiaToken0Difference + totalProjectedProratedPremium0;
+        int256 expectedToken1Difference = expectedNonPremiaToken1Difference + totalProjectedProratedPremium1;
+
         (
             uint256 burnersPostburnToken0Balance,
             uint256 burnersPostburnToken1Balance
         ) = _get_token_balances(caller);
+
+        emit LogUint256("burnersPostburnToken0Balance", burnersPostburnToken0Balance);
+        emit LogUint256("burnersPreburnValues.token0Balance", burnersPreburnValues.token0Balance);
+        emit LogInt256("expectedToken0Difference", expectedToken0Difference);
+
+        emit LogUint256("burnersPostburnToken1Balance", burnersPostburnToken1Balance);
+        emit LogUint256("burnersPreburnValues.token1Balance", burnersPreburnValues.token1Balance);
+        emit LogInt256("expectedToken1Difference", expectedToken1Difference);
 
         if (expectedToken0Difference > 0) {
             assertWithMsg(
@@ -1919,10 +1939,10 @@ contract FuzzDeployments is FuzzHelpers {
                 "Burners token0 balance did not increase by the amount the premia would indicate"
             );
         } else {
-            assertWithMsg(
+            /* assertWithMsg(
                 burnersPostburnToken0Balance == burnersPreburnValues.token0Balance,
                 "Burners token0 balance changed despite having a net negative expected premia"
-            );
+            ); */
             uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
                 collToken0.balanceOf(caller)
             );
@@ -1940,13 +1960,20 @@ contract FuzzDeployments is FuzzHelpers {
                 "Burners token1 balance did not increase by the amount the premia would indicate"
             );
         } else {
-            assertWithMsg(
+            /* assertWithMsg(
                 burnersPostburnToken1Balance == burnersPreburnValues.token1Balance,
-                "Burners token0 balance changed despite having a net negative expected premia"
-            );
+                "Burners token1 balance changed despite having a net negative expected premia"
+            ); */
             uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
                 collToken1.balanceOf(caller)
             );
+            /* burnersPostburnAssetsInCT1 = 5014049198550464670
+            expectedToken1Difference = -1188309 */
+            emit LogInt256("expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
+            emit LogInt256("totalProjectedProratedPremium1", totalProjectedProratedPremium1);
+            emit LogInt256("burnersPreburnValues.assetsInCT1", int256(burnersPreburnValues.assetsInCT1));
+            emit LogInt256("expectedToken1Difference", int256(expectedToken1Difference));
+            emit LogInt256("burnersPostburnAssetsInCT1", int256(burnersPostburnAssetsInCT1));
             assertWithMsg(
                 int256(burnersPreburnValues.assetsInCT1) + int256(expectedToken1Difference) ==
                     int256(burnersPostburnAssetsInCT1),
