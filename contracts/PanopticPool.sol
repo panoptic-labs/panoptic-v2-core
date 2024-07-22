@@ -146,9 +146,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// @notice The maximum allowed delta between the fast and slow oracle ticks before solvency is evaluated at the more oracle ticks (slow, current, and latest).
+    /// @notice The maximum allowed cumulative delta between: the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_SLOW_FAST_DELTA = 953;
+    int256 internal constant MAX_TICKS_DELTA = 953;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as: removedLiquidity / netLiquidity.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -647,13 +647,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1
+    /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens.
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
+        bool safeMode = _isSafeMode();
+        // if safeMode, enforce covered deployment
+        if (safeMode) {
+            if (tickLimitLow > tickLimitHigh) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -661,7 +669,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
-        return poolUtilizations;
+        if (safeMode) {
+            return uint128(10_000) + uint128(10_000 << 64);
+        } else {
+            return poolUtilizations;
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
@@ -843,7 +855,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Validates the solvency of `user`.
-    /// @dev Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_SLOW_FAST_DELTA`.
+    /// @dev Falls back to the more conservative tick if the delta between the fast and slow oracle exceeds `MAX_TICKS_DELTA`.
     /// @dev Effectively, this means that the users must be solvent at both the fast and slow oracle ticks if one of them is stale to mint or burn options.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
@@ -878,7 +890,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int256(fastOracleTick - slowOracleTick) ** 2 +
                 int256(lastObservedTick - slowOracleTick) ** 2 +
                 int256(currentTick - slowOracleTick) ** 2 >
-            MAX_SLOW_FAST_DELTA ** 2
+            MAX_TICKS_DELTA ** 2
         ) {
             atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
@@ -894,7 +906,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             revert Errors.AccountInsolvent();
     }
 
-    /// @notice Burns and handles the exercise of options.
+    /// @notice Gets several ticks from Uniswap regarding the underlying pair.
     /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
@@ -969,6 +981,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
             LeftRightSigned paidAmounts
         )
     {
+        {
+            bool safeMode = _isSafeMode();
+            // if safeMode, enforce covered at assignment
+            if (safeMode) {
+                if (tickLimitLow > tickLimitHigh) {
+                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+                }
+            }
+        }
+
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -1034,7 +1056,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 lastObservedTick;
             (currentTick, fastOracleTick, , lastObservedTick, ) = _getOracleTicks();
 
-            if (Math.abs(currentTick - twapTick) > MAX_SLOW_FAST_DELTA) revert Errors.StaleTWAP();
+            if (Math.abs(currentTick - twapTick) > MAX_TICKS_DELTA) revert Errors.StaleTWAP();
 
             // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
             /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
@@ -1187,78 +1209,65 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
 
-        // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
-        // and the long legs (from which the exercise cost is computed)
-        (LeftRightSigned longAmounts, LeftRightSigned delegatedAmounts) = PanopticMath
-            .computeExercisedAmounts(touchedId[0], positionBalance);
-
         int24 twapTick = getUniV3TWAP();
-
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-        {
-            // add the premia to the delegated amounts to ensure the user has enough collateral to exercise
-            (LeftRightSigned positionPremia, ) = _calculateAccumulatedPremia(
-                account,
-                touchedId,
-                COMPUTE_LONG_PREMIA,
-                ONLY_AVAILABLE_PREMIUM,
-                currentTick
-            );
-
-            // long premia is represented as negative so subtract it to increase it for the delegated amounts
-            delegatedAmounts = delegatedAmounts.sub(positionPremia);
-        }
 
         // on forced exercise, the price *must* be outside the position's range for at least 1 leg
         touchedId[0].validateIsExercisable(twapTick);
 
+        LeftRightSigned exerciseFees;
+        {
+            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+
+            // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
+            // and the long legs (from which the exercise cost is computed)
+            (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
+                touchedId[0],
+                positionBalance
+            );
+
+            // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
+            // Use an oracle tick to prevent price manipulations based on swaps.
+            exerciseFees = s_collateralToken0.exerciseCost(
+                currentTick,
+                twapTick,
+                touchedId[0],
+                positionBalance,
+                longAmounts
+            );
+        }
+
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.delegate(account, uint128(delegatedAmounts.leftSlot()));
+        uint256 delegated0 = s_collateralToken0.delegate(
+            account,
+            uint256(type(uint104).max) * 10_000
+        );
+        uint256 delegated1 = s_collateralToken1.delegate(
+            account,
+            uint256(type(uint104).max) * 10_000
+        );
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
         _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
 
-        // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
-        // Use an oracle tick to prevent price manipulations based on swaps.
-        LeftRightSigned exerciseFees = s_collateralToken0.exerciseCost(
-            currentTick,
-            twapTick,
-            touchedId[0],
-            positionBalance,
-            longAmounts
-        );
-
-        LeftRightSigned refundAmounts = delegatedAmounts.add(exerciseFees);
-
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = PanopticMath.getRefundAmounts(
+        LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
             account,
-            refundAmounts,
+            delegated0,
+            delegated1,
+            exerciseFees,
             twapTick,
             s_collateralToken0,
             s_collateralToken1
         );
 
-        unchecked {
-            // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-            s_collateralToken0.refund(
-                account,
-                msg.sender,
-                refundAmounts.rightSlot() - delegatedAmounts.rightSlot()
-            );
-            s_collateralToken1.refund(
-                account,
-                msg.sender,
-                refundAmounts.leftSlot() - delegatedAmounts.leftSlot()
-            );
-        }
+        // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
+        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
+        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
-        // refund the protocol any virtual shares after settling the difference with the exercisor
-        s_collateralToken0.refund(account, uint128(delegatedAmounts.rightSlot()));
-        s_collateralToken1.refund(account, uint128(delegatedAmounts.leftSlot()));
+        // revoke the virual shares that were delegated after settling the difference with the exercisor
+        s_collateralToken0.revoke(account, delegated0);
+        s_collateralToken1.revoke(account, delegated1);
 
         _validateSolvency(account, positionIdListExercisee, NO_BUFFER);
 
@@ -1303,7 +1312,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 numberOfTicks = atTicks.length;
         bool solvent = true;
-        for (uint256 i; i < numberOfTicks; ++i) {
+        for (uint256 i; i < numberOfTicks; ) {
             solvent =
                 solvent &&
                 _checkCrossBalances(
@@ -1313,6 +1322,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     portfolioPremium,
                     buffer
                 );
+            unchecked {
+                ++i;
+            }
         }
         return solvent;
     }
@@ -1378,6 +1390,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
         }
+    }
+
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe mode when true where all newly minted positions must be fully collateralized
+    function _isSafeMode() internal view returns (bool safeMode) {
+        // check if the price has deviated too much recently.
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        unchecked {
+            uint256 medianData = s_miniMedian;
+            int24 medianTick = (int24(
+                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
+
+            // If ticks have recently deviated more than +/- 10%, enforce covered mints
+            if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
+                safeMode = true;
+            }
+        }
+        return (safeMode);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1451,7 +1482,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Get the collateral token corresponding to token0 of the AMM pool.
     /// @return collateralToken Collateral token corresponding to token0 in the AMM
-    function collateralToken0() external view returns (CollateralTracker collateralToken) {
+    function collateralToken0() external view returns (CollateralTracker) {
         return s_collateralToken0;
     }
 
@@ -1461,10 +1492,37 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return s_collateralToken1;
     }
 
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
+    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
+    function isSafeMode() external view returns (bool) {
+        return _isSafeMode();
+    }
+
+    /// @notice Computes and returns all oracle ticks.
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian`
+    function getOracleTicks()
+        external
+        view
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
+    {
+        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = _getOracleTicks();
+        medianData = s_miniMedian;
+    }
+
     /// @notice Get the current number of open positions for an account
     /// @param user The account to query
     /// @return _numberOfPositions Number of open positions for `user`
-    function numberOfPositions(address user) public view returns (uint256 _numberOfPositions) {
+    function numberOfPositions(address user) external view returns (uint256 _numberOfPositions) {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 

@@ -2662,116 +2662,120 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Alice);
 
-        (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
-            tokenId,
-            positionSize
-        );
-
-        {
-            TokenId[] memory posIdList = new TokenId[](1);
-            posIdList[0] = tokenId;
-
-            pp.mintOptions(
-                posIdList,
-                positionSize,
-                0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
-            );
-        }
-        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
-
-        (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            pool,
-            observationIndex,
-            observationCardinality,
-            3,
-            1
-        );
-
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            60,
-            pp.miniMedian(),
-            pool
-        );
-
-        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
-
-        {
-            (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(inAMM, uint128(shortAmounts.rightSlot()), 10);
-        }
-
-        {
-            (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(inAMM, uint128(shortAmounts.leftSlot()), 10);
-        }
-
-        {
-            assertEq(
-                pp.positionsHash(Alice),
-                uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+        if (pp.isSafeMode() == false) {
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                positionSize
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            {
+                TokenId[] memory posIdList = new TokenId[](1);
+                posIdList[0] = tokenId;
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+                pp.mintOptions(
+                    posIdList,
+                    positionSize,
+                    0,
+                    Constants.MAX_V3POOL_TICK,
+                    Constants.MIN_V3POOL_TICK
+                );
+            }
+            (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-            assertEq(balance, positionSize);
-            assertEq(
-                poolUtilization0,
-                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? 10_001
-                    : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) / ct0.totalSupply()
-            );
-            assertEq(
-                poolUtilization1,
-                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? 10_001
-                    : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) / ct1.totalSupply()
-            );
-        }
-
-        {
-            int256[2] memory notionalVals = [
-                amount0s + $amount0Moveds[0] + $amount0Moveds[1] - shortAmounts.rightSlot(),
-                amount1s + $amount1Moveds[0] + $amount1Moveds[1] - shortAmounts.leftSlot()
-            ];
-            int256[2] memory ITMSpreads = [
-                notionalVals[0] > 0
-                    ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-                    : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
-                notionalVals[1] > 0
-                    ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
-                    : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
-            ];
-
-            assertApproxEqAbs(
-                ct0.balanceOf(Alice),
-                uint256(
-                    int256(uint256(type(uint104).max)) -
-                        notionalVals[0] -
-                        ITMSpreads[0] -
-                        (shortAmounts.rightSlot() * 10) /
-                        10_000
-                ),
-                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
+            (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
+                pool,
+                observationIndex,
+                observationCardinality,
+                3,
+                1
             );
 
-            assertApproxEqAbs(
-                ct1.balanceOf(Alice),
-                uint256(
-                    int256(uint256(type(uint104).max)) -
-                        notionalVals[1] -
-                        ITMSpreads[1] -
-                        (shortAmounts.leftSlot() * 10) /
-                        10_000
-                ),
-                uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10)
+            (slowOracleTick, ) = PanopticMath.computeInternalMedian(
+                observationIndex,
+                observationCardinality,
+                60,
+                pp.miniMedian(),
+                pool
             );
+
+            assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
+
+            {
+                (, uint256 inAMM, ) = ct0.getPoolData();
+                assertApproxEqAbs(inAMM, uint128(shortAmounts.rightSlot()), 10);
+            }
+
+            {
+                (, uint256 inAMM, ) = ct1.getPoolData();
+                assertApproxEqAbs(inAMM, uint128(shortAmounts.leftSlot()), 10);
+            }
+
+            {
+                assertEq(
+                    pp.positionsHash(Alice),
+                    uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+                );
+
+                assertEq(pp.numberOfPositions(Alice), 1);
+
+                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
+                    .optionPositionBalance(Alice, tokenId);
+
+                assertEq(balance, positionSize);
+                assertEq(
+                    poolUtilization0,
+                    Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
+                        ? 10_001
+                        : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) /
+                            ct0.totalSupply()
+                );
+                assertEq(
+                    poolUtilization1,
+                    Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
+                        ? 10_001
+                        : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) /
+                            ct1.totalSupply()
+                );
+            }
+
+            {
+                int256[2] memory notionalVals = [
+                    amount0s + $amount0Moveds[0] + $amount0Moveds[1] - shortAmounts.rightSlot(),
+                    amount1s + $amount1Moveds[0] + $amount1Moveds[1] - shortAmounts.leftSlot()
+                ];
+                int256[2] memory ITMSpreads = [
+                    notionalVals[0] > 0
+                        ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+                        : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
+                    notionalVals[1] > 0
+                        ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
+                        : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
+                ];
+
+                assertApproxEqAbs(
+                    ct0.balanceOf(Alice),
+                    uint256(
+                        int256(uint256(type(uint104).max)) -
+                            notionalVals[0] -
+                            ITMSpreads[0] -
+                            (shortAmounts.rightSlot() * 10) /
+                            10_000
+                    ),
+                    uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10)
+                );
+
+                assertApproxEqAbs(
+                    ct1.balanceOf(Alice),
+                    uint256(
+                        int256(uint256(type(uint104).max)) -
+                            notionalVals[1] -
+                            ITMSpreads[1] -
+                            (shortAmounts.leftSlot() * 10) /
+                            10_000
+                    ),
+                    uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10)
+                );
+            }
         }
     }
 
@@ -3032,114 +3036,120 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Alice);
 
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSizes[1]);
+        if (pp.isSafeMode() == false) {
+            (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+                .computeExercisedAmounts(tokenId, positionSizes[1]);
 
-        uint256 sharesToBurn;
-        int256[2] memory notionalVals;
-        int256[2] memory ITMSpreads;
-        {
-            notionalVals = [
-                amount0s +
-                    $amount0Moveds[1] +
-                    $amount0Moveds[2] -
-                    shortAmounts.rightSlot() +
-                    longAmounts.rightSlot(),
-                amount1s + $amount1Moveds[1] + $amount1Moveds[2] - shortAmounts.leftSlot()
-            ];
+            uint256 sharesToBurn;
+            int256[2] memory notionalVals;
+            int256[2] memory ITMSpreads;
+            {
+                notionalVals = [
+                    amount0s +
+                        $amount0Moveds[1] +
+                        $amount0Moveds[2] -
+                        shortAmounts.rightSlot() +
+                        longAmounts.rightSlot(),
+                    amount1s + $amount1Moveds[1] + $amount1Moveds[2] - shortAmounts.leftSlot()
+                ];
 
-            ITMSpreads = [
-                notionalVals[0] > 0
-                    ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-                    : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
-                notionalVals[1] > 0
-                    ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
-                    : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
-            ];
+                ITMSpreads = [
+                    notionalVals[0] > 0
+                        ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
+                        : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
+                    notionalVals[1] > 0
+                        ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
+                        : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
+                ];
 
-            uint256 tokenToPay = uint256(
-                notionalVals[0] +
-                    ITMSpreads[0] +
-                    ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) /
-                    10_000
-            );
-
-            sharesToBurn = Math.mulDivRoundingUp(tokenToPay, ct0.totalSupply(), ct0.totalAssets());
-        }
-
-        {
-            TokenId[] memory posIdList = new TokenId[](1);
-            posIdList[0] = tokenId;
-
-            pp.mintOptions(
-                posIdList,
-                positionSizes[1],
-                type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
-            );
-        }
-
-        // price changes afters swap at mint so we need to update the price
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-
-        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSizes[1]);
-
-        {
-            (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(shortAmountsSold.rightSlot() - longAmounts.rightSlot()),
-                10
-            );
-        }
-
-        {
-            (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(inAMM, uint128(shortAmounts.leftSlot()), 10);
-        }
-
-        {
-            assertEq(
-                pp.positionsHash(Alice),
-                uint248(uint256(keccak256(abi.encodePacked(tokenId))))
-            );
-
-            assertEq(pp.numberOfPositions(Alice), 1);
-
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
-
-            assertEq(balance, positionSizes[1]);
-            assertEq(
-                int64(poolUtilization0),
-                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? int64(10_001)
-                    : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
-                        int256(ct0.totalSupply())
-            );
-            assertEq(
-                int64(poolUtilization1),
-                Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? int64(10_001)
-                    : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
-                        int256(ct1.totalSupply())
-            );
-        }
-
-        {
-            assertApproxEqAbs(
-                ct1.balanceOf(Alice),
-                uint256(
-                    int256(uint256(type(uint104).max)) -
-                        notionalVals[1] -
-                        ITMSpreads[1] -
-                        (shortAmounts.leftSlot() * 10) /
+                uint256 tokenToPay = uint256(
+                    notionalVals[0] +
+                        ITMSpreads[0] +
+                        ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) /
                         10_000
-                ),
-                uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
-                "Alice balance 1"
-            );
+                );
+
+                sharesToBurn = Math.mulDivRoundingUp(
+                    tokenToPay,
+                    ct0.totalSupply(),
+                    ct0.totalAssets()
+                );
+            }
+
+            {
+                TokenId[] memory posIdList = new TokenId[](1);
+                posIdList[0] = tokenId;
+
+                pp.mintOptions(
+                    posIdList,
+                    positionSizes[1],
+                    type(uint64).max,
+                    Constants.MAX_V3POOL_TICK,
+                    Constants.MIN_V3POOL_TICK
+                );
+            }
+
+            // price changes afters swap at mint so we need to update the price
+            (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+            assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSizes[1]);
+
+            {
+                (, uint256 inAMM, ) = ct0.getPoolData();
+                assertApproxEqAbs(
+                    inAMM,
+                    uint128(shortAmountsSold.rightSlot() - longAmounts.rightSlot()),
+                    10
+                );
+            }
+
+            {
+                (, uint256 inAMM, ) = ct1.getPoolData();
+                assertApproxEqAbs(inAMM, uint128(shortAmounts.leftSlot()), 10);
+            }
+
+            {
+                assertEq(
+                    pp.positionsHash(Alice),
+                    uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+                );
+
+                assertEq(pp.numberOfPositions(Alice), 1);
+
+                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
+                    .optionPositionBalance(Alice, tokenId);
+
+                assertEq(balance, positionSizes[1]);
+                assertEq(
+                    int64(poolUtilization0),
+                    Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
+                        ? int64(10_001)
+                        : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
+                            int256(ct0.totalSupply())
+                );
+                assertEq(
+                    int64(poolUtilization1),
+                    Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
+                        ? int64(10_001)
+                        : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
+                            int256(ct1.totalSupply())
+                );
+            }
+
+            {
+                assertApproxEqAbs(
+                    ct1.balanceOf(Alice),
+                    uint256(
+                        int256(uint256(type(uint104).max)) -
+                            notionalVals[1] -
+                            ITMSpreads[1] -
+                            (shortAmounts.leftSlot() * 10) /
+                            10_000
+                    ),
+                    uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
+                    "Alice balance 1"
+                );
+            }
         }
     }
 
@@ -4514,10 +4524,6 @@ contract PanopticPoolTest is PositionUtils {
             ? (notionalVals1[0] * int24(2 * (fee / 100))) / 10_000
             : -((notionalVals1[0] * int24(2 * (fee / 100))) / 10_000);
 
-        console2.log("ITMSpread", ITMSpread);
-        console2.log("notionalVals[0]", notionalVals[0]);
-        console2.log("notionalVals[1]", notionalVals[1]);
-        console2.log("tokensOwed0", tokensOwed0);
         assertApproxEqAbs(
             int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
             -ITMSpread -
@@ -4530,10 +4536,6 @@ contract PanopticPoolTest is PositionUtils {
             "Incorrect token0 delta"
         );
 
-        console2.log("ITMSpread1", ITMSpread1);
-        console2.log("notionalVals1[0]", notionalVals1[0]);
-        console2.log("notionalVals1[1]", notionalVals1[1]);
-        console2.log("tokensOwed1", tokensOwed1);
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
             -ITMSpread1 - notionalVals1[0] - notionalVals1[1] + int256(uint256(tokensOwed1)),
@@ -5417,7 +5419,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_getRefundAmounts(
+    function test_Success_getExerciseDeltas(
         uint256 x,
         uint256 balance0,
         uint256 balance1,
@@ -5425,68 +5427,118 @@ contract PanopticPoolTest is PositionUtils {
         int256 refund1,
         int256 atTickSeed
     ) public {
-        _initPool(x);
+        unchecked {
+            _initPool(x);
 
-        balance0 = bound(balance0, 0, type(uint104).max);
-        balance1 = bound(balance1, 0, type(uint104).max);
-        refund0 = bound(
-            refund0,
-            -int256(uint256(type(uint104).max)),
-            int256(uint256(type(uint104).max))
-        );
-        refund1 = bound(
-            refund1,
-            -int256(uint256(type(uint104).max)),
-            int256(uint256(type(uint104).max))
-        );
-        // possible for the amounts used here to overflow beyond these ticks
-        // convert0To1 is tested on the full tickrange elsewhere
-        atTick = int24(bound(atTickSeed, -159_000, 159_000));
-
-        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(int24(atTick));
-
-        vm.startPrank(Charlie);
-        ct0.deposit(balance0, Charlie);
-        ct1.deposit(balance1, Charlie);
-
-        int256 shortage = refund0 - int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
-
-        if (shortage > 0) {
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
-                Charlie,
-                LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick),
-                ct0,
-                ct1
+            balance0 = bound(balance0, 0, type(uint104).max);
+            balance1 = bound(balance1, 0, type(uint104).max);
+            refund0 = bound(
+                refund0,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
             );
-
-            refund0 = refund0 - shortage;
-            refund1 = PanopticMath.convert0to1(shortage, sqrtPriceX96) + refund1;
-
-            assertEq(refundAmounts.rightSlot(), refund0);
-            assertEq(refundAmounts.leftSlot(), refund1);
-            // if there is a shortage of token1, it won't be reached since it's only considered possible to have a shortage
-            // of one token with force exercises. If there is a shortage of both the account is insolvent and it will fail
-            // when trying to transfer the tokens
-            return;
-        }
-
-        shortage = refund1 - int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
-
-        if (shortage > 0) {
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
-                Charlie,
-                LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
-                int24(atTick),
-                ct0,
-                ct1
+            refund1 = bound(
+                refund1,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
             );
+            // possible for the amounts used here to overflow beyond these ticks
+            // convert0To1 is tested on the full tickrange elsewhere
+            atTick = int24(bound(atTickSeed, -159_000, 159_000));
 
-            refund1 = refund1 - shortage;
-            refund0 = PanopticMath.convert1to0(shortage, sqrtPriceX96) + refund0;
+            uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(int24(atTick));
 
-            assertEq(refundAmounts.rightSlot(), refund0);
-            assertEq(refundAmounts.leftSlot(), refund1);
+            vm.startPrank(Charlie);
+            ct0.deposit(balance0, Charlie);
+            ct1.deposit(balance1, Charlie);
+
+            int256 shortage = int256(
+                Math.mulDivRoundingUp(
+                    ct0.convertToShares(type(uint104).max),
+                    ct0.totalAssets(),
+                    ct0.totalSupply()
+                )
+            ) +
+                refund0 -
+                int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
+
+            if (shortage > 0) {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    ct0.convertToShares(type(uint104).max),
+                    ct1.convertToShares(type(uint104).max),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
+
+                refund0 = int128(refund0) - int128(shortage);
+                refund1 =
+                    int128(PanopticMath.convert0to1(shortage, sqrtPriceX96)) +
+                    int128(refund1);
+
+                assertEq(refundAmounts.rightSlot(), refund0);
+                assertEq(refundAmounts.leftSlot(), refund1);
+
+                // if there is a shortage of token1, it won't be reached since it's only considered possible to have a shortage
+                // of one token with force exercises. If there is a shortage of both the account is insolvent and it will fail
+                // when trying to transfer the tokens
+                return;
+            }
+
+            shortage =
+                int256(
+                    Math.mulDivRoundingUp(
+                        ct1.convertToShares(type(uint104).max),
+                        ct1.totalAssets(),
+                        ct1.totalSupply()
+                    )
+                ) +
+                refund1 -
+                int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
+
+            if (shortage > 0) {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    ct0.convertToShares(type(uint104).max),
+                    ct1.convertToShares(type(uint104).max),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
+
+                refund1 = int128(refund1) - shortage;
+                refund0 =
+                    int128(PanopticMath.convert1to0(shortage, sqrtPriceX96)) +
+                    int128(refund0);
+
+                assertEq(refundAmounts.rightSlot(), refund0);
+                assertEq(refundAmounts.leftSlot(), refund1);
+
+                return;
+            }
+            {
+                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                    Charlie,
+                    ct0.convertToShares(type(uint104).max),
+                    ct1.convertToShares(type(uint104).max),
+                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
+                        int128(refund1)
+                    ),
+                    int24(atTick),
+                    ct0,
+                    ct1
+                );
+
+                assertEq(refundAmounts.rightSlot(), int128(refund0));
+                assertEq(refundAmounts.leftSlot(), int128(refund1));
+            }
         }
     }
 
