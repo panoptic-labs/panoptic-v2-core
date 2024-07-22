@@ -1875,8 +1875,14 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             emit LogUint256("postburnGrossPremiaLast0", postburnGrossPremiaLast0);
-            emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast0", preburnAccumulators[legIndex].grossPremiaLast0);
-            emit LogUint256("projectedPremia[legIndex].idealPremium0", projectedPremia[legIndex].idealPremium0);
+            emit LogUint256(
+                "preburnAccumulators[legIndex].grossPremiaLast0",
+                preburnAccumulators[legIndex].grossPremiaLast0
+            );
+            emit LogUint256(
+                "projectedPremia[legIndex].idealPremium0",
+                projectedPremia[legIndex].idealPremium0
+            );
 
             assertWithMsg(
                 postburnGrossPremiaLast0 ==
@@ -1916,8 +1922,10 @@ contract FuzzDeployments is FuzzHelpers {
             int128 totalProjectedProratedPremium1
         ) = _net_up_prorated_premia(position, projectedPremia);
 
-        int256 expectedToken0Difference = expectedNonPremiaToken0Difference + totalProjectedProratedPremium0;
-        int256 expectedToken1Difference = expectedNonPremiaToken1Difference + totalProjectedProratedPremium1;
+        int256 expectedToken0Difference = expectedNonPremiaToken0Difference +
+            totalProjectedProratedPremium0;
+        int256 expectedToken1Difference = expectedNonPremiaToken1Difference +
+            totalProjectedProratedPremium1;
 
         (
             uint256 burnersPostburnToken0Balance,
@@ -1971,7 +1979,10 @@ contract FuzzDeployments is FuzzHelpers {
             expectedToken1Difference = -1188309 */
             emit LogInt256("expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
             emit LogInt256("totalProjectedProratedPremium1", totalProjectedProratedPremium1);
-            emit LogInt256("burnersPreburnValues.assetsInCT1", int256(burnersPreburnValues.assetsInCT1));
+            emit LogInt256(
+                "burnersPreburnValues.assetsInCT1",
+                int256(burnersPreburnValues.assetsInCT1)
+            );
             emit LogInt256("expectedToken1Difference", int256(expectedToken1Difference));
             emit LogInt256("burnersPostburnAssetsInCT1", int256(burnersPostburnAssetsInCT1));
             assertWithMsg(
