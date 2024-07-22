@@ -1798,7 +1798,8 @@ contract FuzzDeployments is FuzzHelpers {
                 Math.min(
                     (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
                         // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
-                        (((preburnGrossPremium - preburnGrossPremiumLast) * preburnShortLiquidity) >> 64),
+                        (((preburnGrossPremium - preburnGrossPremiumLast) *
+                            preburnShortLiquidity) >> 64),
                     idealPremium
                 )
             );
@@ -1856,7 +1857,8 @@ contract FuzzDeployments is FuzzHelpers {
             assertWithMsg(
                 int256(int128(postburnSettledToken0)) ==
                     Math.max(
-                        int256(int128(preburnAccumulators[legIndex].settledToken0)) - expectedSettledToken0DifferenceForChunk,
+                        int256(int128(preburnAccumulators[legIndex].settledToken0)) -
+                            expectedSettledToken0DifferenceForChunk,
                         0
                     ),
                 "Settled token0s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
@@ -1865,10 +1867,11 @@ contract FuzzDeployments is FuzzHelpers {
             assertWithMsg(
                 int256(int128(postburnSettledToken1)) ==
                     Math.max(
-                        int256(int128(preburnAccumulators[legIndex].settledToken1)) - expectedSettledToken1DifferenceForChunk,
+                        int256(int128(preburnAccumulators[legIndex].settledToken1)) -
+                            expectedSettledToken1DifferenceForChunk,
                         0
                     ),
-                    "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
+                "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
             assertWithMsg(
