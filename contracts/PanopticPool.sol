@@ -468,8 +468,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         )
                     );
 
+                    (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
                     LeftRightUnsigned availablePremium = _getAvailablePremium(
-                        _getTotalLiquidity(tokenId, leg),
+                        totalLiquidity,
                         s_settledTokens[chunkKey],
                         s_grossPremiumLast[chunkKey],
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))),
@@ -1455,29 +1456,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Ensure the effective liquidity in a given chunk is above a certain threshold.
     /// @param tokenId An option position
     /// @param leg A leg index of `tokenId` corresponding to a tickLower-tickUpper chunk
-    /// @param tickLower The lower tick of the chunk
-    /// @param tickUpper The upper tick of the chunk
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as removedLiquidity/netLiquidity for a new position
     /// denominated as X32 = (ratioLimit * 2**32)
     /// @return totalLiquidity The total liquidity deposited in that chunk: `totalLiquidity = netLiquidity + removedLiquidity`
     function _checkLiquiditySpread(
         TokenId tokenId,
         uint256 leg,
-        int24 tickLower,
-        int24 tickUpper,
         uint64 effectiveLiquidityLimitX32
     ) internal view returns (uint256 totalLiquidity) {
-        LeftRightUnsigned accountLiquidities = SFPM.getAccountLiquidity(
-            address(s_univ3pool),
-            address(this),
-            tokenId.tokenType(leg),
-            tickLower,
-            tickUpper
-        );
+        uint128 netLiquidity;
+        uint128 removedLiquidity;
+        (totalLiquidity, netLiquidity, removedLiquidity) = _getLiquidities(tokenId, leg);
 
-        uint128 netLiquidity = accountLiquidities.rightSlot();
-        uint128 removedLiquidity = accountLiquidities.leftSlot();
-        totalLiquidity = netLiquidity + removedLiquidity;
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
         if (netLiquidity == 0 && removedLiquidity == 0) return totalLiquidity;
 
@@ -1717,8 +1707,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 totalLiquidity = _checkLiquiditySpread(
                 tokenId,
                 leg,
-                liquidityChunk.tickLower(),
-                liquidityChunk.tickUpper(),
                 isLong == 0 ? MAX_SPREAD : uint64(Math.min(effectiveLiquidityLimitX32, MAX_SPREAD))
             );
 
@@ -1827,13 +1815,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param leg The leg of the option position to get `totalLiquidity` for
     /// @return totalLiquidity The total amount of liquidity sold in the corresponding chunk for a position leg
-    function _getTotalLiquidity(
+    /// @return netLiquidity The amount of liquidity available in the corresponding chunk for a position leg
+    /// @return removedLiquidity The amount of liquidity removed through buying in the corresponding chunk for a position leg
+    function _getLiquidities(
         TokenId tokenId,
         uint256 leg
-    ) internal view returns (uint256 totalLiquidity) {
+    )
+        internal
+        view
+        returns (uint256 totalLiquidity, uint128 netLiquidity, uint128 removedLiquidity)
+    {
         unchecked {
-            // totalLiquidity (total sold) = removedLiquidity + netLiquidity
-
             (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
             uint256 tokenType = tokenId.tokenType(leg);
             LeftRightUnsigned accountLiquidities = SFPM.getAccountLiquidity(
@@ -1844,8 +1836,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 tickUpper
             );
 
-            // removed + net
-            totalLiquidity = accountLiquidities.rightSlot() + accountLiquidities.leftSlot();
+            netLiquidity = accountLiquidities.rightSlot();
+            removedLiquidity = accountLiquidities.leftSlot();
+
+            totalLiquidity = netLiquidity + removedLiquidity;
         }
     }
 
@@ -1910,14 +1904,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     );
                     positionLiquidity = liquidityChunk.liquidity();
 
+                    // if position is short, ensure that removed liquidity does not deplete strike beyond MAX_SPREAD when closed
                     // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (T - R)
-                    totalLiquidity = _checkLiquiditySpread(
-                        tokenId,
-                        leg,
-                        liquidityChunk.tickLower(),
-                        liquidityChunk.tickUpper(),
-                        MAX_SPREAD
-                    );
+                    totalLiquidity = _checkLiquiditySpread(tokenId, leg, MAX_SPREAD);
                 }
                 // T (totalLiquidity is (T - R) after burning)
                 uint256 totalLiquidityBefore = totalLiquidity + positionLiquidity;
