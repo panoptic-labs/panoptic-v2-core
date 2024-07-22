@@ -170,6 +170,7 @@ contract PanopticPoolTest is PositionUtils {
     uint16 observationIndex;
     uint16 observationCardinality;
     int24 fastOracleTick;
+    int24 lastObservedTick;
 
     int24 slowOracleTick;
     uint160 medianSqrtPriceX96;
@@ -7649,7 +7650,7 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 > newRequired0);
         }
-        (, currentTick, , , , , ) = pool.slot0();
+        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
@@ -7660,6 +7661,27 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 > newRequired0);
         }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                fastOracleTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                lastObservedTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+
         vm.startPrank(Bob);
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
