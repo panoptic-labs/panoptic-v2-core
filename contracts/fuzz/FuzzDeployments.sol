@@ -1400,15 +1400,15 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 settledToken1;
         uint128 grossPremiaLast0;
         uint128 grossPremiaLast1;
+        uint128 totalShortLiquidity;
+        uint128 sfpmGrossPremia0;
+        uint128 sfpmGrossPremia1;
     }
 
     struct PremiaCalcInputs {
-        uint128 premiumAccumulator0;
-        uint128 premiumAccumulator1;
         uint128 premiumGrowth0;
         uint128 premiumGrowth1;
         uint128 positionLiquidity;
-        uint128 totalShortLiquidity;
     }
 
     function _try_burning_and_check_balances(
@@ -1512,7 +1512,8 @@ contract FuzzDeployments is FuzzHelpers {
             position,
             preburnAccumulators,
             projectedPremia,
-            sfpm_sim_result
+            sfpm_sim_result,
+            caller
         );
 
         /* assertWithMsg(false, "made the per-leg assertions"); */
@@ -1528,7 +1529,7 @@ contract FuzzDeployments is FuzzHelpers {
             position
         );
 
-        assertWithMsg(false, "compared against preburn");
+        /* assertWithMsg(false, "compared against preburn"); */
     }
 
     function _prank_and_burn(
@@ -1598,18 +1599,8 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators = new AccumulatorsForLeg[](numLegs);
         premiaCalcInputs = new PremiaCalcInputs[](numLegs);
 
-        (, int24 preburnCurrentTick, , , , , ) = pool.slot0();
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
             _set_preburn_accumulators(accumulators, position, legIndex);
-
-            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_account_premium(
-                legIndex,
-                preburnCurrentTick,
-                position
-            );
-
-            premiaCalcInputs[legIndex].premiumAccumulator0 = premiumAccumulator0;
-            premiaCalcInputs[legIndex].premiumAccumulator1 = premiumAccumulator1;
 
             LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 position,
@@ -1617,7 +1608,7 @@ contract FuzzDeployments is FuzzHelpers {
                 posSize
             );
             premiaCalcInputs[legIndex].positionLiquidity = liquidityChunk.liquidity();
-            premiaCalcInputs[legIndex].totalShortLiquidity = _get_total_short_liquidity(
+            accumulators[legIndex].totalShortLiquidity = _get_total_short_liquidity(
                 position,
                 liquidityChunk
             );
@@ -1658,14 +1649,19 @@ contract FuzzDeployments is FuzzHelpers {
     {
         // We add any expected tokens for burning an ITM position in the SFPM
         expectedNonPremiaToken0Difference = token0Swapped;
+        emit LogInt256("adding token1Swapped: ", token1Swapped);
         expectedNonPremiaToken1Difference = token1Swapped;
 
         // And finally, we also add any underlying amounts of long legs,
         // minus the underlying amounts of any short legs.
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(position, posSize);
+        emit LogInt256("longAmounts.leftSlot(): ", longAmounts.leftSlot());
+        emit LogInt256("shortAmounts.leftSlot(): ", shortAmounts.leftSlot());
+        emit LogInt256("adding longAmounts.leftSlot() - shortAmounts.leftSlot(): ", longAmounts.leftSlot() - shortAmounts.leftSlot());
         expectedNonPremiaToken0Difference += longAmounts.rightSlot() - shortAmounts.rightSlot();
         expectedNonPremiaToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
+        emit LogInt256("final expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
     }
 
     function _decode_sfpm_sim(
@@ -1714,16 +1710,29 @@ contract FuzzDeployments is FuzzHelpers {
 
         for (uint legIndex = 0; legIndex < position.countLegs(); legIndex++) {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
+            emit LogUint256("legIndex", legIndex);
             projectedPremia[legIndex].idealPremium0 =
-                ((premiaCalcInputs[legIndex].premiumAccumulator0 -
+                ((accumulators[legIndex].sfpmGrossPremia0 -
                     premiaCalcInputs[legIndex].premiumGrowth0) *
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
+            emit LogUint256("premiumGrowth0", premiaCalcInputs[legIndex].premiumGrowth0);
+            emit LogUint256("accumulators[legIndex].sfpmGrossPremia0", accumulators[legIndex].sfpmGrossPremia0);
+            emit LogUint256("positionLiquidity", premiaCalcInputs[legIndex].positionLiquidity);
+            emit LogUint256("projectedPremia[legIndex].idealPremium0", projectedPremia[legIndex].idealPremium0);
+
+
             projectedPremia[legIndex].idealPremium1 =
-                ((premiaCalcInputs[legIndex].premiumAccumulator1 -
+                ((accumulators[legIndex].sfpmGrossPremia1 -
                     premiaCalcInputs[legIndex].premiumGrowth1) *
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
+
+            emit LogUint256("premiumGrowth1", premiaCalcInputs[legIndex].premiumGrowth1);
+            emit LogUint256("accumulators[legIndex].sfpmGrossPremia1", accumulators[legIndex].sfpmGrossPremia1);
+            emit LogUint256("positionLiquidity", premiaCalcInputs[legIndex].positionLiquidity);
+            emit LogUint256("projectedPremia[legIndex].idealPremium1", projectedPremia[legIndex].idealPremium1);
+
 
             // 2. get proratedPremia:
             //    - short legs should get idealPremia * total settled tokens / total gross premia;
@@ -1760,25 +1769,31 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 token0CollectedByLeg,
         uint128 token1CollectedByLeg
     ) internal {
+        emit LogString("prorating premium for token 0 on leg:");
+        emit LogUint256("on leg: ", legIndex);
         projectedPremia.proratedPremium0 = position.isLong(legIndex) == 1
             ? projectedPremia.idealPremium0
             : _prorate_ideal_premium(
                 projectedPremia.idealPremium0,
-                premiaCalcInputs.premiumAccumulator0,
+                accumulators.sfpmGrossPremia0,
                 accumulators.grossPremiaLast0,
                 accumulators.settledToken0 + token0CollectedByLeg,
                 premiaCalcInputs.positionLiquidity,
-                premiaCalcInputs.totalShortLiquidity
+                accumulators.totalShortLiquidity
             );
+
+        emit LogString("prorating premium for token 1 on leg:");
+        emit LogUint256("on leg: ", legIndex);
+
         projectedPremia.proratedPremium1 = position.isLong(legIndex) == 1
             ? projectedPremia.idealPremium1
             : _prorate_ideal_premium(
                 projectedPremia.idealPremium1,
-                premiaCalcInputs.premiumAccumulator1,
+                accumulators.sfpmGrossPremia1,
                 accumulators.grossPremiaLast1,
                 accumulators.settledToken1 + token1CollectedByLeg,
                 premiaCalcInputs.positionLiquidity,
-                premiaCalcInputs.totalShortLiquidity
+                accumulators.totalShortLiquidity
             );
     }
 
@@ -1790,6 +1805,13 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnPositionLiquidity,
         uint128 preburnShortLiquidity
     ) internal returns (uint128) {
+        emit LogUint256("idealPremium", idealPremium);
+        emit LogUint256("preburnGrossPremium", preburnGrossPremium);
+        emit LogUint256("preburnGrossPremiumLast", preburnGrossPremiumLast);
+        emit LogUint256("preburnSettledTokens", preburnSettledTokens);
+        emit LogUint256("preburnPositionLiquidity", preburnPositionLiquidity);
+        emit LogUint256("preburnShortLiquidity", preburnShortLiquidity);
+
         // Prevent division by zero
         if (preburnGrossPremium == 0) return 0;
 
@@ -1827,7 +1849,8 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId position,
         AccumulatorsForLeg[] memory preburnAccumulators,
         PremiaProjection[] memory projectedPremia,
-        bytes memory sfpm_sim_result
+        bytes memory sfpm_sim_result,
+        address caller
     ) internal {
         (
             ,
@@ -1878,18 +1901,57 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast0", preburnAccumulators[legIndex].grossPremiaLast0);
             emit LogUint256("projectedPremia[legIndex].idealPremium0", projectedPremia[legIndex].idealPremium0);
 
+            // INVARIANT:
+            // (postBurnGrossPremiaSFPM - postBurnGrossPremiaLast)*postBurnShortLiq/2^64
+            // ==
+            // (preBurnGrossPremiaSFPM - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
+
+            (, int24 postburnCurrentTick, , , , , ) = pool.slot0();
+
+            (int24 tickLower, int24 tickUpper) = position.asTicks(legIndex);
+            (
+                uint256 postburnSFPMGrossPremia0,
+                uint256 postburnSFPMGrossPremia1
+            ) = sfpm.getAccountPremium(
+                address(pool),
+                address(panopticPool),
+                position.tokenType(legIndex),
+                tickLower,
+                tickUpper,
+                currentTick,
+                position.isLong(legIndex)
+            );
+
+            (uint128 posSize, , ) = panopticPool.optionPositionBalance(caller, position);
+
+            uint256 postburnShortLiquidity = _get_total_short_liquidity(
+                position,
+                PanopticMath.getLiquidityChunk(
+                    position,
+                    legIndex,
+                    posSize
+                )
+            );
+
             assertWithMsg(
-                postburnGrossPremiaLast0 ==
-                    preburnAccumulators[legIndex].grossPremiaLast0 +
-                        projectedPremia[legIndex].idealPremium0,
+                    ((postburnSFPMGrossPremia0 - postburnGrossPremiaLast0) *
+                        postburnShortLiquidity
+                        ) >> 64
+                        ==
+                    ((
+                    (preburnAccumulators[legIndex].sfpmGrossPremia0 - preburnAccumulators[legIndex].grossPremiaLast0) *
+                        preburnAccumulators[legIndex].totalShortLiquidity
+                        ) >> 64)
+                        - projectedPremia[legIndex].idealPremium0,
                 "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
             );
             assertWithMsg(
-                postburnGrossPremiaLast1 ==
-                    preburnAccumulators[legIndex].grossPremiaLast1 +
-                        projectedPremia[legIndex].idealPremium1,
+                ((postburnSFPMGrossPremia1 - postburnGrossPremiaLast1) * postburnShortLiquidity) >> 64 ==
+                    (((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64) - projectedPremia[legIndex].idealPremium1,
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
+
+            assertWithMsg(false, "we did the comparisons!");
         }
     }
 
@@ -1967,7 +2029,9 @@ contract FuzzDeployments is FuzzHelpers {
             uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
                 collToken1.balanceOf(caller)
             );
-            /* burnersPostburnAssetsInCT1 = 5014049198550464670
+            /* TODO: Getting a difference of 29 in the burnersPostburnAssetsInCT1 and the preburn;
+            i expect it to be 1188309. Must investigate
+            burnersPostburnAssetsInCT1 = 5014049198550464670
             expectedToken1Difference = -1188309 */
             emit LogInt256("expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
             emit LogInt256("totalProjectedProratedPremium1", totalProjectedProratedPremium1);
@@ -1989,24 +2053,6 @@ contract FuzzDeployments is FuzzHelpers {
         tokenBalance1 = IERC20(pool.token1()).balanceOf(caller);
     }
 
-    function _get_account_premium(
-        uint legIndex,
-        int24 preburnCurrentTick,
-        TokenId position
-    ) internal view returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
-        (int24 tickLower, int24 tickUpper) = position.asTicks(legIndex);
-        return
-            sfpm.getAccountPremium(
-                address(pool),
-                address(panopticPool),
-                position.tokenType(legIndex),
-                tickLower,
-                tickUpper,
-                preburnCurrentTick,
-                position.isLong(legIndex)
-            );
-    }
-
     function _set_preburn_accumulators(
         AccumulatorsForLeg[] memory accumulators,
         TokenId position,
@@ -2022,6 +2068,11 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].settledToken1 = settledToken1;
         accumulators[legIndex].grossPremiaLast0 = grossPremiaLastToken0;
         accumulators[legIndex].grossPremiaLast1 = grossPremiaLastToken1;
+
+        (uint128 sfpmGrossPremia0, uint128 sfpmGrossPremia1) = _get_sfpm_accumulators(position, legIndex);
+
+        accumulators[legIndex].sfpmGrossPremia0 = sfpmGrossPremia0;
+        accumulators[legIndex].sfpmGrossPremia1 = sfpmGrossPremia1;
     }
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
@@ -2371,21 +2422,14 @@ contract FuzzDeployments is FuzzHelpers {
             // that product is the total gross premia SFPM thinks is owed to the Pool the position is in, and is the value
             // the pool's grossPremiaLast should never exceed.
             // LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
-            // TODO: This is the new, corrected way i think - need to confirm that
-            (, int24 currentTick, , , , , ) = pool.slot0();
-            (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_account_premium(
+            // TODO: The new, corrected way is in _get_sfpm_gross_premia - need to confirm its correct
+            (uint128 sfpmGrossPremia0, uint128 sfpmGrossPremia1) = _get_sfpm_gross_premia(
+                position,
                 legIndex,
-                currentTick,
-                position
+                positionHolder
             );
-            (uint128 posSize, , ) = panopticPool.optionPositionBalance(positionHolder, position);
-            uint128 liquidity = PanopticMath
-                .getLiquidityChunk(position, legIndex, posSize)
-                .liquidity();
-            uint128 sfpmGrossPremia0 = (premiumAccumulator0 * liquidity) >> 64;
-            uint128 sfpmGrossPremia1 = (premiumAccumulator1 * liquidity) >> 64;
 
-            /* assertWithMsg(
+            assertWithMsg(
                 grossPremiaLastToken0 <= sfpmGrossPremia0,
                 "Pools grossPremiaLastToken0 is greater than SFPMs grossPremiaToken0"
             );
@@ -2393,8 +2437,40 @@ contract FuzzDeployments is FuzzHelpers {
             assertWithMsg(
                 grossPremiaLastToken1 <= sfpmGrossPremia1,
                 "Pools grossPremiaLastToken1 is greater than SFPMs grossPremiaToken1"
-            ); */
+            );
         }
+    }
+
+    function _get_sfpm_gross_premia(
+        TokenId position,
+        uint256 legIndex,
+        address positionHolder
+    ) internal view returns(uint128 sfpmGrossPremia0, uint128 sfpmGrossPremia1) {
+        (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_sfpm_accumulators(position, legIndex);
+        (uint128 posSize, , ) = panopticPool.optionPositionBalance(positionHolder, position);
+        uint128 liquidity = PanopticMath
+            .getLiquidityChunk(position, legIndex, posSize)
+            .liquidity();
+        sfpmGrossPremia0 = (premiumAccumulator0 * liquidity) >> 64;
+        sfpmGrossPremia1 = (premiumAccumulator1 * liquidity) >> 64;
+    }
+
+    function _get_sfpm_accumulators(TokenId position, uint256 legIndex)
+        internal
+        view
+        returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1)
+    {
+        (, int24 currentTick, , , , , ) = pool.slot0();
+        (int24 tickLower, int24 tickUpper) = position.asTicks(legIndex);
+        (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+            address(pool),
+            address(panopticPool),
+            position.tokenType(legIndex),
+            tickLower,
+            tickUpper,
+            currentTick,
+            position.isLong(legIndex)
+        );
     }
 
     // DONE: Add partial burning - greater than 1, less than all
