@@ -1044,15 +1044,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             atTicks[2] = lastObservedTick;
             atTicks[3] = currentTick;
 
-            bool solvent = _checkSolvencyAtTicks(
-                liquidatee,
-                positionIdList,
-                currentTick,
-                atTicks,
-                NO_BUFFER
-            );
-
-            if (solvent) revert Errors.NotMarginCalled();
+            if (_checkSolvencyAtTicks(liquidatee, positionIdList, currentTick, atTicks, NO_BUFFER))
+                revert Errors.NotMarginCalled();
         }
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
