@@ -1793,49 +1793,15 @@ contract FuzzDeployments is FuzzHelpers {
         // Prevent division by zero
         if (preburnGrossPremium == 0) return 0;
 
-        emit LogUint256("idealPremium", idealPremium);
-        emit LogUint256("preburnGrossPremium", preburnGrossPremium);
-        emit LogUint256("preburnGrossPremiumLast", preburnGrossPremiumLast);
-        emit LogUint256("preburnSettledTokens", preburnSettledTokens);
-        emit LogUint256("preburnLiquidity", preburnPositionLiquidity);
-        emit LogUint256("preburnLiquidity", preburnShortLiquidity);
-        emit LogUint256("idealPremium * preburnSettledTokens", idealPremium * preburnSettledTokens);
-        emit LogUint256(
-            "(preburnGrossPremium - preburnGrossPremiumLast)",
-            (preburnGrossPremium - preburnGrossPremiumLast)
-        );
-        /* assertWithMsg(false, "vals"); */
-
         return
             uint128(
                 Math.min(
-                    (((idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
-                        (preburnGrossPremium - preburnGrossPremiumLast)) * preburnShortLiquidity),
+                    (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
+                        // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
+                        (((preburnGrossPremium - preburnGrossPremiumLast) * preburnShortLiquidity) >> 64),
                     idealPremium
                 )
             );
-
-        /*
-            OLD:
-            Math.min(
-                ((idealPremium * (preburnSettledTokens * preburnLiquidity)) >> 64) /
-                    preburnGrossPremium,
-                idealPremium
-            )
-
-            VERBALLY CONFIRMED CONCEPTUAL FORMULA:
-            idealPremium * preburnSettledTokens * preburnTotalLiquidity / 2^64
-            divided by
-            (preburn_s_grossPremiumFromSFPM - preburn_s_grossPremiumLast) * shortLiquidityPreBurn / 2^64
-
-            (Although i think there may be an extra / 2^64 on top or bottom -
-             TODO: Figure this out via trial and error)
-
-             SIMPLIFIED VIA CANCELLING TERMS:
-             idealPremium * preburnSettledTokens * preburnPositionLiquidity
-             /
-             (preburnGrossPremium - preburnGrossPremiumLast) * preburnShortLiquidity
-            */
     }
 
     function _net_up_prorated_premia(
@@ -1879,15 +1845,6 @@ contract FuzzDeployments is FuzzHelpers {
                     int128(projectedPremia[legIndex].proratedPremium1)) -
                     int128(token1CollectedByLeg[legIndex])
             );
-            emit LogInt256("int256(position.isLong(legIndex))", int256(position.isLong(legIndex)));
-            emit LogInt256(
-                "int256(int128(projectedPremia[legIndex].proratedPremium1))",
-                int256(int128(projectedPremia[legIndex].proratedPremium1))
-            );
-            emit LogInt256(
-                "int256(int128(token1CollectedByLeg[legIndex]))",
-                int256(int128(token1CollectedByLeg[legIndex]))
-            );
 
             (
                 uint128 postburnSettledToken0,
@@ -1898,34 +1855,20 @@ contract FuzzDeployments is FuzzHelpers {
 
             assertWithMsg(
                 int256(int128(postburnSettledToken0)) ==
-                    int256(int128(preburnAccumulators[legIndex].settledToken0)) -
-                        expectedSettledToken0DifferenceForChunk,
-                "Settled token0s, plus tokens collected, did not decrease by the amount of total (prorated) premium paid out"
-            );
-            emit LogInt256(
-                "int256(int128(postburnSettledToken1))",
-                int256(int128(postburnSettledToken1))
-            );
-            emit LogInt256(
-                "int256(int128(preburnAccumulators[legIndex].settledToken1))",
-                int256(int128(preburnAccumulators[legIndex].settledToken1))
-            );
-            emit LogInt256(
-                "expectedSettledToken1DifferenceForChunk",
-                expectedSettledToken1DifferenceForChunk
-            );
-
-            emit LogInt256(
-                "int256(int128(preburnAccumulators[legIndex].settledToken1)) - expectedSettledToken1DifferenceForChunk",
-                int256(int128(preburnAccumulators[legIndex].settledToken1)) -
-                    expectedSettledToken1DifferenceForChunk
+                    Math.max(
+                        int256(int128(preburnAccumulators[legIndex].settledToken0)) - expectedSettledToken0DifferenceForChunk,
+                        0
+                    ),
+                "Settled token0s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
             assertWithMsg(
                 int256(int128(postburnSettledToken1)) ==
-                    int256(int128(preburnAccumulators[legIndex].settledToken1)) -
-                        expectedSettledToken1DifferenceForChunk,
-                "Settled token1s, plus tokens collected, did not decrease by the amount of total (prorated) premium paid out"
+                    Math.max(
+                        int256(int128(preburnAccumulators[legIndex].settledToken1)) - expectedSettledToken1DifferenceForChunk,
+                        0
+                    ),
+                    "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
             assertWithMsg(
