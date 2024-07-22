@@ -278,14 +278,16 @@ contract PanopticPoolActions is CollateralActions {
         ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
         ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
 
-        $poolAssets0 = uint256(int256($poolAssets0) + $colDelta0);
-        $poolAssets1 = uint256(int256($poolAssets1) + $colDelta1);
+        $poolAssets0 = uint256(int256($poolAssets0) - $totalSwapped.rightSlot());
+        $poolAssets1 = uint256(int256($poolAssets1) - $totalSwapped.leftSlot());
 
         $inAMM0 = uint256(int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot());
         $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
 
-        $poolUtil0 = ($inAMM0 * 10_000) / $poolAssets0;
-        $poolUtil1 = ($inAMM1 * 10_000) / $poolAssets1;
+        $poolUtil0 = ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0);
+        emit LogUint256("poolUtil0", $poolUtil0);
+        $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
+        emit LogUint256("poolUtil1", $poolUtil1);
 
         // checked, FAIL
         unchecked {
@@ -417,7 +419,9 @@ contract PanopticPoolActions is CollateralActions {
                         TickMath.getSqrtRatioAtTick($slowOracleTick)
                     );
 
-                $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+                $shouldRevert = $shouldRevert
+                    ? $shouldRevert
+                    : Math.unsafeDivRoundingUp($thresholdCross * 13_333, 10_000) > $balanceCross;
 
                 emit LogUint256("thresholdCross", $thresholdCross);
                 emit LogUint256("req0", uint256($tokenData0.leftSlot()));

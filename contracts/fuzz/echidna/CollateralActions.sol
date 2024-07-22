@@ -887,8 +887,8 @@ contract CollateralActions is SFPMActions {
     ) internal view returns (uint256 maxAssetsWithdrawable) {
         (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();
         uint256 withdrawersAssetsInCT = collToken.convertToAssets(withdrawerSharesBefore);
-        maxAssetsWithdrawable = ct_s_poolAssets < withdrawersAssetsInCT
-            ? ct_s_poolAssets
+        maxAssetsWithdrawable = ct_s_poolAssets - 1 < withdrawersAssetsInCT
+            ? ct_s_poolAssets - 1
             : withdrawersAssetsInCT;
     }
 
