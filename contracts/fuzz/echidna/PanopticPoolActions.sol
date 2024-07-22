@@ -320,9 +320,26 @@ contract PanopticPoolActions is CollateralActions {
         $totalAssets1 = collToken1.totalAssets();
         $totalSupply0 = collToken0.totalSupply();
         $totalSupply1 = collToken1.totalSupply();
+
         if (
-            !(-$colDelta0 > int256(uint256($tokenData0.rightSlot())) ||
-                -$colDelta1 > int256(uint256($tokenData1.rightSlot())))
+            !(-(($colDelta0 > 0 ? int8(1) : -1) *
+                int256(
+                    Math.mulDivRoundingUp(
+                        uint256(Math.abs($colDelta0)),
+                        $totalSupply0,
+                        $totalAssets0
+                    )
+                )) >
+                int256(collToken0.balanceOf(msg.sender)) ||
+                -(($colDelta1 > 0 ? int8(1) : -1) *
+                    int256(
+                        Math.mulDivRoundingUp(
+                            uint256(Math.abs($colDelta1)),
+                            $totalSupply1,
+                            $totalAssets1
+                        )
+                    )) >
+                int256(collToken1.balanceOf(msg.sender)))
         ) {
             $balance0ExpectedP = Math.mulDiv(
                 uint256(
@@ -557,10 +574,13 @@ contract PanopticPoolActions is CollateralActions {
                 )
             );
         }
+        $shouldRevert = false;
 
-        if ($tokenIdActive.isLong($settleIndex) != 1) {
-            $shouldRevert = true;
-        }
+        if ($tokenIdActive.isLong($settleIndex) != 1) $shouldRevert = true;
+        emit LogBool(
+            "revert due to position not being long",
+            $tokenIdActive.isLong($settleIndex) != 1
+        );
 
         // 1. calculate what the premium settled out to settlee _should_ be
         // NOTE: this is basically trying to get re-calc a value in s_options -
@@ -571,52 +591,60 @@ contract PanopticPoolActions is CollateralActions {
             $settleIndex
         );
 
-        ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
-            $settlee,
-            false,
-            userPositions[$settlee]
-        );
-
-        $tokenData0 = collToken0.getAccountMarginDetails(
-            $settlee,
-            $fastOracleTick,
-            $posBalanceArray,
-            $premia0
-        );
-        $tokenData1 = collToken1.getAccountMarginDetails(
-            $settlee,
-            $fastOracleTick,
-            $posBalanceArray,
-            $premia1
-        );
-
-        $fastOracleTick = PanopticMath.computeMedianObservedPrice(
-            pool,
-            observationIndex,
-            observationCardinality,
-            3,
-            1
-        );
-
-        ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
-            60,
-            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-            pool
-        );
-
         $totalAssets0 = collToken0.totalAssets();
         $totalAssets1 = collToken1.totalAssets();
         $totalSupply0 = collToken0.totalSupply();
         $totalSupply1 = collToken1.totalSupply();
-        if (!(premium0 > $tokenData0.rightSlot()) || premium1 > $tokenData1.rightSlot()) {
+        if (
+            !(Math.mulDivRoundingUp(premium0, $totalSupply0, $totalAssets0) >
+                collToken0.balanceOf($settlee) ||
+                Math.mulDivRoundingUp(premium1, $totalSupply1, $totalAssets1) >
+                collToken1.balanceOf($settlee))
+        ) {
+            ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
+                $settlee,
+                false,
+                userPositions[$settlee]
+            );
+
+            (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+
+            $fastOracleTick = PanopticMath.computeMedianObservedPrice(
+                pool,
+                observationIndex,
+                observationCardinality,
+                3,
+                1
+            );
+
+            ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
+                60,
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+                pool
+            );
+
+            $tokenData0 = collToken0.getAccountMarginDetails(
+                $settlee,
+                $fastOracleTick,
+                $posBalanceArray,
+                $premia0
+            );
+
+            $tokenData1 = collToken1.getAccountMarginDetails(
+                $settlee,
+                $fastOracleTick,
+                $posBalanceArray,
+                $premia1
+            );
+
             $balanceCross =
                 Math.mulDiv(
-                    $tokenData0.rightSlot(),
+                    $tokenData1.rightSlot(),
                     2 ** 96,
                     TickMath.getSqrtRatioAtTick($fastOracleTick)
                 ) +
                 Math.mulDiv96(
-                    $tokenData1.rightSlot(),
+                    $tokenData0.rightSlot(),
                     TickMath.getSqrtRatioAtTick($fastOracleTick)
                 );
 
@@ -632,7 +660,13 @@ contract PanopticPoolActions is CollateralActions {
                 );
             $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
 
-            emit LogBool("revert due to collateral shortfall at fast oracle tick", $shouldRevert);
+            emit LogUint256("balanceCross", $balanceCross);
+            emit LogUint256("thresholdCross", $thresholdCross);
+
+            emit LogBool(
+                "revert due to collateral shortfall at fast oracle tick",
+                $thresholdCross > $balanceCross
+            );
 
             if (Math.abs(int256($slowOracleTick) - $fastOracleTick) > 1800) {
                 $tokenData0 = collToken0.getAccountMarginDetails(
@@ -674,13 +708,13 @@ contract PanopticPoolActions is CollateralActions {
 
                 emit LogBool(
                     "revert due to collateral shortfall at slow oracle tick",
-                    $shouldRevert
+                    $thresholdCross > $balanceCross
                 );
             }
         } else {
             $shouldRevert = true;
 
-            emit LogBool("revert due to insufficient collateral to cover delta", $shouldRevert);
+            emit LogBool("revert due to insufficient collateral to cover delta", true);
         }
 
         // 2. get users balance in CT before any settling occurs
