@@ -1828,10 +1828,10 @@ contract FuzzDeployments is FuzzHelpers {
             // ==
             // (preBurnGrossPremiaSFPM - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
 
-            ($postburnSFPMGrossPremiaAccumulator0, $postburnSFPMGrossPremiaAccumulator1) = _get_sfpm_accumulators(
-                $position,
-                legIndex
-            );
+            (
+                $postburnSFPMGrossPremiaAccumulator0,
+                $postburnSFPMGrossPremiaAccumulator1
+            ) = _get_sfpm_accumulators($position, legIndex);
 
             $postburnShortLiquidity = _get_total_short_liquidity(
                 $position,
@@ -1849,17 +1849,21 @@ contract FuzzDeployments is FuzzHelpers {
                 "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
             ); */
             emit LogUint256("$position.isLong(legIndex)", $position.isLong(legIndex));
-            emit LogUint256("$postburnSFPMGrossPremiaAccumulator1", $postburnSFPMGrossPremiaAccumulator1);
+            emit LogUint256(
+                "$postburnSFPMGrossPremiaAccumulator1",
+                $postburnSFPMGrossPremiaAccumulator1
+            );
             emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
             emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
             emit LogUint256(
                 "$($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity",
-                ($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity
+                ($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) *
+                    $postburnShortLiquidity
             );
             emit LogUint256(
                 "(($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64",
-                (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
-                    64
+                (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) *
+                    $postburnShortLiquidity) >> 64
             );
 
             emit LogUint256(
@@ -1903,9 +1907,10 @@ contract FuzzDeployments is FuzzHelpers {
                     projectedPremia[legIndex].idealPremium1
             );
             assertWithMsg(
-                  /* ((1034597999969865139 - 0)     * 86956346) / (2^64) = 4877004
+                /* ((1034597999969865139 - 0)     * 86956346) / (2^64) = 4877004
                   ((1034597999969865139 - 48005) * 86956346)/ (2^64) */
-                (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
+                (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) *
+                    $postburnShortLiquidity) >>
                     64 ==
                     (((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
                         preburnAccumulators[legIndex].grossPremiaLast1) *
