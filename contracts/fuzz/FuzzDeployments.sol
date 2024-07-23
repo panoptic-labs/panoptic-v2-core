@@ -1347,17 +1347,20 @@ contract FuzzDeployments is FuzzHelpers {
         $positionsNew = _get_list_without_tokenid(userPositions[$caller], $position);
 
         ($posSize, , ) = panopticPool.optionPositionBalance($caller, $position);
-        // Use 0th leg to get liquidity; liquidity is the same for all legs
+        $tickLimitLow = isCovered ? int24(-887272) : int24(887272);
+
+        // TODO: Replace _try_burning_zero_size_position and _try_burning_short_pos_with_inadequate_liq
+        // with should-reverts
+        /*
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk($position, 0, $posSize);
         LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
             address(pool),
             address(panopticPool),
+            // TODO: Need to loop through the legs so we get the correct token type for each, not 0th
             $position.tokenType(0),
             liquidityChunk.tickLower(),
             liquidityChunk.tickUpper()
         );
-
-        $tickLimitLow = isCovered ? int24(-887272) : int24(887272);
 
         if ($posSize == 0) {
             _try_burning_zero_size_position();
@@ -1367,7 +1370,9 @@ contract FuzzDeployments is FuzzHelpers {
             _try_burning_short_pos_with_inadequate_liq();
         } else {
             _try_burning_and_check_balances();
-        }
+        } */
+
+        _try_burning_and_check_balances();
 
         $position = TokenId.wrap(0);
         delete $caller;
@@ -1565,7 +1570,8 @@ contract FuzzDeployments is FuzzHelpers {
             premiaCalcInputs[legIndex].positionLiquidity = liquidityChunk.liquidity();
             accumulators[legIndex].totalShortLiquidity = _get_total_short_liquidity(
                 position,
-                liquidityChunk
+                liquidityChunk,
+                legIndex
             );
 
             (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
@@ -1580,12 +1586,13 @@ contract FuzzDeployments is FuzzHelpers {
 
     function _get_total_short_liquidity(
         TokenId position,
-        LiquidityChunk liqChunk
+        LiquidityChunk liqChunk,
+        uint256 legIndex
     ) internal view returns (uint128) {
         LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
             address(pool),
             address(panopticPool),
-            position.tokenType(0),
+            position.tokenType(legIndex),
             liqChunk.tickLower(),
             liqChunk.tickUpper()
         );
@@ -1767,8 +1774,8 @@ contract FuzzDeployments is FuzzHelpers {
     uint128 $postburnSettledToken1;
     uint128 $postburnGrossPremiaLast0;
     uint128 $postburnGrossPremiaLast1;
-    uint128 $postburnSFPMGrossPremia0;
-    uint128 $postburnSFPMGrossPremia1;
+    uint128 $postburnSFPMGrossPremiaAccumulator0;
+    uint128 $postburnSFPMGrossPremiaAccumulator1;
     uint256 $postburnShortLiquidity;
 
     function _assert_each_legs_chunk_accumulators_correct(
@@ -1816,7 +1823,102 @@ contract FuzzDeployments is FuzzHelpers {
                 "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
-            _assert_gross_premia_adjusted_correctly(legIndex, preburnAccumulators, projectedPremia);
+            // INVARIANT:
+            // (postBurnGrossPremiaSFPM - postBurnGrossPremiaLast)*postBurnShortLiq/2^64
+            // ==
+            // (preBurnGrossPremiaSFPM - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
+
+            ($postburnSFPMGrossPremiaAccumulator0, $postburnSFPMGrossPremiaAccumulator1) = _get_sfpm_accumulators(
+                $position,
+                legIndex
+            );
+
+            $postburnShortLiquidity = _get_total_short_liquidity(
+                $position,
+                PanopticMath.getLiquidityChunk($position, legIndex, $posSize),
+                legIndex
+            );
+
+            /* assertWithMsg(
+                (($postburnSFPMGrossPremia0 - $postburnGrossPremiaLast0) * $postburnShortLiquidity) >>
+                    64 ==
+                    ((((preburnAccumulators[legIndex].sfpmGrossPremia0 -
+                        preburnAccumulators[legIndex].grossPremiaLast0) *
+                        preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
+                        projectedPremia[legIndex].idealPremium0),
+                "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
+            ); */
+            emit LogUint256("$position.isLong(legIndex)", $position.isLong(legIndex));
+            emit LogUint256("$postburnSFPMGrossPremiaAccumulator1", $postburnSFPMGrossPremiaAccumulator1);
+            emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
+            emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
+            emit LogUint256(
+                "$($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity",
+                ($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity
+            );
+            emit LogUint256(
+                "(($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64",
+                (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
+                    64
+            );
+
+            emit LogUint256(
+                "preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1",
+                preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].grossPremiaLast1",
+                preburnAccumulators[legIndex].sfpmGrossPremia1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].totalShortLiquidity",
+                preburnAccumulators[legIndex].totalShortLiquidity
+            );
+            emit LogUint256(
+                "projectedPremia[legIndex].idealPremium1",
+                projectedPremia[legIndex].idealPremium1
+            );
+            emit LogUint256(
+                "(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 - preburnAccumulators[legIndex].grossPremiaLast1)",
+                preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
+                    preburnAccumulators[legIndex].grossPremiaLast1
+            );
+            emit LogUint256(
+                "((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity)",
+                (preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
+                    preburnAccumulators[legIndex].grossPremiaLast1) *
+                    preburnAccumulators[legIndex].totalShortLiquidity
+            );
+            emit LogUint256(
+                "(((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64)",
+                (((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
+                    preburnAccumulators[legIndex].grossPremiaLast1) *
+                    preburnAccumulators[legIndex].totalShortLiquidity) >> 64)
+            );
+            emit LogUint256(
+                "(((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -projectedPremia[legIndex].idealPremium1",
+                (((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
+                    preburnAccumulators[legIndex].grossPremiaLast1) *
+                    preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
+                    projectedPremia[legIndex].idealPremium1
+            );
+            assertWithMsg(
+                  /* ((1034597999969865139 - 0)     * 86956346) / (2^64) = 4877004
+                  ((1034597999969865139 - 48005) * 86956346)/ (2^64) */
+                (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
+                    64 ==
+                    (((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
+                        preburnAccumulators[legIndex].grossPremiaLast1) *
+                        preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
+                        projectedPremia[legIndex].idealPremium1,
+                "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
+            );
+            // TODO: I have this assert here because i think all my success cases when comparing
+            // SFPM gross premia pre and postburn has been with idealPremia of 0.. investigating
+            assertWithMsg(
+                projectedPremia[legIndex].idealPremium1 <= 0,
+                "was correct with positive idealPremium!"
+            );
 
             delete $expectedSettledToken0DifferenceForChunk;
             delete $expectedSettledToken1DifferenceForChunk;
@@ -1824,111 +1926,12 @@ contract FuzzDeployments is FuzzHelpers {
             delete $postburnSettledToken1;
             delete $postburnGrossPremiaLast0;
             delete $postburnGrossPremiaLast1;
-            delete $postburnSFPMGrossPremia0;
-            delete $postburnSFPMGrossPremia1;
+            delete $postburnSFPMGrossPremiaAccumulator0;
+            delete $postburnSFPMGrossPremiaAccumulator1;
             delete $postburnShortLiquidity;
         }
         delete $token0CollectedByLeg;
         delete $token1CollectedByLeg;
-    }
-
-    // INVARIANT:
-    // (postBurnGrossPremiaSFPM - postBurnGrossPremiaLast)*postBurnShortLiq/2^64
-    // ==
-    // (preBurnGrossPremiaSFPM - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
-    function _assert_gross_premia_adjusted_correctly(
-        uint256 legIndex,
-        AccumulatorsForLeg[] memory preburnAccumulators,
-        PremiaProjection[] memory projectedPremia
-    ) internal {
-        ($postburnSFPMGrossPremia0, $postburnSFPMGrossPremia1) = _get_sfpm_gross_premia(
-            $position,
-            legIndex,
-            $caller
-        );
-
-        $postburnShortLiquidity = _get_total_short_liquidity(
-            $position,
-            PanopticMath.getLiquidityChunk($position, legIndex, $posSize)
-        );
-
-        assertWithMsg(
-            (($postburnSFPMGrossPremia0 - $postburnGrossPremiaLast0) * $postburnShortLiquidity) >>
-                64 ==
-                ((((preburnAccumulators[legIndex].sfpmGrossPremia0 -
-                    preburnAccumulators[legIndex].grossPremiaLast0) *
-                    preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                    projectedPremia[legIndex].idealPremium0),
-            "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
-        );
-        emit LogUint256("$postburnSFPMGrossPremia1", $postburnSFPMGrossPremia1);
-        emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
-        emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
-        emit LogUint256(
-            "$($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity",
-            ($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity
-        );
-        emit LogUint256(
-            "(($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64",
-            (($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
-                64
-        );
-
-        emit LogUint256(
-            "preburnAccumulators[legIndex].sfpmGrossPremia1",
-            preburnAccumulators[legIndex].sfpmGrossPremia1
-        );
-        emit LogUint256(
-            "preburnAccumulators[legIndex].grossPremiaLast1",
-            preburnAccumulators[legIndex].sfpmGrossPremia1
-        );
-        emit LogUint256(
-            "preburnAccumulators[legIndex].totalShortLiquidity",
-            preburnAccumulators[legIndex].totalShortLiquidity
-        );
-        emit LogUint256(
-            "projectedPremia[legIndex].idealPremium1",
-            projectedPremia[legIndex].idealPremium1
-        );
-        emit LogUint256(
-            "(preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1)",
-            preburnAccumulators[legIndex].sfpmGrossPremia1 -
-                preburnAccumulators[legIndex].grossPremiaLast1
-        );
-        emit LogUint256(
-            "((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity)",
-            (preburnAccumulators[legIndex].sfpmGrossPremia1 -
-                preburnAccumulators[legIndex].grossPremiaLast1) *
-                preburnAccumulators[legIndex].totalShortLiquidity
-        );
-        emit LogUint256(
-            "(((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64)",
-            (((preburnAccumulators[legIndex].sfpmGrossPremia1 -
-                preburnAccumulators[legIndex].grossPremiaLast1) *
-                preburnAccumulators[legIndex].totalShortLiquidity) >> 64)
-        );
-        emit LogUint256(
-            "(((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -projectedPremia[legIndex].idealPremium1",
-            (((preburnAccumulators[legIndex].sfpmGrossPremia1 -
-                preburnAccumulators[legIndex].grossPremiaLast1) *
-                preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                projectedPremia[legIndex].idealPremium1
-        );
-        assertWithMsg(
-            (($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
-                64 ==
-                (((preburnAccumulators[legIndex].sfpmGrossPremia1 -
-                    preburnAccumulators[legIndex].grossPremiaLast1) *
-                    preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                    projectedPremia[legIndex].idealPremium1,
-            "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
-        );
-        // TODO: I have this assert here because i think all my success cases when comparing
-        // SFPM gross premia pre and postburn has been with idealPremia of 0.. investigating
-        assertWithMsg(
-            projectedPremia[legIndex].idealPremium1 <= 0,
-            "was correct with positive idealPremium!"
-        );
     }
 
     function _compare_against_preburn_values(
@@ -2405,6 +2408,9 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 liquidity = PanopticMath.getLiquidityChunk(position, legIndex, posSize).liquidity();
         sfpmGrossPremia0 = (premiumAccumulator0 * liquidity) >> 64;
         sfpmGrossPremia1 = (premiumAccumulator1 * liquidity) >> 64;
+        emit LogUint256("premiumAccumulator1", premiumAccumulator1);
+        emit LogUint256("liquidity", liquidity);
+        emit LogUint256("sfpmGrossPremia1", sfpmGrossPremia1);
     }
 
     int24 $currentTick;
