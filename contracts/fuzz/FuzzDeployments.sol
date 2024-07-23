@@ -1478,15 +1478,12 @@ contract FuzzDeployments is FuzzHelpers {
         int128 expectedNonPremiaToken1Difference,
         PreburnValues memory burnersPreburnValues
     ) internal {
-        // TODO: Investigate invariant failure in here
         // Make assertions about each leg's chunk differences, and get expected token diffs:
         _assert_each_legs_chunk_accumulators_correct(
             preburnAccumulators,
             projectedPremia,
             sfpm_sim_result
         );
-
-        /* assertWithMsg(false, "made the per-leg assertions"); */
 
         // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
         // alignment with our projections:
@@ -1496,8 +1493,6 @@ contract FuzzDeployments is FuzzHelpers {
             projectedPremia,
             burnersPreburnValues
         );
-
-        /* assertWithMsg(false, "compared against preburn"); */
     }
 
     function _prank_and_burn() internal {
@@ -1945,7 +1940,6 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].grossPremiaLast0 = $grossPremiaLastToken0;
         accumulators[legIndex].grossPremiaLast1 = $grossPremiaLastToken1;
 
-        // TODO: Resolve stack too deep by moving things to storage
         ($sfpmGrossPremia0, $sfpmGrossPremia1) = _get_sfpm_accumulators(position, legIndex);
 
         accumulators[legIndex].sfpmGrossPremia0 = $sfpmGrossPremia0;
@@ -2500,7 +2494,6 @@ contract FuzzDeployments is FuzzHelpers {
             currentTick,
             1
         );
-        // TODO: why >> 64?
         premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
         premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
     }
