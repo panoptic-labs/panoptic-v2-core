@@ -553,7 +553,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external {
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
 
-        _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+
+        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
+        if (medianData != 0) s_miniMedian = medianData;
     }
 
     /// @notice Closes and burns the caller's entire balance of each `tokenId` in `positionIdList.
@@ -575,7 +578,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionIdList
         );
 
-        _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+
+        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
+        if (medianData != 0) s_miniMedian = medianData;
     }
 
     /*//////////////////////////////////////////////////////////////
