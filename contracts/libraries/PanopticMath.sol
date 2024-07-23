@@ -112,7 +112,7 @@ library PanopticMath {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          ORACLE CALCULATIONS
+                              UTILITIES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Update an existing account's "positions hash" with a new single position `tokenId`.
@@ -144,6 +144,65 @@ library PanopticMath {
         }
     }
 
+    /*//////////////////////////////////////////////////////////////
+                          ORACLE CALCULATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Gets several ticks from Uniswap regarding the underlying pair.
+    /// @param univ3pool The Uniswap pool to get the observations from
+    /// @param miniMedian The packed structure representing the sorted 8-slot queue of ticks
+    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
+    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
+    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
+    function getOracleTicks(
+        IUniswapV3Pool univ3pool,
+        uint256 miniMedian
+    )
+        external
+        view
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 latestObservation,
+            uint256 medianData
+        )
+    {
+        uint16 observationIndex;
+        uint16 observationCardinality;
+
+        IUniswapV3Pool _univ3pool = univ3pool;
+        (, currentTick, observationIndex, observationCardinality, , , ) = univ3pool.slot0();
+
+        (fastOracleTick, latestObservation) = computeMedianObservedPrice(
+            _univ3pool,
+            observationIndex,
+            observationCardinality,
+            Constants.FAST_ORACLE_CARDINALITY,
+            Constants.FAST_ORACLE_PERIOD
+        );
+
+        if (Constants.SLOW_ORACLE_UNISWAP_MODE) {
+            (slowOracleTick, ) = computeMedianObservedPrice(
+                _univ3pool,
+                observationIndex,
+                observationCardinality,
+                Constants.SLOW_ORACLE_CARDINALITY,
+                Constants.SLOW_ORACLE_PERIOD
+            );
+        } else {
+            (slowOracleTick, medianData) = computeInternalMedian(
+                observationIndex,
+                observationCardinality,
+                Constants.MEDIAN_PERIOD,
+                miniMedian,
+                _univ3pool
+            );
+        }
+    }
+
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
     /// @dev Used when we need a manipulation-resistant TWAP price.
     /// @dev Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
@@ -157,18 +216,19 @@ library PanopticMath {
     /// @param cardinality The number of `periods` to in the median price array, should be odd
     /// @param period The number of observations to average to compute one entry in the median price array
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
+    /// @return The latest observation in the Uniswap pool
     function computeMedianObservedPrice(
         IUniswapV3Pool univ3pool,
         uint256 observationIndex,
         uint256 observationCardinality,
         uint256 cardinality,
         uint256 period
-    ) external view returns (int24) {
+    ) internal view returns (int24, int24) {
         unchecked {
             int256[] memory tickCumulatives = new int256[](cardinality + 1);
 
             uint256[] memory timestamps = new uint256[](cardinality + 1);
-            // get the last 4 timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
+            // get the last "cardinality" timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
             for (uint256 i = 0; i < cardinality + 1; ++i) {
                 (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
                     uint256(
@@ -187,7 +247,7 @@ library PanopticMath {
             }
 
             // get the median of the `ticks` array (assuming `cardinality` is odd)
-            return int24(Math.sort(ticks)[cardinality / 2]);
+            return (int24(Math.sort(ticks)[cardinality / 2]), int24(ticks[0]));
         }
     }
 
@@ -206,7 +266,7 @@ library PanopticMath {
         uint256 period,
         uint256 medianData,
         IUniswapV3Pool univ3pool
-    ) external view returns (int24 medianTick, uint256 updatedMedianData) {
+    ) public view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick =
