@@ -1361,7 +1361,9 @@ contract FuzzDeployments is FuzzHelpers {
 
         if ($posSize == 0) {
             _try_burning_zero_size_position();
-        } else if ($position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()) {
+        } else if (
+            $position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()
+        ) {
             _try_burning_short_pos_with_inadequate_liq();
         } else {
             _try_burning_and_check_balances();
@@ -1415,7 +1417,11 @@ contract FuzzDeployments is FuzzHelpers {
                 $position.countLegs()
             );
 
-            (preburnAccumulators, premiaCalcInputs) = _get_preburn_accumulators($position, $caller, $posSize);
+            (preburnAccumulators, premiaCalcInputs) = _get_preburn_accumulators(
+                $position,
+                $caller,
+                $posSize
+            );
             _burn_and_assert_accumulator_and_token_differences(
                 premiaCalcInputs,
                 preburnAccumulators,
@@ -1536,7 +1542,11 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
-    function _get_preburn_accumulators(TokenId position, address caller, uint128 posSize)
+    function _get_preburn_accumulators(
+        TokenId position,
+        address caller,
+        uint128 posSize
+    )
         internal
         returns (
             AccumulatorsForLeg[] memory accumulators,
@@ -1557,7 +1567,10 @@ contract FuzzDeployments is FuzzHelpers {
                 posSize
             );
             premiaCalcInputs[legIndex].positionLiquidity = liquidityChunk.liquidity();
-            accumulators[legIndex].totalShortLiquidity = _get_total_short_liquidity(position, liquidityChunk);
+            accumulators[legIndex].totalShortLiquidity = _get_total_short_liquidity(
+                position,
+                liquidityChunk
+            );
 
             (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
                 $position,
@@ -1569,7 +1582,10 @@ contract FuzzDeployments is FuzzHelpers {
         }
     }
 
-    function _get_total_short_liquidity(TokenId position, LiquidityChunk liqChunk) internal view returns (uint128) {
+    function _get_total_short_liquidity(
+        TokenId position,
+        LiquidityChunk liqChunk
+    ) internal view returns (uint128) {
         LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
             address(pool),
             address(panopticPool),
@@ -1581,7 +1597,10 @@ contract FuzzDeployments is FuzzHelpers {
         return currentLiquidity.rightSlot() + currentLiquidity.leftSlot();
     }
 
-    function _get_expected_nonpremia_token_difference(int128 token0Swapped, int128 token1Swapped)
+    function _get_expected_nonpremia_token_difference(
+        int128 token0Swapped,
+        int128 token1Swapped
+    )
         internal
         returns (int128 expectedNonPremiaToken0Difference, int128 expectedNonPremiaToken1Difference)
     {
@@ -1596,13 +1615,21 @@ contract FuzzDeployments is FuzzHelpers {
             .computeExercisedAmounts($position, $posSize);
         emit LogInt256("longAmounts.leftSlot(): ", longAmounts.leftSlot());
         emit LogInt256("shortAmounts.leftSlot(): ", shortAmounts.leftSlot());
-        emit LogInt256("adding longAmounts.leftSlot() - shortAmounts.leftSlot(): ", longAmounts.leftSlot() - shortAmounts.leftSlot());
+        emit LogInt256(
+            "adding longAmounts.leftSlot() - shortAmounts.leftSlot(): ",
+            longAmounts.leftSlot() - shortAmounts.leftSlot()
+        );
         expectedNonPremiaToken0Difference += longAmounts.rightSlot() - shortAmounts.rightSlot();
         expectedNonPremiaToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
-        emit LogInt256("final expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
+        emit LogInt256(
+            "final expectedNonPremiaToken1Difference",
+            expectedNonPremiaToken1Difference
+        );
     }
 
-    function _decode_sfpm_sim(bytes memory sfpm_sim_result)
+    function _decode_sfpm_sim(
+        bytes memory sfpm_sim_result
+    )
         internal
         pure
         returns (
@@ -1651,10 +1678,15 @@ contract FuzzDeployments is FuzzHelpers {
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
             emit LogUint256("premiumGrowth0", premiaCalcInputs[legIndex].premiumGrowth0);
-            emit LogUint256("accumulators[legIndex].sfpmGrossPremia0", accumulators[legIndex].sfpmGrossPremia0);
+            emit LogUint256(
+                "accumulators[legIndex].sfpmGrossPremia0",
+                accumulators[legIndex].sfpmGrossPremia0
+            );
             emit LogUint256("positionLiquidity", premiaCalcInputs[legIndex].positionLiquidity);
-            emit LogUint256("projectedPremia[legIndex].idealPremium0", projectedPremia[legIndex].idealPremium0);
-
+            emit LogUint256(
+                "projectedPremia[legIndex].idealPremium0",
+                projectedPremia[legIndex].idealPremium0
+            );
 
             projectedPremia[legIndex].idealPremium1 =
                 ((accumulators[legIndex].sfpmGrossPremia1 -
@@ -1663,10 +1695,15 @@ contract FuzzDeployments is FuzzHelpers {
                 64;
 
             emit LogUint256("premiumGrowth1", premiaCalcInputs[legIndex].premiumGrowth1);
-            emit LogUint256("accumulators[legIndex].sfpmGrossPremia1", accumulators[legIndex].sfpmGrossPremia1);
+            emit LogUint256(
+                "accumulators[legIndex].sfpmGrossPremia1",
+                accumulators[legIndex].sfpmGrossPremia1
+            );
             emit LogUint256("positionLiquidity", premiaCalcInputs[legIndex].positionLiquidity);
-            emit LogUint256("projectedPremia[legIndex].idealPremium1", projectedPremia[legIndex].idealPremium1);
-
+            emit LogUint256(
+                "projectedPremia[legIndex].idealPremium1",
+                projectedPremia[legIndex].idealPremium1
+            );
 
             // 2. get proratedPremia:
             //    - short legs should get idealPremia * total settled tokens / total gross premia;
@@ -1685,10 +1722,7 @@ contract FuzzDeployments is FuzzHelpers {
         (
             expectedToken0Difference,
             expectedToken1Difference
-        ) = _get_expected_nonpremia_token_difference(
-            token0Swapped,
-            token1Swapped
-        );
+        ) = _get_expected_nonpremia_token_difference(token0Swapped, token1Swapped);
     }
 
     function _set_prorated_premia(
@@ -1757,7 +1791,9 @@ contract FuzzDeployments is FuzzHelpers {
             );
     }
 
-    function _net_up_prorated_premia(PremiaProjection[] memory projectedPremia)
+    function _net_up_prorated_premia(
+        PremiaProjection[] memory projectedPremia
+    )
         internal
         view
         returns (int128 totalProjectedProratedPremium0, int128 totalProjectedProratedPremium1)
@@ -1789,12 +1825,7 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaProjection[] memory projectedPremia,
         bytes memory sfpm_sim_result
     ) internal {
-        (
-            ,
-            ,
-            $token0CollectedByLeg,
-            $token1CollectedByLeg
-        ) = _decode_sfpm_sim(sfpm_sim_result);
+        (, , $token0CollectedByLeg, $token1CollectedByLeg) = _decode_sfpm_sim(sfpm_sim_result);
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
             $expectedSettledToken0DifferenceForChunk = int256(
                 (($position.isLong(legIndex) == 1 ? -1 : int8(1)) *
@@ -1881,33 +1912,28 @@ contract FuzzDeployments is FuzzHelpers {
 
         $postburnShortLiquidity = _get_total_short_liquidity(
             $position,
-            PanopticMath.getLiquidityChunk(
-                $position,
-                legIndex,
-                $posSize
-            )
+            PanopticMath.getLiquidityChunk($position, legIndex, $posSize)
         );
 
         assertWithMsg(
-            (($postburnSFPMGrossPremia0 - $postburnGrossPremiaLast0) *
-                $postburnShortLiquidity) >> 64 ==
-            (((
-                (preburnAccumulators[legIndex].sfpmGrossPremia0 - preburnAccumulators[legIndex].grossPremiaLast0) *
-                preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                projectedPremia[legIndex].idealPremium0),
+            (($postburnSFPMGrossPremia0 - $postburnGrossPremiaLast0) * $postburnShortLiquidity) >>
+                64 ==
+                ((((preburnAccumulators[legIndex].sfpmGrossPremia0 -
+                    preburnAccumulators[legIndex].grossPremiaLast0) *
+                    preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
+                    projectedPremia[legIndex].idealPremium0),
             "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
         );
         assertWithMsg(
-            (($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1)
-                * $postburnShortLiquidity) >> 64 ==
-            (((
-                preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) *
-                preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                projectedPremia[legIndex].idealPremium1,
+            (($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
+                64 ==
+                (((preburnAccumulators[legIndex].sfpmGrossPremia1 -
+                    preburnAccumulators[legIndex].grossPremiaLast1) *
+                    preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
+                    projectedPremia[legIndex].idealPremium1,
             "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
         );
     }
-
 
     function _compare_against_preburn_values(
         int128 expectedNonPremiaToken0Difference,
@@ -2018,13 +2044,13 @@ contract FuzzDeployments is FuzzHelpers {
         tokenBalance1 = IERC20(pool.token1()).balanceOf(caller);
     }
 
-
     uint128 $settledToken0;
     uint128 $settledToken1;
     uint128 $grossPremiaLastToken0;
     uint128 $grossPremiaLastToken1;
     uint128 $sfpmGrossPremia0;
     uint128 $sfpmGrossPremia1;
+
     function _set_preburn_accumulators(
         TokenId position,
         AccumulatorsForLeg[] memory accumulators,
@@ -2425,12 +2451,13 @@ contract FuzzDeployments is FuzzHelpers {
         TokenId position,
         uint256 legIndex,
         address positionHolder
-    ) internal returns(uint128 sfpmGrossPremia0, uint128 sfpmGrossPremia1) {
-        (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_sfpm_accumulators(position, legIndex);
+    ) internal returns (uint128 sfpmGrossPremia0, uint128 sfpmGrossPremia1) {
+        (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = _get_sfpm_accumulators(
+            position,
+            legIndex
+        );
         (uint128 posSize, , ) = panopticPool.optionPositionBalance(positionHolder, position);
-        uint128 liquidity = PanopticMath
-            .getLiquidityChunk(position, legIndex, posSize)
-            .liquidity();
+        uint128 liquidity = PanopticMath.getLiquidityChunk(position, legIndex, posSize).liquidity();
         sfpmGrossPremia0 = (premiumAccumulator0 * liquidity) >> 64;
         sfpmGrossPremia1 = (premiumAccumulator1 * liquidity) >> 64;
     }
@@ -2438,10 +2465,11 @@ contract FuzzDeployments is FuzzHelpers {
     int24 $currentTick;
     int24 $tickLower;
     int24 $tickUpper;
-    function _get_sfpm_accumulators(TokenId position, uint256 legIndex)
-        internal
-        returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1)
-    {
+
+    function _get_sfpm_accumulators(
+        TokenId position,
+        uint256 legIndex
+    ) internal returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
         (, $currentTick, , , , , ) = pool.slot0();
         ($tickLower, $tickUpper) = position.asTicks(legIndex);
         (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
