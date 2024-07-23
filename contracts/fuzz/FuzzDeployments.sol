@@ -1891,8 +1891,10 @@ contract FuzzDeployments is FuzzHelpers {
             int128 totalProjectedProratedPremium1
         ) = _net_up_prorated_premia(projectedPremia);
 
-        int256 expectedToken0Difference = totalProjectedProratedPremium0 - expectedNonPremiaToken0Difference;
-        int256 expectedToken1Difference = totalProjectedProratedPremium1 - expectedNonPremiaToken1Difference;
+        int256 expectedToken0Difference = totalProjectedProratedPremium0 -
+            expectedNonPremiaToken0Difference;
+        int256 expectedToken1Difference = totalProjectedProratedPremium1 -
+            expectedNonPremiaToken1Difference;
 
         uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
             collToken0.balanceOf($caller)
