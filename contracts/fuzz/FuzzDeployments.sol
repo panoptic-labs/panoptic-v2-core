@@ -1866,7 +1866,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
         emit LogUint256(
             "$($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity",
-             ($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity
+            ($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity
         );
         emit LogUint256(
             "(($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64",
@@ -1892,15 +1892,20 @@ contract FuzzDeployments is FuzzHelpers {
         );
         emit LogUint256(
             "(preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1)",
-            preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1
+            preburnAccumulators[legIndex].sfpmGrossPremia1 -
+                preburnAccumulators[legIndex].grossPremiaLast1
         );
         emit LogUint256(
             "((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity)",
-            (preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity
+            (preburnAccumulators[legIndex].sfpmGrossPremia1 -
+                preburnAccumulators[legIndex].grossPremiaLast1) *
+                preburnAccumulators[legIndex].totalShortLiquidity
         );
         emit LogUint256(
             "(((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64)",
-            (((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64)
+            (((preburnAccumulators[legIndex].sfpmGrossPremia1 -
+                preburnAccumulators[legIndex].grossPremiaLast1) *
+                preburnAccumulators[legIndex].totalShortLiquidity) >> 64)
         );
         emit LogUint256(
             "(((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -projectedPremia[legIndex].idealPremium1",
@@ -1920,7 +1925,10 @@ contract FuzzDeployments is FuzzHelpers {
         );
         // TODO: I have this assert here because i think all my success cases when comparing
         // SFPM gross premia pre and postburn has been with idealPremia of 0.. investigating
-        assertWithMsg(projectedPremia[legIndex].idealPremium1 <= 0, "was correct with positive idealPremium!");
+        assertWithMsg(
+            projectedPremia[legIndex].idealPremium1 <= 0,
+            "was correct with positive idealPremium!"
+        );
     }
 
     function _compare_against_preburn_values(
@@ -2001,10 +2009,10 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].sfpmGrossPremia0 = $sfpmGrossPremia0;
         accumulators[legIndex].sfpmGrossPremia1 = $sfpmGrossPremia1;
 
-        (
-            $sfpmGrossPremiaAccumulator0,
-            $sfpmGrossPremiaAccumulator1
-        ) = _get_sfpm_accumulators(position, legIndex);
+        ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
+            position,
+            legIndex
+        );
         accumulators[legIndex].sfpmGrossPremiaAccumulator0 = $sfpmGrossPremiaAccumulator0;
         accumulators[legIndex].sfpmGrossPremiaAccumulator1 = $sfpmGrossPremiaAccumulator1;
 
