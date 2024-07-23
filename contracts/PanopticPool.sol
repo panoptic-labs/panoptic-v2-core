@@ -117,31 +117,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice The minimum window (in seconds) used to calculate the TWAP price for solvency checks during liquidations.
     uint32 internal constant TWAP_WINDOW = 600;
 
-    /// @notice Parameter that determines which oracle type to use for the "slow" oracle price on non-liquidation solvency checks.
-    /// @dev If false, an 8-slot internal median array is used to compute the "slow" oracle price.
-    /// @dev This oracle is updated with the last Uniswap observation during `mintOptions` if MEDIAN_PERIOD has elapsed past the last observation.
-    /// @dev If true, the "slow" oracle price is instead computed on-the-fly from 8 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls.
-    bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
-
-    /// @notice The minimum amount of time, in seconds, permitted between internal TWAP updates.
-    uint256 internal constant MEDIAN_PERIOD = 60;
-
-    /// @notice Amount of Uniswap observations to include in the "fast" oracle price.
-    uint256 internal constant FAST_ORACLE_CARDINALITY = 3;
-
-    /// @dev Amount of observation indices to skip in between each observation for the "fast" oracle price.
-    /// @dev Note that the *minimum* total observation time is determined by the blocktime and may need to be adjusted by chain.
-    /// @dev Uniswap observations snapshot the last block's closing price at the first interaction with the pool in a block.
-    /// @dev In this case, if there is an interaction every block, the "fast" oracle can consider 3 consecutive block end prices (min=36 seconds on Ethereum).
-    uint256 internal constant FAST_ORACLE_PERIOD = 1;
-
-    /// @notice Amount of Uniswap observations to include in the "slow" oracle price (in Uniswap mode).
-    uint256 internal constant SLOW_ORACLE_CARDINALITY = 8;
-
-    /// @notice Amount of observation indices to skip in between each observation for the "slow" oracle price.
-    /// @dev Structured such that the minimum total observation time is 8 minutes on Ethereum (similar to internal median mode).
-    uint256 internal constant SLOW_ORACLE_PERIOD = 5;
-
     /// @notice The maximum allowed delta between the currentTick and the Uniswap TWAP tick during a liquidation (~5% down, ~5.26% up).
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
@@ -505,7 +480,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (, uint256 medianData) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
-            MEDIAN_PERIOD,
+            Constants.MEDIAN_PERIOD,
             s_miniMedian,
             s_univ3pool
         );
@@ -553,7 +528,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external {
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
 
-        _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+
+        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
+        if (medianData != 0) s_miniMedian = medianData;
     }
 
     /// @notice Closes and burns the caller's entire balance of each `tokenId` in `positionIdList.
@@ -575,7 +553,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionIdList
         );
 
-        _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+
+        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
+        if (medianData != 0) s_miniMedian = medianData;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -805,7 +786,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 slowOracleTick,
             int24 lastObservedTick,
             uint256 _medianData
-        ) = _getOracleTicks();
+        ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
 
         medianData = _medianData;
 
@@ -834,56 +815,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (!_checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer))
             revert Errors.AccountInsolvent();
-    }
-
-    /// @notice Gets several ticks from Uniswap regarding the underlying pair.
-    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
-    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
-    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
-    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
-    function _getOracleTicks()
-        internal
-        view
-        returns (
-            int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 latestObservation,
-            uint256 medianData
-        )
-    {
-        IUniswapV3Pool _univ3pool = s_univ3pool;
-        uint16 observationIndex;
-        uint16 observationCardinality;
-
-        (, currentTick, observationIndex, observationCardinality, , , ) = _univ3pool.slot0();
-
-        (fastOracleTick, latestObservation) = PanopticMath.computeMedianObservedPrice(
-            _univ3pool,
-            observationIndex,
-            observationCardinality,
-            FAST_ORACLE_CARDINALITY,
-            FAST_ORACLE_PERIOD
-        );
-
-        if (SLOW_ORACLE_UNISWAP_MODE) {
-            (slowOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-                _univ3pool,
-                observationIndex,
-                observationCardinality,
-                SLOW_ORACLE_CARDINALITY,
-                SLOW_ORACLE_PERIOD
-            );
-        } else {
-            (slowOracleTick, medianData) = PanopticMath.computeInternalMedian(
-                observationIndex,
-                observationCardinality,
-                MEDIAN_PERIOD,
-                s_miniMedian,
-                _univ3pool
-            );
-        }
     }
 
     /// @notice Burns and handles the exercise of options.
@@ -1445,7 +1376,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 medianData
         )
     {
-        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = _getOracleTicks();
+        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath
+            .getOracleTicks(s_univ3pool, s_miniMedian);
         medianData = s_miniMedian;
     }
 

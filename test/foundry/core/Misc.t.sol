@@ -9,7 +9,6 @@ import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {ERC20S} from "@scripts/tokens/ERC20S.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
@@ -24,6 +23,19 @@ import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
+
+contract ERC20S is ERC20 {
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint8 decimals
+    ) ERC20(name, symbol, decimals) {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -3060,6 +3072,207 @@ contract Misctest is Test, PositionUtils {
         uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
         console2.log(before0, before1, after0, after1);
+    }
+
+    function test_Success_OraclePoke_mint() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        (, , int24 slowOracleTick, , uint256 medianData) = pp.getOracleTicks();
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                4095
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.warp(block.timestamp + 59);
+        vm.roll(block.number + 1);
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        pp.burnOptions(
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
+        assertEq(medianData, medianDataStale, "no slow oracle update");
+
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick != slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+    }
+
+    function test_Success_OraclePoke_burn() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        (, , int24 slowOracleTick, , uint256 medianData) = pp.getOracleTicks();
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                4095
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.warp(block.timestamp + 59);
+        vm.roll(block.number + 1);
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
+        assertEq(medianData, medianDataStale, "no slow oracle update");
+
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
+
+        pp.burnOptions(
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
     }
 
     function test_success_NotionalRounding() public {
