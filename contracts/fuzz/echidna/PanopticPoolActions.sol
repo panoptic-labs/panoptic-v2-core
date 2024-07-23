@@ -888,8 +888,11 @@ contract PanopticPoolActions is CollateralActions {
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
 
-            // check if the revert is due to an insufficient amount of tokens from the exercisor
-            if (keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))) {
+            // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
+            if (
+                keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
+                bytes4(reason) == Errors.NotEnoughCollateral.selector
+            ) {
                 hevm.prank(address(panopticPool));
                 collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
                 hevm.prank(address(panopticPool));
@@ -908,6 +911,7 @@ contract PanopticPoolActions is CollateralActions {
                     )
                 {
                     assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
+                    revert();
                 } catch {
                     assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
                     revert();
@@ -916,6 +920,12 @@ contract PanopticPoolActions is CollateralActions {
                 assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
                 revert();
             }
+        }
+
+        try
+            panopticPool.validateCollateralWithdrawable(msg.sender, $positionListExercisor)
+        {} catch {
+            assertWithMsg(false, "ForceExercise: Exercisor left insolvent after force exercise");
         }
 
         ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(

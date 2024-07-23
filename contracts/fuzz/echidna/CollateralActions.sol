@@ -811,16 +811,10 @@ contract CollateralActions is SFPMActions {
         address withdrawer,
         bool isToken0
     ) internal {
-        // check whether current positions are solvent; assertFalse if not
+        // check whether current positions are solvent; revert if not
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
-        try
-            panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions)
-        {} catch {
-            assertWithMsg(
-                false,
-                "User is not solvent even prior to withdrawing-with-open-positions"
-            );
-        }
+
+        panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions);
 
         // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately
         uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
