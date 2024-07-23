@@ -1432,7 +1432,6 @@ contract FuzzDeployments is FuzzHelpers {
         // Keep userPositions up-to-date for other tests' benefit -
         // one of the caller's positions no longer exist:
         userPositions[$caller] = $positionsNew;
-        assertWithMsg(false, "cleared");
     }
 
     struct PremiaProjection {
@@ -1498,7 +1497,7 @@ contract FuzzDeployments is FuzzHelpers {
             burnersPreburnValues
         );
 
-        assertWithMsg(false, "compared against preburn");
+        /* assertWithMsg(false, "compared against preburn"); */
     }
 
     function _prank_and_burn() internal {
@@ -1606,25 +1605,14 @@ contract FuzzDeployments is FuzzHelpers {
     {
         // We add any expected tokens for burning an ITM position in the SFPM
         expectedNonPremiaToken0Difference = token0Swapped;
-        emit LogInt256("adding token1Swapped: ", token1Swapped);
         expectedNonPremiaToken1Difference = token1Swapped;
 
         // And finally, we also add any underlying amounts of long legs,
         // minus the underlying amounts of any short legs.
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts($position, $posSize);
-        emit LogInt256("longAmounts.leftSlot(): ", longAmounts.leftSlot());
-        emit LogInt256("shortAmounts.leftSlot(): ", shortAmounts.leftSlot());
-        emit LogInt256(
-            "adding longAmounts.leftSlot() - shortAmounts.leftSlot(): ",
-            longAmounts.leftSlot() - shortAmounts.leftSlot()
-        );
-        expectedNonPremiaToken0Difference += longAmounts.rightSlot() - shortAmounts.rightSlot();
-        expectedNonPremiaToken1Difference += longAmounts.leftSlot() - shortAmounts.leftSlot();
-        emit LogInt256(
-            "final expectedNonPremiaToken1Difference",
-            expectedNonPremiaToken1Difference
-        );
+        expectedNonPremiaToken0Difference -= (longAmounts.rightSlot() - shortAmounts.rightSlot());
+        expectedNonPremiaToken1Difference -= (longAmounts.leftSlot() - shortAmounts.leftSlot());
     }
 
     function _decode_sfpm_sim(
@@ -1671,39 +1659,17 @@ contract FuzzDeployments is FuzzHelpers {
 
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
-            emit LogUint256("legIndex", legIndex);
             projectedPremia[legIndex].idealPremium0 =
                 ((accumulators[legIndex].sfpmGrossPremia0 -
                     premiaCalcInputs[legIndex].premiumGrowth0) *
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
-            emit LogUint256("premiumGrowth0", premiaCalcInputs[legIndex].premiumGrowth0);
-            emit LogUint256(
-                "accumulators[legIndex].sfpmGrossPremia0",
-                accumulators[legIndex].sfpmGrossPremia0
-            );
-            emit LogUint256("positionLiquidity", premiaCalcInputs[legIndex].positionLiquidity);
-            emit LogUint256(
-                "projectedPremia[legIndex].idealPremium0",
-                projectedPremia[legIndex].idealPremium0
-            );
 
             projectedPremia[legIndex].idealPremium1 =
                 ((accumulators[legIndex].sfpmGrossPremia1 -
                     premiaCalcInputs[legIndex].premiumGrowth1) *
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
-
-            emit LogUint256("premiumGrowth1", premiaCalcInputs[legIndex].premiumGrowth1);
-            emit LogUint256(
-                "accumulators[legIndex].sfpmGrossPremia1",
-                accumulators[legIndex].sfpmGrossPremia1
-            );
-            emit LogUint256("positionLiquidity", premiaCalcInputs[legIndex].positionLiquidity);
-            emit LogUint256(
-                "projectedPremia[legIndex].idealPremium1",
-                projectedPremia[legIndex].idealPremium1
-            );
 
             // 2. get proratedPremia:
             //    - short legs should get idealPremia * total settled tokens / total gross premia;
@@ -1733,8 +1699,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 token0CollectedByLeg,
         uint128 token1CollectedByLeg
     ) internal {
-        emit LogString("prorating premium for token 0 on leg:");
-        emit LogUint256("on leg: ", legIndex);
         projectedPremia.proratedPremium0 = $position.isLong(legIndex) == 1
             ? projectedPremia.idealPremium0
             : _prorate_ideal_premium(
@@ -1745,9 +1709,6 @@ contract FuzzDeployments is FuzzHelpers {
                 premiaCalcInputs.positionLiquidity,
                 accumulators.totalShortLiquidity
             );
-
-        emit LogString("prorating premium for token 1 on leg:");
-        emit LogUint256("on leg: ", legIndex);
 
         projectedPremia.proratedPremium1 = $position.isLong(legIndex) == 1
             ? projectedPremia.idealPremium1
@@ -1769,13 +1730,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnPositionLiquidity,
         uint128 preburnShortLiquidity
     ) internal returns (uint128) {
-        emit LogUint256("idealPremium", idealPremium);
-        emit LogUint256("preburnGrossPremium", preburnGrossPremium);
-        emit LogUint256("preburnGrossPremiumLast", preburnGrossPremiumLast);
-        emit LogUint256("preburnSettledTokens", preburnSettledTokens);
-        emit LogUint256("preburnPositionLiquidity", preburnPositionLiquidity);
-        emit LogUint256("preburnShortLiquidity", preburnShortLiquidity);
-
         // Prevent division by zero
         if (preburnGrossPremium == 0) return 0;
 
@@ -1865,16 +1819,6 @@ contract FuzzDeployments is FuzzHelpers {
                 "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
-            emit LogUint256("postburnGrossPremiaLast0", $postburnGrossPremiaLast0);
-            emit LogUint256(
-                "preburnAccumulators[legIndex].grossPremiaLast0",
-                preburnAccumulators[legIndex].grossPremiaLast0
-            );
-            emit LogUint256(
-                "projectedPremia[legIndex].idealPremium0",
-                projectedPremia[legIndex].idealPremium0
-            );
-
             _assert_gross_premia_adjusted_correctly(legIndex, preburnAccumulators, projectedPremia);
 
             delete $expectedSettledToken0DifferenceForChunk;
@@ -1886,11 +1830,7 @@ contract FuzzDeployments is FuzzHelpers {
             delete $postburnSFPMGrossPremia0;
             delete $postburnSFPMGrossPremia1;
             delete $postburnShortLiquidity;
-
-            /* assertWithMsg(false, "we did the comparisons!"); */
         }
-
-        // Clear the storage variables after usage
         delete $token0CollectedByLeg;
         delete $token1CollectedByLeg;
     }
@@ -1941,11 +1881,6 @@ contract FuzzDeployments is FuzzHelpers {
         PremiaProjection[] memory projectedPremia,
         PreburnValues memory burnersPreburnValues
     ) internal {
-        emit LogUint256("position.countLegs()", $position.countLegs());
-        emit LogUint256("position.isLong(0)", $position.isLong(0));
-        emit LogUint256("position.isLong(1)", $position.isLong(1));
-        emit LogUint256("position.isLong(2)", $position.isLong(2));
-        emit LogUint256("position.isLong(3)", $position.isLong(3));
         assertWithMsg(
             panopticPool.numberOfPositions($caller) == burnersPreburnValues.positionsOpened - 1,
             "Burning a position did not decrease the position counter"
@@ -1956,85 +1891,26 @@ contract FuzzDeployments is FuzzHelpers {
             int128 totalProjectedProratedPremium1
         ) = _net_up_prorated_premia(projectedPremia);
 
-        int256 expectedToken0Difference = expectedNonPremiaToken0Difference +
-            totalProjectedProratedPremium0;
-        int256 expectedToken1Difference = expectedNonPremiaToken1Difference +
-            totalProjectedProratedPremium1;
+        int256 expectedToken0Difference = totalProjectedProratedPremium0 - expectedNonPremiaToken0Difference;
+        int256 expectedToken1Difference = totalProjectedProratedPremium1 - expectedNonPremiaToken1Difference;
 
-        (
-            uint256 burnersPostburnToken0Balance,
-            uint256 burnersPostburnToken1Balance
-        ) = _get_token_balances($caller);
+        uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
+            collToken0.balanceOf($caller)
+        );
+        assertWithMsg(
+            int256(burnersPreburnValues.assetsInCT0) + int256(expectedToken0Difference) ==
+                int256(burnersPostburnAssetsInCT0),
+            "Burners assets in collToken0 were not deducted/added the net premia"
+        );
 
-        emit LogUint256("burnersPostburnToken0Balance", burnersPostburnToken0Balance);
-        emit LogUint256("burnersPreburnValues.token0Balance", burnersPreburnValues.token0Balance);
-        emit LogInt256("expectedToken0Difference", expectedToken0Difference);
-
-        emit LogUint256("burnersPostburnToken1Balance", burnersPostburnToken1Balance);
-        emit LogUint256("burnersPreburnValues.token1Balance", burnersPreburnValues.token1Balance);
-        emit LogInt256("expectedToken1Difference", expectedToken1Difference);
-
-        if (expectedToken0Difference > 0) {
-            assertWithMsg(
-                int256(burnersPostburnToken0Balance) ==
-                    int256(burnersPreburnValues.token0Balance) + int256(expectedToken0Difference),
-                "Burners token0 balance did not increase by the amount the premia would indicate"
-            );
-        } else {
-            /* assertWithMsg(
-                burnersPostburnToken0Balance == burnersPreburnValues.token0Balance,
-                "Burners token0 balance changed despite having a net negative expected premia"
-            ); */
-            uint256 burnersPostburnAssetsInCT0 = collToken0.convertToAssets(
-                collToken0.balanceOf($caller)
-            );
-            emit LogInt256("expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
-            emit LogInt256("totalProjectedProratedPremium1", totalProjectedProratedPremium1);
-            emit LogInt256(
-                "burnersPreburnValues.assetsInCT1",
-                int256(burnersPreburnValues.assetsInCT1)
-            );
-            emit LogInt256("expectedToken1Difference", int256(expectedToken1Difference));
-            emit LogInt256("burnersPostburnAssetsInCT1", int256(burnersPostburnAssetsInCT1));
-            assertWithMsg(
-                int256(burnersPreburnValues.assetsInCT0) + int256(expectedToken0Difference) ==
-                    int256(burnersPostburnAssetsInCT0),
-                "Burners assets in collToken0 were not deducted the net premia"
-            );
-        }
-
-        if (expectedToken1Difference > 0) {
-            assertWithMsg(
-                int256(burnersPostburnToken1Balance) ==
-                    int256(burnersPreburnValues.token1Balance) + int256(expectedToken1Difference),
-                "Burners token1 balance did not increase by the amount the premia would indicate"
-            );
-        } else {
-            /* assertWithMsg(
-                burnersPostburnToken1Balance == burnersPreburnValues.token1Balance,
-                "Burners token1 balance changed despite having a net negative expected premia"
-            ); */
-            uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
-                collToken1.balanceOf($caller)
-            );
-            /* TODO: Getting a difference of 29 in the burnersPostburnAssetsInCT1 and the preburn;
-            i expect it to be 1188309. Must investigate
-            burnersPostburnAssetsInCT1 = 5014049198550464670
-            expectedToken1Difference = -1188309 */
-            emit LogInt256("expectedNonPremiaToken1Difference", expectedNonPremiaToken1Difference);
-            emit LogInt256("totalProjectedProratedPremium1", totalProjectedProratedPremium1);
-            emit LogInt256(
-                "burnersPreburnValues.assetsInCT1",
-                int256(burnersPreburnValues.assetsInCT1)
-            );
-            emit LogInt256("expectedToken1Difference", int256(expectedToken1Difference));
-            emit LogInt256("burnersPostburnAssetsInCT1", int256(burnersPostburnAssetsInCT1));
-            assertWithMsg(
-                int256(burnersPreburnValues.assetsInCT1) + int256(expectedToken1Difference) ==
-                    int256(burnersPostburnAssetsInCT1),
-                "Burners assets in collToken1 were not deducted the net premia"
-            );
-        }
+        uint256 burnersPostburnAssetsInCT1 = collToken1.convertToAssets(
+            collToken1.balanceOf($caller)
+        );
+        assertWithMsg(
+            int256(burnersPreburnValues.assetsInCT1) + expectedToken1Difference ==
+                int256(burnersPostburnAssetsInCT1),
+            "Burners assets in collToken1 were not deducted/added the net premia"
+        );
     }
 
     function _get_token_balances(
