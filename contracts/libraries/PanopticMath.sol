@@ -149,6 +149,8 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Gets several ticks from Uniswap regarding the underlying pair.
+    /// @param univ3pool The Uniswap pool to get the observations from
+    /// @param miniMedian The packed structure representing the sorted 8-slot queue of ticks
     /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
@@ -156,9 +158,6 @@ library PanopticMath {
     /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
     function getOracleTicks(
         IUniswapV3Pool univ3pool,
-        uint256 FAST_ORACLE_CARDINALITY,
-        uint256 FAST_ORACLE_PERIOD,
-        uint256 MEDIAN_PERIOD,
         uint256 miniMedian
     )
         external
@@ -177,20 +176,27 @@ library PanopticMath {
         IUniswapV3Pool _univ3pool = univ3pool;
         (, currentTick, observationIndex, observationCardinality, , , ) = univ3pool.slot0();
 
-        {
-            (fastOracleTick, latestObservation) = computeMedianObservedPrice(
+        (fastOracleTick, latestObservation) = computeMedianObservedPrice(
+            _univ3pool,
+            observationIndex,
+            observationCardinality,
+            Constants.FAST_ORACLE_CARDINALITY,
+            Constants.FAST_ORACLE_PERIOD
+        );
+
+        if (Constants.SLOW_ORACLE_UNISWAP_MODE) {
+            (slowOracleTick, ) = computeMedianObservedPrice(
                 _univ3pool,
                 observationIndex,
                 observationCardinality,
-                FAST_ORACLE_CARDINALITY,
-                FAST_ORACLE_PERIOD
+                Constants.SLOW_ORACLE_CARDINALITY,
+                Constants.SLOW_ORACLE_PERIOD
             );
-        }
-        {
+        } else {
             (slowOracleTick, medianData) = computeInternalMedian(
                 observationIndex,
                 observationCardinality,
-                MEDIAN_PERIOD,
+                Constants.MEDIAN_PERIOD,
                 miniMedian,
                 _univ3pool
             );
@@ -260,7 +266,7 @@ library PanopticMath {
         uint256 period,
         uint256 medianData,
         IUniswapV3Pool univ3pool
-    ) internal view returns (int24 medianTick, uint256 updatedMedianData) {
+    ) public view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick =
