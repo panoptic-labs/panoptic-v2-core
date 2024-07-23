@@ -1398,6 +1398,8 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 totalShortLiquidity;
         uint128 sfpmGrossPremia0;
         uint128 sfpmGrossPremia1;
+        uint128 sfpmGrossPremiaAccumulator0;
+        uint128 sfpmGrossPremiaAccumulator1;
     }
 
     struct PremiaCalcInputs {
@@ -1553,7 +1555,7 @@ contract FuzzDeployments is FuzzHelpers {
         premiaCalcInputs = new PremiaCalcInputs[](numLegs);
 
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
-            _set_preburn_accumulators(position, accumulators, legIndex);
+            _set_preburn_accumulators(position, accumulators, legIndex, caller);
 
             LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 position,
@@ -1655,13 +1657,13 @@ contract FuzzDeployments is FuzzHelpers {
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
             // 1. get idealPremia - how much premia should you have been owed based on your position?
             projectedPremia[legIndex].idealPremium0 =
-                ((accumulators[legIndex].sfpmGrossPremia0 -
+                ((accumulators[legIndex].sfpmGrossPremiaAccumulator0 -
                     premiaCalcInputs[legIndex].premiumGrowth0) *
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
 
             projectedPremia[legIndex].idealPremium1 =
-                ((accumulators[legIndex].sfpmGrossPremia1 -
+                ((accumulators[legIndex].sfpmGrossPremiaAccumulator1 -
                     premiaCalcInputs[legIndex].premiumGrowth1) *
                     premiaCalcInputs[legIndex].positionLiquidity) >>
                 64;
@@ -1698,7 +1700,7 @@ contract FuzzDeployments is FuzzHelpers {
             ? projectedPremia.idealPremium0
             : _prorate_ideal_premium(
                 projectedPremia.idealPremium0,
-                accumulators.sfpmGrossPremia0,
+                accumulators.sfpmGrossPremiaAccumulator0,
                 accumulators.grossPremiaLast0,
                 accumulators.settledToken0 + token0CollectedByLeg,
                 premiaCalcInputs.positionLiquidity,
@@ -1709,7 +1711,7 @@ contract FuzzDeployments is FuzzHelpers {
             ? projectedPremia.idealPremium1
             : _prorate_ideal_premium(
                 projectedPremia.idealPremium1,
-                accumulators.sfpmGrossPremia1,
+                accumulators.sfpmGrossPremiaAccumulator1,
                 accumulators.grossPremiaLast1,
                 accumulators.settledToken1 + token1CollectedByLeg,
                 premiaCalcInputs.positionLiquidity,
@@ -1859,6 +1861,54 @@ contract FuzzDeployments is FuzzHelpers {
                     projectedPremia[legIndex].idealPremium0),
             "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
         );
+        emit LogUint256("$postburnSFPMGrossPremia1", $postburnSFPMGrossPremia1);
+        emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
+        emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
+        emit LogUint256(
+            "$($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity",
+             ($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity
+        );
+        emit LogUint256(
+            "(($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64",
+            (($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
+                64
+        );
+
+        emit LogUint256(
+            "preburnAccumulators[legIndex].sfpmGrossPremia1",
+            preburnAccumulators[legIndex].sfpmGrossPremia1
+        );
+        emit LogUint256(
+            "preburnAccumulators[legIndex].grossPremiaLast1",
+            preburnAccumulators[legIndex].sfpmGrossPremia1
+        );
+        emit LogUint256(
+            "preburnAccumulators[legIndex].totalShortLiquidity",
+            preburnAccumulators[legIndex].totalShortLiquidity
+        );
+        emit LogUint256(
+            "projectedPremia[legIndex].idealPremium1",
+            projectedPremia[legIndex].idealPremium1
+        );
+        emit LogUint256(
+            "(preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1)",
+            preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1
+        );
+        emit LogUint256(
+            "((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity)",
+            (preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity
+        );
+        emit LogUint256(
+            "(((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64)",
+            (((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64)
+        );
+        emit LogUint256(
+            "(((preburnAccumulators[legIndex].sfpmGrossPremia1 - preburnAccumulators[legIndex].grossPremiaLast1) * preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -projectedPremia[legIndex].idealPremium1",
+            (((preburnAccumulators[legIndex].sfpmGrossPremia1 -
+                preburnAccumulators[legIndex].grossPremiaLast1) *
+                preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
+                projectedPremia[legIndex].idealPremium1
+        );
         assertWithMsg(
             (($postburnSFPMGrossPremia1 - $postburnGrossPremiaLast1) * $postburnShortLiquidity) >>
                 64 ==
@@ -1868,6 +1918,9 @@ contract FuzzDeployments is FuzzHelpers {
                     projectedPremia[legIndex].idealPremium1,
             "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
         );
+        // TODO: I have this assert here because i think all my success cases when comparing
+        // SFPM gross premia pre and postburn has been with idealPremia of 0.. investigating
+        assertWithMsg(projectedPremia[legIndex].idealPremium1 <= 0, "was correct with positive idealPremium!");
     }
 
     function _compare_against_preburn_values(
@@ -1923,11 +1976,14 @@ contract FuzzDeployments is FuzzHelpers {
     uint128 $grossPremiaLastToken1;
     uint128 $sfpmGrossPremia0;
     uint128 $sfpmGrossPremia1;
+    uint128 $sfpmGrossPremiaAccumulator0;
+    uint128 $sfpmGrossPremiaAccumulator1;
 
     function _set_preburn_accumulators(
         TokenId position,
         AccumulatorsForLeg[] memory accumulators,
-        uint legIndex
+        uint legIndex,
+        address caller
     ) internal {
         (
             $settledToken0,
@@ -1940,10 +1996,17 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].grossPremiaLast0 = $grossPremiaLastToken0;
         accumulators[legIndex].grossPremiaLast1 = $grossPremiaLastToken1;
 
-        ($sfpmGrossPremia0, $sfpmGrossPremia1) = _get_sfpm_accumulators(position, legIndex);
+        ($sfpmGrossPremia0, $sfpmGrossPremia1) = _get_sfpm_gross_premia(position, legIndex, caller);
 
         accumulators[legIndex].sfpmGrossPremia0 = $sfpmGrossPremia0;
         accumulators[legIndex].sfpmGrossPremia1 = $sfpmGrossPremia1;
+
+        (
+            $sfpmGrossPremiaAccumulator0,
+            $sfpmGrossPremiaAccumulator1
+        ) = _get_sfpm_accumulators(position, legIndex);
+        accumulators[legIndex].sfpmGrossPremiaAccumulator0 = $sfpmGrossPremiaAccumulator0;
+        accumulators[legIndex].sfpmGrossPremiaAccumulator1 = $sfpmGrossPremiaAccumulator1;
 
         delete $settledToken0;
         delete $settledToken1;
@@ -1951,6 +2014,8 @@ contract FuzzDeployments is FuzzHelpers {
         delete $grossPremiaLastToken1;
         delete $sfpmGrossPremia0;
         delete $sfpmGrossPremia1;
+        delete $sfpmGrossPremiaAccumulator0;
+        delete $sfpmGrossPremiaAccumulator1;
     }
 
     /// @custom:property PANO-BURN-003 After burning all options, the number of positions of the user must be zero
