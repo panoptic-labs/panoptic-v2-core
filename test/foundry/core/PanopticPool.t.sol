@@ -6552,7 +6552,7 @@ contract PanopticPoolTest is PositionUtils {
                 0,
                 $posIdLists[1]
             );
-            vm.assume(newBalance0 > newRequired0);
+            vm.assume(newBalance0 < newRequired0);
         }
         (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
@@ -7126,7 +7126,7 @@ contract PanopticPoolTest is PositionUtils {
                 0,
                 $posIdLists[1]
             );
-            vm.assume(newBalance0 > newRequired0);
+            vm.assume(newBalance0 < newRequired0);
         }
         (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
