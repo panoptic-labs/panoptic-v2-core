@@ -34,13 +34,19 @@ contract PanopticPoolActions is CollateralActions {
 
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
-        $fastOracleTick = PanopticMath.computeMedianObservedPrice(
-            pool,
-            observationIndex,
-            observationCardinality,
-            3,
-            1
+        ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
+            60,
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            pool
         );
+
+        $safeMode = Math.abs($slowOracleTick - currentTick) > 953;
+
+        if ($safeMode) {
+            if ($tickLimitLow > $tickLimitHigh) {
+                ($tickLimitLow, $tickLimitHigh) = ($tickLimitHigh, $tickLimitLow);
+            }
+        }
 
         $found = false;
         for (uint256 i = 0; i < $numLegs; ++i) {
@@ -287,6 +293,9 @@ contract PanopticPoolActions is CollateralActions {
         $poolUtil0 = ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0);
         emit LogUint256("poolUtil0", $poolUtil0);
         $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
+
+        if ($safeMode) ($poolUtil0, $poolUtil1) = (10_000, 10_000);
+
         emit LogUint256("poolUtil1", $poolUtil1);
 
         // checked, FAIL
@@ -368,30 +377,7 @@ contract PanopticPoolActions is CollateralActions {
                 )
             );
 
-            $balanceCross =
-                Math.mulDiv(
-                    $balance1ExpectedP,
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
-                ) +
-                Math.mulDiv96($balance0ExpectedP, TickMath.getSqrtRatioAtTick($fastOracleTick));
-
-            $thresholdCross =
-                Math.mulDivRoundingUp(
-                    uint256($tokenData1.leftSlot()),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
-                ) +
-                Math.mulDiv96RoundingUp(
-                    $tokenData0.leftSlot(),
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
-                );
-            $shouldRevert = $shouldRevert
-                ? $shouldRevert
-                : ($thresholdCross * 13_333) / 10_000 > $balanceCross;
-
-            // emit LogUint256("origBal0", $balance0Origin);
-            // emit LogUint256("origBal1",$balance1Origin);
+            _write_revert_due_solvency(msg.sender, 13_333);
             emit LogInt256("colDelta0", $colDelta0);
             emit LogInt256("colDelta1", $colDelta1);
             emit LogUint256("bal0", $balance0ExpectedP);
@@ -401,54 +387,7 @@ contract PanopticPoolActions is CollateralActions {
             emit LogUint256("balCross", $balanceCross);
             emit LogUint256("thresholdCross", $thresholdCross);
             emit LogInt256("fast tick", $fastOracleTick);
-            emit LogBool("revert due to collateral shortfall at fast oracle tick", $shouldRevert);
-
-            if (Math.abs(int256($slowOracleTick) - $fastOracleTick) > 1800) {
-                $tokenData0 = collToken0.getAccountMarginDetails(
-                    msg.sender,
-                    $slowOracleTick,
-                    $posBalanceArray,
-                    $premia0
-                );
-                $tokenData1 = collToken1.getAccountMarginDetails(
-                    msg.sender,
-                    $slowOracleTick,
-                    $posBalanceArray,
-                    $premia1
-                );
-
-                $balanceCross =
-                    Math.mulDiv(
-                        $balance1ExpectedP,
-                        2 ** 96,
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    ) +
-                    Math.mulDiv96($balance0ExpectedP, TickMath.getSqrtRatioAtTick($slowOracleTick));
-
-                $thresholdCross =
-                    Math.mulDivRoundingUp(
-                        uint256($tokenData1.leftSlot()),
-                        2 ** 96,
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    ) +
-                    Math.mulDiv96RoundingUp(
-                        $tokenData0.leftSlot(),
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    );
-
-                $shouldRevert = $shouldRevert
-                    ? $shouldRevert
-                    : Math.unsafeDivRoundingUp($thresholdCross * 13_333, 10_000) > $balanceCross;
-
-                emit LogUint256("thresholdCross", $thresholdCross);
-                emit LogUint256("req0", uint256($tokenData0.leftSlot()));
-                emit LogUint256("req1", uint256($tokenData1.leftSlot()));
-                emit LogInt256("slow tick", $slowOracleTick);
-                emit LogBool(
-                    "revert due to collateral shortfall at slow oracle tick",
-                    $shouldRevert
-                );
-            }
+            emit LogBool("revert due to collateral shortfall", $shouldRevert);
         } else {
             $shouldRevert = true;
 
@@ -601,116 +540,18 @@ contract PanopticPoolActions is CollateralActions {
                 Math.mulDivRoundingUp(premium1, $totalSupply1, $totalAssets1) >
                 collToken1.balanceOf($settlee))
         ) {
-            ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
-                $settlee,
-                false,
-                userPositions[$settlee]
-            );
-
-            (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
-
-            $fastOracleTick = PanopticMath.computeMedianObservedPrice(
-                pool,
-                observationIndex,
-                observationCardinality,
-                3,
-                1
-            );
-
-            ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
-                60,
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-                pool
-            );
-
-            $tokenData0 = collToken0.getAccountMarginDetails(
-                $settlee,
-                $fastOracleTick,
-                $posBalanceArray,
-                $premia0
-            );
-
-            $tokenData1 = collToken1.getAccountMarginDetails(
-                $settlee,
-                $fastOracleTick,
-                $posBalanceArray,
-                $premia1
-            );
-
-            $balanceCross =
-                Math.mulDiv(
-                    $tokenData1.rightSlot(),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
-                ) +
-                Math.mulDiv96(
-                    $tokenData0.rightSlot(),
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
+            ($colTicks[0], $colTicks[1], $colTicks[2], $colTicks[3], ) = PanopticMath
+                .getOracleTicks(
+                    pool,
+                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
                 );
 
-            $thresholdCross =
-                Math.mulDivRoundingUp(
-                    uint256($tokenData1.leftSlot()),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
-                ) +
-                Math.mulDiv96RoundingUp(
-                    $tokenData0.leftSlot(),
-                    TickMath.getSqrtRatioAtTick($fastOracleTick)
-                );
-            $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
+            $balance0ExpectedP = collToken0.convertToAssets(collToken0.balanceOf($settlee));
+            $balance1ExpectedP = collToken1.convertToAssets(collToken1.balanceOf($settlee));
 
-            emit LogUint256("balanceCross", $balanceCross);
-            emit LogUint256("thresholdCross", $thresholdCross);
+            _write_revert_due_solvency($settlee, 10_000);
 
-            emit LogBool(
-                "revert due to collateral shortfall at fast oracle tick",
-                $thresholdCross > $balanceCross
-            );
-
-            if (Math.abs(int256($slowOracleTick) - $fastOracleTick) > 1800) {
-                $tokenData0 = collToken0.getAccountMarginDetails(
-                    $settlee,
-                    $slowOracleTick,
-                    $posBalanceArray,
-                    $premia0
-                );
-                $tokenData1 = collToken1.getAccountMarginDetails(
-                    $settlee,
-                    $slowOracleTick,
-                    $posBalanceArray,
-                    $premia1
-                );
-
-                $balanceCross =
-                    Math.mulDiv(
-                        $tokenData1.rightSlot(),
-                        2 ** 96,
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    ) +
-                    Math.mulDiv96(
-                        $tokenData0.rightSlot(),
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    );
-
-                $thresholdCross =
-                    Math.mulDivRoundingUp(
-                        uint256($tokenData1.leftSlot()),
-                        2 ** 96,
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    ) +
-                    Math.mulDiv96RoundingUp(
-                        $tokenData0.leftSlot(),
-                        TickMath.getSqrtRatioAtTick($slowOracleTick)
-                    );
-
-                $shouldRevert = $shouldRevert ? $shouldRevert : $thresholdCross > $balanceCross;
-
-                emit LogBool(
-                    "revert due to collateral shortfall at slow oracle tick",
-                    $thresholdCross > $balanceCross
-                );
-            }
+            emit LogBool("revert due to collateral shortfall", $shouldRevert);
         } else {
             $shouldRevert = true;
 
@@ -891,7 +732,7 @@ contract PanopticPoolActions is CollateralActions {
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
-                bytes4(reason) == Errors.NotEnoughCollateral.selector
+                bytes4(reason) == Errors.AccountInsolvent.selector
             ) {
                 hevm.prank(address(panopticPool));
                 collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);

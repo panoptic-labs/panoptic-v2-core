@@ -895,7 +895,7 @@ contract CollateralActions is SFPMActions {
         (, int24 currentTick, uint16 observationIndex, uint16 observationCardinality, , , ) = pool
             .slot0();
 
-        int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (int24 fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -905,7 +905,7 @@ contract CollateralActions is SFPMActions {
 
         // s_miniMedian, an internal var in the PanopticPool, can be found in storage slot 1:
         uint256 miniMedian = uint256(hevm.load(address(panopticPool), bytes32(uint256(1))));
-        (int24 slowOracleTick, uint256 medianData) = PanopticMath.computeInternalMedian(
+        (int24 slowOracleTick, ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             MEDIAN_PERIOD,

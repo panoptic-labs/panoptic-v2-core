@@ -259,7 +259,7 @@ contract FuzzHelpers is PropertiesAsserts {
         bytes
     );
 
-    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool);
+    error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24[4], bool);
 
     error PPBurnSimResError(int256, int256, bool);
 
@@ -448,11 +448,15 @@ contract FuzzHelpers is PropertiesAsserts {
     address[] actors;
     address pool_manipulator;
 
+    int24[4] $colTicks;
+
     int256 $allPositionCount;
     int256 $failedPositionCount;
 
     address $settlee;
     uint256 $settleIndex;
+
+    bool $safeMode;
 
     address $exercisee;
     TokenId[] $touchedId;
@@ -601,6 +605,97 @@ contract FuzzHelpers is PropertiesAsserts {
             thresholdCross =
                 Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
                 Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
+        }
+    }
+
+    function _write_revert_due_solvency(address sUser, uint256 buffer) internal {
+        ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
+            sUser,
+            false,
+            userPositions[sUser]
+        );
+
+        if (
+            int256($colTicks[0] - $colTicks[1]) ** 2 +
+                int256($colTicks[1] - $colTicks[2]) ** 2 +
+                int256($colTicks[3] - $colTicks[2]) ** 2 >
+            953 ** 2
+        ) {
+            for (uint256 i = 0; i < $colTicks.length; i++) {
+                $tokenData0 = collToken0.getAccountMarginDetails(
+                    sUser,
+                    $colTicks[i],
+                    $posBalanceArray,
+                    $premia0
+                );
+                $tokenData1 = collToken1.getAccountMarginDetails(
+                    sUser,
+                    $colTicks[i],
+                    $posBalanceArray,
+                    $premia1
+                );
+                $balanceCross =
+                    Math.mulDiv(
+                        $balance1ExpectedP + uint128($premia1 > 0 ? $premia1 : int128(0)),
+                        2 ** 96,
+                        TickMath.getSqrtRatioAtTick($colTicks[i])
+                    ) +
+                    Math.mulDiv96(
+                        $balance0ExpectedP + uint128($premia0 > 0 ? $premia0 : int128(0)),
+                        TickMath.getSqrtRatioAtTick($colTicks[1])
+                    );
+
+                $thresholdCross =
+                    Math.mulDivRoundingUp(
+                        uint256($tokenData1.leftSlot()),
+                        2 ** 96,
+                        TickMath.getSqrtRatioAtTick($colTicks[i])
+                    ) +
+                    Math.mulDiv96RoundingUp(
+                        $tokenData0.leftSlot(),
+                        TickMath.getSqrtRatioAtTick($colTicks[i])
+                    );
+                $shouldRevert = $shouldRevert
+                    ? $shouldRevert
+                    : ($thresholdCross * buffer) / 10_000 > $balanceCross;
+            }
+        } else {
+            $tokenData0 = collToken0.getAccountMarginDetails(
+                sUser,
+                $colTicks[1],
+                $posBalanceArray,
+                $premia0
+            );
+            $tokenData1 = collToken1.getAccountMarginDetails(
+                sUser,
+                $colTicks[1],
+                $posBalanceArray,
+                $premia1
+            );
+            $balanceCross =
+                Math.mulDiv(
+                    $balance1ExpectedP + uint128($premia1 > 0 ? $premia1 : int128(0)),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($colTicks[1])
+                ) +
+                Math.mulDiv96(
+                    $balance0ExpectedP + uint128($premia0 > 0 ? $premia0 : int128(0)),
+                    TickMath.getSqrtRatioAtTick($colTicks[1])
+                );
+
+            $thresholdCross =
+                Math.mulDivRoundingUp(
+                    uint256($tokenData1.leftSlot()),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($colTicks[1])
+                ) +
+                Math.mulDiv96RoundingUp(
+                    $tokenData0.leftSlot(),
+                    TickMath.getSqrtRatioAtTick($colTicks[1])
+                );
+            $shouldRevert = $shouldRevert
+                ? $shouldRevert
+                : ($thresholdCross * buffer) / 10_000 > $balanceCross;
         }
     }
 
@@ -1319,8 +1414,10 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
             bool sRevert;
-            ($collectedByLeg, $totalSwapped, $fastOracleTick, $slowOracleTick, sRevert) = abi
-                .decode(results, (LeftRightUnsigned[4], LeftRightSigned, int24, int24, bool));
+            ($collectedByLeg, $totalSwapped, $colTicks, sRevert) = abi.decode(
+                results,
+                (LeftRightUnsigned[4], LeftRightSigned, int24[4], bool)
+            );
 
             $shouldRevert = $shouldRevert || sRevert;
             $sfpmRevert = sRevert;
@@ -1397,28 +1494,26 @@ contract FuzzHelpers is PropertiesAsserts {
                 $tickLimitHigh
             )
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
-            (int24 slowTick, ) = panopticHelper.computeInternalMedian(
-                60,
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-                pool
-            );
-            revert SFPMMintResError(
-                collectedByLeg,
-                totalSwapped,
-                panopticHelper.computeMedianObservedPrice(pool, 3, 1),
-                slowTick,
-                false
-            );
+            int24[4] memory __colTicks;
+            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
+                .getOracleTicks(
+                    pool,
+                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                );
+
+            revert SFPMMintResError(collectedByLeg, totalSwapped, __colTicks, false);
         } catch {
             LeftRightUnsigned[4] memory collectedByLeg;
             LeftRightSigned totalSwapped;
-            revert SFPMMintResError(
-                collectedByLeg,
-                totalSwapped,
-                panopticHelper.computeMedianObservedPrice(pool, 3, 1),
-                0,
-                true
-            );
+
+            int24[4] memory __colTicks;
+            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
+                .getOracleTicks(
+                    pool,
+                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                );
+
+            revert SFPMMintResError(collectedByLeg, totalSwapped, __colTicks, true);
         }
     }
 
