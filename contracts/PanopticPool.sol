@@ -915,12 +915,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 fastOracleTick;
             int24 lastObservedTick;
-            (currentTick, fastOracleTick, , lastObservedTick, ) = _getOracleTicks();
+            (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
+                s_univ3pool,
+                s_miniMedian
+            );
 
-            if (Math.abs(currentTick - twapTick) > MAX_TICKS_DELTA) revert Errors.StaleTWAP();
+            unchecked {
+                if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
+                    revert Errors.StaleTWAP();
+            }
 
-            // Ensure the accound is insolvent at twapTick, currentTick, and fastOracleTick
-            /// @dev do not check slowOracleTick because slow oracle is covered by twapTick
+            // Ensure the account is insolvent at twapTick, currentTick, and fastOracleTick
+            // do not check slowOracleTick because slow oracle is covered by twapTick
             int24[] memory atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
             atTicks[1] = twapTick;
@@ -1147,12 +1153,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionIdList`.
+    /// @dev this will return true if solvent at any of the provided tick, and return false iff the account is insolvent at all ticks.
     /// @param account The account to check solvency for
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)
     /// @param atTicks An array of ticks to check solvency at
     /// @param buffer The buffer to apply to the collateral requirement
-    /// @return Whether the account is solvent at the given tick
+    /// @return Whether the account is solvent at all of the given tick
     function _checkSolvencyAtTicks(
         address account,
         TokenId[] calldata positionIdList,
@@ -1172,22 +1179,33 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
 
         uint256 numberOfTicks = atTicks.length;
-        bool solvent = true;
+
+        // must combine solvency checks as uint because bool would automatically return false for (false && _check),
+        uint8 solvent = 0;
         for (uint256 i; i < numberOfTicks; ) {
-            solvent =
-                solvent &&
-                _checkCrossBalances(
-                    account,
-                    atTicks[i],
-                    positionBalanceArray,
-                    portfolioPremium,
-                    buffer
-                );
             unchecked {
+                solvent += (
+                    _checkCrossBalances(
+                        account,
+                        atTicks[i],
+                        positionBalanceArray,
+                        portfolioPremium,
+                        buffer
+                    )
+                        ? uint8(1)
+                        : uint8(0)
+                );
+
                 ++i;
             }
         }
-        return solvent;
+        if (solvent == 0) {
+            return false;
+        } else if (solvent == numberOfTicks) {
+            return true;
+        } else {
+            revert Errors.DivergentSolvencyCheck();
+        }
     }
 
     /// @notice Check whether a the balances of an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
