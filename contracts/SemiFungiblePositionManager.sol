@@ -20,6 +20,9 @@ import {LeftRightUnsigned, LeftRightSigned, LeftRightLibrary} from "@types/LeftR
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
+//
+import {PropertiesAsserts} from "./fuzz/echidna/PropertiesHelper.sol";
+
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
 //                    ,,,,,,,                           ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,                            ,,,,,,
@@ -69,7 +72,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall {
+contract SemiFungiblePositionManager is ERC1155, Multicall, PropertiesAsserts {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -513,6 +516,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         ReentrancyLock(tokenId.poolId())
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
     {
+        emit LogString("start of mint");
+
         // create the option position via its ID in this erc1155
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -526,6 +531,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             slippageTickLimitHigh,
             MINT
         );
+
+        // end of successful mint
+        emit LogString("end of mint");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1061,6 +1069,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 └──┴───────┴──►      └──────┘
                     Uniswap v3      msg.sender 
             */
+            (uint128 uniLiqBefore, , , , ) = univ3pool.positions(positionKey);
+            emit LogUint256("real uniLiqBefore", uniLiqBefore);
+
             moved = isLong == 0
                 ? _mintLiquidity(liquidityChunk, univ3pool)
                 : _burnLiquidity(liquidityChunk, univ3pool); // from msg.sender to Uniswap
@@ -1078,6 +1089,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 itmAmounts = itmAmounts.toLeftSlot(moved.leftSlot());
             }
         }
+
+        emit LogUint256("curr leg", leg);
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
@@ -1099,6 +1112,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             liquidityChunk,
             true
         );
+
+        // true stored fees base
+        emit LogInt256("real feesbase 0", s_accountFeesBase[positionKey].rightSlot());
+        emit LogInt256("real feesbase 1", s_accountFeesBase[positionKey].leftSlot());
     }
 
     /// @notice Updates the premium accumulators for a chunk with the latest collected tokens.
@@ -1138,7 +1155,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint128 liquidity,
         LiquidityChunk liquidityChunk,
         bool roundUp
-    ) private view returns (LeftRightSigned feesBase) {
+    ) private returns (LeftRightSigned feesBase) {
         // read the latest feeGrowth directly from the Uniswap pool
         (, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, , ) = univ3pool
             .positions(
@@ -1150,6 +1167,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     )
                 )
             );
+
+        emit LogUint256("real fg0", feeGrowthInside0LastX128);
+        emit LogUint256("real fg1", feeGrowthInside1LastX128);
+        emit LogUint256("real liquidity", liquidity);
 
         // (feegrowth * liquidity) / 2 ** 128
         // here we're converting the value to an int128 even though all values (feeGrowth, liquidity, Q128) are strictly positive.
@@ -1170,6 +1191,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 .wrap(0)
                 .toRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
                 .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
+
+        emit LogBool("real roundUp", roundUp);
+        emit LogInt256("real feesBase 0", feesBase.rightSlot());
+        emit LogInt256("real feesBase 1", feesBase.leftSlot());
     }
 
     /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap v3 pool; return the amount moved.
@@ -1267,9 +1292,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             false
         ).subRect(s_accountFeesBase[positionKey]);
 
+        emit LogInt256("real old fees base 0", s_accountFeesBase[positionKey].rightSlot());
+        emit LogInt256("real old fees base 1", s_accountFeesBase[positionKey].leftSlot());
+
         if (isLong == 1) {
             amountToCollect = amountToCollect.sub(movedInLeg);
         }
+
+        emit LogInt256("real amount to collect 0", amountToCollect.rightSlot());
+        emit LogInt256("real amount to collect 1", amountToCollect.leftSlot());
 
         if (LeftRightSigned.unwrap(amountToCollect) != 0) {
             // first collect amounts from Uniswap corresponding to this position
@@ -1284,6 +1315,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint128(amountToCollect.leftSlot())
             );
 
+            emit LogUint256("real receivedAmount0", receivedAmount0);
+            emit LogUint256("real receivedAmount1", receivedAmount1);
+
             // moved will be negative if the leg was long (funds left the caller, don't count it in collected fees)
             uint128 collected0;
             uint128 collected1;
@@ -1295,6 +1329,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                     ? receivedAmount1 - uint128(-movedInLeg.leftSlot())
                     : receivedAmount1;
             }
+
+            emit LogUint256("real collected0", collected0);
+            emit LogUint256("real collected1", collected1);
 
             // CollectedOut is the amount of fees accumulated+collected (received - burnt)
             // That's because receivedAmount contains the burnt tokens and whatever amount of fees collected
