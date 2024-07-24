@@ -1824,9 +1824,9 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             // INVARIANT:
-            // (postBurnGrossPremiaSFPM - postBurnGrossPremiaLast)*postBurnShortLiq/2^64
+            // (postBurnGrossPremiaSFPMAccumulator - postBurnGrossPremiaLast)*postBurnShortLiq/2^64
             // ==
-            // (preBurnGrossPremiaSFPM - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
+            // (preBurnGrossPremiaSFPMAccumulator - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
             if ($position.isLong(legIndex) != 0) {
                 // Gross premia should not change on the long legs' chunks
                 projectedPremia[legIndex].idealPremium0 = 0;
@@ -1836,7 +1836,7 @@ contract FuzzDeployments is FuzzHelpers {
             (
                 $postburnSFPMGrossPremiaAccumulator0,
                 $postburnSFPMGrossPremiaAccumulator1
-            ) = _get_sfpm_accumulators($position, legIndex);
+            ) = _get_sfpm_accumulators_without_itm_swap($position, legIndex);
 
             $postburnShortLiquidity = _get_total_short_liquidity(
                 $position,
@@ -2382,6 +2382,22 @@ contract FuzzDeployments is FuzzHelpers {
             $tickLower,
             $tickUpper,
             $currentTick,
+            position.isLong(legIndex)
+        );
+    }
+
+    function _get_sfpm_accumulators_without_itm_swap(
+        TokenId position,
+        uint256 legIndex
+    ) internal returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
+        ($tickLower, $tickUpper) = position.asTicks(legIndex);
+        (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+            address(pool),
+            address(panopticPool),
+            position.tokenType(legIndex),
+            $tickLower,
+            $tickUpper,
+            type(int24).max,
             position.isLong(legIndex)
         );
     }
