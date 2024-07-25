@@ -1934,8 +1934,8 @@ contract FuzzDeployments is FuzzHelpers {
             // rounding threshold
             abs(
                 int256(burnersPreburnValues.assetsInCT0) +
-                expectedToken0Difference -
-                int256(burnersPostburnAssetsInCT0)
+                    expectedToken0Difference -
+                    int256(burnersPostburnAssetsInCT0)
             ) <= 1,
             "Burners assets in collToken0 were not deducted/added the net premia"
         );
@@ -1946,8 +1946,8 @@ contract FuzzDeployments is FuzzHelpers {
         assertWithMsg(
             abs(
                 int256(burnersPreburnValues.assetsInCT1) +
-                expectedToken1Difference -
-                int256(burnersPostburnAssetsInCT1)
+                    expectedToken1Difference -
+                    int256(burnersPostburnAssetsInCT1)
             ) <= 1,
             "Burners assets in collToken1 were not deducted/added the net premia"
         );
