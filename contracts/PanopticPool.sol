@@ -354,28 +354,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return premium0 Premium for token0 (negative = amount is owed)
-    /// @return premium1 Premium for token1 (negative = amount is owed)
+    /// @return shortPremium The total amount of premium owed (according to `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function calculateAccumulatedFeesBatch(
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
-        (LeftRightSigned premia, uint256[2][] memory balances) = _calculateAccumulatedPremia(
-            user,
-            positionIdList,
-            COMPUTE_ALL_PREMIA,
-            includePendingPremium,
-            currentTick
-        );
-
-        // Return the premia as (token0, token1)
-        return (premia.rightSlot(), premia.leftSlot(), balances);
+        return
+            _calculateAccumulatedPremia(
+                user,
+                positionIdList,
+                COMPUTE_ALL_PREMIA,
+                includePendingPremium,
+                currentTick
+            );
     }
 
     /// @notice Compute the net token amounts owned by a given positionIdList in the Uniswap pool at the given price tick.
@@ -401,7 +399,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param positionIdList The list of all option positions held by user
     /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot
+    /// @return shortPremium The total amount of premium owed (according to `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function _calculateAccumulatedPremia(
         address user,
@@ -409,7 +408,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         bool computeAllPremia,
         bool includePendingPremium,
         int24 atTick
-    ) internal view returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
+    )
+        internal
+        view
+        returns (
+            LeftRightUnsigned shortPremium,
+            LeftRightUnsigned longPremium,
+            uint256[2][] memory balances
+        )
+    {
         uint256 pLength = positionIdList.length;
         balances = new uint256[2][](pLength);
 
@@ -434,28 +441,38 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
-                if (tokenId.isLong(leg) == 0 && !includePendingPremium) {
-                    bytes32 chunkKey = keccak256(
-                        abi.encodePacked(
-                            tokenId.strike(leg),
-                            tokenId.width(leg),
-                            tokenId.tokenType(leg)
-                        )
-                    );
+                if (tokenId.isLong(leg) == 0) {
+                    if (!includePendingPremium) {
+                        bytes32 chunkKey = keccak256(
+                            abi.encodePacked(
+                                tokenId.strike(leg),
+                                tokenId.width(leg),
+                                tokenId.tokenType(leg)
+                            )
+                        );
 
-                    (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
-                    LeftRightUnsigned availablePremium = _getAvailablePremium(
-                        totalLiquidity,
-                        s_settledTokens[chunkKey],
-                        s_grossPremiumLast[chunkKey],
-                        LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))),
-                        premiumAccumulatorsByLeg[leg]
-                    );
-                    portfolioPremium = portfolioPremium.add(
-                        LeftRightSigned.wrap(int256(LeftRightUnsigned.unwrap(availablePremium)))
-                    );
+                        (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
+                        LeftRightUnsigned availablePremium = _getAvailablePremium(
+                            totalLiquidity,
+                            s_settledTokens[chunkKey],
+                            s_grossPremiumLast[chunkKey],
+                            LeftRightUnsigned.wrap(
+                                uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
+                            ),
+                            premiumAccumulatorsByLeg[leg]
+                        );
+                        shortPremium = shortPremium.add(availablePremium);
+                    } else {
+                        shortPremium = shortPremium.add(
+                            LeftRightUnsigned.wrap(
+                                uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
+                            )
+                        );
+                    }
                 } else {
-                    portfolioPremium = portfolioPremium.add(premiaByLeg[leg]);
+                    longPremium = longPremium.sub(
+                        LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(premiaByLeg[leg])))
+                    );
                 }
                 unchecked {
                     ++leg;
@@ -466,7 +483,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 ++k;
             }
         }
-        return (portfolioPremium, balances);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -938,11 +954,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
-        LeftRightSigned premia;
+        LeftRightUnsigned shortPremium;
 
         {
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
-            (premia, positionBalanceArray) = _calculateAccumulatedPremia(
+            LeftRightUnsigned longPremium;
+            (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
                 positionIdList,
                 COMPUTE_ALL_PREMIA,
@@ -954,14 +971,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 liquidatee,
                 twapTick,
                 positionBalanceArray,
-                premia.rightSlot()
+                shortPremium.rightSlot(),
+                longPremium.rightSlot()
             );
 
             tokenData1 = s_collateralToken1.getAccountMarginDetails(
                 liquidatee,
                 twapTick,
                 positionBalanceArray,
-                premia.leftSlot()
+                shortPremium.leftSlot(),
+                longPremium.leftSlot()
             );
         }
 
@@ -998,7 +1017,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     Math.getSqrtRatioAtTick(twapTick),
                     Math.getSqrtRatioAtTick(twapTick),
                     netExchanged,
-                    premia
+                    shortPremium
                 );
 
             // premia cannot be paid if there is protocol loss associated with the liquidatee
@@ -1168,7 +1187,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 buffer
     ) internal view returns (bool) {
         (
-            LeftRightSigned portfolioPremium,
+            LeftRightUnsigned shortPremium,
+            LeftRightUnsigned longPremium,
             uint256[2][] memory positionBalanceArray
         ) = _calculateAccumulatedPremia(
                 account,
@@ -1189,7 +1209,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         account,
                         atTicks[i],
                         positionBalanceArray,
-                        portfolioPremium,
+                        shortPremium,
+                        longPremium,
                         buffer
                     )
                         ? uint8(1)
@@ -1212,28 +1233,33 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param account The account to check solvency for
     /// @param atTick The tick to check solvency at
     /// @param positionBalanceArray A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
-    /// @param portfolioPremium The computed premia of the user's positions, where premia contains the accumulated premia for token0 in the right slot and for token1 in the left slot
+    /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `account`
+    /// @param longPremium The total amount of premium owed by the long legs of `account`
     /// @param buffer The buffer to apply to the collateral requirement
     /// @return Whether the account is solvent at the given tick
     function _checkCrossBalances(
         address account,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
-        LeftRightSigned portfolioPremium,
+        LeftRightUnsigned shortPremium,
+        LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
         LeftRightUnsigned tokenData0 = s_collateralToken0.getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
-            portfolioPremium.rightSlot()
+            shortPremium.rightSlot(),
+            longPremium.rightSlot()
         );
         LeftRightUnsigned tokenData1 = s_collateralToken1.getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
-            portfolioPremium.leftSlot()
+            shortPremium.leftSlot(),
+            longPremium.leftSlot()
         );
+
         (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
             tokenData0,
             tokenData1,

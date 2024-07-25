@@ -1144,57 +1144,28 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
     /// @param user The account to check collateral/margin health for
-    /// @param currentTick The tick at which to evaluate the account's positions
+    /// @param atTick The tick at which to evaluate the account's positions
     /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
-    /// @param premiumAllPositions The premium collected thus far across all positions
+    /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
+    /// @param longPremium The total amount of premium owed by the long legs of `user`
     /// @return tokenData Information collected for the tokens about the health of the account
     /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getAccountMarginDetails(
         address user,
-        int24 currentTick,
-        uint256[2][] memory positionBalanceArray,
-        int128 premiumAllPositions
-    ) public view returns (LeftRightUnsigned tokenData) {
-        tokenData = _getAccountMargin(user, currentTick, positionBalanceArray, premiumAllPositions);
-    }
-
-    /// @notice Get the collateral status/margin details of an account/user.
-    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
-    /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user The account to check collateral/margin health for.
-    /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
-    /// @param premiumAllPositions The premium collected thus far across all positions
-    /// @return tokenData Information collected for the tokens about the health of the account;
-    /// the collateral balance of the user is in the right slot and the threshold for margin call is in the left slot
-    function _getAccountMargin(
-        address user,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
-        int128 premiumAllPositions
-    ) internal view returns (LeftRightUnsigned tokenData) {
+        uint128 shortPremium,
+        uint128 longPremium
+    ) public view returns (LeftRightUnsigned tokenData) {
         uint256 tokenRequired;
 
         // if the account has active options, compute the required collateral to keep account in good health
         if (positionBalanceArray.length > 0) {
             // get all collateral required for the incoming list of positions
-            tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray);
-
-            // If premium is negative (ie. user has to pay for their purchased options), add this long premium to the token requirement
-            if (premiumAllPositions < 0) {
-                unchecked {
-                    tokenRequired += uint128(-premiumAllPositions);
-                }
-            }
+            tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray) + longPremium;
         }
 
-        // if premium is positive (ie. user will receive funds due to selling options), add this premum to the user's balance
-        uint256 netBalance = convertToAssets(balanceOf[user]);
-        if (premiumAllPositions > 0) {
-            unchecked {
-                netBalance += uint256(uint128(premiumAllPositions));
-            }
-        }
+        uint256 netBalance = convertToAssets(balanceOf[user]) + uint128(shortPremium);
 
         // store assetBalance and tokens required in tokenData variable
         tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
