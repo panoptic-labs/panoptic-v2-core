@@ -2363,10 +2363,7 @@ contract FuzzDeployments is FuzzHelpers {
             (
                 uint128 sfpmGrossPremiaAccumulator0,
                 uint128 sfpmGrossPremiaAccumulator1
-            ) = _get_sfpm_accumulators(
-                    position,
-                    legIndex
-                );
+            ) = _get_sfpm_accumulators(position, legIndex);
 
             assertWithMsg(
                 grossPremiaLastToken0 <= sfpmGrossPremiaAccumulator0,
