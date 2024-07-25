@@ -712,7 +712,7 @@ library PanopticMath {
     /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
     /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user
     /// @param netExchanged The net exchanged value of the closed portfolio
-    /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated present in tokenData
+    /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
     /// @return bonus0 Bonus amount for token0
     /// @return bonus1 Bonus amount for token1
     /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's balance and expended tokens
