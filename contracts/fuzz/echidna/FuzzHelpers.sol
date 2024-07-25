@@ -488,6 +488,10 @@ contract FuzzHelpers is PropertiesAsserts {
     mapping(address => TokenId[]) userPositionsSFPMLong;
     mapping(address => TokenId[]) userPositionsSFPMix; // combo of short and long pos
 
+    // transfer storage
+    // tokenId -> owner -> position size
+    mapping(uint256 tokenId => mapping(address owner => uint256 positionSize)) balances;
+
     // current user
     address $activeUser;
 

@@ -974,6 +974,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, PropertiesAsserts {
             LeftRightUnsigned collectedSingleLeg
         )
     {
+        emit LogUint256("real is long ?", tokenId.isLong(leg));
+
         uint256 tokenType = tokenId.tokenType(leg);
         // unique key to identify the liquidity chunk in this uniswap pool
         bytes32 positionKey = keccak256(

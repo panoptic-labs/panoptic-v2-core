@@ -258,6 +258,8 @@ contract SFPMActions is GeneralActions {
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
 
+            // @note check the balance of their ERC1155 increased by position size
+
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
@@ -624,10 +626,6 @@ contract SFPMActions is GeneralActions {
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
         } catch Error(string memory reason) {
-            // @note if it fails ensure the amount of liquidity being minted was valid
-            // that the user has enough tokens to cover the mint and the mint is non-zero liq
-            // also ensure shouldRevert flag is not tipped to be true
-
             emit LogString(reason);
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
@@ -893,6 +891,8 @@ contract SFPMActions is GeneralActions {
             sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
+
+            // @note check the balance of their ERC1155 increased by position size
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
@@ -1290,10 +1290,6 @@ contract SFPMActions is GeneralActions {
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
         } catch Error(string memory reason) {
-            // @note if it fails ensure the amount of liquidity being minted was valid
-            // that the user has enough tokens to cover the mint and the mint is non-zero liq
-            // also ensure shouldRevert flag is not tipped to be true
-
             emit LogString(reason);
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
@@ -1344,6 +1340,8 @@ contract SFPMActions is GeneralActions {
             ChunkWithTokenType memory touchedChunk = touchedPanopticChunks[
                 bound(randSeed, 0, touchedPanopticChunks.length - 1)
             ];
+
+            assertWithMsg(false, "check x x x xx x x ");
 
             // randomly selected chunk
             $activeTokenId = $activeTokenId.addLeg(
@@ -1572,6 +1570,8 @@ contract SFPMActions is GeneralActions {
             sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
+
+            // @note check the balance of their ERC1155 increased by position size
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
@@ -2118,6 +2118,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
+            // @note check the balance of their ERC1155 increased by position size
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[minter].push($activeTokenId);
         } catch {}
@@ -2201,6 +2203,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
+            // @note check the balance of their ERC1155 increased by position size
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
         } catch {}
@@ -2270,6 +2274,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
+            // @note check the balance of their ERC1155 increased by position size
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
         } catch {}
@@ -2338,6 +2344,8 @@ contract SFPMActions is GeneralActions {
                 1e21, // 1e+21 -> assert value is within 0.01%
                 "bal 1 delta invalid"
             );
+
+            // @note check the balance of their ERC1155 increased by position size
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
@@ -2449,6 +2457,8 @@ contract SFPMActions is GeneralActions {
             // disabled as on low liq pools the swap won't occur at a single price (tick liquidity will roll over)
             // ensure that only token 0 was moved as this was a netting swap
             // assertWithMsg(totalMoved0 == convertedMoved1to0, "invalid conversion");
+
+            // @note check the balance of their ERC1155 increased by position size
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
@@ -2745,34 +2755,40 @@ contract SFPMActions is GeneralActions {
         $activeUser = msg.sender;
 
         // grab a random tokenId ***
-        if (isMix && userPositionsSFPMix.length != 0) {
+        if (isMix && userPositionsSFPMix[$activeUser].length != 0) {
             // burn mix
-            $activeTokenId = userPositionsSFPMix[
-                bound(randSeed, 0, userPositionsSFPMix.length - 1)
+            $activeTokenId = userPositionsSFPMix[$activeUser][
+                bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
             ];
-        } else if (isLong && userPositionsLong.length != 0) {
+        } else if (isLong && userPositionsSFPMLong[$activeUser].length != 0) {
             // burn a long
-            $activeTokenId = userPositionsLong[bound(randSeed, 0, userPositionsLong.length - 1)];
+            $activeTokenId = userPositionsSFPMLong[$activeUser][
+                bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
+            ];
         } else {
-            if (userPositionsShort.length == 0) {
+            if (userPositionsSFPMShort[$activeUser].length == 0) {
                 revert();
             }
 
             // burn a short
-            $activeTokenId = userPositionsShort[bound(randSeed, 0, userPositionsShort.length - 1)];
+            $activeTokenId = userPositionsSFPMShort[$activeUser][
+                bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1)
+            ];
         }
-
-        // longs are treated as shorts and shorts are treated as longs
 
         // fund the actor
         hevm.prank($activeUser);
         fund_and_approve();
 
         // pre-mint calculations/actions for storage
-        for (uint i; i < $activeNumLegs; i++) {
+        for (uint i = $activeNumLegs; i > 0; i--) {
             $activeLegIndex = i;
 
             emit LogUint256("active leg index: ", $activeLegIndex);
+
+            {
+                // @note check the balance of their ERC1155 decreased by position size
+            }
 
             {
                 // get the amount of liquidity being deposited
@@ -2981,7 +2997,7 @@ contract SFPMActions is GeneralActions {
             $sTotalSwapped = totalSwapped;
 
             // preform post-mint invariant checks per leg
-            for (uint i; i < $activeNumLegs; i++) {
+            for (uint i = $activeNumLegs; i > 0; i--) {
                 $activeLegIndex = i;
 
                 emit LogUint256("active leg index: ", $activeLegIndex);
@@ -3403,10 +3419,6 @@ contract SFPMActions is GeneralActions {
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
         } catch Error(string memory reason) {
-            // @note if it fails ensure the amount of liquidity being minted was valid
-            // that the user has enough tokens to cover the mint and the mint is non-zero liq
-            // also ensure shouldRevert flag is not tipped to be true
-
             emit LogString(reason);
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
@@ -3414,4 +3426,29 @@ contract SFPMActions is GeneralActions {
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
         }
     }
+
+    // transfer
+
+    // function transfer_tokenId() {}
+    //  // grab a random tokenId ***
+    // if (isMix && userPositionsSFPMix[$activeUser].length != 0) {
+    //     // burn mix
+    //     $activeTokenId = userPositionsSFPMix[$activeUser][
+    //         bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
+    //     ];
+    // } else if (isLong && userPositionsSFPMLong[$activeUser].length != 0) {
+    //     // burn a long
+    //     $activeTokenId = userPositionsSFPMLong[$activeUser][
+    //         bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
+    //     ];
+    // } else {
+    //     if (userPositionsSFPMShort[$activeUser].length == 0) {
+    //         revert();
+    //     }
+
+    //     // burn a short
+    //     $activeTokenId = userPositionsSFPMShort[$activeUser][
+    //         bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1)
+    //     ];
+    // }
 }
