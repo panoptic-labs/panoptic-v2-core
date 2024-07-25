@@ -2359,20 +2359,20 @@ contract FuzzDeployments is FuzzHelpers {
             // that product is the total gross premia SFPM thinks is owed to the Pool the position is in, and is the value
             // the pool's grossPremiaLast should never exceed.
             // LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
-            // TODO: The new, corrected way is in _get_sfpm_gross_premia - need to confirm its correct
-            (uint128 sfpmGrossPremia0, uint128 sfpmGrossPremia1) = _get_sfpm_gross_premia(
+            // TODO: The new, corrected way is in _get_sfpm_accumulators - need to confirm its correct
+            (uint128 sfpmGrossPremiaAccumulator0, uint128 sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
                 position,
                 legIndex,
                 positionHolder
             );
 
             assertWithMsg(
-                grossPremiaLastToken0 <= sfpmGrossPremia0,
+                grossPremiaLastToken0 <= sfpmGrossPremiaAccumulator0,
                 "Pools grossPremiaLastToken0 is greater than SFPMs grossPremiaToken0"
             );
 
             assertWithMsg(
-                grossPremiaLastToken1 <= sfpmGrossPremia1,
+                grossPremiaLastToken1 <= sfpmGrossPremiaAccumulator1,
                 "Pools grossPremiaLastToken1 is greater than SFPMs grossPremiaToken1"
             );
         }
@@ -2391,9 +2391,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 liquidity = PanopticMath.getLiquidityChunk(position, legIndex, posSize).liquidity();
         sfpmGrossPremia0 = (premiumAccumulator0 * liquidity) >> 64;
         sfpmGrossPremia1 = (premiumAccumulator1 * liquidity) >> 64;
-        emit LogUint256("premiumAccumulator1", premiumAccumulator1);
-        emit LogUint256("liquidity", liquidity);
-        emit LogUint256("sfpmGrossPremia1", sfpmGrossPremia1);
     }
 
     int24 $currentTick;
