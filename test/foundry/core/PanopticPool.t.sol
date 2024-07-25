@@ -170,6 +170,7 @@ contract PanopticPoolTest is PositionUtils {
     uint16 observationIndex;
     uint16 observationCardinality;
     int24 fastOracleTick;
+    int24 lastObservedTick;
 
     int24 slowOracleTick;
     uint160 medianSqrtPriceX96;
@@ -6339,7 +6340,11 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
-
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(swapSizeSeed);
+        }
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
@@ -6461,7 +6466,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256 burnDelta0C = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, shareDeltasLiquidatee[1]),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     );
                 int256 burnDelta0 = convertToAssets(ct0, shareDeltasLiquidatee[0]);
                 int256 burnDelta1 = convertToAssets(ct1, shareDeltasLiquidatee[1]);
@@ -6497,7 +6502,7 @@ contract PanopticPoolTest is PositionUtils {
                         premiasByLeg[i][j].leftSlot() < 0
                             ? -premiasByLeg[i][j].leftSlot()
                             : int128(0),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     );
                     $settledTokens[bytes32(settledTokensTemp[i][j][0])] = LeftRightUnsigned.wrap(
                         settledTokensTemp[i][j][1]
@@ -6512,7 +6517,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
             PanopticMath.convert1to0(
                 ct1.convertToAssets(ct1.balanceOf(Bob)),
-                TickMath.getSqrtRatioAtTick(currentTickFinal)
+                TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
         {
@@ -6528,7 +6533,7 @@ contract PanopticPoolTest is PositionUtils {
             $tokenData0,
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
-            Math.getSqrtRatioAtTick(currentTickFinal),
+            Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
             $premia
         );
@@ -6539,6 +6544,47 @@ contract PanopticPoolTest is PositionUtils {
         $delegated1 = uint256(
             int256(ct1.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus1)))
         );
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                pp.getUniV3TWAP_(),
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
+        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                currentTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                fastOracleTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                lastObservedTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
 
         pp.liquidate(
             new TokenId[](0),
@@ -6556,7 +6602,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
                 PanopticMath.convert1to0(
                     ct1.convertToAssets(ct1.balanceOf(Bob)),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 ) +
                 1,
             $accValueBefore0,
@@ -6604,7 +6650,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(
                     (($totalSupply1 - $liquidateeBalancePost1) * $totalAssets1) / $totalSupply1
                 ) - int256(ct1.convertToAssets($totalSupply1 - $liquidateeBalancePost1)),
-                TickMath.getSqrtRatioAtTick(currentTickFinal)
+                TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
@@ -6620,7 +6666,7 @@ contract PanopticPoolTest is PositionUtils {
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, $shareDelta1),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     ),
                 Math.min(
                     $combinedBalance0Premium / 2,
@@ -6657,7 +6703,7 @@ contract PanopticPoolTest is PositionUtils {
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, $shareDelta1),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     ),
                 Math.min(
                     $combinedBalance0Premium / 2,
@@ -6689,11 +6735,11 @@ contract PanopticPoolTest is PositionUtils {
                 settledTokens0[1] += pp.settledTokens(chunk).rightSlot();
                 settledTokens0[0] += PanopticMath.convert1to0(
                     $settledTokens[chunk].leftSlot(),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 );
                 settledTokens0[1] += PanopticMath.convert1to0(
                     pp.settledTokens(chunk).leftSlot(),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 );
             }
         }
@@ -6715,7 +6761,7 @@ contract PanopticPoolTest is PositionUtils {
                     int256(uint256($tokenData1.rightSlot())) -
                         Math.max($premia.leftSlot(), 0) +
                         $burnDelta1,
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 )
             );
 
@@ -6752,7 +6798,7 @@ contract PanopticPoolTest is PositionUtils {
                 ct0.convertToAssets(ct0.balanceOf(Bob)) +
                     PanopticMath.convert1to0(
                         ct1.convertToAssets(ct1.balanceOf(Bob)),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     )
             ) - int256($accValueBefore0),
             $bonusCombined0,
@@ -6841,7 +6887,6 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         twoWaySwap(swapSizeSeed);
-
         // now we can mint the options being liquidated
         vm.startPrank(Alice);
 
@@ -6868,6 +6913,11 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         twoWaySwap(swapSizeSeed);
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(1e4);
+        }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
@@ -6990,7 +7040,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256 burnDelta0C = convertToAssets(ct0, shareDeltasLiquidatee[0]) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, shareDeltasLiquidatee[1]),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     );
                 int256 burnDelta0 = convertToAssets(ct0, shareDeltasLiquidatee[0]);
                 int256 burnDelta1 = convertToAssets(ct1, shareDeltasLiquidatee[1]);
@@ -7026,7 +7076,7 @@ contract PanopticPoolTest is PositionUtils {
                         premiasByLeg[i][j].leftSlot() < 0
                             ? -premiasByLeg[i][j].leftSlot()
                             : int128(0),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     );
                     $settledTokens[bytes32(settledTokensTemp[i][j][0])] = LeftRightUnsigned.wrap(
                         settledTokensTemp[i][j][1]
@@ -7041,7 +7091,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
             PanopticMath.convert1to0(
                 ct1.convertToAssets(ct1.balanceOf(Bob)),
-                TickMath.getSqrtRatioAtTick(currentTickFinal)
+                TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
         {
@@ -7057,7 +7107,7 @@ contract PanopticPoolTest is PositionUtils {
             $tokenData0,
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
-            Math.getSqrtRatioAtTick(currentTickFinal),
+            Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
             $premia
         );
@@ -7068,6 +7118,47 @@ contract PanopticPoolTest is PositionUtils {
         $delegated1 = uint256(
             int256(ct1.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus1)))
         );
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                pp.getUniV3TWAP_(),
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
+        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                currentTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                fastOracleTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                lastObservedTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 < newRequired0);
+        }
 
         pp.liquidate(
             new TokenId[](0),
@@ -7085,7 +7176,7 @@ contract PanopticPoolTest is PositionUtils {
             ct0.convertToAssets(ct0.balanceOf(Bob)) +
                 PanopticMath.convert1to0(
                     ct1.convertToAssets(ct1.balanceOf(Bob)),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 ) +
                 1,
             $accValueBefore0,
@@ -7133,7 +7224,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(
                     (($totalSupply1 - $liquidateeBalancePost1) * $totalAssets1) / $totalSupply1
                 ) - int256(ct1.convertToAssets($totalSupply1 - $liquidateeBalancePost1)),
-                TickMath.getSqrtRatioAtTick(currentTickFinal)
+                TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
         // every time an option is burnt, the owner can lose up to 1 share (worth much less than 1 token) due to rounding
@@ -7149,7 +7240,7 @@ contract PanopticPoolTest is PositionUtils {
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, $shareDelta1),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     ),
                 Math.min(
                     $combinedBalance0Premium / 2,
@@ -7187,7 +7278,7 @@ contract PanopticPoolTest is PositionUtils {
                 convertToAssets(ct0, $shareDelta0) +
                     PanopticMath.convert1to0(
                         convertToAssets(ct1, $shareDelta1),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     ),
                 Math.min(
                     $combinedBalance0Premium / 2,
@@ -7219,11 +7310,11 @@ contract PanopticPoolTest is PositionUtils {
                 settledTokens0[1] += pp.settledTokens(chunk).rightSlot();
                 settledTokens0[0] += PanopticMath.convert1to0(
                     $settledTokens[chunk].leftSlot(),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 );
                 settledTokens0[1] += PanopticMath.convert1to0(
                     pp.settledTokens(chunk).leftSlot(),
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 );
             }
         }
@@ -7245,7 +7336,7 @@ contract PanopticPoolTest is PositionUtils {
                     int256(uint256($tokenData1.rightSlot())) -
                         Math.max($premia.leftSlot(), 0) +
                         $burnDelta1,
-                    TickMath.getSqrtRatioAtTick(currentTickFinal)
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 )
             );
 
@@ -7282,7 +7373,7 @@ contract PanopticPoolTest is PositionUtils {
                 ct0.convertToAssets(ct0.balanceOf(Bob)) +
                     PanopticMath.convert1to0(
                         ct1.convertToAssets(ct1.balanceOf(Bob)),
-                        TickMath.getSqrtRatioAtTick(currentTickFinal)
+                        TickMath.getSqrtRatioAtTick(TWAPtick)
                     )
             ) - int256($accValueBefore0),
             $bonusCombined0,
@@ -7440,7 +7531,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(Constants.MAX_V3POOL_TICK) - int256(currentTick)
             )
         );
-        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 513);
+        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 953);
         vm.store(
             address(pool),
             bytes32(0),
@@ -7563,12 +7654,18 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         twoWaySwap(swapSizeSeed);
+        // update twap
+        for (uint256 j = 0; j < 20; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            twoWaySwap(1e4);
+        }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
 
-        (, uint256 totalCollateralRequired0) = ph.checkCollateral(
+        (, uint256 twapCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
             pp.getUniV3TWAP_(),
@@ -7576,6 +7673,22 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
+        (, uint256 currentCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Alice,
+            currentTick,
+            0,
+            $posIdLists[1]
+        );
+
+        console2.log(
+            "twapCollateralRequired0, currentCollateralRequired0",
+            twapCollateralRequired0,
+            currentCollateralRequired0
+        );
+        uint256 totalCollateralRequired0 = twapCollateralRequired0 > currentCollateralRequired0
+            ? twapCollateralRequired0
+            : currentCollateralRequired0;
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
             (totalCollateralRequired0 * 10_001) / 10_000,
@@ -7600,12 +7713,59 @@ contract PanopticPoolTest is PositionUtils {
             ct1.convertToShares(
                 PanopticMath.convert0to1(
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    Math.getSqrtRatioAtTick(
+                        twapCollateralRequired0 > currentCollateralRequired0
+                            ? pp.getUniV3TWAP_()
+                            : currentTick
+                    )
                 )
             )
         );
 
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                pp.getUniV3TWAP_(),
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                currentTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                fastOracleTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+        {
+            (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
+                pp,
+                Alice,
+                lastObservedTick,
+                0,
+                $posIdLists[1]
+            );
+            vm.assume(newBalance0 > newRequired0);
+        }
+
         vm.startPrank(Bob);
+        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
         pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]);
