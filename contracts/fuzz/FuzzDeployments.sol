@@ -2360,11 +2360,10 @@ contract FuzzDeployments is FuzzHelpers {
             // the pool's grossPremiaLast should never exceed.
             // LeftRightUnsigned sfpmGrossPremia = sfpm.getAccountPremiumGross(position, legIndex);
             // TODO: The new, corrected way is in _get_sfpm_accumulators - need to confirm its correct
-            (uint128 sfpmGrossPremiaAccumulator0, uint128 sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
-                position,
-                legIndex,
-                positionHolder
-            );
+            (
+                uint128 sfpmGrossPremiaAccumulator0,
+                uint128 sfpmGrossPremiaAccumulator1
+            ) = _get_sfpm_accumulators(position, legIndex, positionHolder);
 
             assertWithMsg(
                 grossPremiaLastToken0 <= sfpmGrossPremiaAccumulator0,
