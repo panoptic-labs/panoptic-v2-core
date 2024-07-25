@@ -609,12 +609,6 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function _write_revert_due_solvency(address sUser, uint256 buffer) internal {
-        ($premia0, $premia1, $posBalanceArray) = panopticPool.calculateAccumulatedFeesBatch(
-            sUser,
-            false,
-            userPositions[sUser]
-        );
-
         if (
             int256($colTicks[0] - $colTicks[1]) ** 2 +
                 int256($colTicks[1] - $colTicks[2]) ** 2 +
@@ -642,7 +636,7 @@ contract FuzzHelpers is PropertiesAsserts {
                     ) +
                     Math.mulDiv96(
                         $balance0ExpectedP + uint128($premia0 > 0 ? $premia0 : int128(0)),
-                        TickMath.getSqrtRatioAtTick($colTicks[1])
+                        TickMath.getSqrtRatioAtTick($colTicks[i])
                     );
 
                 $thresholdCross =
@@ -1398,6 +1392,9 @@ contract FuzzHelpers is PropertiesAsserts {
                     );
                 emit LogUint256("$spreadRatioL", $spreadRatio);
 
+                $shouldRevert = $shouldRevert
+                    ? $shouldRevert
+                    : int256($netLiquidity) - int256(uint256(liquidityChunk.liquidity())) == 0;
                 $shouldRevert = $shouldRevert ? $shouldRevert : $spreadRatio > 9 * (2 ** 32);
                 emit LogBool("should revert due to spread ratio", $shouldRevert);
             }

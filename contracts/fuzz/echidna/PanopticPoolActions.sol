@@ -312,19 +312,6 @@ contract PanopticPoolActions is CollateralActions {
             );
         }
 
-        $tokenData0 = collToken0.getAccountMarginDetails(
-            msg.sender,
-            $fastOracleTick,
-            $posBalanceArray,
-            $premia0
-        );
-        $tokenData1 = collToken1.getAccountMarginDetails(
-            msg.sender,
-            $fastOracleTick,
-            $posBalanceArray,
-            $premia1
-        );
-
         $totalAssets0 = collToken0.totalAssets();
         $totalAssets1 = collToken1.totalAssets();
         $totalSupply0 = collToken0.totalSupply();
@@ -378,12 +365,11 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             _write_revert_due_solvency(msg.sender, 13_333);
+
             emit LogInt256("colDelta0", $colDelta0);
             emit LogInt256("colDelta1", $colDelta1);
             emit LogUint256("bal0", $balance0ExpectedP);
             emit LogUint256("bal1", $balance1ExpectedP);
-            emit LogUint256("req0", uint256($tokenData0.leftSlot()));
-            emit LogUint256("req1", uint256($tokenData1.leftSlot()));
             emit LogUint256("balCross", $balanceCross);
             emit LogUint256("thresholdCross", $thresholdCross);
             emit LogInt256("fast tick", $fastOracleTick);
