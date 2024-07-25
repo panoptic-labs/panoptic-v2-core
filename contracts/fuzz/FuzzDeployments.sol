@@ -1738,14 +1738,22 @@ contract FuzzDeployments is FuzzHelpers {
         if (preburnGrossPremium == 0) return 0;
 
         return
-            uint128(
-                Math.min(
-                    (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
-                        // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
-                        (((preburnGrossPremium - preburnGrossPremiumLast) *
-                            preburnShortLiquidity) >> 64),
-                    idealPremium
-                )
+            Math.min(
+                uint128(
+                    Math.min(
+                        /*
+                        (26098 * 26089 * 923) / (((521588042771463844758 - 0) * 923) / 2^64)
+                        */
+                        (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
+                            // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
+                            (((preburnGrossPremium - preburnGrossPremiumLast) *
+                                preburnShortLiquidity) >> 64),
+                        idealPremium
+                    )
+                ),
+                // We can only, at maximum, pay out the settled tokens that we have pre-burn
+                // (this figure includes any that were collected according to the SFPM.burn sim)
+                preburnSettledTokens
             );
     }
 
@@ -1870,6 +1878,19 @@ contract FuzzDeployments is FuzzHelpers {
                         projectedPremia[legIndex].idealPremium1,
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
+            /*
+            TODO: We want this here to prove we are successfully handling an old assertion failure
+             for when we used the accumulator with the ITM swap amount for this invariant
+            (
+                ,
+                uint256 oldWayPostburnSFPMGrossPremiaAccumulator1
+            ) = _get_sfpm_accumulators($position, legIndex);
+            if ($position.isLong(legIndex) == 1 && $postburnSFPMGrossPremiaAccumulator1 == preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 && oldWayPostburnSFPMGrossPremiaAccumulator1 != $postburnSFPMGrossPremiaAccumulator1) {
+
+                emit LogUint256("getting the accumulator your old way gives you: ", oldWayPostburnSFPMGrossPremiaAccumulator1);
+                assertWithMsg(false, "made it past your old case");
+
+            } */
             delete $expectedSettledToken0DifferenceForChunk;
             delete $expectedSettledToken1DifferenceForChunk;
             delete $postburnSettledToken0;
@@ -1909,8 +1930,13 @@ contract FuzzDeployments is FuzzHelpers {
             collToken0.balanceOf($caller)
         );
         assertWithMsg(
-            int256(burnersPreburnValues.assetsInCT0) + int256(expectedToken0Difference) ==
-                int256(burnersPostburnAssetsInCT0),
+            // Differences in the CT tracker can be off-by-one as a payment can tick you over a
+            // rounding threshold
+            abs(
+                int256(burnersPreburnValues.assetsInCT0) +
+                expectedToken0Difference -
+                int256(burnersPostburnAssetsInCT0)
+            ) <= 1,
             "Burners assets in collToken0 were not deducted/added the net premia"
         );
 
@@ -1918,8 +1944,11 @@ contract FuzzDeployments is FuzzHelpers {
             collToken1.balanceOf($caller)
         );
         assertWithMsg(
-            int256(burnersPreburnValues.assetsInCT1) + expectedToken1Difference ==
-                int256(burnersPostburnAssetsInCT1),
+            abs(
+                int256(burnersPreburnValues.assetsInCT1) +
+                expectedToken1Difference -
+                int256(burnersPostburnAssetsInCT1)
+            ) <= 1,
             "Burners assets in collToken1 were not deducted/added the net premia"
         );
     }
