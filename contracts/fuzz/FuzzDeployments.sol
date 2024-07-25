@@ -1738,22 +1738,24 @@ contract FuzzDeployments is FuzzHelpers {
         if (preburnGrossPremium == 0) return 0;
 
         return
-            Math.min(
-                uint128(
-                    Math.min(
-                        /*
-                        (26098 * 26089 * 923) / (((521588042771463844758 - 0) * 923) / 2^64)
-                        */
-                        (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
-                            // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
-                            (((preburnGrossPremium - preburnGrossPremiumLast) *
-                                preburnShortLiquidity) >> 64),
-                        idealPremium
-                    )
-                ),
-                // We can only, at maximum, pay out the settled tokens that we have pre-burn
-                // (this figure includes any that were collected according to the SFPM.burn sim)
-                preburnSettledTokens
+            uint128(
+                Math.min(
+                    uint128(
+                        Math.min(
+                            /*
+                            (26098 * 26089 * 923) / (((521588042771463844758 - 0) * 923) / 2^64)
+                            */
+                            (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
+                                // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
+                                (((preburnGrossPremium - preburnGrossPremiumLast) *
+                                    preburnShortLiquidity) >> 64),
+                            idealPremium
+                        )
+                    ),
+                    // We can only, at maximum, pay out the settled tokens that we have pre-burn
+                    // (this figure includes any that were collected according to the SFPM.burn sim)
+                    preburnSettledTokens
+                )
             );
     }
 
