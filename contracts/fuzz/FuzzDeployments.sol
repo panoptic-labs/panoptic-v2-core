@@ -1880,19 +1880,6 @@ contract FuzzDeployments is FuzzHelpers {
                         projectedPremia[legIndex].idealPremium1,
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
-            /*
-            TODO: We want this here to prove we are successfully handling an old assertion failure
-             for when we used the accumulator with the ITM swap amount for this invariant
-            (
-                ,
-                uint256 oldWayPostburnSFPMGrossPremiaAccumulator1
-            ) = _get_sfpm_accumulators($position, legIndex);
-            if ($position.isLong(legIndex) == 1 && $postburnSFPMGrossPremiaAccumulator1 == preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 && oldWayPostburnSFPMGrossPremiaAccumulator1 != $postburnSFPMGrossPremiaAccumulator1) {
-
-                emit LogUint256("getting the accumulator your old way gives you: ", oldWayPostburnSFPMGrossPremiaAccumulator1);
-                assertWithMsg(false, "made it past your old case");
-
-            } */
             delete $expectedSettledToken0DifferenceForChunk;
             delete $expectedSettledToken1DifferenceForChunk;
             delete $postburnSettledToken0;
