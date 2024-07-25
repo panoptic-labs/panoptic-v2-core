@@ -450,7 +450,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
-    /// There is a maximum asset deposit limit of (2 ** 104) - 1.
+    /// @dev There is a maximum asset deposit limit of (2 ** 104) - 1.
     /// An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
     /// @param shares Amount of shares to be minted.
@@ -903,22 +903,26 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _transferFrom(delegator, delegatee, shares);
     }
 
-    /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
+    /// @notice Increase the share balance of a user by shares worth `assets` without updating the total supply.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev Mints ghost shares so a position can be settled - the total supply is not affected.
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares
-    /// @param assets The assets to which the shares delegated correspond
-    function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
-        balanceOf[delegatee] += convertToShares(assets);
+    /// @param delegatee The account to increase the balance of
+    /// @param assets The amount of assets worth of shares to mint to `delegatee`
+    /// @return shares The amount of shares minted to `delegatee`
+    function delegate(
+        address delegatee,
+        uint256 assets
+    ) external onlyPanopticPool returns (uint256 shares) {
+        shares = convertToShares(assets);
+        balanceOf[delegatee] += shares;
     }
 
-    /// @notice Refunds delegated tokens back to the protocol.
-    /// @dev Assumes that `delegatee` has enough money to pay for the refund.
-    /// @dev Burns ghost shares after a position has been settled - the total supply is not affected.
-    /// @param delegatee The account refunding tokens to 'delegatee'
-    /// @param assets The amount of assets to which the shares to refund to the protocol correspond
-    function refund(address delegatee, uint256 assets) external onlyPanopticPool {
-        balanceOf[delegatee] -= convertToShares(assets);
+    /// @notice Decrease the share balance of a user without updating the total supply.
+    /// @dev Assumes that `delegatee` has enough money to pay for the refund, will revert otherwise.
+    /// @dev This is controlled by the Panoptic Pool - not individual users.
+    /// @param delegatee The account to decrease the balance of
+    /// @param shares The amount of shares to burn from `delegatee`
+    function revoke(address delegatee, uint256 shares) external onlyPanopticPool {
+        balanceOf[delegatee] -= shares;
     }
 
     /// @notice Revoke previously delegated shares. The opposite of 'delegate'.

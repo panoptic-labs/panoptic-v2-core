@@ -10,12 +10,9 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
+import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 
-/**
- * @title Deployment script that deploys two tokens, a Uniswap V3 pool, and a Panoptic Pool on top of that.
- * @author Axicon Labs Limited
- */
-contract DeployNFT is Script {
+contract DeployProtocol is Script {
     struct PointerInfo {
         uint256 codeIndex;
         uint256 end;
@@ -24,6 +21,12 @@ contract DeployNFT is Script {
 
     function run() public {
         uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
+
+        // 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14: sepolia
+        address WETH9 = vm.envAddress("WETH9");
+
+        // 0x0227628f3f023bb0b980b67d528571c95c6dac1c: sepolia
+        IUniswapV3Factory uniFactory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
 
         vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
 
@@ -77,17 +80,21 @@ contract DeployNFT is Script {
             }
         }
 
-        PanopticFactory factory = new PanopticFactory(
-            address(0),
-            SemiFungiblePositionManager(address(0)),
-            IUniswapV3Factory(address(0)),
-            address(0),
-            address(0),
+        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory);
+        new PanopticFactory(
+            WETH9,
+            sfpm,
+            uniFactory,
+            address(new PanopticPool(sfpm)),
+            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20_000)),
             props,
             indices,
             pointers
         );
-        factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
+
+        new PanopticHelper(sfpm);
+
+        // factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
         vm.stopBroadcast();
     }
 }

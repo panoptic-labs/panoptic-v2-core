@@ -51,7 +51,7 @@ library Errors {
     error NoLegsExercisable();
 
     /// @notice PanopticPool: the account is not solvent enough to perform the desired action
-    error NotEnoughCollateral();
+    error AccountInsolvent();
 
     /// @notice SFPM: maximum token amounts for a position exceed 128 bits
     error PositionTooLarge();

@@ -9,7 +9,6 @@ import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
-import {ERC20S} from "@scripts/tokens/ERC20S.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
@@ -24,6 +23,19 @@ import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
+import {ERC20} from "solmate/tokens/ERC20.sol";
+
+contract ERC20S is ERC20 {
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint8 decimals
+    ) ERC20(name, symbol, decimals) {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
 
 contract SwapperC {
     function uniswapV3SwapCallback(
@@ -578,6 +590,81 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+    }
+
+    // are delegations for ITM positions sufficient?
+    function test_success_exercise_crossDelegate() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                1
+            )
+        );
+
+        vm.startPrank(Seller);
+
+        pp.mintOptions(
+            $posIdList,
+            2_000_000,
+            0,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        $posIdList[0] = TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+            0,
+            1,
+            1,
+            1,
+            0,
+            0,
+            15,
+            1
+        );
+
+        vm.startPrank(Alice);
+        pp.mintOptions(
+            $posIdList,
+            1_000_000,
+            type(uint64).max,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK
+        );
+
+        editCollateral(ct1, Alice, 0);
+
+        vm.startPrank(Swapper);
+
+        PanopticMath.twapFilter(uniPool, 600);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.swapTo(uniPool, 10 * 2 ** 96);
+
+        vm.warp(block.timestamp + 600);
+        vm.roll(block.number + 1);
+
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+
+        PanopticMath.twapFilter(uniPool, 600);
+
+        vm.startPrank(Bob);
+        pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
     }
 
     function test_success_ITMspreadfee_0_01bp() public {
@@ -1694,7 +1781,7 @@ contract Misctest is Test, PositionUtils {
 
             deal(address(ct0), Buyers[i], i ** 15);
             deal(address(ct1), Buyers[i], i ** 15);
-            vm.expectRevert(Errors.NotEnoughCollateral.selector);
+            vm.expectRevert(Errors.AccountInsolvent.selector);
             pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
             vm.revertTo(snap);
         }
@@ -2051,11 +2138,11 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(266262));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.validateCollateralWithdrawable(Bob, $posIdList);
     }
 
-    function test_Fail_WithdrawWithOpenPositions_NotEnoughCollateral() public {
+    function test_Fail_WithdrawWithOpenPositions_AccountInsolvent() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2090,11 +2177,473 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         ct0.withdraw(1_000_000 - 266262, Bob, Bob, $posIdList);
     }
 
-    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_NotEnoughCollateral() public {
+    function test_Fail_InsolventAtCurrentTick_itmPut() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(0, Bob);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum
+        ct1.deposit(17_817, Bob);
+
+        // mint fails, not enough collateral
+        vm.expectRevert();
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    function test_Fail_InsolventAtCurrentTick_itmCall() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(0, Bob);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for naked minting
+        ct1.deposit(17_811, Bob);
+
+        // mint fails, not enough collateral
+        vm.expectRevert();
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    function test_Success_InsolventAtCurrentTick_itmPut() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        (, int24 staleTick, , , , , ) = uniPool.slot0();
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
+
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == false);
+        vm.startPrank(Bob);
+
+        uint256 snapshot = vm.snapshot();
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for naked mints
+        ct0.deposit(0, Bob);
+        ct1.deposit(17_817, Bob);
+
+        // mint succeeds
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            staleTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
+
+        assertTrue(
+            totalCollateralBalance0 <= totalCollateralRequired0,
+            "Is liquidatable at current tick!"
+        );
+
+        vm.startPrank(Swapper);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
+        }
+
+        vm.startPrank(Alice);
+
+        // deal alice a bunch of collateral tokens without touching the supply
+        editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
+        editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
+            $posIdList
+        );
+
+        (uint256 after0, uint256 after1) = (
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            ct1.convertToAssets(ct1.balanceOf(Bob))
+        );
+
+        assertTrue((after0 > 0) || (after1 > 0), "no protocol loss");
+
+        vm.revertTo(snapshot);
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode());
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for covered mints
+        ct0.deposit(150504, Bob);
+        ct1.deposit(0, Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
+        assertTrue(
+            totalCollateralBalance0 >= totalCollateralRequired0,
+            "Is solvent at current tick!"
+        );
+    }
+
+    function test_Success_InsolventAtCurrentTick_itmCall() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (0 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        (, int24 staleTick, , , , , ) = uniPool.slot0();
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(952));
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == false);
+
+        vm.startPrank(Bob);
+
+        uint256 snapshot = vm.snapshot();
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for naked mints
+        ct0.deposit(0, Bob);
+        ct1.deposit(17_820, Bob);
+
+        // mint succeeds
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            staleTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        assertTrue(
+            totalCollateralBalance0 <= totalCollateralRequired0,
+            "Is liquidatable at current tick!"
+        );
+
+        vm.startPrank(Swapper);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
+        }
+
+        vm.startPrank(Alice);
+
+        // deal alice a bunch of collateral tokens without touching the supply
+        editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
+        editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
+            $posIdList
+        );
+
+        (uint256 after0, uint256 after1) = (
+            ct0.convertToAssets(ct0.balanceOf(Bob)),
+            ct1.convertToAssets(ct1.balanceOf(Bob))
+        );
+
+        assertTrue((after0 > 0) || (after1 > 0), "no protocol loss");
+
+        vm.revertTo(snapshot);
+
+        vm.startPrank(Swapper);
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+
+        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode());
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        token1.approve(address(ct1), 1_000_000);
+
+        // deposit bare minimum for covered mints
+        ct0.deposit(0, Bob);
+        ct1.deposit(150466, Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            $posIdList
+        );
+
+        console2.log("reqs", totalCollateralBalance0, totalCollateralRequired0);
+        assertTrue(
+            totalCollateralBalance0 >= totalCollateralRequired0,
+            "Is solvent at current tick!"
+        );
+    }
+
+    function test_Fail_WithdrawWithOpenPositions_SolventReceiver_AccountInsolvent() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
@@ -2129,8 +2678,596 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        vm.expectRevert(Errors.NotEnoughCollateral.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         ct0.withdraw(1_000_000 - 266262, Alice, Bob, $posIdList);
+    }
+
+    function test_Success_SafeMode_down() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
+
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+    }
+
+    function test_Success_SafeMode_up() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
+
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+    }
+
+    function test_Success_SafeMode_pokes() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 4; ++i) {
+            swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+        }
+
+        assertTrue(pp.isSafeMode() == true, "slow oracle tick did not catch up");
+
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+        vm.warp(block.timestamp + 120);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+        swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "slow oracle tick caught up");
+    }
+
+    function test_Success_SafeMode_mint_otm() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
+        assertTrue(!pp.isSafeMode(), "not in safe mode");
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (-900 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        uint256 snap = vm.snapshot();
+
+        // deposit only token0
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(41874, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(0, Bob);
+
+        // not in safeMode, mint with minimum
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.revertTo(snap);
+
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
+
+        console2.log("currentTick", currentTick);
+        console2.log("slowOracleTick", slowOracleTick);
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "large price deviation");
+
+        assertTrue(pp.isSafeMode(), "in safe mode");
+        vm.startPrank(Bob);
+
+        // deposit only token1
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(158699, Bob); // 1.3333 * (1.0001**900 * 100000) * (1 + 1 - 1.0001**-1 / 1.0001**900  -> 100 % collateralization, requirement evaluated at tick=-1.
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(0, Bob);
+
+        uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        // can mint covered positions
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
+    }
+
+    function test_Success_SafeMode_mint_itm() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint ITM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                (-2500 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        // deposit only token0
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(102_000, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(0, Bob);
+
+        // in safeMode, enforce covered mints, reverts
+        vm.expectRevert();
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        // deposit only token1
+        ct0.deposit(0, Bob);
+        ct1.deposit(181_183, Bob); //
+
+        uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        // can mint covered positions
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+            Bob,
+            $posIdList[0]
+        );
+
+        assertEq(balance, 100_000);
+        assertEq(utilization0, 10_000);
+        assertEq(utilization1, 10_000);
+    }
+
+    function test_Success_SafeMode_burn() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+
+        int24 tickSpacing = uniPool.tickSpacing();
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                (-500 / tickSpacing) * tickSpacing,
+                2
+            )
+        );
+
+        vm.startPrank(Bob);
+
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        token0.approve(address(ct0), 1_000_000);
+        ct0.deposit(28_000, Bob);
+        token1.approve(address(ct1), 1_000_000);
+        ct1.deposit(2_000, Bob);
+
+        pp.mintOptions(
+            $posIdList,
+            100_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+
+        assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
+        assertTrue(pp.isSafeMode(), "in safe mode");
+
+        vm.startPrank(Bob);
+
+        console2.log("00");
+        vm.expectRevert();
+        pp.burnOptions(
+            $posIdList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        // Add just enough to cover the covered exercise:
+        ct1.deposit(98_300, Bob);
+
+        pp.burnOptions(
+            $posIdList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
+        uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
+
+        console2.log(before0, before1, after0, after1);
+    }
+
+    function test_Success_OraclePoke_mint() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        (, , int24 slowOracleTick, , uint256 medianData) = pp.getOracleTicks();
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                4095
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.warp(block.timestamp + 59);
+        vm.roll(block.number + 1);
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        pp.burnOptions(
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
+        assertEq(medianData, medianDataStale, "no slow oracle update");
+
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick != slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data update");
+    }
+
+    function test_Success_OraclePoke_burn() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        (, , int24 slowOracleTick, , uint256 medianData) = pp.getOracleTicks();
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                15,
+                4095
+            )
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.warp(block.timestamp + 59);
+        vm.roll(block.number + 1);
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
+        assertEq(medianData, medianDataStale, "no slow oracle update");
+
+        vm.warp(block.timestamp + 1);
+        vm.roll(block.number + 1);
+
+        pp.burnOptions(
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
+
+        vm.warp(block.timestamp + 61);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
+        assertTrue(medianData != medianDataStale, "oracle median data updated");
     }
 
     function test_success_NotionalRounding() public {
@@ -2401,6 +3538,14 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
         vm.startPrank(Seller);

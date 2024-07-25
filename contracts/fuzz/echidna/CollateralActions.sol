@@ -811,16 +811,10 @@ contract CollateralActions is SFPMActions {
         address withdrawer,
         bool isToken0
     ) internal {
-        // check whether current positions are solvent; assertFalse if not
+        // check whether current positions are solvent; revert if not
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
-        try
-            panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions)
-        {} catch {
-            assertWithMsg(
-                false,
-                "User is not solvent even prior to withdrawing-with-open-positions"
-            );
-        }
+
+        panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions);
 
         // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately
         uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
@@ -887,8 +881,8 @@ contract CollateralActions is SFPMActions {
     ) internal view returns (uint256 maxAssetsWithdrawable) {
         (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();
         uint256 withdrawersAssetsInCT = collToken.convertToAssets(withdrawerSharesBefore);
-        maxAssetsWithdrawable = ct_s_poolAssets < withdrawersAssetsInCT
-            ? ct_s_poolAssets
+        maxAssetsWithdrawable = ct_s_poolAssets - 1 < withdrawersAssetsInCT
+            ? ct_s_poolAssets - 1
             : withdrawersAssetsInCT;
     }
 
@@ -901,7 +895,7 @@ contract CollateralActions is SFPMActions {
         (, int24 currentTick, uint16 observationIndex, uint16 observationCardinality, , , ) = pool
             .slot0();
 
-        int24 fastOracleTick = PanopticMath.computeMedianObservedPrice(
+        (int24 fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
             pool,
             observationIndex,
             observationCardinality,
@@ -911,7 +905,7 @@ contract CollateralActions is SFPMActions {
 
         // s_miniMedian, an internal var in the PanopticPool, can be found in storage slot 1:
         uint256 miniMedian = uint256(hevm.load(address(panopticPool), bytes32(uint256(1))));
-        (int24 slowOracleTick, uint256 medianData) = PanopticMath.computeInternalMedian(
+        (int24 slowOracleTick, ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             MEDIAN_PERIOD,

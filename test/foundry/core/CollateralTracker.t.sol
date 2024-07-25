@@ -125,15 +125,15 @@ contract PanopticPoolHarness is PanopticPool {
         // Start and store the collateral token0/1
         _initalizeCollateralPair(token0, token1, uniswapPool);
 
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = uniswapPool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
 
-        int24 slowOracleTick = PanopticMath.computeMedianObservedPrice(
-            uniswapPool,
-            observationIndex,
-            observationCardinality,
-            SLOW_ORACLE_CARDINALITY,
-            SLOW_ORACLE_PERIOD
-        );
+        ) = uniswapPool.slot0();
 
         unchecked {
             s_miniMedian =
@@ -141,8 +141,8 @@ contract PanopticPoolHarness is PanopticPool {
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_miniMedian initialization for format of this magic number
                 (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(slowOracleTick)) << 24) + // add to slot 4
-                (uint256(uint24(slowOracleTick))); // add to slot 3
+                (uint256(uint24(currentTick)) << 24) + // add to slot 4
+                (uint256(uint24(currentTick))); // add to slot 3
         }
 
         // Approve transfers of Panoptic Pool funds by SFPM
@@ -206,12 +206,12 @@ contract PanopticPoolHarness is PanopticPool {
         collateralToken.refund(delegator, delegatee, requestedAmount);
     }
 
-    function refund(
+    function revoke(
         address delegatee,
         uint256 requestedAmount,
         CollateralTracker collateralToken
     ) external {
-        collateralToken.refund(delegatee, requestedAmount);
+        collateralToken.revoke(delegatee, requestedAmount);
     }
 
     function getTWAP() external view returns (int24 twapTick) {
@@ -1886,7 +1886,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
     }
 
-    function test_Success_refund_virtual(uint256 x, uint104 shares) public {
+    function test_Success_revoke_virtual(uint256 x, uint104 shares) public {
         {
             // fuzz
             _initWorld(x);
@@ -1925,16 +1925,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
 
         // invoke delegate transactions from the Panoptic pool
-        panopticPool.refund(
-            Alice,
-            convertToAssets(sharesBefore0, collateralToken0),
-            collateralToken0
-        );
-        panopticPool.refund(
-            Alice,
-            convertToAssets(sharesBefore1, collateralToken1),
-            collateralToken1
-        );
+        panopticPool.revoke(Alice, sharesBefore0, collateralToken0);
+        panopticPool.revoke(Alice, sharesBefore1, collateralToken1);
 
         // make sure share price stays the same
         assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
@@ -1943,8 +1935,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
         uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
 
-        assertApproxEqAbs(0, convertToAssets(sharesAfter0, collateralToken0), 5);
-        assertApproxEqAbs(0, convertToAssets(sharesAfter1, collateralToken1), 5);
+        assertEq(0, sharesAfter0);
+        assertEq(0, sharesAfter1);
     }
 
     function test_success_refund_positive(uint256 x, uint104 shares) public {
@@ -2060,7 +2052,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.delegate(address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.refund(address(0), 0);
+        collateralToken0.revoke(address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
         collateralToken0.revoke(address(0), address(0), 0);
