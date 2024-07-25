@@ -1165,7 +1165,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray) + longPremium;
         }
 
-        uint256 netBalance = convertToAssets(balanceOf[user]) + uint128(shortPremium);
+        uint256 netBalance = convertToAssets(balanceOf[user]) + shortPremium;
 
         // store assetBalance and tokens required in tokenData variable
         tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
