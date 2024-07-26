@@ -160,6 +160,8 @@ contract Misctest is Test, PositionUtils {
     int24 fastOracleTick;
     int24 lastObservedTick;
 
+    uint256 medianData;
+
     uint256 assetsBefore0;
     uint256 assetsBefore1;
 
@@ -1373,7 +1375,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, 2 ** 96);
         {
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
             LeftRightUnsigned accountLiquidityPrimary = sfpm.getAccountLiquidity(
                 address(uniPool),
                 address(pp),
@@ -2379,7 +2381,7 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
 
-        (, int24 currentTick, , , , , ) = uniPool.slot0();
+        (, currentTick, , , , , ) = uniPool.slot0();
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -2553,7 +2555,7 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(totalCollateralBalance0 > totalCollateralRequired0, "Is solvent at stale tick!");
 
-        (, int24 currentTick, , , , , ) = uniPool.slot0();
+        (, currentTick, , , , , ) = uniPool.slot0();
 
         (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -2705,7 +2707,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
-        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
@@ -2729,7 +2731,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
-        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
@@ -2763,7 +2765,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -2810,7 +2812,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
-        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(!pp.isSafeMode(), "not in safe mode");
@@ -2871,9 +2873,6 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
         ct1.deposit(0, Bob);
 
-        uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
-
         // can mint covered positions
         pp.mintOptions(
             $posIdList,
@@ -2882,8 +2881,6 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
-        uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
             Bob,
@@ -2917,7 +2914,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -2965,9 +2962,6 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(0, Bob);
         ct1.deposit(181_183, Bob); //
 
-        uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        uint256 before1 = ct1.convertToAssets(ct1.balanceOf(Bob));
-
         // can mint covered positions
         pp.mintOptions(
             $posIdList,
@@ -2976,8 +2970,6 @@ contract Misctest is Test, PositionUtils {
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
-        uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
-        uint256 after1 = ct1.convertToAssets(ct1.balanceOf(Bob));
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
             Bob,
@@ -3045,7 +3037,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        (int24 currentTick, int24 slowOracleTick, , , ) = pp.getOracleTicks();
+        (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -3098,7 +3090,7 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        (, , int24 slowOracleTick, , uint256 medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3202,7 +3194,7 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        (, , int24 slowOracleTick, , uint256 medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3312,12 +3304,13 @@ contract Misctest is Test, PositionUtils {
             $posIdList
         );
 
-        (, int24 currentTick, , , , , ) = uniPool.slot0();
+        (, currentTick, , , , , ) = uniPool.slot0();
 
         LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
             Bob,
             currentTick,
             positionBalanceArray,
+            0,
             0
         );
 
@@ -3325,6 +3318,7 @@ contract Misctest is Test, PositionUtils {
             Bob,
             currentTick,
             positionBalanceArray,
+            0,
             0
         );
         (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
@@ -3750,7 +3744,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4037,7 +4031,7 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        (, int24 currentTick, , , , , ) = uniPool.slot0();
+        (, currentTick, , , , , ) = uniPool.slot0();
 
         vm.startPrank(Bob);
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4092,7 +4086,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
 
-        int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
+        twapTick = PanopticMath.twapFilter(uniPool, 600);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -4175,7 +4169,7 @@ contract Misctest is Test, PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        (, int24 currentTick, , , , , ) = uniPool.slot0();
+        (, currentTick, , , , , ) = uniPool.slot0();
 
         vm.startPrank(Bob);
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4230,7 +4224,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
 
-        int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
+        twapTick = PanopticMath.twapFilter(uniPool, 600);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -4243,7 +4237,7 @@ contract Misctest is Test, PositionUtils {
             assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable twap!");
         }
 
-        (uint256 liquidatorBalance0, uint256 liquidatorBalance1) = (
+        (, uint256 liquidatorBalance1) = (
             ct0.convertToAssets(ct0.balanceOf(Alice)),
             ct1.convertToAssets(ct1.balanceOf(Alice))
         );
@@ -4309,7 +4303,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4367,7 +4361,6 @@ contract Misctest is Test, PositionUtils {
             }
 
             (, currentTick, , , , , ) = uniPool.slot0();
-            int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
 
             vm.startPrank(Alice);
             console2.log("");
@@ -4395,7 +4388,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4505,7 +4498,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4604,7 +4597,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4702,7 +4695,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4792,7 +4785,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4874,7 +4867,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -4985,7 +4978,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -5081,7 +5074,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -5175,7 +5168,7 @@ contract Misctest is Test, PositionUtils {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -5295,7 +5288,7 @@ contract Misctest is Test, PositionUtils {
 
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -5418,7 +5411,7 @@ contract Misctest is Test, PositionUtils {
 
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -5540,7 +5533,7 @@ contract Misctest is Test, PositionUtils {
 
             posIdList[0] = tokenId;
 
-            (, int24 currentTick, , , , , ) = uniPool.slot0();
+            (, currentTick, , , , , ) = uniPool.slot0();
 
             vm.startPrank(Bob);
             ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);

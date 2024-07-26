@@ -1091,11 +1091,26 @@ contract PanopticHelperTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
-                .calculateAccumulatedFeesBatch(Alice, false, posIdList);
+            (
+                LeftRightUnsigned shortPremium,
+                LeftRightUnsigned longPremium,
+                uint256[2][] memory posBalanceArray
+            ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
 
-            tokenData0 = ct0.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium0);
-            tokenData1 = ct1.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium1);
+            tokenData0 = ct0.getAccountMarginDetails(
+                Alice,
+                atTick,
+                posBalanceArray,
+                shortPremium.rightSlot(),
+                longPremium.rightSlot()
+            );
+            tokenData1 = ct1.getAccountMarginDetails(
+                Alice,
+                atTick,
+                posBalanceArray,
+                shortPremium.leftSlot(),
+                longPremium.leftSlot()
+            );
 
             (calculatedCollateralBalance, calculatedRequiredCollateral) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, returnTokenType ? 1 : 0, atTick);
