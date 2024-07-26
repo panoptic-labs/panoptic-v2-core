@@ -1422,7 +1422,10 @@ contract FuzzDeployments is FuzzHelpers {
             assembly ("memory-safe") {
                 will_sfpm_burn_sim_succeed := add(will_sfpm_burn_sim_succeed, 0x04)
             }
+            emit LogBytes("will_sfpm_burn_sim_succeed", will_sfpm_burn_sim_succeed);
+            assertWithMsg(false, "will_sfpm_burn_sim_succeed");
             ($willSfpmBurnSimSucceed) = abi.decode(will_sfpm_burn_sim_succeed, (bool));
+
             if ($willSfpmBurnSimSucceed) {
                 try this._simulate_sfpm_burn() {
                     assertWithMsg(false, "_simulate_sfpm_burn should always revert");
@@ -1495,6 +1498,7 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
         try this._prank_and_burn() {
+            assertWithMsg(false, "We burned!");
             _make_assertions(
                 preburnAccumulators,
                 projectedPremia,
@@ -1504,11 +1508,72 @@ contract FuzzDeployments is FuzzHelpers {
                 burnersPreburnValues
             );
         } catch (bytes memory prank_and_burn_err) {
-            // TODO: This is where we'll check if there's a valid reason for .burn to revert,
+            // Check if there's a valid reason for .burn to revert,
             // even though SFPM.burnTokenizedPosition succeeded.
-            emit LogBytes("prank_and_burn_err", prank_and_burn_err);
-            assertWithMsg(false, "prank_and_burn_err");
+            bytes4 revertSelector;
+            assembly {
+                revertSelector := mload(add(prank_and_burn_err, 0x20))
+            }
+            if (
+                // EffectiveLiquidityAboveThreshold
+                revertSelector == 0x3a8795c2
+            ) {
+                _assert_effective_liquidity_is_above_threshold();
+            } else if (
+                // TooManyPositionsOpen()
+                revertSelector == 0x8026d19e
+            ) {
+                assertWithMsg(false, "Previous mint calls failed to enforce the 32 position limit");
+            } else if (
+                // InputListFail()
+                revertSelector == 0x99e877ce
+            ) {
+                assertWithMsg(
+                    false,
+                    "The position we fuzz-selected to be burned was not owned by the user, somehow"
+                );
+            } else if (
+                // NotEnoughCollateral()
+                revertSelector == 0x34477cc0
+            ) {
+                // TODO: assert that burning actually does leave the user with too little collateral
+                // (Likely have to sim the burn)
+            } else {
+                emit LogBytes("prank_and_burn_err", prank_and_burn_err);
+                assertWithMsg(false, "Reversion caused by unknown error");
+            }
         }
+    }
+
+    uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
+
+    function _assert_effective_liquidity_is_above_threshold() internal {
+        bool effectiveLiquidityIsAboveThreshold;
+        for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
+            LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
+                address(pool),
+                address(panopticPool),
+                $position.tokenType(legIndex),
+                $tickLower,
+                -1 * $tickLower
+            );
+
+            uint128 netLiquidity = accountLiquidities.rightSlot();
+            uint128 totalLiquidity = accountLiquidities.leftSlot();
+            // compute and return effective liquidity. Return if short=net=0, which is closing short position
+            if (netLiquidity == 0) continue;
+
+            uint256 effectiveLiquidityFactorX32;
+            unchecked {
+                effectiveLiquidityFactorX32 = (uint256(totalLiquidity) * 2 ** 32) / netLiquidity;
+            }
+            if (effectiveLiquidityFactorX32 > uint256(MAX_SPREAD))
+                effectiveLiquidityIsAboveThreshold = true;
+        }
+        assertWithMsg(
+            effectiveLiquidityIsAboveThreshold,
+            "got EffectiveLiquidityAboveThreshold when attempting to burn, but that is not true"
+        );
     }
 
     // We use this storage bool to ensure that echidna-generated calls to the external helpers,
