@@ -1742,23 +1742,6 @@ contract FuzzDeployments is FuzzHelpers {
                         premiaCalcInputs[legIndex].premiumGrowth0
                 ) * uint256(premiaCalcInputs[legIndex].positionLiquidity)) >> 64
             );
-
-            emit LogUint256(
-                "accumulators[legIndex].sfpmGrossPremiaAccumulator1",
-                accumulators[legIndex].sfpmGrossPremiaAccumulator1
-            );
-            emit LogUint256(
-                "premiaCalcInputs[legIndex].premiumGrowth1",
-                premiaCalcInputs[legIndex].premiumGrowth1
-            );
-            emit LogUint256(
-                "premiaCalcInputs[legIndex].positionLiquidity",
-                premiaCalcInputs[legIndex].positionLiquidity
-            );
-
-            /*
-            ((473722137656078684 - 0) * 59307747402798166567374) / 2^64
-            */
             $projectedPremia[legIndex].idealPremium1 = uint128(
                 (uint256(
                     accumulators[legIndex].sfpmGrossPremiaAccumulator1 -
@@ -1818,11 +1801,6 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnSettledTokens,
         uint128 preburnShortLiquidity
     ) internal returns (uint128) {
-        emit LogUint256("idealPremium", idealPremium);
-        emit LogUint256("preburnGrossPremium", preburnGrossPremium);
-        emit LogUint256("preburnGrossPremiumLast", preburnGrossPremiumLast);
-        emit LogUint256("preburnSettledTokens", preburnSettledTokens);
-        emit LogUint256("preburnShortLiquidity", preburnShortLiquidity);
         // Prevent division by zero
         if (preburnGrossPremium == 0 || idealPremium == 0) return 0;
 
@@ -1899,16 +1877,6 @@ contract FuzzDeployments is FuzzHelpers {
                 $postburnGrossPremiaLast1
             ) = panopticPool.premiaSettlementData($position, legIndex);
 
-            emit LogUint256("$postburnSettledToken0", $postburnSettledToken0);
-            emit LogUint256(
-                "preburnAccumulators[legIndex].settledToken0",
-                preburnAccumulators[legIndex].settledToken0
-            );
-            emit LogInt256(
-                "$expectedSettledToken0DifferenceForChunk",
-                $expectedSettledToken0DifferenceForChunk
-            );
-
             assertWithMsg(
                 int256(int128($postburnSettledToken0)) ==
                     Math.max(
@@ -1917,20 +1885,6 @@ contract FuzzDeployments is FuzzHelpers {
                         0
                     ),
                 "Settled token0s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
-            );
-
-            if ($expectedSettledToken0DifferenceForChunk == 364) {
-                assertWithMsg(false, "made it past your old case!");
-            }
-
-            emit LogUint256("$postburnSettledToken1", $postburnSettledToken1);
-            emit LogUint256(
-                "preburnAccumulators[legIndex].settledToken1",
-                preburnAccumulators[legIndex].settledToken1
-            );
-            emit LogInt256(
-                "$expectedSettledToken1DifferenceForChunk",
-                $expectedSettledToken1DifferenceForChunk
             );
 
             assertWithMsg(
