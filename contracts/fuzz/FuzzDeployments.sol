@@ -1414,6 +1414,7 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     bool $willSfpmBurnSimSucceed;
+
     function _try_burning_and_check_balances() internal {
         try this._check_if_simulate_sfpm_burn_will_succeed() {
             assertWithMsg(false, "_check_if_simulate_sfpm_burn_will_succeed should always revert");
@@ -1433,11 +1434,9 @@ contract FuzzDeployments is FuzzHelpers {
                         $position.countLegs()
                     );
 
-                    try this._get_preburn_accumulators(
-                        $position,
-                        $caller,
-                        $posSize
-                    ) {} catch (bytes memory preburn_getting_err) {
+                    try this._get_preburn_accumulators($position, $caller, $posSize) {} catch (
+                        bytes memory preburn_getting_err
+                    ) {
                         emit LogBytes("preburn_getting_err", preburn_getting_err);
                         assertWithMsg(false, "Error getting preburn accumulators");
                     }
@@ -1474,11 +1473,13 @@ contract FuzzDeployments is FuzzHelpers {
         bytes memory sfpm_sim_result
     ) internal {
         PreburnValues memory burnersPreburnValues = _get_preburn_values();
-        try this._project_premia_from_preburn_values(
-            premiaCalcInputs,
-            preburnAccumulators,
-            sfpm_sim_result
-        ) { } catch(bytes memory premia_projection_err) {
+        try
+            this._project_premia_from_preburn_values(
+                premiaCalcInputs,
+                preburnAccumulators,
+                sfpm_sim_result
+            )
+        {} catch (bytes memory premia_projection_err) {
             emit LogBytes("premia_projection_err", premia_projection_err);
             assertWithMsg(false, "Error when projecting premia");
         }
@@ -1514,6 +1515,7 @@ contract FuzzDeployments is FuzzHelpers {
     // which are really only external to let us try {} and log unexpected catch {} reverts,
     // don't go through:
     bool $calledFromMakeAssertions;
+
     function _make_assertions(
         AccumulatorsForLeg[] memory preburnAccumulators,
         PremiaProjection[] memory projectedPremia,
@@ -1524,19 +1526,23 @@ contract FuzzDeployments is FuzzHelpers {
     ) internal {
         $calledFromMakeAssertions = true;
         // Make assertions about each leg's chunk differences, and get expected token diffs:
-        try this._assert_each_legs_chunk_accumulators_correct(
-            preburnAccumulators,
-            projectedPremia,
-            sfpm_sim_result
-        ) {
+        try
+            this._assert_each_legs_chunk_accumulators_correct(
+                preburnAccumulators,
+                projectedPremia,
+                sfpm_sim_result
+            )
+        {
             // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
             // alignment with our projections:
-            try this._compare_against_preburn_values(
-                expectedNonPremiaToken0Difference,
-                expectedNonPremiaToken1Difference,
-                projectedPremia,
-                burnersPreburnValues
-            ) {
+            try
+                this._compare_against_preburn_values(
+                    expectedNonPremiaToken0Difference,
+                    expectedNonPremiaToken1Difference,
+                    projectedPremia,
+                    burnersPreburnValues
+                )
+            {
                 $calledFromMakeAssertions = false;
             } catch (bytes memory compare_against_preburn_err) {
                 $calledFromMakeAssertions = false;
@@ -1548,7 +1554,6 @@ contract FuzzDeployments is FuzzHelpers {
             emit LogBytes("assert_each_leg_err", assert_each_leg_err);
             assertWithMsg(false, "Error when evaluating each legs postburn accumulators");
         }
-
     }
 
     function _prank_and_burn() external {
@@ -1592,9 +1597,8 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
-    error SFPMBurnSimWillSucceed(
-        bool sfpmBurnCallWillSucceed
-    );
+    error SFPMBurnSimWillSucceed(bool sfpmBurnCallWillSucceed);
+
     function _check_if_simulate_sfpm_burn_will_succeed() external {
         try sfpm.burnTokenizedPosition($position, $posSize, $tickLimitLow, -1 * $tickLimitLow) {
             revert SFPMBurnSimWillSucceed(true);
