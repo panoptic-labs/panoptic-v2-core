@@ -1349,29 +1349,6 @@ contract FuzzDeployments is FuzzHelpers {
         ($posSize, , ) = panopticPool.optionPositionBalance($caller, $position);
         $tickLimitLow = isCovered ? int24(-887272) : int24(887272);
 
-        // TODO: Replace _try_burning_zero_size_position and _try_burning_short_pos_with_inadequate_liq
-        // with should-reverts
-        /*
-        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk($position, 0, $posSize);
-        LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
-            address(pool),
-            address(panopticPool),
-            // TODO: Need to loop through the legs so we get the correct token type for each, not 0th
-            $position.tokenType(0),
-            liquidityChunk.tickLower(),
-            liquidityChunk.tickUpper()
-        );
-
-        if ($posSize == 0) {
-            _try_burning_zero_size_position();
-        } else if (
-            $position.isLong(0) == 0 && currentLiquidity.rightSlot() < liquidityChunk.liquidity()
-        ) {
-            _try_burning_short_pos_with_inadequate_liq();
-        } else {
-            _try_burning_and_check_balances();
-        } */
-
         _try_burning_and_check_balances();
 
         $position = TokenId.wrap(0);
