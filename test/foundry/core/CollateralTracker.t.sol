@@ -4189,7 +4189,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                atTick,
+                currentTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -4700,7 +4700,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -5059,7 +5059,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -5225,7 +5225,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
