@@ -1502,9 +1502,7 @@ contract FuzzDeployments is FuzzHelpers {
                 expectedNonPremiaToken1Difference,
                 burnersPreburnValues
             );
-            $calledFromBurnAndAssert = false;
         } catch (bytes memory prank_and_burn_err) {
-            $calledFromBurnAndAssert = false;
             // TODO: This is where we'll check if there's a valid reason for .burn to revert,
             // even though SFPM.burnTokenizedPosition succeeded.
             emit LogBytes("prank_and_burn_err", prank_and_burn_err);
@@ -2123,11 +2121,20 @@ contract FuzzDeployments is FuzzHelpers {
                 msg.sender,
                 positionsToBurn[positionIndex]
             );
-            (preburnAccumulators[positionIndex], ) = this._get_preburn_accumulators(
+            try this._get_preburn_accumulators(
                 positionsToBurn[positionIndex],
                 msg.sender,
                 posSize
-            );
+            ) {
+                (preburnAccumulators[positionIndex], ) = this._get_preburn_accumulators(
+                    positionsToBurn[positionIndex],
+                    msg.sender,
+                    posSize
+                );
+            } catch (bytes memory preburn_getting_err) {
+                emit LogBytes("preburn_getting_err", preburn_getting_err);
+                assertWithMsg(false, "Error getting preburn accumulators");
+            }
         }
 
         // TODO: Poke here -
