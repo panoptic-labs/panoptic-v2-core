@@ -2604,27 +2604,27 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
 
-            uint128 required = _spreadTokensRequired(tokenId1, positionSize0 / 2, poolUtilizations);
+            uint128 required = _spreadTokensRequired(tokenId1, positionSize0 / 4, poolUtilizations);
 
             // only add premium requirement if there is net premia owed
-            int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
+            required += int256(uint256($shortPremia.rightSlot())) -
                 int256(uint256($longPremia.rightSlot())) <
                 0
-                ? int128(
-                    10_000 *
+                ? uint128(
+                    (uint128(10_000) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )
-                ) / 10_000
-                : int128(0);
-            required += int256(uint256($shortPremia.leftSlot())) -
+                        )) / 10_000
+                )
+                : 0;
+            int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? uint128(
-                    (uint128(10_000) *
+                ? int128(
+                    (10_000 *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
@@ -2632,10 +2632,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             )
                         )) / 10_000
                 )
-                : 0;
-
-            assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
-            assertEq(required, tokenData1.leftSlot(), "required token1");
+                : int128(0);
+            assertEq(required, tokenData0.leftSlot(), "required token0");
+            assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
         {
@@ -3053,24 +3052,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
             // only add premium requirement if there is net premia owed
-            int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
+            required += int256(uint256($shortPremia.rightSlot())) -
                 int256(uint256($longPremia.rightSlot())) <
                 0
-                ? int128(
-                    10_000 *
+                ? uint128(
+                    (uint128(10_000) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )
-                ) / 10_000
-                : int128(0);
-            required += int256(uint256($shortPremia.leftSlot())) -
+                        )) / 10_000
+                )
+                : 0;
+            int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? uint128(
-                    (uint128(10_000) *
+                ? int128(
+                    (10_000 *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
@@ -3078,10 +3077,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             )
                         )) / 10_000
                 )
-                : 0;
+                : int128(0);
 
-            assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
-            assertEq(required, tokenData1.leftSlot(), "required token1");
+            assertEq(required, tokenData0.leftSlot(), "required token0");
+            assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
         {
@@ -3523,24 +3522,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
+            required += int256(uint256($shortPremia.rightSlot())) -
                 int256(uint256($longPremia.rightSlot())) <
                 0
-                ? int128(
-                    10_000 *
+                ? uint128(
+                    (uint128(10_000) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )
-                ) / 10_000
-                : int128(0);
-            required += int256(uint256($shortPremia.leftSlot())) -
+                        )) / 10_000
+                )
+                : 0;
+            int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? uint128(
-                    (uint128(10_000) *
+                ? int128(
+                    (10_000 *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
@@ -3548,10 +3547,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             )
                         )) / 10_000
                 )
-                : 0;
-
-            assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
-            assertEq(required, tokenData1.leftSlot(), "required token1");
+                : int128(0);
+            assertEq(required, tokenData0.leftSlot(), "required token0");
+            assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
         {
@@ -3754,24 +3752,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // only add premium requirement if there is net premia owed
-            int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
+            required += int256(uint256($shortPremia.rightSlot())) -
                 int256(uint256($longPremia.rightSlot())) <
                 0
-                ? int128(
-                    10_000 *
+                ? uint128(
+                    (uint128(10_000) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )
-                ) / 10_000
-                : int128(0);
-            required += int256(uint256($shortPremia.leftSlot())) -
+                        )) / 10_000
+                )
+                : 0;
+            int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? uint128(
-                    (uint128(10_000) *
+                ? int128(
+                    (10_000 *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
@@ -3779,10 +3777,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             )
                         )) / 10_000
                 )
-                : 0;
-
-            assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
-            assertEq(required, tokenData1.leftSlot(), "required token1");
+                : int128(0);
+            assertEq(required, tokenData0.leftSlot(), "required token0");
+            assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
         {
@@ -4141,7 +4138,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -4192,7 +4189,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -4317,7 +4314,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -4513,7 +4510,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
@@ -4542,24 +4539,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
 
             // checks tokens required
-            int128 premium0 = int256(uint256($shortPremia.rightSlot())) -
+            required += int256(uint256($shortPremia.rightSlot())) -
                 int256(uint256($longPremia.rightSlot())) <
                 0
-                ? int128(
-                    10_000 *
+                ? uint128(
+                    (uint128(10_000) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )
-                ) / 10_000
-                : int128(0);
-            required += int256(uint256($shortPremia.leftSlot())) -
+                        )) / 10_000
+                )
+                : 0;
+            int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? uint128(
-                    (uint128(10_000) *
+                ? int128(
+                    (10_000 *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
@@ -4567,10 +4564,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             )
                         )) / 10_000
                 )
-                : 0;
-
-            assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
-            assertEq(required, tokenData1.leftSlot(), "required token1");
+                : int128(0);
+            assertEq(required, tokenData0.leftSlot(), "required token0");
+            assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
         }
 
         {
@@ -4891,7 +4887,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
                 Bob,
-                currentTick,
+                atTick,
                 posBalanceArray,
                 $shortPremia.rightSlot(),
                 $longPremia.rightSlot()
