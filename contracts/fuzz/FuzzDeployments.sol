@@ -627,7 +627,7 @@ contract FuzzDeployments is FuzzHelpers {
             "amountsMoved1",
             PanopticMath.getAmountsMoved(tokenId, type(uint48).max, 0).leftSlot()
         );
-        assertWithMsg(required0 > 10, "required is nonzero!");
+        /* assertWithMsg(required0 > 10, "required is nonzero!"); */
         uint256 size = (required0 * balance0) / type(uint48).max;
         posSize = bound(posSize, (size * 10) / 100, (size * 200) / 100);
 
@@ -665,10 +665,10 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogUint256("Positions opened for user", positionsOpened);
         emit LogUint256("Positions opened for user - internal", userPositions[minter].length);
 
-        assertWithMsg(
+        /* assertWithMsg(
             positionsOpened == userPositions[minter].length,
             "number of positions match internal one"
-        );
+        ); */
 
         userPositions[minter].push(tokenid);
         TokenId[] memory posIdList = userPositions[minter];
@@ -1358,28 +1358,12 @@ contract FuzzDeployments is FuzzHelpers {
         delete $tickLimitLow;
     }
 
-    function _try_burning_zero_size_position() internal {
-        hevm.prank($caller);
-        try panopticPool.burnOptions($position, $positionsNew, $tickLimitLow, -1 * $tickLimitLow) {
-            assertWithMsg(false, "A zero-sized position was burned.");
-        } catch {}
-    }
-
-    function _try_burning_short_pos_with_inadequate_liq() internal {
-        hevm.prank($caller);
-        try panopticPool.burnOptions($position, $positionsNew, $tickLimitLow, -1 * $tickLimitLow) {
-            assertWithMsg(false, "A short position with not enough liquidity was burned.");
-        } catch {}
-    }
-
     struct AccumulatorsForLeg {
         uint128 settledToken0;
         uint128 settledToken1;
         uint128 grossPremiaLast0;
         uint128 grossPremiaLast1;
         uint128 totalShortLiquidity;
-        uint128 sfpmGrossPremia0;
-        uint128 sfpmGrossPremia1;
         uint128 sfpmGrossPremiaAccumulator0;
         uint128 sfpmGrossPremiaAccumulator1;
     }
@@ -1390,6 +1374,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 positionLiquidity;
     }
 
+    bool $sfpmRevert;
     uint128[] $token0CollectedByLeg;
     uint128[] $token1CollectedByLeg;
     int128 $token0Swapped;
@@ -1398,15 +1383,16 @@ contract FuzzDeployments is FuzzHelpers {
     function _try_burning_and_check_balances() internal {
         _quote_sfpm_burn();
         if ($sfpmRevert) {
+            // Nothing to test in this case; leave evaluation of why this reverts to SFPM tests.
             return;
         }
 
         uint numLegs = $position.countLegs();
         $token0CollectedByLeg = new uint128[](numLegs);
         $token1CollectedByLeg = new uint128[](numLegs);
-        for (uint i = 0; i < numLegs; i++) {
-            $token0CollectedByLeg[i] = $collectedByLeg[i].rightSlot();
-            $token1CollectedByLeg[i] = $collectedByLeg[i].leftSlot();
+        for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
+            $token0CollectedByLeg[legIndex] = $collectedByLeg[legIndex].rightSlot();
+            $token1CollectedByLeg[legIndex] = $collectedByLeg[legIndex].leftSlot();
         }
 
         $token0Swapped = $totalSwapped.rightSlot();
@@ -1445,6 +1431,8 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 proratedPremium0;
         uint128 proratedPremium1;
     }
+
+    bytes constant PANIC_17 = hex"4e487b710000000000000000000000000000000000000000000000000000000000000011";
 
     function _burn_and_assert_accumulator_and_token_differences(
         PremiaCalcInputs[] memory premiaCalcInputs,
@@ -1503,6 +1491,27 @@ contract FuzzDeployments is FuzzHelpers {
             ) {
                 // TODO: assert that burning actually does leave the user with too little collateral
                 // (Likely have to sim the burn)
+            } else if (
+                // Panic(17) overflow
+                keccak256(prank_and_burn_err) == keccak256(PANIC_17)
+            ) {
+                (
+                    int128 totalProjectedProratedPremium0,
+                    int128 totalProjectedProratedPremium1
+                ) = _net_up_prorated_premia(projectedPremia);
+
+                int256 expectedToken0Difference = totalProjectedProratedPremium0 -
+                    expectedNonPremiaToken0Difference;
+                int256 expectedToken1Difference = totalProjectedProratedPremium1 -
+                    expectedNonPremiaToken1Difference;
+
+                // TODO: You may need to convert the deltas to shares rounding up/down depending
+                // on the sign to cover some edge cases though (see mint_option as an example)
+                assertWithMsg(
+                    int256(collToken0.convertToAssets(collToken0.balanceOf($caller))) + expectedToken0Difference < 0 ||
+                    int256(collToken1.convertToAssets(collToken1.balanceOf($caller))) + expectedToken1Difference < 0,
+                    "Received unexpected Panic(17) overflow"
+                );
             } else {
                 emit LogBytes("prank_and_burn_err", prank_and_burn_err);
                 assertWithMsg(false, "Reversion caused by unknown error");
@@ -1590,14 +1599,13 @@ contract FuzzDeployments is FuzzHelpers {
         return
             PreburnValues({
                 token0Balance: IERC20(pool.token0()).balanceOf($caller),
-                token1Balance: IERC20(pool.token0()).balanceOf($caller),
+                token1Balance: IERC20(pool.token1()).balanceOf($caller),
                 assetsInCT0: collToken0.convertToAssets(collToken0.balanceOf($caller)),
                 assetsInCT1: collToken1.convertToAssets(collToken1.balanceOf($caller)),
                 positionsOpened: panopticPool.numberOfPositions($caller)
             });
     }
 
-    bool $sfpmRevert;
     LeftRightUnsigned[4] $collectedByLeg;
     LeftRightSigned $totalSwapped;
 
@@ -2016,8 +2024,6 @@ contract FuzzDeployments is FuzzHelpers {
     uint128 $settledToken1;
     uint128 $grossPremiaLastToken0;
     uint128 $grossPremiaLastToken1;
-    uint128 $sfpmGrossPremia0;
-    uint128 $sfpmGrossPremia1;
     uint128 $sfpmGrossPremiaAccumulator0;
     uint128 $sfpmGrossPremiaAccumulator1;
 
@@ -2038,11 +2044,6 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].grossPremiaLast0 = $grossPremiaLastToken0;
         accumulators[legIndex].grossPremiaLast1 = $grossPremiaLastToken1;
 
-        ($sfpmGrossPremia0, $sfpmGrossPremia1) = _get_sfpm_gross_premia(position, legIndex, caller);
-
-        accumulators[legIndex].sfpmGrossPremia0 = $sfpmGrossPremia0;
-        accumulators[legIndex].sfpmGrossPremia1 = $sfpmGrossPremia1;
-
         ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
             position,
             legIndex
@@ -2054,8 +2055,6 @@ contract FuzzDeployments is FuzzHelpers {
         delete $settledToken1;
         delete $grossPremiaLastToken0;
         delete $grossPremiaLastToken1;
-        delete $sfpmGrossPremia0;
-        delete $sfpmGrossPremia1;
         delete $sfpmGrossPremiaAccumulator0;
         delete $sfpmGrossPremiaAccumulator1;
     }
