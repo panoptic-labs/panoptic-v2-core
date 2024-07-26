@@ -1432,7 +1432,8 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 proratedPremium1;
     }
 
-    bytes constant PANIC_17 = hex"4e487b710000000000000000000000000000000000000000000000000000000000000011";
+    bytes constant PANIC_17 =
+        hex"4e487b710000000000000000000000000000000000000000000000000000000000000011";
 
     function _burn_and_assert_accumulator_and_token_differences(
         PremiaCalcInputs[] memory premiaCalcInputs,
@@ -1508,8 +1509,12 @@ contract FuzzDeployments is FuzzHelpers {
                 // TODO: You may need to convert the deltas to shares rounding up/down depending
                 // on the sign to cover some edge cases though (see mint_option as an example)
                 assertWithMsg(
-                    int256(collToken0.convertToAssets(collToken0.balanceOf($caller))) + expectedToken0Difference < 0 ||
-                    int256(collToken1.convertToAssets(collToken1.balanceOf($caller))) + expectedToken1Difference < 0,
+                    int256(collToken0.convertToAssets(collToken0.balanceOf($caller))) +
+                        expectedToken0Difference <
+                        0 ||
+                        int256(collToken1.convertToAssets(collToken1.balanceOf($caller))) +
+                            expectedToken1Difference <
+                        0,
                     "Received unexpected Panic(17) overflow"
                 );
             } else {
