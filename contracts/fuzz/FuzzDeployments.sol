@@ -1392,6 +1392,7 @@ contract FuzzDeployments is FuzzHelpers {
         $token1CollectedByLeg = new uint128[](numLegs);
         for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
             $token0CollectedByLeg[legIndex] = $collectedByLeg[legIndex].rightSlot();
+            emit LogUint256("$token0CollectedByLeg[legIndex]", $token0CollectedByLeg[legIndex]);
             $token1CollectedByLeg[legIndex] = $collectedByLeg[legIndex].leftSlot();
         }
 
@@ -1435,6 +1436,8 @@ contract FuzzDeployments is FuzzHelpers {
     bytes constant PANIC_17 =
         hex"4e487b710000000000000000000000000000000000000000000000000000000000000011";
 
+    PremiaProjection[] $projectedPremia;
+
     function _burn_and_assert_accumulator_and_token_differences(
         PremiaCalcInputs[] memory premiaCalcInputs,
         AccumulatorsForLeg[] memory preburnAccumulators
@@ -1442,86 +1445,81 @@ contract FuzzDeployments is FuzzHelpers {
         PreburnValues memory burnersPreburnValues = _get_preburn_values();
         try
             this._project_premia_from_preburn_values(premiaCalcInputs, preburnAccumulators)
-        {} catch (bytes memory premia_projection_err) {
+            returns (int128 expectedNonPremiaToken0Difference, int128 expectedNonPremiaToken1Difference)
+        {
+            try this._prank_and_burn() {
+                _make_assertions(
+                    preburnAccumulators,
+                    expectedNonPremiaToken0Difference,
+                    expectedNonPremiaToken1Difference,
+                    burnersPreburnValues
+                );
+            } catch (bytes memory prank_and_burn_err) {
+                // Check if there's a valid reason for .burn to revert,
+                // even though SFPM.burnTokenizedPosition succeeded.
+                bytes4 revertSelector;
+                assembly {
+                    revertSelector := mload(add(prank_and_burn_err, 0x20))
+                }
+                if (
+                    // EffectiveLiquidityAboveThreshold
+                    revertSelector == 0x3a8795c2
+                ) {
+                    _assert_effective_liquidity_is_above_threshold();
+                } else if (
+                    // TooManyPositionsOpen()
+                    revertSelector == 0x8026d19e
+                ) {
+                    assertWithMsg(false, "Previous mint calls failed to enforce the 32 position limit");
+                } else if (
+                    // InputListFail()
+                    revertSelector == 0x99e877ce
+                ) {
+                    assertWithMsg(
+                        false,
+                        "The position we fuzz-selected to be burned was not owned by the user, somehow"
+                    );
+                } else if (
+                    // NotEnoughCollateral()
+                    revertSelector == 0x34477cc0
+                ) {
+                    // TODO: assert that burning actually does leave the user with too little collateral
+                    // (Likely have to sim the burn)
+                } else if (
+                    // Panic(17) overflow
+                    keccak256(prank_and_burn_err) == keccak256(PANIC_17)
+                ) {
+                    (
+                        int128 totalProjectedProratedPremium0,
+                        int128 totalProjectedProratedPremium1
+                    ) = _net_up_prorated_premia();
+
+                    int256 expectedToken0Difference = totalProjectedProratedPremium0 -
+                        expectedNonPremiaToken0Difference;
+                    int256 expectedToken1Difference = totalProjectedProratedPremium1 -
+                        expectedNonPremiaToken1Difference;
+
+                    // TODO: You may need to convert the deltas to shares rounding up/down depending
+                    // on the sign to cover some edge cases though (see mint_option as an example)
+                    assertWithMsg(
+                        int256(collToken0.convertToAssets(collToken0.balanceOf($caller))) +
+                            expectedToken0Difference <
+                            0 ||
+                            int256(collToken1.convertToAssets(collToken1.balanceOf($caller))) +
+                                expectedToken1Difference <
+                            0,
+                        "Received unexpected Panic(17) overflow"
+                    );
+                } else {
+                    emit LogBytes("prank_and_burn_err", prank_and_burn_err);
+                    assertWithMsg(false, "Reversion caused by unknown error");
+                }
+            }
+        } catch (bytes memory premia_projection_err) {
             emit LogBytes("premia_projection_err", premia_projection_err);
             assertWithMsg(false, "Error when projecting premia");
         }
-
-        (
-            PremiaProjection[] memory projectedPremia,
-            int128 expectedNonPremiaToken0Difference,
-            int128 expectedNonPremiaToken1Difference
-        ) = this._project_premia_from_preburn_values(premiaCalcInputs, preburnAccumulators);
-
-        try this._prank_and_burn() {
-            _make_assertions(
-                preburnAccumulators,
-                projectedPremia,
-                expectedNonPremiaToken0Difference,
-                expectedNonPremiaToken1Difference,
-                burnersPreburnValues
-            );
-        } catch (bytes memory prank_and_burn_err) {
-            // Check if there's a valid reason for .burn to revert,
-            // even though SFPM.burnTokenizedPosition succeeded.
-            bytes4 revertSelector;
-            assembly {
-                revertSelector := mload(add(prank_and_burn_err, 0x20))
-            }
-            if (
-                // EffectiveLiquidityAboveThreshold
-                revertSelector == 0x3a8795c2
-            ) {
-                _assert_effective_liquidity_is_above_threshold();
-            } else if (
-                // TooManyPositionsOpen()
-                revertSelector == 0x8026d19e
-            ) {
-                assertWithMsg(false, "Previous mint calls failed to enforce the 32 position limit");
-            } else if (
-                // InputListFail()
-                revertSelector == 0x99e877ce
-            ) {
-                assertWithMsg(
-                    false,
-                    "The position we fuzz-selected to be burned was not owned by the user, somehow"
-                );
-            } else if (
-                // NotEnoughCollateral()
-                revertSelector == 0x34477cc0
-            ) {
-                // TODO: assert that burning actually does leave the user with too little collateral
-                // (Likely have to sim the burn)
-            } else if (
-                // Panic(17) overflow
-                keccak256(prank_and_burn_err) == keccak256(PANIC_17)
-            ) {
-                (
-                    int128 totalProjectedProratedPremium0,
-                    int128 totalProjectedProratedPremium1
-                ) = _net_up_prorated_premia(projectedPremia);
-
-                int256 expectedToken0Difference = totalProjectedProratedPremium0 -
-                    expectedNonPremiaToken0Difference;
-                int256 expectedToken1Difference = totalProjectedProratedPremium1 -
-                    expectedNonPremiaToken1Difference;
-
-                // TODO: You may need to convert the deltas to shares rounding up/down depending
-                // on the sign to cover some edge cases though (see mint_option as an example)
-                assertWithMsg(
-                    int256(collToken0.convertToAssets(collToken0.balanceOf($caller))) +
-                        expectedToken0Difference <
-                        0 ||
-                        int256(collToken1.convertToAssets(collToken1.balanceOf($caller))) +
-                            expectedToken1Difference <
-                        0,
-                    "Received unexpected Panic(17) overflow"
-                );
-            } else {
-                emit LogBytes("prank_and_burn_err", prank_and_burn_err);
-                assertWithMsg(false, "Reversion caused by unknown error");
-            }
-        }
+        delete $projectedPremia;
     }
 
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
@@ -1562,7 +1560,6 @@ contract FuzzDeployments is FuzzHelpers {
 
     function _make_assertions(
         AccumulatorsForLeg[] memory preburnAccumulators,
-        PremiaProjection[] memory projectedPremia,
         int128 expectedNonPremiaToken0Difference,
         int128 expectedNonPremiaToken1Difference,
         PreburnValues memory burnersPreburnValues
@@ -1570,7 +1567,7 @@ contract FuzzDeployments is FuzzHelpers {
         $calledFromMakeAssertions = true;
         // Make assertions about each leg's chunk differences, and get expected token diffs:
         try
-            this._assert_each_legs_chunk_accumulators_correct(preburnAccumulators, projectedPremia)
+            this._assert_each_legs_chunk_accumulators_correct(preburnAccumulators)
         {
             // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
             // alignment with our projections:
@@ -1578,7 +1575,6 @@ contract FuzzDeployments is FuzzHelpers {
                 this._compare_against_preburn_values(
                     expectedNonPremiaToken0Difference,
                     expectedNonPremiaToken1Difference,
-                    projectedPremia,
                     burnersPreburnValues
                 )
             {
@@ -1707,7 +1703,7 @@ contract FuzzDeployments is FuzzHelpers {
         int128 token0Swapped,
         int128 token1Swapped
     )
-        internal
+        external
         returns (int128 expectedNonPremiaToken0Difference, int128 expectedNonPremiaToken1Difference)
     {
         // We add any expected tokens for burning an ITM position in the SFPM
@@ -1718,6 +1714,7 @@ contract FuzzDeployments is FuzzHelpers {
         // minus the underlying amounts of any short legs.
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts($position, $posSize);
+
         expectedNonPremiaToken0Difference -= (longAmounts.rightSlot() - shortAmounts.rightSlot());
         expectedNonPremiaToken1Difference -= (longAmounts.leftSlot() - shortAmounts.leftSlot());
     }
@@ -1728,33 +1725,61 @@ contract FuzzDeployments is FuzzHelpers {
     )
         external
         returns (
-            PremiaProjection[] memory projectedPremia,
             int128 expectedToken0Difference,
             int128 expectedToken1Difference
         )
     {
-        projectedPremia = new PremiaProjection[]($position.countLegs());
-
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
+            $projectedPremia.push(PremiaProjection({
+                idealPremium0: 0,
+                idealPremium1: 0,
+                proratedPremium0: 0,
+                proratedPremium1: 0
+            }));
             // 1. get idealPremia - how much premia should you have been owed based on your position?
-            projectedPremia[legIndex].idealPremium0 =
-                ((accumulators[legIndex].sfpmGrossPremiaAccumulator0 -
-                    premiaCalcInputs[legIndex].premiumGrowth0) *
-                    premiaCalcInputs[legIndex].positionLiquidity) >>
-                64;
+            $projectedPremia[legIndex].idealPremium0 =
+                uint128(
+                    (
+                        uint256(
+                            accumulators[legIndex].sfpmGrossPremiaAccumulator0 -
+                            premiaCalcInputs[legIndex].premiumGrowth0
+                        ) *
+                        uint256(premiaCalcInputs[legIndex].positionLiquidity)
+                    ) >> 64
+                );
 
-            projectedPremia[legIndex].idealPremium1 =
-                ((accumulators[legIndex].sfpmGrossPremiaAccumulator1 -
-                    premiaCalcInputs[legIndex].premiumGrowth1) *
-                    premiaCalcInputs[legIndex].positionLiquidity) >>
-                64;
+            emit LogUint256(
+                "accumulators[legIndex].sfpmGrossPremiaAccumulator1",
+                accumulators[legIndex].sfpmGrossPremiaAccumulator1
+            );
+            emit LogUint256(
+                "premiaCalcInputs[legIndex].premiumGrowth1",
+                premiaCalcInputs[legIndex].premiumGrowth1
+            );
+            emit LogUint256(
+                "premiaCalcInputs[legIndex].positionLiquidity",
+                premiaCalcInputs[legIndex].positionLiquidity
+            );
+
+            /*
+            ((473722137656078684 - 0) * 59307747402798166567374) / 2^64
+            */
+            $projectedPremia[legIndex].idealPremium1 =
+                uint128(
+                    (
+                        uint256(
+                            accumulators[legIndex].sfpmGrossPremiaAccumulator1 -
+                            premiaCalcInputs[legIndex].premiumGrowth1
+                        ) *
+                        uint256(premiaCalcInputs[legIndex].positionLiquidity)
+                    ) >> 64
+                );
 
             // 2. get proratedPremia:
             //    - short legs should get idealPremia * total settled tokens / total gross premia;
             //    eg, your premia gets prorated by the seller-wide portion of settled tokens available
             //   - long legs should just get their full idealPremia
-            _set_prorated_premia(
-                projectedPremia[legIndex],
+            this._set_prorated_premia(
                 premiaCalcInputs[legIndex],
                 accumulators[legIndex],
                 legIndex,
@@ -1766,36 +1791,33 @@ contract FuzzDeployments is FuzzHelpers {
         (
             expectedToken0Difference,
             expectedToken1Difference
-        ) = _get_expected_nonpremia_token_difference($token0Swapped, $token1Swapped);
+        ) = this._get_expected_nonpremia_token_difference($token0Swapped, $token1Swapped);
     }
 
     function _set_prorated_premia(
-        PremiaProjection memory projectedPremia,
         PremiaCalcInputs memory premiaCalcInputs,
         AccumulatorsForLeg memory accumulators,
         uint256 legIndex,
         uint128 token0CollectedByLeg,
         uint128 token1CollectedByLeg
-    ) internal {
-        projectedPremia.proratedPremium0 = $position.isLong(legIndex) == 1
-            ? projectedPremia.idealPremium0
+    ) external {
+        $projectedPremia[legIndex].proratedPremium0 = $position.isLong(legIndex) == 1
+            ? $projectedPremia[legIndex].idealPremium0
             : _prorate_ideal_premium(
-                projectedPremia.idealPremium0,
+                $projectedPremia[legIndex].idealPremium0,
                 accumulators.sfpmGrossPremiaAccumulator0,
                 accumulators.grossPremiaLast0,
                 accumulators.settledToken0 + token0CollectedByLeg,
-                premiaCalcInputs.positionLiquidity,
                 accumulators.totalShortLiquidity
             );
 
-        projectedPremia.proratedPremium1 = $position.isLong(legIndex) == 1
-            ? projectedPremia.idealPremium1
+        $projectedPremia[legIndex].proratedPremium1 = $position.isLong(legIndex) == 1
+            ? $projectedPremia[legIndex].idealPremium1
             : _prorate_ideal_premium(
-                projectedPremia.idealPremium1,
+                $projectedPremia[legIndex].idealPremium1,
                 accumulators.sfpmGrossPremiaAccumulator1,
                 accumulators.grossPremiaLast1,
                 accumulators.settledToken1 + token1CollectedByLeg,
-                premiaCalcInputs.positionLiquidity,
                 accumulators.totalShortLiquidity
             );
     }
@@ -1805,9 +1827,13 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnGrossPremium,
         uint128 preburnGrossPremiumLast,
         uint128 preburnSettledTokens,
-        uint128 preburnPositionLiquidity,
         uint128 preburnShortLiquidity
     ) internal returns (uint128) {
+        emit LogUint256("idealPremium", idealPremium);
+        emit LogUint256("preburnGrossPremium", preburnGrossPremium);
+        emit LogUint256("preburnGrossPremiumLast", preburnGrossPremiumLast);
+        emit LogUint256("preburnSettledTokens", preburnSettledTokens);
+        emit LogUint256("preburnShortLiquidity", preburnShortLiquidity);
         // Prevent division by zero
         if (preburnGrossPremium == 0 || idealPremium == 0) return 0;
 
@@ -1816,14 +1842,13 @@ contract FuzzDeployments is FuzzHelpers {
                 Math.min(
                     uint128(
                         Math.min(
-                            /*
-                            (26098 * 26089 * 923) / (((521588042771463844758 - 0) * 923) / 2^64)
-                            */
-                            (idealPremium * preburnSettledTokens * preburnPositionLiquidity) /
+                            (uint256(idealPremium) * uint256(preburnSettledTokens)) /
                                 // We >> 64 this, but not the numerator, bc idealPremium is already >> 64
-                                (((preburnGrossPremium - preburnGrossPremiumLast) *
-                                    preburnShortLiquidity) >> 64),
-                            idealPremium
+                                (((uint256(preburnGrossPremium - preburnGrossPremiumLast)) *
+                                uint256(preburnShortLiquidity)) >> 64),
+                                /* (((preburnGrossPremium - preburnGrossPremiumLast) *
+                                    preburnShortLiquidity) >> 64), */
+                            uint256(idealPremium)
                         )
                     ),
                     // We can only, at maximum, pay out the settled tokens that we have pre-burn
@@ -1833,20 +1858,18 @@ contract FuzzDeployments is FuzzHelpers {
             );
     }
 
-    function _net_up_prorated_premia(
-        PremiaProjection[] memory projectedPremia
-    )
+    function _net_up_prorated_premia()
         internal
         view
         returns (int128 totalProjectedProratedPremium0, int128 totalProjectedProratedPremium1)
     {
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
             totalProjectedProratedPremium0 += $position.isLong(legIndex) == 1
-                ? -1 * int128(projectedPremia[legIndex].proratedPremium0)
-                : int128(projectedPremia[legIndex].proratedPremium0);
+                ? -1 * int128($projectedPremia[legIndex].proratedPremium0)
+                : int128($projectedPremia[legIndex].proratedPremium0);
             totalProjectedProratedPremium1 += $position.isLong(legIndex) == 1
-                ? -1 * int128(projectedPremia[legIndex].proratedPremium1)
-                : int128(projectedPremia[legIndex].proratedPremium1);
+                ? -1 * int128($projectedPremia[legIndex].proratedPremium1)
+                : int128($projectedPremia[legIndex].proratedPremium1);
         }
     }
 
@@ -1861,8 +1884,7 @@ contract FuzzDeployments is FuzzHelpers {
     uint256 $postburnShortLiquidity;
 
     function _assert_each_legs_chunk_accumulators_correct(
-        AccumulatorsForLeg[] memory preburnAccumulators,
-        PremiaProjection[] memory projectedPremia
+        AccumulatorsForLeg[] memory preburnAccumulators
     ) external {
         if (!$calledFromMakeAssertions) {
             return;
@@ -1871,12 +1893,13 @@ contract FuzzDeployments is FuzzHelpers {
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
             $expectedSettledToken0DifferenceForChunk = int256(
                 (($position.isLong(legIndex) == 1 ? -1 : int8(1)) *
-                    int128(projectedPremia[legIndex].proratedPremium0)) -
+                    int128($projectedPremia[legIndex].proratedPremium0)) -
                     int128($token0CollectedByLeg[legIndex])
             );
+
             $expectedSettledToken1DifferenceForChunk = int256(
                 (($position.isLong(legIndex) == 1 ? -1 : int8(1)) *
-                    int128(projectedPremia[legIndex].proratedPremium1)) -
+                    int128($projectedPremia[legIndex].proratedPremium1)) -
                     int128($token1CollectedByLeg[legIndex])
             );
 
@@ -1887,6 +1910,19 @@ contract FuzzDeployments is FuzzHelpers {
                 $postburnGrossPremiaLast1
             ) = panopticPool.premiaSettlementData($position, legIndex);
 
+            emit LogUint256(
+                "$postburnSettledToken0",
+                $postburnSettledToken0
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].settledToken0",
+                preburnAccumulators[legIndex].settledToken0
+            );
+            emit LogInt256(
+                "$expectedSettledToken0DifferenceForChunk",
+                $expectedSettledToken0DifferenceForChunk
+            );
+
             assertWithMsg(
                 int256(int128($postburnSettledToken0)) ==
                     Math.max(
@@ -1895,6 +1931,23 @@ contract FuzzDeployments is FuzzHelpers {
                         0
                     ),
                 "Settled token0s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
+            );
+
+            if ($expectedSettledToken0DifferenceForChunk == 364) {
+                assertWithMsg(false, "made it past your old case!");
+            }
+
+            emit LogUint256(
+                "$postburnSettledToken1",
+                $postburnSettledToken1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].settledToken1",
+                preburnAccumulators[legIndex].settledToken1
+            );
+            emit LogInt256(
+                "$expectedSettledToken1DifferenceForChunk",
+                $expectedSettledToken1DifferenceForChunk
             );
 
             assertWithMsg(
@@ -1913,8 +1966,8 @@ contract FuzzDeployments is FuzzHelpers {
             // (preBurnGrossPremiaSFPMAccumulator - preBurnGrossPremiaLast)*preBurnShortLiq/2^64 - idealPremium
             if ($position.isLong(legIndex) != 0) {
                 // Gross premia should not change on the long legs' chunks
-                projectedPremia[legIndex].idealPremium0 = 0;
-                projectedPremia[legIndex].idealPremium1 = 0;
+                $projectedPremia[legIndex].idealPremium0 = 0;
+                $projectedPremia[legIndex].idealPremium1 = 0;
             }
 
             (
@@ -1938,20 +1991,20 @@ contract FuzzDeployments is FuzzHelpers {
                 (($postburnSFPMGrossPremiaAccumulator0 - $postburnGrossPremiaLast0) *
                     $postburnShortLiquidity) >>
                     64 ==
-                    (((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator0 -
-                        preburnAccumulators[legIndex].grossPremiaLast0) *
-                        preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                        projectedPremia[legIndex].idealPremium0,
+                    (uint256((uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator0) -
+                        uint256(preburnAccumulators[legIndex].grossPremiaLast0)) *
+                        uint256(preburnAccumulators[legIndex].totalShortLiquidity)) >> 64) -
+                        $projectedPremia[legIndex].idealPremium0,
                 "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
             );
             assertWithMsg(
                 (($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1) *
                     $postburnShortLiquidity) >>
                     64 ==
-                    (((preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1 -
-                        preburnAccumulators[legIndex].grossPremiaLast1) *
-                        preburnAccumulators[legIndex].totalShortLiquidity) >> 64) -
-                        projectedPremia[legIndex].idealPremium1,
+                    (uint256((uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1) -
+                        uint256(preburnAccumulators[legIndex].grossPremiaLast1)) *
+                        uint256(preburnAccumulators[legIndex].totalShortLiquidity)) >> 64) -
+                        $projectedPremia[legIndex].idealPremium1,
                 "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
             );
             delete $expectedSettledToken0DifferenceForChunk;
@@ -1969,7 +2022,6 @@ contract FuzzDeployments is FuzzHelpers {
     function _compare_against_preburn_values(
         int128 expectedNonPremiaToken0Difference,
         int128 expectedNonPremiaToken1Difference,
-        PremiaProjection[] memory projectedPremia,
         PreburnValues memory burnersPreburnValues
     ) external {
         if (!$calledFromMakeAssertions) {
@@ -1984,7 +2036,7 @@ contract FuzzDeployments is FuzzHelpers {
         (
             int128 totalProjectedProratedPremium0,
             int128 totalProjectedProratedPremium1
-        ) = _net_up_prorated_premia(projectedPremia);
+        ) = _net_up_prorated_premia();
 
         int256 expectedToken0Difference = totalProjectedProratedPremium0 -
             expectedNonPremiaToken0Difference;
