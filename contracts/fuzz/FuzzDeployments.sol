@@ -2190,11 +2190,9 @@ contract FuzzDeployments is FuzzHelpers {
                 msg.sender,
                 positionsToBurn[positionIndex]
             );
-            try this._get_preburn_accumulators(
-                positionsToBurn[positionIndex],
-                msg.sender,
-                posSize
-            ) {
+            try
+                this._get_preburn_accumulators(positionsToBurn[positionIndex], msg.sender, posSize)
+            {
                 (preburnAccumulators[positionIndex], ) = this._get_preburn_accumulators(
                     positionsToBurn[positionIndex],
                     msg.sender,
