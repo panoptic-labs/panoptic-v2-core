@@ -1449,10 +1449,7 @@ contract FuzzDeployments is FuzzHelpers {
             $caller,
             $posSize
         );
-        _burn_and_assert_accumulator_and_token_differences(
-            premiaCalcInputs,
-            preburnAccumulators
-        );
+        _burn_and_assert_accumulator_and_token_differences(premiaCalcInputs, preburnAccumulators);
 
         // Keep userPositions up-to-date for other tests' benefit -
         // one of the caller's positions no longer exist:
@@ -1478,10 +1475,7 @@ contract FuzzDeployments is FuzzHelpers {
     ) internal {
         PreburnValues memory burnersPreburnValues = _get_preburn_values();
         try
-            this._project_premia_from_preburn_values(
-                premiaCalcInputs,
-                preburnAccumulators
-            )
+            this._project_premia_from_preburn_values(premiaCalcInputs, preburnAccumulators)
         {} catch (bytes memory premia_projection_err) {
             emit LogBytes("premia_projection_err", premia_projection_err);
             assertWithMsg(false, "Error when projecting premia");
@@ -1491,10 +1485,7 @@ contract FuzzDeployments is FuzzHelpers {
             PremiaProjection[] memory projectedPremia,
             int128 expectedNonPremiaToken0Difference,
             int128 expectedNonPremiaToken1Difference
-        ) = this._project_premia_from_preburn_values(
-                premiaCalcInputs,
-                preburnAccumulators
-            );
+        ) = this._project_premia_from_preburn_values(premiaCalcInputs, preburnAccumulators);
 
         try this._prank_and_burn() {
             assertWithMsg(false, "We burned!");
@@ -1589,10 +1580,7 @@ contract FuzzDeployments is FuzzHelpers {
         $calledFromMakeAssertions = true;
         // Make assertions about each leg's chunk differences, and get expected token diffs:
         try
-            this._assert_each_legs_chunk_accumulators_correct(
-                preburnAccumulators,
-                projectedPremia
-            )
+            this._assert_each_legs_chunk_accumulators_correct(preburnAccumulators, projectedPremia)
         {
             // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
             // alignment with our projections:
