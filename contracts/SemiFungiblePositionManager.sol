@@ -587,15 +587,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     }
 
     /// @notice Update user position data following a token transfer.
-    /// @dev Token transfers are only allowed if you transfer your entire liquidity of a given chunk and the recipient has none.
+    /// @dev All liquidity for `from` in the chunk for each leg of `id` must be transferred.
+    /// @dev `from` must not have long liquidity in any of the chunks being transferred.
+    /// @dev `to` must not have (long or short) liquidity in any of the chunks being transferred.
     /// @param from The address of the sender
     /// @param to The address of the recipient
     /// @param id The tokenId being transferred
     /// @param amount The amount of the token being transferred
     function registerTokenTransfer(address from, address to, TokenId id, uint256 amount) internal {
-        id.validate();
-
-        // Extract univ3pool from the poolId map to Uniswap Pool
         IUniswapV3Pool univ3pool = s_poolContext[id.poolId()].pool;
 
         uint256 numLegs = id.countLegs();
@@ -606,7 +605,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint128(amount)
             );
 
-            // construct the positionKey for the from and to addresses
             bytes32 positionKey_from = keccak256(
                 abi.encodePacked(
                     address(univ3pool),
@@ -626,24 +624,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 )
             );
 
-            // Revert if recipient already has that position
+            // Revert if recipient already has liquidity in `liquidityChunk`
+            // Revert if sender has long liquidity in `liquidityChunk` or they are attempting to transfer less than their `netLiquidity`
+            LeftRightUnsigned fromLiq = s_accountLiquidity[positionKey_from];
             if (
-                (LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0) ||
-                (LeftRightSigned.unwrap(s_accountFeesBase[positionKey_to]) != 0)
+                LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0 ||
+                LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity()
             ) revert Errors.TransferFailed();
 
-            // Revert if sender has long positions in that chunk or the entire liquidity is not being transferred
-            LeftRightUnsigned fromLiq = s_accountLiquidity[positionKey_from];
-            if (LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity())
-                revert Errors.TransferFailed();
-
-            LeftRightSigned fromBase = s_accountFeesBase[positionKey_from];
-
-            // update+store liquidity and fee values between accounts
             s_accountLiquidity[positionKey_to] = fromLiq;
             s_accountLiquidity[positionKey_from] = LeftRightUnsigned.wrap(0);
 
-            s_accountFeesBase[positionKey_to] = fromBase;
+            s_accountFeesBase[positionKey_to] = s_accountFeesBase[positionKey_from];
             s_accountFeesBase[positionKey_from] = LeftRightSigned.wrap(0);
 
             unchecked {
