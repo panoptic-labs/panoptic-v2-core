@@ -1413,32 +1413,52 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 positionLiquidity;
     }
 
+    bool $willSfpmBurnSimSucceed;
     function _try_burning_and_check_balances() internal {
-        try this._simulate_sfpm_burn() {
-            assertWithMsg(false, "_simulate_sfpm_burn should always revert");
-        } catch (bytes memory sfpm_sim_result) {
-            AccumulatorsForLeg[] memory preburnAccumulators = new AccumulatorsForLeg[](
-                $position.countLegs()
-            );
-            PremiaCalcInputs[] memory premiaCalcInputs = new PremiaCalcInputs[](
-                $position.countLegs()
-            );
+        try this._check_if_simulate_sfpm_burn_will_succeed() {
+            assertWithMsg(false, "_check_if_simulate_sfpm_burn_will_succeed should always revert");
+        } catch (bytes memory will_sfpm_burn_sim_succeed) {
+            assembly ("memory-safe") {
+                will_sfpm_burn_sim_succeed := add(will_sfpm_burn_sim_succeed, 0x04)
+            }
+            ($willSfpmBurnSimSucceed) = abi.decode(will_sfpm_burn_sim_succeed, (bool));
+            if ($willSfpmBurnSimSucceed) {
+                try this._simulate_sfpm_burn() {
+                    assertWithMsg(false, "_simulate_sfpm_burn should always revert");
+                } catch (bytes memory sfpm_sim_result) {
+                    AccumulatorsForLeg[] memory preburnAccumulators = new AccumulatorsForLeg[](
+                        $position.countLegs()
+                    );
+                    PremiaCalcInputs[] memory premiaCalcInputs = new PremiaCalcInputs[](
+                        $position.countLegs()
+                    );
 
-            (preburnAccumulators, premiaCalcInputs) = _get_preburn_accumulators(
-                $position,
-                $caller,
-                $posSize
-            );
-            _burn_and_assert_accumulator_and_token_differences(
-                premiaCalcInputs,
-                preburnAccumulators,
-                sfpm_sim_result
-            );
+                    try this._get_preburn_accumulators(
+                        $position,
+                        $caller,
+                        $posSize
+                    ) {} catch (bytes memory preburn_getting_err) {
+                        emit LogBytes("preburn_getting_err", preburn_getting_err);
+                        assertWithMsg(false, "Error getting preburn accumulators");
+                    }
+
+                    (preburnAccumulators, premiaCalcInputs) = this._get_preburn_accumulators(
+                        $position,
+                        $caller,
+                        $posSize
+                    );
+                    _burn_and_assert_accumulator_and_token_differences(
+                        premiaCalcInputs,
+                        preburnAccumulators,
+                        sfpm_sim_result
+                    );
+                }
+
+                // Keep userPositions up-to-date for other tests' benefit -
+                // one of the caller's positions no longer exist:
+                userPositions[$caller] = $positionsNew;
+            }
         }
-
-        // Keep userPositions up-to-date for other tests' benefit -
-        // one of the caller's positions no longer exist:
-        userPositions[$caller] = $positionsNew;
     }
 
     struct PremiaProjection {
@@ -1454,29 +1474,48 @@ contract FuzzDeployments is FuzzHelpers {
         bytes memory sfpm_sim_result
     ) internal {
         PreburnValues memory burnersPreburnValues = _get_preburn_values();
+        try this._project_premia_from_preburn_values(
+            premiaCalcInputs,
+            preburnAccumulators,
+            sfpm_sim_result
+        ) { } catch(bytes memory premia_projection_err) {
+            emit LogBytes("premia_projection_err", premia_projection_err);
+            assertWithMsg(false, "Error when projecting premia");
+        }
 
         (
             PremiaProjection[] memory projectedPremia,
             int128 expectedNonPremiaToken0Difference,
             int128 expectedNonPremiaToken1Difference
-        ) = _project_premia_from_preburn_values(
+        ) = this._project_premia_from_preburn_values(
                 premiaCalcInputs,
                 preburnAccumulators,
                 sfpm_sim_result
             );
 
-        _prank_and_burn();
-
-        _make_assertions(
-            preburnAccumulators,
-            projectedPremia,
-            sfpm_sim_result,
-            expectedNonPremiaToken0Difference,
-            expectedNonPremiaToken1Difference,
-            burnersPreburnValues
-        );
+        try this._prank_and_burn() {
+            _make_assertions(
+                preburnAccumulators,
+                projectedPremia,
+                sfpm_sim_result,
+                expectedNonPremiaToken0Difference,
+                expectedNonPremiaToken1Difference,
+                burnersPreburnValues
+            );
+            $calledFromBurnAndAssert = false;
+        } catch (bytes memory prank_and_burn_err) {
+            $calledFromBurnAndAssert = false;
+            // TODO: This is where we'll check if there's a valid reason for .burn to revert,
+            // even though SFPM.burnTokenizedPosition succeeded.
+            emit LogBytes("prank_and_burn_err", prank_and_burn_err);
+            assertWithMsg(false, "prank_and_burn_err");
+        }
     }
 
+    // We use this storage bool to ensure that echidna-generated calls to the external helpers,
+    // which are really only external to let us try {} and log unexpected catch {} reverts,
+    // don't go through:
+    bool $calledFromMakeAssertions;
     function _make_assertions(
         AccumulatorsForLeg[] memory preburnAccumulators,
         PremiaProjection[] memory projectedPremia,
@@ -1485,24 +1524,36 @@ contract FuzzDeployments is FuzzHelpers {
         int128 expectedNonPremiaToken1Difference,
         PreburnValues memory burnersPreburnValues
     ) internal {
+        $calledFromMakeAssertions = true;
         // Make assertions about each leg's chunk differences, and get expected token diffs:
-        _assert_each_legs_chunk_accumulators_correct(
+        try this._assert_each_legs_chunk_accumulators_correct(
             preburnAccumulators,
             projectedPremia,
             sfpm_sim_result
-        );
+        ) {
+            // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
+            // alignment with our projections:
+            try this._compare_against_preburn_values(
+                expectedNonPremiaToken0Difference,
+                expectedNonPremiaToken1Difference,
+                projectedPremia,
+                burnersPreburnValues
+            ) {
+                $calledFromMakeAssertions = false;
+            } catch (bytes memory compare_against_preburn_err) {
+                $calledFromMakeAssertions = false;
+                emit LogBytes("compare_against_preburn_err", compare_against_preburn_err);
+                assertWithMsg(false, "Error when comparing postburn asset values to preburn ones");
+            }
+        } catch (bytes memory assert_each_leg_err) {
+            $calledFromMakeAssertions = false;
+            emit LogBytes("assert_each_leg_err", assert_each_leg_err);
+            assertWithMsg(false, "Error when evaluating each legs postburn accumulators");
+        }
 
-        // Now, see if the assets in token0/token1.balanceOf as well as the CT have changed in
-        // alignment with our projections:
-        _compare_against_preburn_values(
-            expectedNonPremiaToken0Difference,
-            expectedNonPremiaToken1Difference,
-            projectedPremia,
-            burnersPreburnValues
-        );
     }
 
-    function _prank_and_burn() internal {
+    function _prank_and_burn() external {
         hevm.prank($caller);
         panopticPool.burnOptions($position, $positionsNew, $tickLimitLow, -1 * $tickLimitLow);
     }
@@ -1543,12 +1594,23 @@ contract FuzzDeployments is FuzzHelpers {
         );
     }
 
+    error SFPMBurnSimWillSucceed(
+        bool sfpmBurnCallWillSucceed
+    );
+    function _check_if_simulate_sfpm_burn_will_succeed() external {
+        try sfpm.burnTokenizedPosition($position, $posSize, $tickLimitLow, -1 * $tickLimitLow) {
+            revert SFPMBurnSimWillSucceed(true);
+        } catch {
+            revert SFPMBurnSimWillSucceed(false);
+        }
+    }
+
     function _get_preburn_accumulators(
         TokenId position,
         address caller,
         uint128 posSize
     )
-        internal
+        external
         returns (
             AccumulatorsForLeg[] memory accumulators,
             PremiaCalcInputs[] memory premiaCalcInputs
@@ -1645,7 +1707,7 @@ contract FuzzDeployments is FuzzHelpers {
         AccumulatorsForLeg[] memory accumulators,
         bytes memory sfpm_sim_result
     )
-        internal
+        external
         returns (
             PremiaProjection[] memory projectedPremia,
             int128 expectedToken0Difference,
@@ -1735,7 +1797,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 preburnShortLiquidity
     ) internal returns (uint128) {
         // Prevent division by zero
-        if (preburnGrossPremium == 0) return 0;
+        if (preburnGrossPremium == 0 || idealPremium == 0) return 0;
 
         return
             uint128(
@@ -1792,7 +1854,11 @@ contract FuzzDeployments is FuzzHelpers {
         AccumulatorsForLeg[] memory preburnAccumulators,
         PremiaProjection[] memory projectedPremia,
         bytes memory sfpm_sim_result
-    ) internal {
+    ) external {
+        if (!$calledFromMakeAssertions) {
+            return;
+        }
+
         (, , $token0CollectedByLeg, $token1CollectedByLeg) = _decode_sfpm_sim(sfpm_sim_result);
         for (uint legIndex = 0; legIndex < $position.countLegs(); legIndex++) {
             $expectedSettledToken0DifferenceForChunk = int256(
@@ -1899,7 +1965,11 @@ contract FuzzDeployments is FuzzHelpers {
         int128 expectedNonPremiaToken1Difference,
         PremiaProjection[] memory projectedPremia,
         PreburnValues memory burnersPreburnValues
-    ) internal {
+    ) external {
+        if (!$calledFromMakeAssertions) {
+            return;
+        }
+
         assertWithMsg(
             panopticPool.numberOfPositions($caller) == burnersPreburnValues.positionsOpened - 1,
             "Burning a position did not decrease the position counter"
@@ -2053,7 +2123,7 @@ contract FuzzDeployments is FuzzHelpers {
                 msg.sender,
                 positionsToBurn[positionIndex]
             );
-            (preburnAccumulators[positionIndex], ) = _get_preburn_accumulators(
+            (preburnAccumulators[positionIndex], ) = this._get_preburn_accumulators(
                 positionsToBurn[positionIndex],
                 msg.sender,
                 posSize
