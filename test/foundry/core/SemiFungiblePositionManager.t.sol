@@ -30,8 +30,8 @@ import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
 
-    function poolContext(uint64 poolId) public view returns (PoolAddressAndLock memory) {
-        return s_poolContext[poolId];
+    function poolIdToAddr(uint64 poolId) public view returns (IUniswapV3Pool) {
+        return s_poolIdToAddr[poolId];
     }
 
     function addrToPoolId(address pool) public view returns (uint256) {
@@ -891,10 +891,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         _initPool(x);
 
         // Check that the pool address is set correctly
-        assertEq(
-            address(sfpm.poolContext(PanopticMath.getPoolId(address(pool))).pool),
-            address(pool)
-        );
+        assertEq(address(sfpm.poolIdToAddr(PanopticMath.getPoolId(address(pool)))), address(pool));
 
         // Check that the pool ID is set correctly
         assertEq(
@@ -911,7 +908,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // Check that the pool address is set correctly
             assertEq(
-                address(sfpm.poolContext(PanopticMath.getPoolId(address(pool))).pool),
+                address(sfpm.poolIdToAddr(PanopticMath.getPoolId(address(pool)))),
                 address(pool)
             );
 
@@ -965,7 +962,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             }
 
             // Check that the pool address is set correctly
-            assertEq(address(sfpm_t.poolContext(poolIdNew).pool), address((i + 1) << 24));
+            assertEq(address(sfpm_t.poolIdToAddr(poolIdNew)), address((i + 1) << 24));
 
             // Check that the pool ID is set correctly
             // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address

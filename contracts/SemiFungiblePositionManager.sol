@@ -107,14 +107,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     using Math for uint256;
     using Math for int256;
 
-    /// @notice Packs the Uniswap pool address and reentrancy lock into a single slot.
-    /// @dev `locked` can be initialized to false with no gas consequences because the pool address makes the slot nonzero.
-    /// @dev false = unlocked, true = locked
-    struct PoolAddressAndLock {
-        IUniswapV3Pool pool;
-        bool locked;
-    }
-
     /*//////////////////////////////////////////////////////////////
                             IMMUTABLES 
     //////////////////////////////////////////////////////////////*/
@@ -146,9 +138,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     mapping(address univ3pool => uint256 poolIdData) internal s_AddrToPoolIdData;
 
     /// @notice Retrieve the Uniswap V3 pool address corresponding to a given poolId.
-    // pool ids are used instead of addresses to save bits in the token id
-    // (there will never be a collision because it's infeasible to mine an address with 8 consecutive bytes)
-    mapping(uint64 poolId => PoolAddressAndLock contextData) internal s_poolContext;
+    mapping(uint64 poolId => IUniswapV3Pool pool) internal s_poolIdToAddr;
+
+    /// @notice Retrieve the per-pool reentrancy lock status for a given poolId.
+    mapping(uint64 poolId => bool reentrancyLockActive) internal s_lockStatus;
 
     /*
         We're tracking the amount of net and removed liquidity for the specific region:
@@ -301,37 +294,21 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Modifier that prohibits reentrant calls for a specific pool.
-    /// @dev We piggyback the reentrancy lock on the (pool id => pool) mapping to save gas.
-    /// @dev (there's an extra 96 bits of storage available in the mapping slot and it's almost always warm).
     /// @param poolId The poolId of the pool to activate the reentrancy lock on
     modifier ReentrancyLock(uint64 poolId) {
-        // check if the pool is already locked
-        // init lock if not
-        beginReentrancyLock(poolId);
+        if (s_lockStatus[poolId]) revert Errors.ReentrantCall();
 
-        // execute function
+        // most reentrancy lock implementations use a nonzero number to represent the unlocked state (i.e. 1=unlocked, 2=locked)
+        // this is because nonzero -> nonzero writes are 5000 gas when cold, and 2900 gas when hot, making the first lock 7900 gas in total,
+        // while zero -> nonzero writes are 20000 gas when cold, and nonzero -> zero writes are 100 gas (21000 total).
+        // nonzero -> zero writes confer a 19900 gas refund, but EIP-3529 limits this to 1/5 of the gas usage,
+        // making that pattern non-optimal at gas usage below 70500. Given that SFPM mints and burns tend to exceed that threshold,
+        // the zero -> nonzero -> zero pattern is optimal *for this contract*.
+        s_lockStatus[poolId] = true;
+
         _;
 
-        // remove lock
-        endReentrancyLock(poolId);
-    }
-
-    /// @notice Add reentrancy lock on pool.
-    /// @dev reverts if the pool is already locked.
-    /// @param poolId The poolId of the pool to add the reentrancy lock to
-    function beginReentrancyLock(uint64 poolId) internal {
-        // check if the pool is already locked, if so, revert
-        if (s_poolContext[poolId].locked) revert Errors.ReentrantCall();
-
-        // activate lock
-        s_poolContext[poolId].locked = true;
-    }
-
-    /// @notice Remove reentrancy lock on pool.
-    /// @param poolId The poolId of the pool to remove the reentrancy lock from
-    function endReentrancyLock(uint64 poolId) internal {
-        // gas refund is triggered here by returning the slot to its original value
-        s_poolContext[poolId].locked = false;
+        s_lockStatus[poolId] = false;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -370,17 +347,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // There are 281,474,976,710,655 possible pool patterns.
         // A modern GPU can generate a collision such a space relatively quickly,
         // so if a collision is detected increment the pool pattern until a unique poolId is found
-        while (address(s_poolContext[poolId].pool) != address(0)) {
+        while (address(s_poolIdToAddr[poolId]) != address(0)) {
             poolId = PanopticMath.incrementPoolPattern(poolId);
         }
 
         // store the poolId => UniswapV3Pool information in a mapping
         // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
         // NOTE: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
-        s_poolContext[poolId] = PoolAddressAndLock({
-            pool: IUniswapV3Pool(univ3pool),
-            locked: s_poolContext[poolId].locked
-        });
+        s_poolIdToAddr[poolId] = IUniswapV3Pool(univ3pool);
 
         // store the UniswapV3Pool => poolId information in a mapping
         // add a bit on the end to indicate that the pool is initialized
@@ -548,7 +522,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     ) public override {
         // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
         // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
-        if (s_poolContext[TokenId.wrap(id).poolId()].locked) revert Errors.ReentrantCall();
+        if (s_lockStatus[TokenId.wrap(id).poolId()]) revert Errors.ReentrantCall();
 
         // update the position data
         registerTokenTransfer(from, to, TokenId.wrap(id), amount);
@@ -575,7 +549,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
         // so just check if there is an active reentrancy lock for the relevant pool on each token
         for (uint256 i = 0; i < ids.length; ) {
-            if (s_poolContext[TokenId.wrap(ids[i]).poolId()].locked) revert Errors.ReentrantCall();
+            if (s_lockStatus[TokenId.wrap(ids[i]).poolId()]) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
             unchecked {
                 ++i;
@@ -595,7 +569,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param id The tokenId being transferred
     /// @param amount The amount of the token being transferred
     function registerTokenTransfer(address from, address to, TokenId id, uint256 amount) internal {
-        IUniswapV3Pool univ3pool = s_poolContext[id.poolId()].pool;
+        IUniswapV3Pool univ3pool = s_poolIdToAddr[id.poolId()];
 
         uint256 numLegs = id.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
@@ -675,19 +649,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 tickLimitHigh,
         bool isBurn
     ) internal returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved) {
-        // Reverts if positionSize is 0 and user did not own the position before minting/burning
         if (positionSize == 0) revert Errors.OptionsBalanceZero();
 
         // Validate tokenId
         tokenId.validate();
 
-        /// @dev the flipToBurnToken() function flips the isLong bits
+        // the flipToBurnToken() function flips any active isLong bits
         if (isBurn) {
             tokenId = tokenId.flipToBurnToken();
         }
 
         // Extract univ3pool from the poolId map to Uniswap Pool
-        IUniswapV3Pool univ3pool = s_poolContext[tokenId.poolId()].pool;
+        IUniswapV3Pool univ3pool = s_poolIdToAddr[tokenId.poolId()];
 
         // Revert if the pool not been previously initialized
         if (univ3pool == IUniswapV3Pool(address(0))) revert Errors.UniswapPoolNotInitialized();
@@ -1533,18 +1506,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         feesBase1 = feesBase.leftSlot();
     }
 
-    /// @notice Returns the Uniswap v3 pool for a given poolId.
-    /// @param poolId The poolId for a Uni v3 pool
-    /// @return UniswapV3Pool The unique poolId for that Uni v3 pool
+    /// @notice Returns the Uniswap pool for a given `poolId`.
+    /// @param poolId The unique pool identifier for a Uni v3 pool
+    /// @return uniswapV3Pool The Uniswap pool corresponding to `poolId`
     function getUniswapV3PoolFromId(
         uint64 poolId
-    ) external view returns (IUniswapV3Pool UniswapV3Pool) {
-        return s_poolContext[poolId].pool;
+    ) external view returns (IUniswapV3Pool uniswapV3Pool) {
+        return s_poolIdToAddr[poolId];
     }
 
-    /// @notice Returns the poolId for a given Uniswap v3 pool.
-    /// @param univ3pool The address of the Uniswap v3 Pool
-    /// @return poolId The unique poolId for that Uni v3 pool
+    /// @notice Returns the `poolId` for a given Uniswap pool.
+    /// @param univ3pool The address of the Uniswap Pool
+    /// @return poolId The unique pool identifier corresponding to `univ3pool`
     function getPoolId(address univ3pool) external view returns (uint64 poolId) {
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
     }
