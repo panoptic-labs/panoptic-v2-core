@@ -164,7 +164,7 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     /// @dev This function does a back to back swap. It is uses the generate premium. It's adapted from test/foundry/core/PanopticPool.t.sol
-    function two_way_swap(uint256 swapSize, uint256 numberOfSwaps, uint256 recipient) public {
+    function twoWaySwap(uint256 swapSize, uint256 numberOfSwaps, uint256 recipient) public {
         recipient = bound(recipient, 0, 4); // Index to the actors array
         swapSize = bound(swapSize, 10 ** 18, 10 ** 20);
         numberOfSwaps = bound(numberOfSwaps, 1, 15);
@@ -871,7 +871,7 @@ contract FuzzDeployments is FuzzHelpers {
         emit LogAddress("Minter", minter);
     }
 
-    /* function mint_option(
+    function mint_option(
         uint256 seller_index,
         bool asset,
         bool is_call,
@@ -920,7 +920,7 @@ contract FuzzDeployments is FuzzHelpers {
                 effLiqLimit
             );
         }
-    } */
+    }
 
     function mint_strategy_undefined(
         uint256 seller_index,
@@ -1488,7 +1488,6 @@ contract FuzzDeployments is FuzzHelpers {
         ) = this._project_premia_from_preburn_values(premiaCalcInputs, preburnAccumulators);
 
         try this._prank_and_burn() {
-            assertWithMsg(false, "We burned!");
             _make_assertions(
                 preburnAccumulators,
                 projectedPremia,
