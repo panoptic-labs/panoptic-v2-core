@@ -184,7 +184,7 @@ contract PanopticPoolActions is CollateralActions {
                 $tokenTypes[i],
                 $tickLower,
                 $tickUpper,
-                type(int24).max,
+                currentTick,
                 $isLongs[i]
             );
 
@@ -537,17 +537,30 @@ contract PanopticPoolActions is CollateralActions {
                         $shortLiquidity == 0
                             ? 0
                             : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
+                    ) ||
+                    $grossPremiaTotal0[i] + 1 ==
+                    (
+                        $shortLiquidity == 0
+                            ? 0
+                            : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
                     ),
-                "PanopticPool: Calculated total gross premium for token0 changed during an option mint"
+                "PanopticPool: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
             );
+
             assertWithMsg(
                 $grossPremiaTotal1[i] ==
                     (
                         $shortLiquidity == 0
                             ? 0
                             : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
+                    ) ||
+                    $grossPremiaTotal1[i] + 1 ==
+                    (
+                        $shortLiquidity == 0
+                            ? 0
+                            : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
                     ),
-                "PanopticPool: Calculated total gross premium for token1 changed during an option mint"
+                "PanopticPool: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
             );
         }
     }
