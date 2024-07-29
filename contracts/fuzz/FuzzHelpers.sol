@@ -276,6 +276,37 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256[2][4][32] settledTokens;
     }
 
+    struct PreburnValues {
+        uint256 token0Balance;
+        uint256 token1Balance;
+        uint256 assetsInCT0;
+        uint256 assetsInCT1;
+        uint256 positionsOpened;
+    }
+
+    struct AccumulatorsForLeg {
+        uint128 settledToken0;
+        uint128 settledToken1;
+        uint128 grossPremiaLast0;
+        uint128 grossPremiaLast1;
+        uint128 totalShortLiquidity;
+        uint128 sfpmGrossPremiaAccumulator0;
+        uint128 sfpmGrossPremiaAccumulator1;
+        uint128 positionLiquidity;
+    }
+
+    struct PremiaCalcInputs {
+        uint128 premiumGrowth0;
+        uint128 premiumGrowth1;
+    }
+
+    struct PremiaProjection {
+        uint128 idealPremium0;
+        uint128 idealPremium1;
+        uint128 proratedPremium0;
+        uint128 proratedPremium1;
+    }
+
     PanopticHelper panopticHelper;
     SemiFungiblePositionManager sfpm;
     IUniswapV3Factory univ3factory;
@@ -300,6 +331,42 @@ contract FuzzHelpers is PropertiesAsserts {
     address pool_manipulator;
 
     SwapperC swapperc;
+
+    // For tracking arguments used in burn_one_option's calls to PanopticPool.burn and similar:
+    TokenId $position;
+    address $caller;
+    TokenId[] $positionsNew;
+    uint128 $posSize;
+    int24 $tickLimitLow;
+
+    // For storing projections about the premia payments for each burnt option's legs:
+    PremiaProjection[] $projectedPremia;
+
+    // For ensuring that echidna-generated calls to the external helpers of _burn_one_option
+    // (which are only external to allow us to try-then-log unexpected reverts)
+    // return early:
+    bool $calledFromMakeAssertions;
+
+    // For simulating a call to sfpm.burnTokenizedPosition():
+    LeftRightUnsigned[4] $collectedByLeg;
+    LeftRightSigned $totalSwapped;
+    bool $sfpmRevert;
+    uint128[] $token0CollectedByLeg;
+    uint128[] $token1CollectedByLeg;
+    int128 $token0Swapped;
+    int128 $token1Swapped;
+
+    // For simulating accumulator differences from N burnOption(oneOption) calls:
+    int256[] $underlyingAssetDifferences;
+    int128[][] $settledToken0DifferenceForLegsChunk;
+    int128[][] $settledToken1DifferenceForLegsChunk;
+    int128[][] $grossPremiaLast0DifferenceForLegsChunk;
+    int128[][] $grossPremiaLast1DifferenceForLegsChunk;
+
+    // Constants used in projecting premia and handling reverts:
+    uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
+    bytes constant PANIC_17 =
+        hex"4e487b710000000000000000000000000000000000000000000000000000000000000011";
 
     mapping(address => TokenId[]) userPositions;
 
