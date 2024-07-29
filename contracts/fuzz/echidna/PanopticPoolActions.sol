@@ -531,13 +531,6 @@ contract PanopticPoolActions is CollateralActions {
 
             $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
 
-            $grossPremiaTotal0[i] = $shortLiquidity == 0
-                ? 0
-                : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity);
-            $grossPremiaTotal1[i] = $shortLiquidity == 0
-                ? 0
-                : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity);
-
             assertWithMsg(
                 $grossPremiaTotal0[i] ==
                     (
