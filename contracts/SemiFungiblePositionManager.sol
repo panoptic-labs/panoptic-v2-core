@@ -780,13 +780,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 numLegs = tokenId.countLegs();
 
         for (uint256 leg = 0; leg < numLegs; ) {
-            unchecked {
-                // Reverse the order of the legs if this call is burning a position (LIFO)
-                // We loop in reverse order if burning a position so that any dependent long liquidity is returned to the pool first,
-                // allowing the corresponding short liquidity to be removed
-                leg = isBurn ? numLegs - leg - 1 : leg;
-            }
-
             LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 tokenId,
                 leg,

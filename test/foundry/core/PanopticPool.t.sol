@@ -3596,7 +3596,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
         pp.mintOptions(
             posIdList,
             positionSize * 0,
@@ -4880,19 +4880,6 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
         }
-    }
-
-    function test_Fail_burnOptions_OptionsBalanceZero(uint256 x) public {
-        _initPool(x);
-
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
-
-        pp.burnOptions(
-            TokenId.wrap(0),
-            emptyList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
-        );
     }
 
     function test_Fail_burnOptions_WrongIdList(

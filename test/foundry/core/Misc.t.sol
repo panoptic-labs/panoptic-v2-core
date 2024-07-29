@@ -1805,7 +1805,6 @@ contract Misctest is Test, PositionUtils {
             );
 
             // the positive premium is from the dummy short chunk
-            // @TODO might have to tweak this if rounding is changed upstream
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
                 i == 0 ? int256(107) : int256(108),

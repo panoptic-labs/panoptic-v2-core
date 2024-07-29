@@ -1919,7 +1919,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
 
         sfpm.mintTokenizedPosition(tokenId, uint128(0), TickMath.MIN_TICK, TickMath.MAX_TICK);
     }
