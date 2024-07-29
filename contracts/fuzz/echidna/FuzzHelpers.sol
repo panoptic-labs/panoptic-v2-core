@@ -490,7 +490,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     // transfer storage
     // tokenId -> owner -> position size
-    mapping(uint256 tokenId => mapping(address owner => uint256 positionSize)) balances;
+    mapping(TokenId tokenId => mapping(address owner => uint256 positionSize)) tokenBalances;
 
     // current user
     address $activeUser;
@@ -578,6 +578,34 @@ contract FuzzHelpers is PropertiesAsserts {
     //
     uint256[4] $accountPremiumGrossCalculated0;
     uint256[4] $accountPremiumGrossCalculated1;
+
+    /// for transfers
+    int128[4] $recipientFeesBaseBefore0;
+    int128[4] $recipientFeesBaseBefore1;
+    int128[4] $senderFeesBaseBefore0;
+    int128[4] $senderFeesBaseBefore1;
+    //
+    int128[4] $recipientFeesBaseAfter0;
+    int128[4] $recipientFeesBaseAfter1;
+    int128[4] $senderFeesBaseAfter0;
+    int128[4] $senderFeesBaseAfter1;
+
+    //
+    bytes32[4] positionKey_from;
+    bytes32[4] positionKey_to;
+
+    //
+    uint256 tokenBalanceSenderBefore;
+    uint256 tokenBalanceRecipientBefore;
+    uint256 tokenBalanceSenderAfter;
+    uint256 tokenBalanceRecipientAfter;
+
+    //
+    LeftRightUnsigned[4] accountLiquiditiesSenderBefore;
+    LeftRightUnsigned[4] accountLiquiditiesRecipientBefore;
+    //
+    LeftRightUnsigned[4] accountLiquiditiesSenderAfter;
+    LeftRightUnsigned[4] accountLiquiditiesRecipientAfter;
 
     // final returns
     LeftRightUnsigned[4] $sCollectedByLeg;
@@ -1354,6 +1382,26 @@ contract FuzzHelpers is PropertiesAsserts {
                 ? $shouldRevert
                 : ($thresholdCross * buffer) / 10_000 > $balanceCross;
         }
+    }
+
+    //
+    function _increment_tokenBalance(uint256 positionSize) internal {
+        // uint256 tokenId => mapping(address owner => uint256 positionSize
+        tokenBalances[$activeTokenId][$activeUser] += positionSize;
+    }
+
+    function _decrement_tokenBalance(uint256 positionSize) internal {
+        // uint256 tokenId => mapping(address owner => uint256 positionSize
+        tokenBalances[$activeTokenId][$activeUser] -= positionSize;
+    }
+
+    // verifies the token balance of a user tracked externally matches internal accounting
+    function _check_tokenBalance() internal {
+        uint256 currBalanceReal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
+        uint256 currBalanceExternal = tokenBalances[$activeTokenId][$activeUser];
+
+        assertWithMsg(currBalanceReal == currBalanceExternal, "SFPM token balance invalid");
     }
 
     function _get_effective_liq_factor(

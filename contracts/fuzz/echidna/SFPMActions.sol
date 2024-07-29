@@ -41,10 +41,6 @@ contract SFPMActions is GeneralActions {
             strike_in
         );
 
-        // fund the actor
-        hevm.prank($activeUser);
-        fund_and_approve();
-
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
             $activeLegIndex = i;
@@ -257,8 +253,6 @@ contract SFPMActions is GeneralActions {
             sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
-
-            // @note check the balance of their ERC1155 increased by position size
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
@@ -618,6 +612,13 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
+
+                // check the balance of their ERC1155 id increased by position size
+                {
+                    // adjust balances and verify
+                    _increment_tokenBalance(positionSize);
+                    _check_tokenBalance();
+                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -681,10 +682,6 @@ contract SFPMActions is GeneralActions {
                 );
             }
         }
-
-        // fund the actor
-        hevm.prank($activeUser);
-        fund_and_approve();
 
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
@@ -891,8 +888,6 @@ contract SFPMActions is GeneralActions {
             sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
-
-            // @note check the balance of their ERC1155 increased by position size
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
@@ -1282,6 +1277,13 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
+
+                // check the balance of their ERC1155 id increased by position size
+                {
+                    // adjust balances and verify
+                    _increment_tokenBalance(positionSize);
+                    _check_tokenBalance();
+                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -1341,8 +1343,6 @@ contract SFPMActions is GeneralActions {
                 bound(randSeed, 0, touchedPanopticChunks.length - 1)
             ];
 
-            assertWithMsg(false, "check x x x xx x x ");
-
             // randomly selected chunk
             $activeTokenId = $activeTokenId.addLeg(
                 $activeNumLegs - 1,
@@ -1358,10 +1358,6 @@ contract SFPMActions is GeneralActions {
             // increment active number of legs
             $activeNumLegs++;
         }
-
-        // fund the actor
-        hevm.prank($activeUser);
-        fund_and_approve();
 
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
@@ -1488,7 +1484,6 @@ contract SFPMActions is GeneralActions {
                 emit LogInt256("newFeesBaseRoundDown0", $newFeesBaseRoundDown0[$activeLegIndex]);
                 emit LogInt256("newFeesBaseRoundDown1", $newFeesBaseRoundDown1[$activeLegIndex]);
 
-                //
                 $amountToCollect0[$activeLegIndex] = int128(
                     Math.max(
                         $newFeesBaseRoundDown0[$activeLegIndex] - $oldFeesBase0[$activeLegIndex],
@@ -1571,7 +1566,7 @@ contract SFPMActions is GeneralActions {
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
 
-            // @note check the balance of their ERC1155 increased by position size
+            assertWithMsg(false, "check x x x xx x x ");
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
@@ -1992,6 +1987,13 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
+
+                // check the balance of their ERC1155 id increased by position size
+                {
+                    // adjust balances and verify
+                    _increment_tokenBalance(positionSize);
+                    _check_tokenBalance();
+                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2000,10 +2002,6 @@ contract SFPMActions is GeneralActions {
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
         } catch Error(string memory reason) {
-            // @note if it fails ensure the amount of liquidity being minted was valid
-            // that the user has enough tokens to cover the mint and the mint is non-zero liq
-            // also ensure shouldRevert flag is not tipped to be true
-
             emit LogString(reason);
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
@@ -2067,9 +2065,6 @@ contract SFPMActions is GeneralActions {
 
             (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
 
-            hevm.prank(minter);
-            fund_and_approve();
-
             (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
                 minter,
                 zeroForOne,
@@ -2118,7 +2113,12 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // @note check the balance of their ERC1155 increased by position size
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[minter].push($activeTokenId);
@@ -2203,7 +2203,12 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // @note check the balance of their ERC1155 increased by position size
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
@@ -2274,7 +2279,12 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // @note check the balance of their ERC1155 increased by position size
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
@@ -2345,7 +2355,12 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // @note check the balance of their ERC1155 increased by position size
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
@@ -2458,7 +2473,12 @@ contract SFPMActions is GeneralActions {
             // ensure that only token 0 was moved as this was a netting swap
             // assertWithMsg(totalMoved0 == convertedMoved1to0, "invalid conversion");
 
-            // @note check the balance of their ERC1155 increased by position size
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[msg.sender].push($activeTokenId);
@@ -2754,41 +2774,39 @@ contract SFPMActions is GeneralActions {
         // store the current actor
         $activeUser = msg.sender;
 
-        // grab a random tokenId ***
+        // grab a random tokenId owned by the current interactor ***
         if (isMix && userPositionsSFPMix[$activeUser].length != 0) {
             // burn mix
-            $activeTokenId = userPositionsSFPMix[$activeUser][
-                bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
-            ];
+            uint256 randIndex = bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1);
+            $activeTokenId = userPositionsSFPMix[$activeUser][randIndex];
+
+            // delete from owner
+            userPositionsSFPMix[$activeUser][randIndex] = TokenId.wrap(0);
         } else if (isLong && userPositionsSFPMLong[$activeUser].length != 0) {
             // burn a long
-            $activeTokenId = userPositionsSFPMLong[$activeUser][
-                bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
-            ];
+            uint256 randIndex = bound(randSeed, 0, userPositionsSFPMLong[$activeUser].length - 1);
+            $activeTokenId = userPositionsSFPMLong[$activeUser][randIndex];
+
+            // delete from owner
+            userPositionsSFPMLong[$activeUser][randIndex] = TokenId.wrap(0);
         } else {
             if (userPositionsSFPMShort[$activeUser].length == 0) {
                 revert();
             }
 
             // burn a short
-            $activeTokenId = userPositionsSFPMShort[$activeUser][
-                bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1)
-            ];
-        }
+            uint256 randIndex = bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1);
+            $activeTokenId = userPositionsSFPMShort[$activeUser][randIndex];
 
-        // fund the actor
-        hevm.prank($activeUser);
-        fund_and_approve();
+            // delete from owner
+            userPositionsSFPMShort[$activeUser][randIndex] = TokenId.wrap(0);
+        }
 
         // pre-mint calculations/actions for storage
         for (uint i = $activeNumLegs; i > 0; i--) {
             $activeLegIndex = i;
 
             emit LogUint256("active leg index: ", $activeLegIndex);
-
-            {
-                // @note check the balance of their ERC1155 decreased by position size
-            }
 
             {
                 // get the amount of liquidity being deposited
@@ -3068,8 +3086,7 @@ contract SFPMActions is GeneralActions {
 
                         // ensure the removed liquidity is incremented
                         assertWithMsg(
-                            $removedLiquidityBefore[$activeLegIndex] +
-                                $sLiqAmounts[$activeLegIndex] ==
+                            $removedLiquidityBefore[$activeLegIndex] ==
                                 $removedLiquidityAfter[$activeLegIndex],
                             "invalid removed liquidity"
                         );
@@ -3411,6 +3428,12 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
+
+                {
+                    // adjust balances and verify
+                    _decrement_tokenBalance(positionSize);
+                    _check_tokenBalance();
+                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -3429,26 +3452,280 @@ contract SFPMActions is GeneralActions {
 
     // transfer
 
-    // function transfer_tokenId() {}
-    //  // grab a random tokenId ***
-    // if (isMix && userPositionsSFPMix[$activeUser].length != 0) {
-    //     // burn mix
-    //     $activeTokenId = userPositionsSFPMix[$activeUser][
-    //         bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
-    //     ];
-    // } else if (isLong && userPositionsSFPMLong[$activeUser].length != 0) {
-    //     // burn a long
-    //     $activeTokenId = userPositionsSFPMLong[$activeUser][
-    //         bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1)
-    //     ];
-    // } else {
-    //     if (userPositionsSFPMShort[$activeUser].length == 0) {
-    //         revert();
-    //     }
+    function transfer_tokenId(
+        uint256 positionSize,
+        address randUser,
+        bool transferToPP, // transfer to panoptic pool flag
+        bool isLong,
+        bool isMix,
+        uint256 randSeed,
+        bytes calldata data
+    ) public {
+        $activeUser = msg.sender;
 
-    //     // burn a short
-    //     $activeTokenId = userPositionsSFPMShort[$activeUser][
-    //         bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1)
-    //     ];
-    // }
+        if (transferToPP) {
+            randUser = address(panopticPool);
+        }
+
+        // grab a random tokenId owned by the current interactor ***
+        if (isMix && userPositionsSFPMix[$activeUser].length != 0) {
+            // burn mix
+            uint256 randIndex = bound(randSeed, 0, userPositionsSFPMix[$activeUser].length - 1);
+            $activeTokenId = userPositionsSFPMix[$activeUser][randIndex];
+
+            // delete from owner and give to recipient
+            userPositionsSFPMix[$activeUser][randIndex] = TokenId.wrap(0);
+            userPositionsSFPMix[randUser].push($activeTokenId);
+        } else if (isLong && userPositionsSFPMLong[$activeUser].length != 0) {
+            // burn a long
+            uint256 randIndex = bound(randSeed, 0, userPositionsSFPMLong[$activeUser].length - 1);
+            $activeTokenId = userPositionsSFPMLong[$activeUser][randIndex];
+
+            // delete from owner and give to recipient
+            userPositionsSFPMLong[$activeUser][randIndex] = TokenId.wrap(0);
+            userPositionsSFPMLong[randUser].push($activeTokenId);
+        } else {
+            if (userPositionsSFPMShort[$activeUser].length == 0) {
+                revert();
+            }
+
+            // burn a short
+            uint256 randIndex = bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1);
+            $activeTokenId = userPositionsSFPMShort[$activeUser][randIndex];
+
+            // delete from owner and give to recipient
+            userPositionsSFPMShort[$activeUser][randIndex] = TokenId.wrap(0);
+            userPositionsSFPMShort[randUser].push($activeTokenId);
+        }
+
+        // check internal balance of that tokenId
+        tokenBalanceSenderBefore = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+        tokenBalanceRecipientBefore = sfpm.balanceOf(randUser, TokenId.unwrap($activeTokenId));
+
+        $activeNumLegs = $activeTokenId.countLegs();
+        for (uint256 i = 0; i < $activeNumLegs; i++) {
+            $activeLegIndex = i;
+
+            // the chunk being transferred
+            $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
+                $activeTokenId,
+                $activeLegIndex,
+                uint128(positionSize)
+            );
+
+            {
+                // construct the positionKey for the from and to addresses
+                positionKey_from[$activeLegIndex] = keccak256(
+                    abi.encodePacked(
+                        address(pool),
+                        $activeUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $liquidityChunk[$activeLegIndex].tickLower(),
+                        $liquidityChunk[$activeLegIndex].tickUpper()
+                    )
+                );
+                positionKey_to[$activeLegIndex] = keccak256(
+                    abi.encodePacked(
+                        address(pool),
+                        randUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $liquidityChunk[$activeLegIndex].tickLower(),
+                        $liquidityChunk[$activeLegIndex].tickUpper()
+                    )
+                );
+            }
+
+            {
+                // store feesbase before sender
+                (
+                    $senderFeesBaseBefore0[$activeLegIndex],
+                    $senderFeesBaseBefore1[$activeLegIndex]
+                ) = sfpm.getAccountFeesBase(
+                    address(pool),
+                    $activeUser,
+                    $activeTokenId.tokenType($activeLegIndex),
+                    $liquidityChunk[$activeLegIndex].tickLower(),
+                    $liquidityChunk[$activeLegIndex].tickUpper()
+                );
+
+                // store feesbase before receiver (should be 0)
+                (
+                    $recipientFeesBaseBefore0[$activeLegIndex],
+                    $recipientFeesBaseBefore1[$activeLegIndex]
+                ) = sfpm.getAccountFeesBase(
+                    address(pool),
+                    randUser,
+                    $activeTokenId.tokenType($activeLegIndex),
+                    $liquidityChunk[$activeLegIndex].tickLower(),
+                    $liquidityChunk[$activeLegIndex].tickUpper()
+                );
+            }
+
+            {
+                // store account liquidity before sender (should not be 0 ~)
+                accountLiquiditiesSenderBefore[$activeLegIndex] = sfpm.getAccountLiquidity(
+                    address(pool),
+                    $activeUser,
+                    $activeTokenId.tokenType($activeLegIndex),
+                    $liquidityChunk[$activeLegIndex].tickLower(),
+                    $liquidityChunk[$activeLegIndex].tickUpper()
+                );
+
+                // store account liquidity before recipient (should be 0 ~)
+                accountLiquiditiesRecipientBefore[$activeLegIndex] = sfpm.getAccountLiquidity(
+                    address(pool),
+                    randUser,
+                    $activeTokenId.tokenType($activeLegIndex),
+                    $liquidityChunk[$activeLegIndex].tickLower(),
+                    $liquidityChunk[$activeLegIndex].tickUpper()
+                );
+            }
+
+            // if not sending the entre liq amount or transferring long
+            if (
+                ($liquidityChunk[$activeLegIndex].liquidity() !=
+                    LeftRightUnsigned.unwrap(accountLiquiditiesSenderBefore[$activeLegIndex])) ||
+                (LeftRightUnsigned.unwrap(accountLiquiditiesRecipientBefore[$activeLegIndex]) != 0)
+            ) {
+                $shouldRevertSFPM = true;
+            }
+        }
+
+        try
+            sfpm.safeTransferFrom(
+                $activeUser,
+                randUser,
+                TokenId.unwrap($activeTokenId),
+                positionSize,
+                data
+            )
+        {
+            for (uint256 i = 0; i < $activeNumLegs; i++) {
+                $activeLegIndex = i;
+
+                {
+                    // store feesbase before sender
+                    (
+                        $senderFeesBaseAfter0[$activeLegIndex],
+                        $senderFeesBaseAfter1[$activeLegIndex]
+                    ) = sfpm.getAccountFeesBase(
+                        address(pool),
+                        $activeUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $liquidityChunk[$activeLegIndex].tickLower(),
+                        $liquidityChunk[$activeLegIndex].tickUpper()
+                    );
+
+                    // store feesbase before receiver (should be 0)
+                    (
+                        $recipientFeesBaseAfter0[$activeLegIndex],
+                        $recipientFeesBaseAfter1[$activeLegIndex]
+                    ) = sfpm.getAccountFeesBase(
+                        address(pool),
+                        randUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $liquidityChunk[$activeLegIndex].tickLower(),
+                        $liquidityChunk[$activeLegIndex].tickUpper()
+                    );
+                }
+
+                {
+                    // store account liquidity before sender (should not be 0 ~)
+                    accountLiquiditiesSenderAfter[$activeLegIndex] = sfpm.getAccountLiquidity(
+                        address(pool),
+                        $activeUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $liquidityChunk[$activeLegIndex].tickLower(),
+                        $liquidityChunk[$activeLegIndex].tickUpper()
+                    );
+
+                    // store account liquidity before recipient (should be 0 ~)
+                    accountLiquiditiesRecipientAfter[$activeLegIndex] = sfpm.getAccountLiquidity(
+                        address(pool),
+                        randUser,
+                        $activeTokenId.tokenType($activeLegIndex),
+                        $liquidityChunk[$activeLegIndex].tickLower(),
+                        $liquidityChunk[$activeLegIndex].tickUpper()
+                    );
+                }
+
+                /// checks
+                {
+                    // check feesbase after sender == 0
+                    assertWithMsg(
+                        $senderFeesBaseAfter0[$activeLegIndex] == 0,
+                        "non zero fees base 0 of sender"
+                    );
+                    assertWithMsg(
+                        $senderFeesBaseAfter1[$activeLegIndex] == 0,
+                        "non zero fees base 1 of sender"
+                    );
+
+                    // check feesbase after receiver (should be  = from feesbase)
+                    assertWithMsg(
+                        $recipientFeesBaseAfter0[$activeLegIndex] ==
+                            $senderFeesBaseBefore0[$activeLegIndex],
+                        "non zero fees base 0 of sender"
+                    );
+                    assertWithMsg(
+                        $recipientFeesBaseAfter1[$activeLegIndex] ==
+                            $senderFeesBaseBefore1[$activeLegIndex],
+                        "non zero fees base 1 of sender"
+                    );
+
+                    // check acc liq sender = 0
+                    assertWithMsg(
+                        LeftRightUnsigned.unwrap(accountLiquiditiesSenderAfter[$activeLegIndex]) ==
+                            0,
+                        "invalid sender liquidity"
+                    );
+
+                    // check acc liq receiver = acc liq sender
+                    assertWithMsg(
+                        LeftRightUnsigned.unwrap(
+                            accountLiquiditiesRecipientAfter[$activeLegIndex]
+                        ) ==
+                            LeftRightUnsigned.unwrap(
+                                accountLiquiditiesSenderBefore[$activeLegIndex]
+                            ),
+                        "invalid recipient liquidity"
+                    );
+                }
+
+                {
+                    // delete and update record of token ownership
+                    tokenBalances[$activeTokenId][randUser] += positionSize;
+                    tokenBalances[$activeTokenId][$activeUser] -= positionSize;
+
+                    assertWithMsg(
+                        tokenBalances[$activeTokenId][randUser] ==
+                            tokenBalances[$activeTokenId][randUser],
+                        "invalid tracked erc1155 balance recipient"
+                    );
+                    assertWithMsg(
+                        tokenBalances[$activeTokenId][$activeUser] ==
+                            tokenBalances[$activeTokenId][$activeUser],
+                        "invalid tracked erc1155 balance sender"
+                    );
+                }
+            }
+
+            assertWithMsg(false, "success");
+
+            // inverse
+            assertWithMsg(!$shouldRevertSFPM, "should have reverted");
+
+            // transfer should fail if trying to transfer bal > before bal
+        } catch Error(string memory reason) {
+            emit LogString(reason);
+
+            emit LogBool("should revert ?", $shouldRevertSFPM);
+
+            assertWithMsg($shouldRevertSFPM, "non-expected revert");
+        }
+    }
+
+    // transferFrom with insufficient approval
+    // safeTransferFrom
+    // batchTransferFrom
 }
