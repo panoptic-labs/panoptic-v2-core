@@ -309,6 +309,17 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 tokenType;
     }
 
+    struct AccumulatorsForLeg {
+        uint128 settledToken0;
+        uint128 settledToken1;
+        uint128 grossPremiaLast0;
+        uint128 grossPremiaLast1;
+        uint128 totalShortLiquidity;
+        uint128 positionLiquidity;
+        uint128 sfpmGrossPremiaAccumulator0;
+        uint128 sfpmGrossPremiaAccumulator1;
+    }
+
     uint256 internal constant FAST_ORACLE_CARDINALITY = 3;
     uint256 internal constant FAST_ORACLE_PERIOD = 1;
 
@@ -424,6 +435,14 @@ contract FuzzHelpers is PropertiesAsserts {
     int256 $commission0;
     int256 $commission1;
 
+    uint128 $postmintSettledToken0;
+    uint128 $postmintSettledToken1;
+    uint128 $postmintGrossPremiaLast0;
+    uint128 $postmintGrossPremiaLast1;
+    uint128 $postmintSFPMGrossPremiaAccumulator0;
+    uint128 $postmintSFPMGrossPremiaAccumulator1;
+    uint256 $postmintShortLiquidity;
+
     LeftRightUnsigned $tokenData0;
     LeftRightUnsigned $tokenData1;
 
@@ -447,6 +466,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     address[] actors;
     address pool_manipulator;
+    address $caller;
 
     int24[4] $colTicks;
 
@@ -1403,6 +1423,122 @@ contract FuzzHelpers is PropertiesAsserts {
             $maxTransfer1 = Math.max($maxTransfer1, $netTokenTransfers1);
         }
     }
+
+    uint128[] $token0CollectedByLeg;
+    uint128[] $token1CollectedByLeg;
+    int128 $token0Swapped;
+    int128 $token1Swapped;
+    function _write_premint_accumulators() internal {
+        if ($sfpmRevert) return;
+        $token0CollectedByLeg = new uint128[]($numLegs);
+        $token1CollectedByLeg = new uint128[]($numLegs);
+        for (uint legIndex = 0; legIndex < $numLegs; legIndex++) {
+            $token0CollectedByLeg[legIndex] = $collectedByLeg[legIndex].rightSlot();
+            $token1CollectedByLeg[legIndex] = $collectedByLeg[legIndex].leftSlot();
+        }
+
+        $token0Swapped = $totalSwapped.rightSlot();
+        $token1Swapped = $totalSwapped.leftSlot();
+
+        _write_accumulators();
+    }
+
+    AccumulatorsForLeg[] $premintAccumulators;
+    function _write_accumulators() internal {
+        for (uint legIndex = 0; legIndex < $numLegs; legIndex++) {
+            _set_premint_accumulators_for_leg(legIndex);
+        }
+    }
+
+    uint128 $settledToken0;
+    uint128 $settledToken1;
+    uint128 $grossPremiaLast0;
+    uint128 $grossPremiaLast1;
+    uint128 $sfpmGrossPremiaAccumulator0;
+    uint128 $sfpmGrossPremiaAccumulator1;
+    function _set_premint_accumulators_for_leg(uint legIndex) internal {
+        (
+            $settledToken0,
+            $settledToken1,
+            $grossPremiaLast0,
+            $grossPremiaLast1
+        ) = panopticPool.premiaSettlementData($tokenIdActive, legIndex);
+        ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
+            legIndex
+        );
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+            $tokenIdActive,
+            legIndex,
+            $positionSizeActive
+        );
+
+        $premintAccumulators.push(AccumulatorsForLeg({
+            settledToken0: $settledToken0,
+            settledToken1: $settledToken1,
+            grossPremiaLast0: $grossPremiaLast0,
+            grossPremiaLast1: $grossPremiaLast1,
+            sfpmGrossPremiaAccumulator0: $sfpmGrossPremiaAccumulator0,
+            sfpmGrossPremiaAccumulator1: $sfpmGrossPremiaAccumulator1,
+            positionLiquidity: liquidityChunk.liquidity(),
+            totalShortLiquidity: _get_total_short_liquidity(
+                liquidityChunk,
+                legIndex
+            )
+        }));
+
+        delete $settledToken0;
+        delete $settledToken1;
+        delete $grossPremiaLast0;
+        delete $grossPremiaLast1;
+        delete $sfpmGrossPremiaAccumulator0;
+        delete $sfpmGrossPremiaAccumulator1;
+    }
+
+    function _get_total_short_liquidity(
+        LiquidityChunk liqChunk,
+        uint256 legIndex
+    ) internal view returns (uint128) {
+        LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
+            address(pool),
+            address(panopticPool),
+            $tokenIdActive.tokenType(legIndex),
+            liqChunk.tickLower(),
+            liqChunk.tickUpper()
+        );
+        /* (netLiquidity:removedLiquidity -> rightSlot:leftSlot) */
+        return currentLiquidity.rightSlot() + currentLiquidity.leftSlot();
+    }
+
+    function _get_sfpm_accumulators(
+        uint256 legIndex
+    ) internal returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
+        (, int24 currentTick, , , , , ) = pool.slot0();
+        (int24 tickLower, int24 tickUpper) = $tokenIdActive.asTicks(legIndex);
+        (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+            address(pool),
+            address(panopticPool),
+            $tokenIdActive.tokenType(legIndex),
+            tickLower,
+            tickUpper,
+            currentTick,
+            $tokenIdActive.isLong(legIndex)
+        );
+    }
+
+    function _get_sfpm_accumulators_without_itm_swap(
+         uint256 legIndex
+     ) internal returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
+         (int24 tickLower, int24 tickUpper) = $tokenIdActive.asTicks(legIndex);
+         (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+             address(pool),
+             address(panopticPool),
+             $tokenIdActive.tokenType(legIndex),
+             tickLower,
+             tickUpper,
+             type(int24).max,
+             $tokenIdActive.isLong(legIndex)
+         );
+     }
 
     function quote_sfpm_mint() internal {
         try this.sfpm_mint_sim() {} catch (bytes memory results) {

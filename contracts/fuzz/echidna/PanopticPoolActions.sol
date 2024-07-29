@@ -233,8 +233,8 @@ contract PanopticPoolActions is CollateralActions {
             $positionSizeActive
         );
 
-        // TODO:
-        write_accumulators();
+        $caller = msg.sender;
+        _write_premint_accumulators();
 
         //checked
 
@@ -440,168 +440,96 @@ contract PanopticPoolActions is CollateralActions {
             Math.abs(int256($balance1Final) - int256($balance1Origin + $colDelta1)) <= 10,
             "Balance 1 mismatch"
         );
-        /* TODO: We have the collateral token assertions in place via $colDelta0/1 above
-        Must paste in assertions about grossPremia0/1 and s_settledTokens */
-        assert_accumulator_differences();
+        _assert_accumulator_differences();
     }
 
-    TokenId $position = $tokenIdActive
-    address $caller = msg.sender;
-    TokenId[] $positionsNew;
-    uint128 $posSize = $positionSizeActive;
-    int24 $tickLimitLow = $tickLimitLow;
+    function _assert_accumulator_differences() internal {
+        for (uint legIndex = 0; legIndex < $numLegs; legIndex++) {
+            (
+                $postmintSettledToken0,
+                $postmintSettledToken1,
+                $postmintGrossPremiaLast0,
+                $postmintGrossPremiaLast1
+            ) = panopticPool.premiaSettlementData($tokenIdActive, legIndex);
 
-    struct AccumulatorsForLeg {
-        uint128 settledToken0;
-        uint128 settledToken1;
-        uint128 grossPremiaLast0;
-        uint128 grossPremiaLast1;
-        uint128 totalShortLiquidity;
-        uint128 sfpmGrossPremiaAccumulator0;
-        uint128 sfpmGrossPremiaAccumulator1;
-    }
+            assertWithMsg(
+                int256(int128($postmintSettledToken0)) ==
+                    Math.max(
+                        int256(int128($premintAccumulators[legIndex].settledToken0)) -
+                            int256(int128($token0CollectedByLeg[legIndex])),
+                        0
+                    ),
+                "Settled token0s did not increase/decrease by the collected tokens for the leg"
+            );
 
-    struct PremiaCalcInputs {
-        uint128 premiumGrowth0;
-        uint128 premiumGrowth1;
-        uint128 positionLiquidity;
-    }
+            assertWithMsg(
+                int256(int128($postmintSettledToken1)) ==
+                    Math.max(
+                        int256(int128($premintAccumulators[legIndex].settledToken1)) -
+                            int256(int128($token1CollectedByLeg[legIndex])),
+                        0
+                    ),
+                "Settled token1s did not increase/decrease by the collected tokens for the leg"
+            );
 
-    bool $sfpmRevert;
-    uint128[] $token0CollectedByLeg;
-    uint128[] $token1CollectedByLeg;
-    int128 $token0Swapped;
-    int128 $token1Swapped;
+            if ($tokenIdActive.isLong(legIndex) == 0) {
+                (
+                    $postmintSFPMGrossPremiaAccumulator0,
+                    $postmintSFPMGrossPremiaAccumulator1
+                ) = _get_sfpm_accumulators_without_itm_swap(legIndex);
 
-    uint numLegs = $numLegs;
+                $postmintShortLiquidity = _get_total_short_liquidity(
+                    PanopticMath.getLiquidityChunk($tokenIdActive, legIndex, $positionSizeActive),
+                    legIndex
+                );
+                uint256 shortLiquidityWithoutThisPosition = $postmintShortLiquidity - $premintAccumulators[legIndex].positionLiquidity;
 
-    /* and quote_sfpm_mint gives you:
-    $collectedByLeg, $totalSwapped, $colTicks, sRevert */
+                /*
+                grossPremiaLast0/1 goes up by:
+                (
+                grossCurrent0/1 [post-mint, coming from an SFPM.getAccountPremium call with the
+                                special int24.max call to ignore recent ITM swaps]
+                * positionLiquidity
+                + grossPremiumLast.rightSlot/leftSlot() [post-mint]
+                * totalLiquidityBefore [post-mint value of totalLiquidity (see below)
+                                        minus the position liquidity]
+                )
 
-    function write_accumulators() public {
-        if ($sfpmRevert) return;
-        $token0CollectedByLeg = new uint128[]($numLegs);
-        $token1CollectedByLeg = new uint128[]($numLegs);
-        for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
-            $token0CollectedByLeg[legIndex] = $collectedByLeg[legIndex].rightSlot();
-            $token1CollectedByLeg[legIndex] = $collectedByLeg[legIndex].leftSlot();
+                / totalLiquidity [post-mint call to get: sfpm.getAccountLiquidity,
+                                  subtracting the left slot of returned value from right slot]
+                */
+
+                assertWithMsg(
+                    ($premintAccumulators[legIndex].grossPremiaLast0 +
+                        (
+                            (
+                                $postmintSFPMGrossPremiaAccumulator0 * $premintAccumulators[legIndex].positionLiquidity
+                                + $postmintGrossPremiaLast0 * shortLiquidityWithoutThisPosition
+                            ) / $postmintShortLiquidity
+                        )
+                    ) == $postmintGrossPremiaLast0,
+                    "Gross premia 0 last did not increase by the amount expected of this short leg"
+                );
+                assertWithMsg(
+                    ($premintAccumulators[legIndex].grossPremiaLast1 +
+                        (
+                            (
+                                $postmintSFPMGrossPremiaAccumulator1 * $premintAccumulators[legIndex].positionLiquidity
+                                + $postmintGrossPremiaLast1 * shortLiquidityWithoutThisPosition
+                            ) / $postmintShortLiquidity
+                        )
+                    ) == $postmintGrossPremiaLast1,
+                    "Gross premia 1 last did not increase by the amount expected of this short leg"
+                );
+            }
         }
-
-        $token0Swapped = $totalSwapped.rightSlot();
-        $token1Swapped = $totalSwapped.leftSlot();
-
-        AccumulatorsForLeg[] memory preburnAccumulators = new AccumulatorsForLeg[]($numLegs);
-        PremiaCalcInputs[] memory premiaCalcInputs = new PremiaCalcInputs[]($numLegs);
-
-        (preburnAccumulators, premiaCalcInputs) = this._get_preburn_accumulators(
-            $position,
-            $caller,
-            $posSize
-        );
-    }
-
-    function assert_accumulator_differences() public {
-
 
         // Clear storage vars used:
         delete $token0CollectedByLeg;
         delete $token1CollectedByLeg;
         delete $token0Swapped;
         delete $token1Swapped;
-    }
-
-    function _get_preburn_accumulators(
-        TokenId position,
-        address caller,
-        uint128 posSize
-    )
-        external
-        returns (
-            AccumulatorsForLeg[] memory accumulators,
-            PremiaCalcInputs[] memory premiaCalcInputs
-        )
-    {
-        accumulators = new AccumulatorsForLeg[](numLegs);
-        premiaCalcInputs = new PremiaCalcInputs[](numLegs);
-
-        for (uint legIndex = 0; legIndex < numLegs; legIndex++) {
-            _set_preburn_accumulators(position, accumulators, legIndex, caller);
-
-            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                position,
-                legIndex,
-                posSize
-            );
-            premiaCalcInputs[legIndex].positionLiquidity = liquidityChunk.liquidity();
-            accumulators[legIndex].totalShortLiquidity = _get_total_short_liquidity(
-                position,
-                liquidityChunk,
-                legIndex
-            );
-
-            (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
-                $position,
-                $caller,
-                legIndex
-            );
-            premiaCalcInputs[legIndex].premiumGrowth0 = premiumGrowth0;
-            premiaCalcInputs[legIndex].premiumGrowth1 = premiumGrowth1;
-        }
-    }
-
-    function _get_total_short_liquidity(
-        TokenId position,
-        LiquidityChunk liqChunk,
-        uint256 legIndex
-    ) internal view returns (uint128) {
-        LeftRightUnsigned currentLiquidity = sfpm.getAccountLiquidity(
-            address(pool),
-            address(panopticPool),
-            position.tokenType(legIndex),
-            liqChunk.tickLower(),
-            liqChunk.tickUpper()
-        );
-        /* (netLiquidity:removedLiquidity -> rightSlot:leftSlot) */
-        return currentLiquidity.rightSlot() + currentLiquidity.leftSlot();
-    }
-
-    uint128 $settledToken0;
-    uint128 $settledToken1;
-    uint128 $grossPremiaLastToken0;
-    uint128 $grossPremiaLastToken1;
-    uint128 $sfpmGrossPremiaAccumulator0;
-    uint128 $sfpmGrossPremiaAccumulator1;
-
-    function _set_preburn_accumulators(
-        TokenId position,
-        AccumulatorsForLeg[] memory accumulators,
-        uint legIndex,
-        address caller
-    ) internal {
-        (
-            $settledToken0,
-            $settledToken1,
-            $grossPremiaLastToken0,
-            $grossPremiaLastToken1
-        ) = panopticPool.premiaSettlementData(position, legIndex);
-        accumulators[legIndex].settledToken0 = $settledToken0;
-        accumulators[legIndex].settledToken1 = $settledToken1;
-        accumulators[legIndex].grossPremiaLast0 = $grossPremiaLastToken0;
-        accumulators[legIndex].grossPremiaLast1 = $grossPremiaLastToken1;
-
-        ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
-            position,
-            legIndex
-        );
-        accumulators[legIndex].sfpmGrossPremiaAccumulator0 = $sfpmGrossPremiaAccumulator0;
-        accumulators[legIndex].sfpmGrossPremiaAccumulator1 = $sfpmGrossPremiaAccumulator1;
-
-        delete $settledToken0;
-        delete $settledToken1;
-        delete $grossPremiaLastToken0;
-        delete $grossPremiaLastToken1;
-        delete $sfpmGrossPremiaAccumulator0;
-        delete $sfpmGrossPremiaAccumulator1;
+        delete $premintAccumulators;
     }
 
     /*//////////////////////////////////////////////////////////////
