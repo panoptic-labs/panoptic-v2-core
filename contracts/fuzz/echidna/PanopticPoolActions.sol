@@ -160,6 +160,50 @@ contract PanopticPoolActions is CollateralActions {
                     $strikes[i],
                     $widths[i]
                 );
+
+            // cache premium settlement info to check later
+            (
+                $settledToken0[i],
+                $settledToken1[i],
+                $grossPremiaLast0,
+                $grossPremiaLast1
+            ) = panopticPool.premiaSettlementData(
+                userPositions[msg.sender][userPositions[msg.sender].length - 1],
+                i
+            );
+
+            ($tickLower, $tickUpper) = PanopticMath.getTicks(
+                $strikes[i],
+                $widths[i],
+                poolTickSpacing
+            );
+
+            ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
+                address(pool),
+                address(panopticPool),
+                $tokenTypes[i],
+                $tickLower,
+                $tickUpper,
+                type(int24).max,
+                $isLongs[i]
+            );
+
+            LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
+                address(pool),
+                address(panopticPool),
+                $tokenTypes[i],
+                $tickLower,
+                $tickUpper
+            );
+
+            $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
+
+            $grossPremiaTotal0[i] = $shortLiquidity == 0
+                ? 0
+                : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity);
+            $grossPremiaTotal1[i] = $shortLiquidity == 0
+                ? 0
+                : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity);
         }
 
         uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
@@ -437,6 +481,82 @@ contract PanopticPoolActions is CollateralActions {
             Math.abs(int256($balance1Final) - int256($balance1Origin + $colDelta1)) <= 10,
             "Balance 1 mismatch"
         );
+
+        for (uint256 i = 0; i < $numLegs; ++i) {
+            (
+                $settledToken0Post,
+                $settledToken1Post,
+                $grossPremiaLast0,
+                $grossPremiaLast1
+            ) = panopticPool.premiaSettlementData(
+                userPositions[msg.sender][userPositions[msg.sender].length - 1],
+                i
+            );
+
+            assertWithMsg(
+                int256($settledToken0Post) ==
+                    int256($settledToken0[i]) + int256(uint256($collectedByLeg[i].rightSlot())),
+                "PanopticPool: Settled token0 did not increase by the amount collected in the SFPM"
+            );
+
+            assertWithMsg(
+                int256($settledToken1Post) ==
+                    int256($settledToken1[i]) + int256(uint256($collectedByLeg[i].leftSlot())),
+                "PanopticPool: Settled token1 did not increase by the amount collected in the SFPM"
+            );
+
+            ($tickLower, $tickUpper) = PanopticMath.getTicks(
+                $strikes[i],
+                $widths[i],
+                poolTickSpacing
+            );
+
+            ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
+                address(pool),
+                address(panopticPool),
+                $tokenTypes[i],
+                $tickLower,
+                $tickUpper,
+                type(int24).max,
+                $isLongs[i]
+            );
+
+            LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
+                address(pool),
+                address(panopticPool),
+                $tokenTypes[i],
+                $tickLower,
+                $tickUpper
+            );
+
+            $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
+
+            $grossPremiaTotal0[i] = $shortLiquidity == 0
+                ? 0
+                : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity);
+            $grossPremiaTotal1[i] = $shortLiquidity == 0
+                ? 0
+                : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity);
+
+            assertWithMsg(
+                $grossPremiaTotal0[i] ==
+                    (
+                        $shortLiquidity == 0
+                            ? 0
+                            : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
+                    ),
+                "PanopticPool: Calculated total gross premium for token0 changed during an option mint"
+            );
+            assertWithMsg(
+                $grossPremiaTotal1[i] ==
+                    (
+                        $shortLiquidity == 0
+                            ? 0
+                            : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
+                    ),
+                "PanopticPool: Calculated total gross premium for token1 changed during an option mint"
+            );
+        }
     }
 
     /*//////////////////////////////////////////////////////////////

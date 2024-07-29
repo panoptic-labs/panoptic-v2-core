@@ -463,6 +463,19 @@ contract FuzzHelpers is PropertiesAsserts {
     TokenId[] $positionListExercisor;
     TokenId[] $positionListExercisee;
 
+    uint256[4] $settledToken0;
+    uint256[4] $settledToken1;
+    uint256 $settledToken0Post;
+    uint256 $settledToken1Post;
+    uint128 $grossPremiaLast0;
+    uint128 $grossPremiaLast1;
+    uint128 $grossPremia0;
+    uint128 $grossPremia1;
+    uint256[4] $grossPremiaTotal0;
+    uint256[4] $grossPremiaTotal1;
+
+    uint256 $shortLiquidity;
+
     SwapperC swapperc;
 
     mapping(address => TokenId[]) userPositions;
