@@ -1428,6 +1428,7 @@ contract FuzzHelpers is PropertiesAsserts {
     uint128[] $token1CollectedByLeg;
     int128 $token0Swapped;
     int128 $token1Swapped;
+
     function _write_premint_accumulators() internal {
         if ($sfpmRevert) return;
         $token0CollectedByLeg = new uint128[]($numLegs);
@@ -1444,6 +1445,7 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     AccumulatorsForLeg[] $premintAccumulators;
+
     function _write_accumulators() internal {
         for (uint legIndex = 0; legIndex < $numLegs; legIndex++) {
             _set_premint_accumulators_for_leg(legIndex);
@@ -1456,13 +1458,10 @@ contract FuzzHelpers is PropertiesAsserts {
     uint128 $grossPremiaLast1;
     uint128 $sfpmGrossPremiaAccumulator0;
     uint128 $sfpmGrossPremiaAccumulator1;
+
     function _set_premint_accumulators_for_leg(uint legIndex) internal {
-        (
-            $settledToken0,
-            $settledToken1,
-            $grossPremiaLast0,
-            $grossPremiaLast1
-        ) = panopticPool.premiaSettlementData($tokenIdActive, legIndex);
+        ($settledToken0, $settledToken1, $grossPremiaLast0, $grossPremiaLast1) = panopticPool
+            .premiaSettlementData($tokenIdActive, legIndex);
         ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
             legIndex
         );
@@ -1472,19 +1471,18 @@ contract FuzzHelpers is PropertiesAsserts {
             $positionSizeActive
         );
 
-        $premintAccumulators.push(AccumulatorsForLeg({
-            settledToken0: $settledToken0,
-            settledToken1: $settledToken1,
-            grossPremiaLast0: $grossPremiaLast0,
-            grossPremiaLast1: $grossPremiaLast1,
-            sfpmGrossPremiaAccumulator0: $sfpmGrossPremiaAccumulator0,
-            sfpmGrossPremiaAccumulator1: $sfpmGrossPremiaAccumulator1,
-            positionLiquidity: liquidityChunk.liquidity(),
-            totalShortLiquidity: _get_total_short_liquidity(
-                liquidityChunk,
-                legIndex
-            )
-        }));
+        $premintAccumulators.push(
+            AccumulatorsForLeg({
+                settledToken0: $settledToken0,
+                settledToken1: $settledToken1,
+                grossPremiaLast0: $grossPremiaLast0,
+                grossPremiaLast1: $grossPremiaLast1,
+                sfpmGrossPremiaAccumulator0: $sfpmGrossPremiaAccumulator0,
+                sfpmGrossPremiaAccumulator1: $sfpmGrossPremiaAccumulator1,
+                positionLiquidity: liquidityChunk.liquidity(),
+                totalShortLiquidity: _get_total_short_liquidity(liquidityChunk, legIndex)
+            })
+        );
 
         delete $settledToken0;
         delete $settledToken1;
@@ -1526,19 +1524,19 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function _get_sfpm_accumulators_without_itm_swap(
-         uint256 legIndex
-     ) internal returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
-         (int24 tickLower, int24 tickUpper) = $tokenIdActive.asTicks(legIndex);
-         (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
-             address(pool),
-             address(panopticPool),
-             $tokenIdActive.tokenType(legIndex),
-             tickLower,
-             tickUpper,
-             type(int24).max,
-             $tokenIdActive.isLong(legIndex)
-         );
-     }
+        uint256 legIndex
+    ) internal returns (uint128 premiumAccumulator0, uint128 premiumAccumulator1) {
+        (int24 tickLower, int24 tickUpper) = $tokenIdActive.asTicks(legIndex);
+        (premiumAccumulator0, premiumAccumulator1) = sfpm.getAccountPremium(
+            address(pool),
+            address(panopticPool),
+            $tokenIdActive.tokenType(legIndex),
+            tickLower,
+            tickUpper,
+            type(int24).max,
+            $tokenIdActive.isLong(legIndex)
+        );
+    }
 
     function quote_sfpm_mint() internal {
         try this.sfpm_mint_sim() {} catch (bytes memory results) {

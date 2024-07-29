@@ -482,7 +482,8 @@ contract PanopticPoolActions is CollateralActions {
                     PanopticMath.getLiquidityChunk($tokenIdActive, legIndex, $positionSizeActive),
                     legIndex
                 );
-                uint256 shortLiquidityWithoutThisPosition = $postmintShortLiquidity - $premintAccumulators[legIndex].positionLiquidity;
+                uint256 shortLiquidityWithoutThisPosition = $postmintShortLiquidity -
+                    $premintAccumulators[legIndex].positionLiquidity;
 
                 /*
                 grossPremiaLast0/1 goes up by:
@@ -501,24 +502,20 @@ contract PanopticPoolActions is CollateralActions {
 
                 assertWithMsg(
                     ($premintAccumulators[legIndex].grossPremiaLast0 +
-                        (
-                            (
-                                $postmintSFPMGrossPremiaAccumulator0 * $premintAccumulators[legIndex].positionLiquidity
-                                + $postmintGrossPremiaLast0 * shortLiquidityWithoutThisPosition
-                            ) / $postmintShortLiquidity
-                        )
-                    ) == $postmintGrossPremiaLast0,
+                        (($postmintSFPMGrossPremiaAccumulator0 *
+                            $premintAccumulators[legIndex].positionLiquidity +
+                            $postmintGrossPremiaLast0 *
+                            shortLiquidityWithoutThisPosition) / $postmintShortLiquidity)) ==
+                        $postmintGrossPremiaLast0,
                     "Gross premia 0 last did not increase by the amount expected of this short leg"
                 );
                 assertWithMsg(
                     ($premintAccumulators[legIndex].grossPremiaLast1 +
-                        (
-                            (
-                                $postmintSFPMGrossPremiaAccumulator1 * $premintAccumulators[legIndex].positionLiquidity
-                                + $postmintGrossPremiaLast1 * shortLiquidityWithoutThisPosition
-                            ) / $postmintShortLiquidity
-                        )
-                    ) == $postmintGrossPremiaLast1,
+                        (($postmintSFPMGrossPremiaAccumulator1 *
+                            $premintAccumulators[legIndex].positionLiquidity +
+                            $postmintGrossPremiaLast1 *
+                            shortLiquidityWithoutThisPosition) / $postmintShortLiquidity)) ==
+                        $postmintGrossPremiaLast1,
                     "Gross premia 1 last did not increase by the amount expected of this short leg"
                 );
             }
