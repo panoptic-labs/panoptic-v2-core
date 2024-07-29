@@ -437,6 +437,8 @@ contract PanopticPoolActions is CollateralActions {
             Math.abs(int256($balance1Final) - int256($balance1Origin + $colDelta1)) <= 10,
             "Balance 1 mismatch"
         );
+        /* TODO: We have the collateral token assertions in place via $colDelta0/1 above
+        Must paste in assertions about grossPremia0/1 and s_settledTokens */
     }
 
     /*//////////////////////////////////////////////////////////////
