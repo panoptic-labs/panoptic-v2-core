@@ -1918,12 +1918,14 @@ contract FuzzDeployments is FuzzHelpers {
                 legIndex
             );
 
-            // TODO: We should expect to catch an assertion failure that:
+            // We should expect to catch an assertion failure that:
             // for short legs that are owed 0 premia,
             // but the short liquidity changes after burning,
             // the gross premia will not change.
-            // (even though it should - we corected this in a later version of the contracts)
+            // (even though it should - we corrected this in a later version of the contracts)
             // If we don't get that, then we're not working properly.
+            // NOTE: 7/27 - Confirmed, we got this! Can feel free to modify this test to specifically
+            // skip those cases if you want to see other possible invariant failures
             assertWithMsg(
                 (($postburnSFPMGrossPremiaAccumulator0 - $postburnGrossPremiaLast0) *
                     $postburnShortLiquidity) >>
