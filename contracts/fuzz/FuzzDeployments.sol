@@ -1366,12 +1366,12 @@ contract FuzzDeployments is FuzzHelpers {
         uint128 totalShortLiquidity;
         uint128 sfpmGrossPremiaAccumulator0;
         uint128 sfpmGrossPremiaAccumulator1;
+        uint128 positionLiquidity;
     }
 
     struct PremiaCalcInputs {
         uint128 premiumGrowth0;
         uint128 premiumGrowth1;
-        uint128 positionLiquidity;
     }
 
     bool $sfpmRevert;
@@ -1669,7 +1669,7 @@ contract FuzzDeployments is FuzzHelpers {
                 legIndex,
                 posSize
             );
-            premiaCalcInputs[legIndex].positionLiquidity = liquidityChunk.liquidity();
+            accumulators[legIndex].positionLiquidity = liquidityChunk.liquidity();
             accumulators[legIndex].totalShortLiquidity = _get_total_short_liquidity(
                 position,
                 liquidityChunk,
@@ -1740,13 +1740,13 @@ contract FuzzDeployments is FuzzHelpers {
                 (uint256(
                     accumulators[legIndex].sfpmGrossPremiaAccumulator0 -
                         premiaCalcInputs[legIndex].premiumGrowth0
-                ) * uint256(premiaCalcInputs[legIndex].positionLiquidity)) >> 64
+                ) * uint256(accumulators[legIndex].positionLiquidity)) >> 64
             );
             $projectedPremia[legIndex].idealPremium1 = uint128(
                 (uint256(
                     accumulators[legIndex].sfpmGrossPremiaAccumulator1 -
                         premiaCalcInputs[legIndex].premiumGrowth1
-                ) * uint256(premiaCalcInputs[legIndex].positionLiquidity)) >> 64
+                ) * uint256(accumulators[legIndex].positionLiquidity)) >> 64
             );
 
             // 2. get proratedPremia:
