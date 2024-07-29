@@ -752,10 +752,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
     /// @notice Create the position in the AMM given in the tokenId.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
-    /// @param tokenId The option position
-    /// @param positionSize The size of the option position
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param positionSize The size of the option position
+    /// @param tokenId The option position
     /// @param isBurn Whether a position is being minted (true) or burned (false)
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return totalMoved The net amount of funds moved to/from Uniswap
