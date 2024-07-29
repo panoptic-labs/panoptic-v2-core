@@ -1845,20 +1845,16 @@ contract FuzzDeployments is FuzzHelpers {
             // NOTE: 7/27 - Confirmed, we got this! Can feel free to modify this test to specifically
             // skip those cases if you want to see other possible invariant failures
             // NOTE: 7/29 - Added that skip as an `if` before each assertion:
-            if (!($projectedPremia[legIndex].idealPremium0 == 0 && $position.isLong(legIndex) == 0)) {
-                uint256 projectedPostburnGrossPremia0 = (
-                        uint256(
-                            (
-                                uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator0) -
-                                uint256(preburnAccumulators[legIndex].grossPremiaLast0)
-                            )
-                            * uint256(preburnAccumulators[legIndex].totalShortLiquidity)
-                        ) >> 64
-                    ) - $projectedPremia[legIndex].idealPremium0;
-                uint256 actualPostburnGrossPremia0 = (
-                    ($postburnSFPMGrossPremiaAccumulator0 - $postburnGrossPremiaLast0)
-                    * $postburnShortLiquidity
-                ) >> 64;
+            if (
+                !($projectedPremia[legIndex].idealPremium0 == 0 && $position.isLong(legIndex) == 0)
+            ) {
+                uint256 projectedPostburnGrossPremia0 = (uint256(
+                    (uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator0) -
+                        uint256(preburnAccumulators[legIndex].grossPremiaLast0)) *
+                        uint256(preburnAccumulators[legIndex].totalShortLiquidity)
+                ) >> 64) - $projectedPremia[legIndex].idealPremium0;
+                uint256 actualPostburnGrossPremia0 = (($postburnSFPMGrossPremiaAccumulator0 -
+                    $postburnGrossPremiaLast0) * $postburnShortLiquidity) >> 64;
                 assertWithMsg(
                     // Tolerance of 1 as the contracts round s_grossPremiumLast down,
                     // and our idealPremium calc may not
@@ -1867,20 +1863,16 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             }
 
-            if (!($projectedPremia[legIndex].idealPremium1 == 0 && $position.isLong(legIndex) == 0)) {
-                uint256 projectedPostburnGrossPremia1 = (
-                        uint256(
-                            (
-                                uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1) -
-                                uint256(preburnAccumulators[legIndex].grossPremiaLast1)
-                            )
-                            * uint256(preburnAccumulators[legIndex].totalShortLiquidity)
-                        ) >> 64
-                    ) - $projectedPremia[legIndex].idealPremium1;
-                uint256 actualPostburnGrossPremia1 = (
-                    ($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1)
-                    * $postburnShortLiquidity
-                ) >> 64;
+            if (
+                !($projectedPremia[legIndex].idealPremium1 == 0 && $position.isLong(legIndex) == 0)
+            ) {
+                uint256 projectedPostburnGrossPremia1 = (uint256(
+                    (uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1) -
+                        uint256(preburnAccumulators[legIndex].grossPremiaLast1)) *
+                        uint256(preburnAccumulators[legIndex].totalShortLiquidity)
+                ) >> 64) - $projectedPremia[legIndex].idealPremium1;
+                uint256 actualPostburnGrossPremia1 = (($postburnSFPMGrossPremiaAccumulator1 -
+                    $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64;
                 assertWithMsg(
                     actualPostburnGrossPremia1 - projectedPostburnGrossPremia1 <= 1,
                     "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
