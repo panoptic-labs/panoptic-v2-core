@@ -817,6 +817,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 ++leg;
             }
         }
+
         // Ensure upper bound on amount of tokens contained across all legs of the position on any given tick does not exceed a maximum of (2**127-1).
         // This is the maximum value of the `int128` type we frequently use to hold token amounts, so a given position's size should be guaranteed to
         // fit within that limit at all times.
