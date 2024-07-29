@@ -1677,8 +1677,8 @@ contract FuzzDeployments is FuzzHelpers {
             );
 
             (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
-                $position,
-                $caller,
+                position,
+                caller,
                 legIndex
             );
             premiaCalcInputs[legIndex].premiumGrowth0 = premiumGrowth0;
