@@ -543,8 +543,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return shares;
     }
 
     /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
@@ -588,8 +586,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return shares;
     }
 
     /// @notice Returns the maximum amount of shares that can be redeemed for a given user.
@@ -648,8 +644,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return assets;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1148,7 +1142,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
     /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
     /// @param longPremium The total amount of premium owed by the long legs of `user`
-    /// @return tokenData Information collected for the tokens about the health of the account
+    /// @return Information collected for the tokens about the health of the account
     /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getAccountMarginDetails(
         address user,
@@ -1156,22 +1150,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256[2][] memory positionBalanceArray,
         uint128 shortPremium,
         uint128 longPremium
-    ) public view returns (LeftRightUnsigned tokenData) {
-        uint256 tokenRequired;
-
-        // if the account has active options, compute the required collateral to keep account in good health
-        if (positionBalanceArray.length > 0) {
-            // get all collateral required for the incoming list of positions
-            tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray) + longPremium;
+    ) public view returns (LeftRightUnsigned) {
+        unchecked {
+            return
+                LeftRightUnsigned
+                    .wrap(0)
+                    .toRightSlot((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
+                    .toLeftSlot(
+                        positionBalanceArray.length > 0
+                            ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +
+                                longPremium).toUint128()
+                            : 0
+                    );
         }
-
-        uint256 netBalance = convertToAssets(balanceOf[user]) + shortPremium;
-
-        // store assetBalance and tokens required in tokenData variable
-        tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
-            tokenRequired.toUint128()
-        );
-        return tokenData;
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
@@ -1213,8 +1204,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 ++i;
             }
         }
-
-        return tokenRequired;
     }
 
     /// @notice Get the required amount of collateral tokens corresponding to a specific single position 'tokenId' at a price 'tick'.
