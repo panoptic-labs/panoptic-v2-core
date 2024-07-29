@@ -1465,6 +1465,7 @@ contract FuzzDeployments is FuzzHelpers {
     uint128 $grossPremiaLastToken1;
     uint128 $sfpmGrossPremiaAccumulator0;
     uint128 $sfpmGrossPremiaAccumulator1;
+
     function _set_preburn_accumulators(
         TokenId position,
         AccumulatorsForLeg[] memory accumulators,
@@ -1766,6 +1767,7 @@ contract FuzzDeployments is FuzzHelpers {
     uint128 $postburnSFPMGrossPremiaAccumulator0;
     uint128 $postburnSFPMGrossPremiaAccumulator1;
     uint256 $postburnShortLiquidity;
+
     function _assert_each_legs_chunk_accumulators_correct(
         AccumulatorsForLeg[] memory preburnAccumulators
     ) external {
