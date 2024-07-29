@@ -1388,11 +1388,14 @@ contract FuzzHelpers is PropertiesAsserts {
     function _increment_tokenBalance(uint256 positionSize) internal {
         // uint256 tokenId => mapping(address owner => uint256 positionSize
         tokenBalances[$activeTokenId][$activeUser] += positionSize;
+
+        emit LogUint256("incrementing position size", positionSize);
     }
 
     function _decrement_tokenBalance(uint256 positionSize) internal {
-        // uint256 tokenId => mapping(address owner => uint256 positionSize
         tokenBalances[$activeTokenId][$activeUser] -= positionSize;
+
+        emit LogUint256("decrementing position size", positionSize);
     }
 
     // verifies the token balance of a user tracked externally matches internal accounting
@@ -1400,6 +1403,9 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 currBalanceReal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
 
         uint256 currBalanceExternal = tokenBalances[$activeTokenId][$activeUser];
+
+        emit LogUint256("currBalanceReal", currBalanceReal);
+        emit LogUint256("currBalanceExternal", currBalanceExternal);
 
         assertWithMsg(currBalanceReal == currBalanceExternal, "SFPM token balance invalid");
     }

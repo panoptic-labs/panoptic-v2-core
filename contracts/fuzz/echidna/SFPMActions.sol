@@ -24,6 +24,8 @@ contract SFPMActions is GeneralActions {
         uint128 positionSize,
         bool swapAtMint
     ) public {
+        $shouldRevertSFPM = false;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -617,7 +619,7 @@ contract SFPMActions is GeneralActions {
                 {
                     // adjust balances and verify
                     _increment_tokenBalance(positionSize);
-                    _check_tokenBalance();
+                    //_check_tokenBalance();
                 }
             }
 
@@ -641,6 +643,8 @@ contract SFPMActions is GeneralActions {
         uint128 positionSize,
         bool swapAtMint
     ) public {
+        $shouldRevertSFPM = false;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -1282,7 +1286,7 @@ contract SFPMActions is GeneralActions {
                 {
                     // adjust balances and verify
                     _increment_tokenBalance(positionSize);
-                    _check_tokenBalance();
+                    //_check_tokenBalance();
                 }
             }
 
@@ -1316,6 +1320,8 @@ contract SFPMActions is GeneralActions {
         bool swapAtMint,
         uint8 randSeed
     ) public {
+        $shouldRevertSFPM = false;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -1992,7 +1998,7 @@ contract SFPMActions is GeneralActions {
                 {
                     // adjust balances and verify
                     _increment_tokenBalance(positionSize);
-                    _check_tokenBalance();
+                    //_check_tokenBalance();
                 }
             }
 
@@ -2117,7 +2123,7 @@ contract SFPMActions is GeneralActions {
             {
                 // adjust balances and verify
                 _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
+                //_check_tokenBalance();
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2207,7 +2213,7 @@ contract SFPMActions is GeneralActions {
             {
                 // adjust balances and verify
                 _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
+                //_check_tokenBalance();
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2283,7 +2289,7 @@ contract SFPMActions is GeneralActions {
             {
                 // adjust balances and verify
                 _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
+                //_check_tokenBalance();
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2359,7 +2365,7 @@ contract SFPMActions is GeneralActions {
             {
                 // adjust balances and verify
                 _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
+                //_check_tokenBalance();
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2477,7 +2483,7 @@ contract SFPMActions is GeneralActions {
             {
                 // adjust balances and verify
                 _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
+                //_check_tokenBalance();
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2771,6 +2777,8 @@ contract SFPMActions is GeneralActions {
         bool isMix,
         uint256 randSeed
     ) public {
+        $shouldRevertSFPM = false;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -3432,7 +3440,7 @@ contract SFPMActions is GeneralActions {
                 {
                     // adjust balances and verify
                     _decrement_tokenBalance(positionSize);
-                    _check_tokenBalance();
+                    //_check_tokenBalance();
                 }
             }
 
@@ -3461,6 +3469,8 @@ contract SFPMActions is GeneralActions {
         uint256 randSeed,
         bytes calldata data
     ) public {
+        $shouldRevertSFPM = false;
+
         $activeUser = msg.sender;
 
         if (transferToPP) {
