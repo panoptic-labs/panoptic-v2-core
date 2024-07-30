@@ -1,8 +1,6 @@
 [profile.default]
 src = 'contracts'
-# also compiles Echidna wrappers in `test/echidna`
-# Echidna functions should not be prefixed with `test`
-test = 'test'
+test = 'test/foundry'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"
