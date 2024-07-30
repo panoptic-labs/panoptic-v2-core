@@ -1104,7 +1104,7 @@ contract PanopticPoolActions is CollateralActions {
 
         _execute_burn_simulation(liquidatee, liquidator);
 
-        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, currentTick);
+        liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
         {
             (int128 p0, int128 p1, ) = panopticPool.calculateAccumulatedFeesBatch(
                 liquidatee,
@@ -1116,7 +1116,7 @@ contract PanopticPoolActions is CollateralActions {
             emit LogInt256("Premium in token 1", p1);
         }
 
-        _calculate_liquidation_bonus(TWAPtick, currentTick);
+        _calculate_liquidation_bonus(TWAPtick, TWAPtick);
 
         burnSimResults.delegated0 = uint256(
             int256(
@@ -1157,16 +1157,16 @@ contract PanopticPoolActions is CollateralActions {
         liqResults.sharesD1 =
             burnSimResults.shareDelta1 -
             (int256(collToken1.balanceOf(liquidatee)) - liqResults.sharesD1);
-        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, currentTick);
+        liqResults.liquidatorValueAfter0 = _get_assets_in_token0(liquidator, TWAPtick);
 
         _calculate_bonus(TWAPtick);
-        _calculate_protocol_loss_0(currentTick);
-        _calculate_protocol_loss_expected_0(TWAPtick, currentTick);
+        _calculate_protocol_loss_0(TWAPtick);
+        _calculate_protocol_loss_expected_0(TWAPtick, TWAPtick);
 
         bytes memory settledLiq;
         (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(
             userPositions[liquidatee],
-            currentTick
+            TWAPtick
         );
         liqResults.settledTokens = abi.decode(settledLiq, (uint256[2][4][32]));
 

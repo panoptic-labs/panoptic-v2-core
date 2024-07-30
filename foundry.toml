@@ -2,7 +2,7 @@
 src = 'contracts'
 # also compiles Echidna wrappers in `test/echidna`
 # Echidna functions should not be prefixed with `test`
-test = 'test/foundry'
+test = 'test'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"
