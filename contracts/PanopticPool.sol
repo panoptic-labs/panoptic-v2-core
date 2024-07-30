@@ -910,15 +910,37 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
 
+        int24 currentTick;
+        {
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            int24 fastOracleTick;
+            int24 lastObservedTick;
+            (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
+                s_univ3pool,
+                s_miniMedian
+            );
+
+            unchecked {
+                if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
+                    revert Errors.StaleTWAP();
+            }
+
+            // Ensure the account is insolvent at twapTick, currentTick, and fastOracleTick
+            // do not check slowOracleTick because slow oracle is covered by twapTick
+            int24[] memory atTicks = new int24[](4);
+            atTicks[0] = fastOracleTick;
+            atTicks[1] = twapTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
+
+            if (_checkSolvencyAtTicks(liquidatee, positionIdList, currentTick, atTicks, NO_BUFFER))
+                revert Errors.NotMarginCalled();
+        }
         LeftRightUnsigned tokenData0;
         LeftRightUnsigned tokenData1;
         LeftRightSigned premia;
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-        {
-            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                revert Errors.StaleTWAP();
 
+        {
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             (premia, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
@@ -927,6 +949,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
+
             tokenData0 = s_collateralToken0.getAccountMarginDetails(
                 liquidatee,
                 twapTick,
@@ -940,14 +963,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionBalanceArray,
                 premia.leftSlot()
             );
-
-            (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-                tokenData0,
-                tokenData1,
-                Math.getSqrtRatioAtTick(twapTick)
-            );
-
-            if (balanceCross >= thresholdCross) revert Errors.NotMarginCalled();
         }
 
         // Perform the specified delegation from `msg.sender` to `liquidatee`
@@ -981,7 +996,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(twapTick),
-                    Math.getSqrtRatioAtTick(currentTick),
+                    Math.getSqrtRatioAtTick(twapTick),
                     netExchanged,
                     premia
                 );
@@ -996,7 +1011,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
             // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
             address _liquidatee = liquidatee;
-            int24 _currentTick = currentTick;
+            int24 _twapTick = twapTick;
             TokenId[] memory _positionIdList = positionIdList;
             int256 deltaBonus0;
             int256 deltaBonus1;
@@ -1007,7 +1022,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 collateralRemaining,
                 s_collateralToken0,
                 s_collateralToken1,
-                Math.getSqrtRatioAtTick(_currentTick),
+                Math.getSqrtRatioAtTick(_twapTick),
                 s_settledTokens
             );
 
@@ -1138,12 +1153,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionIdList`.
+    /// @dev this will return true if solvent at any of the provided tick, and return false iff the account is insolvent at all ticks.
     /// @param account The account to check solvency for
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)
     /// @param atTicks An array of ticks to check solvency at
     /// @param buffer The buffer to apply to the collateral requirement
-    /// @return Whether the account is solvent at the given tick
+    /// @return Whether the account is solvent at all of the given tick
     function _checkSolvencyAtTicks(
         address account,
         TokenId[] calldata positionIdList,
@@ -1163,22 +1179,33 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
 
         uint256 numberOfTicks = atTicks.length;
-        bool solvent = true;
+
+        // must combine solvency checks as uint because bool would automatically return false for (false && _check),
+        uint8 solvent = 0;
         for (uint256 i; i < numberOfTicks; ) {
-            solvent =
-                solvent &&
-                _checkCrossBalances(
-                    account,
-                    atTicks[i],
-                    positionBalanceArray,
-                    portfolioPremium,
-                    buffer
-                );
             unchecked {
+                solvent += (
+                    _checkCrossBalances(
+                        account,
+                        atTicks[i],
+                        positionBalanceArray,
+                        portfolioPremium,
+                        buffer
+                    )
+                        ? uint8(1)
+                        : uint8(0)
+                );
+
                 ++i;
             }
         }
-        return solvent;
+        if (solvent == 0) {
+            return false;
+        } else if (solvent == numberOfTicks) {
+            return true;
+        } else {
+            revert Errors.DivergentSolvencyCheck();
+        }
     }
 
     /// @notice Check whether a the balances of an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.

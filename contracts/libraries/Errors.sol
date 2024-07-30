@@ -5,6 +5,9 @@ pragma solidity ^0.8.0;
 /// @author Axicon Labs Limited
 /// @notice Contains all custom error messages used in Panoptic.
 library Errors {
+    /// @notice PanopticPool: the account is not solvent enough to perform the desired action
+    error AccountInsolvent();
+
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();
@@ -14,6 +17,9 @@ library Errors {
 
     /// @notice CollateralTracker: the amount of shares (or assets) deposited is larger than the maximum permitted
     error DepositTooLarge();
+
+    /// @notice PanopticPool: the solvency check at the provided list of ticks is not all the same (ie. all true or all false)
+    error DivergentSolvencyCheck();
 
     /// @notice PanopticPool: the effective liquidity (X32) is greater than min(`MAX_SPREAD`, `USER_PROVIDED_THRESHOLD`) during a long mint or short burn
     /// @dev Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
@@ -50,12 +56,6 @@ library Errors {
     /// @notice PanopticPool: one of the legs in a position are force-exercisable (they are all either short or ITM long)
     error NoLegsExercisable();
 
-    /// @notice PanopticPool: the account is not solvent enough to perform the desired action
-    error AccountInsolvent();
-
-    /// @notice SFPM: maximum token amounts for a position exceed 128 bits
-    error PositionTooLarge();
-
     /// @notice PanopticPool: the leg is not long, so the premium cannot be settled through `settleLongPremium`
     error NotALongLeg();
 
@@ -79,6 +79,9 @@ library Errors {
 
     /// @notice CollateralTracker: The user has open/active option positions, so they cannot transfer collateral shares
     error PositionCountNotZero();
+
+    /// @notice SFPM: maximum token amounts for a position exceed 128 bits
+    error PositionTooLarge();
 
     /// @notice The current tick in the pool falls outside a user-defined open interval slippage range
     error PriceBoundFail();

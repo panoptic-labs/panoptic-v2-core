@@ -154,6 +154,12 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct1;
     PanopticHelper ph;
 
+    int24 currentTick;
+    int256 twapTick;
+    int24 slowOracleTick;
+    int24 fastOracleTick;
+    int24 lastObservedTick;
+
     uint256 assetsBefore0;
     uint256 assetsBefore1;
 
@@ -228,8 +234,8 @@ contract Misctest is Test, PositionUtils {
         for (uint256 i = 0; i < 100; ++i) {
             vm.warp(block.timestamp + 1);
             vm.roll(block.number + 1);
-            swapperc.mint(uniPool, -10, 10, 10 ** 18);
-            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+            swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+            swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
         swapperc.mint(uniPool, -887270, 887270, 10 ** 18);
 
@@ -2216,20 +2222,23 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
+        assertTrue(pp.isSafeMode(), "in safe mode");
+
         vm.startPrank(Bob);
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
         token0.approve(address(ct0), 1_000_000);
-        ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum
-        ct1.deposit(17_817, Bob);
+        ct0.deposit(100_200, Bob);
+        ct1.deposit(0, Bob);
 
-        // mint fails, not enough collateral
-        vm.expectRevert();
+        // mint fails
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        //vm.expectRevert();
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -2274,20 +2283,22 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
+        assertTrue(pp.isSafeMode(), "in safe mode");
+
         vm.startPrank(Bob);
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
         ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
         token0.approve(address(ct0), 1_000_000);
-        ct0.deposit(0, Bob);
         token1.approve(address(ct1), 1_000_000);
 
-        // deposit bare minimum for naked minting
-        ct1.deposit(17_811, Bob);
+        // deposit bare minimum - covered
+        ct0.deposit(0, Bob);
+        ct1.deposit(100_200, Bob);
 
-        // mint fails, not enough collateral
-        vm.expectRevert();
+        // mint fails
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.mintOptions(
             $posIdList,
             100_000,
@@ -3720,7 +3731,7 @@ contract Misctest is Test, PositionUtils {
     function test_success_liquidation_fuzzedSwapITM(uint256[4] memory prices) public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally
-        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+        swapperc.mint(uniPool, -887270, 887270, 10 ** 24);
 
         // L = 1
         uniPool.liquidity();
@@ -3826,13 +3837,20 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
             }
 
             // deal alice a bunch of collateral tokens without touching the supply
             editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
             editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+            // update twaps
+            for (uint256 j = 0; j < 100; ++j) {
+                vm.warp(block.timestamp + 120);
+                vm.roll(block.number + 10);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+            }
 
             vm.startPrank(Alice);
             pp.liquidate(
@@ -3844,6 +3862,427 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
+    }
+
+    function test_Fail_DivergentSolvencyCheck_mint() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+
+        // L = 1
+        uniPool.liquidity();
+
+        /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+        TokenId tokenId = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
+
+        vm.warp(block.timestamp + 13);
+        vm.roll(block.number + 1);
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+        swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+
+        vm.warp(block.timestamp + 13);
+        vm.roll(block.number + 1);
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+        swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+
+        assertTrue(!pp.isSafeMode(), "not in safe mode");
+
+        assertTrue(
+            int256(fastOracleTick - slowOracleTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
+                int256(currentTick - slowOracleTick) ** 2 >
+                int256(953) ** 2,
+            "will check at multiple ticks"
+        );
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        if (tokenType == 0) {
+            token0.approve(address(ct0), 1000);
+            ct0.deposit(600, Bob);
+        } else {
+            token1.approve(address(ct1), 1000);
+            ct1.deposit(0, Bob);
+        }
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+    }
+
+    function test_Fail_DivergentSolvencyCheck_burn() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+
+        // L = 1
+        uniPool.liquidity();
+
+        /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+        TokenId tokenId = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 2);
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        if (tokenType == 0) {
+            token0.approve(address(ct0), 1650);
+            ct0.deposit(850, Bob);
+        } else {
+            token1.approve(address(ct1), 1000);
+            ct1.deposit(0, Bob);
+        }
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+
+        TokenId[] memory posIdList2 = new TokenId[](2);
+
+        posIdList2[0] = tokenId;
+
+        TokenId tokenId2 = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 2, asset, 0, tokenType, 0, 0, 2);
+
+        posIdList2[1] = tokenId2;
+
+        // mint second option
+        pp.mintOptions(posIdList2, 10, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
+
+        vm.warp(block.timestamp + 13);
+        vm.roll(block.number + 1);
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+        swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+
+        vm.warp(block.timestamp + 13);
+        vm.roll(block.number + 1);
+        swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+        swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+
+        (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+
+        assertTrue(!pp.isSafeMode(), "not in safe mode");
+
+        assertTrue(
+            int256(fastOracleTick - slowOracleTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
+                int256(currentTick - slowOracleTick) ** 2 >
+                int256(953) ** 2,
+            "will check at multiple ticks"
+        );
+
+        vm.startPrank(Bob);
+
+        // burn second option
+        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        pp.burnOptions(
+            posIdList2[1],
+            posIdList,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    function test_Fail_DivergentSolvencyCheck_liquidation() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+
+        // L = 1
+        uniPool.liquidity();
+
+        /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+        TokenId tokenId = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 100);
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        if (tokenType == 0) {
+            token0.approve(address(ct0), 1000);
+            ct0.deposit(1000, Bob);
+        } else {
+            token1.approve(address(ct1), 1000);
+            ct1.deposit(1000, Bob);
+        }
+
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 >= totalCollateralRequired0, "Is not liquidatable");
+
+        vm.startPrank(Swapper);
+
+        // swap to 1.21 or 0.82, depending on tokenType
+        swapperc.swapTo(
+            uniPool,
+            tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
+        );
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+
+        // update twaps
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+            swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+        }
+
+        int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
+        {
+            (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+                pp,
+                Bob,
+                int24(twapTick),
+                0,
+                posIdList
+            );
+
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable twap!");
+        }
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) - 500));
+
+        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+
+        {
+            (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+                pp,
+                Bob,
+                fastOracleTick,
+                0,
+                posIdList
+            );
+
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable fast!");
+
+            (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+                pp,
+                Bob,
+                lastObservedTick,
+                0,
+                posIdList
+            );
+
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable last!");
+
+            (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+                pp,
+                Bob,
+                currentTick,
+                0,
+                posIdList
+            );
+
+            assertTrue(
+                totalCollateralBalance0 > totalCollateralRequired0,
+                "Is NOT liquidatable current!"
+            );
+        }
+
+        vm.startPrank(Alice);
+
+        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
+            posIdList
+        );
+    }
+
+    function test_success_liquidation_currentTick_bonusOptimization_scenarios() public {
+        vm.startPrank(Swapper);
+        // JIT a bunch of liquidity so swaps at mint can happen normally
+        swapperc.mint(uniPool, -1000, 1000, 10 ** 18);
+
+        // L = 1
+        uniPool.liquidity();
+
+        /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
+
+        uint256 asset = 0;
+        uint256 tokenType = 0;
+        TokenId tokenId = TokenId
+            .wrap(0)
+            .addPoolId(PanopticMath.getPoolId(address(uniPool)))
+            .addLeg(0, 1, asset, 0, tokenType, 0, 0, 100);
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        (, int24 currentTick, , , , , ) = uniPool.slot0();
+
+        vm.startPrank(Bob);
+        ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
+        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+
+        if (tokenType == 0) {
+            token0.approve(address(ct0), 1000);
+            ct0.deposit(1000, Bob);
+        } else {
+            token1.approve(address(ct1), 1000);
+            ct1.deposit(1000, Bob);
+        }
+
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 >= totalCollateralRequired0, "Is not liquidatable");
+
+        vm.startPrank(Swapper);
+
+        // swap to 1.21 or 0.82, depending on tokenType
+        swapperc.swapTo(
+            uniPool,
+            tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
+        );
+        (, currentTick, , , , , ) = uniPool.slot0();
+
+        (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+            pp,
+            Bob,
+            currentTick,
+            0,
+            posIdList
+        );
+
+        assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
+
+        // update twaps
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+            swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
+        }
+
+        int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
+        {
+            (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
+                pp,
+                Bob,
+                int24(twapTick),
+                0,
+                posIdList
+            );
+
+            assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable twap!");
+        }
+
+        (uint256 liquidatorBalance0, uint256 liquidatorBalance1) = (
+            ct0.convertToAssets(ct0.balanceOf(Alice)),
+            ct1.convertToAssets(ct1.balanceOf(Alice))
+        );
+
+        int256 maxBonus1;
+
+        int256 maxTick;
+        uint256 snapshot = vm.snapshot();
+
+        for (int24 t = -350; t <= 510; t += 10) {
+            // swap to 1.21*1.05 or 0.82/1.05, depending on tokenType
+            vm.startPrank(Swapper);
+            swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) + t));
+
+            vm.startPrank(Alice);
+            pp.liquidate(
+                new TokenId[](0),
+                Bob,
+                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
+                posIdList
+            );
+
+            unchecked {
+                if (
+                    int256(ct1.convertToAssets(ct1.balanceOf(Alice)) - liquidatorBalance1) >
+                    maxBonus1
+                ) {
+                    maxBonus1 = int256(
+                        ct1.convertToAssets(ct1.balanceOf(Alice)) - liquidatorBalance1
+                    );
+                    maxTick = twapTick + t;
+                }
+            }
+            vm.revertTo(snapshot);
+        }
+
+        console2.log("maxBonus1", maxBonus1);
+        console2.log("twapTick", twapTick);
+        console2.log("maxTick", maxTick);
     }
 
     function test_success_liquidation_ITM_scenarios() public {
@@ -3907,8 +4346,8 @@ contract Misctest is Test, PositionUtils {
                 uniPool,
                 tokenType == 0 ? 87150978765690778389772763136 : 72025602285694849958832766976
             );
-
             (, currentTick, , , , , ) = uniPool.slot0();
+
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
                 Bob,
@@ -3923,11 +4362,16 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
+            (, currentTick, , , , , ) = uniPool.slot0();
+            int256 twapTick = PanopticMath.twapFilter(uniPool, 600);
+
             vm.startPrank(Alice);
+            console2.log("");
+            console2.log("no-cross collateral", i);
             pp.liquidate(
                 new TokenId[](0),
                 Bob,
@@ -4008,11 +4452,13 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
+            console2.log("");
+            console2.log("cross collateral", i);
             pp.liquidate(
                 new TokenId[](0),
                 Bob,
@@ -4022,6 +4468,8 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
+        console2.log("");
+        console2.log("");
 
         /// @dev strangles, liquidation through price move making on leg of the option ITM
 
@@ -4107,8 +4555,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4205,8 +4653,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4303,11 +4751,12 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
+
             pp.liquidate(
                 new TokenId[](0),
                 Bob,
@@ -4394,9 +4843,11 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
+            console2.log("");
+            console2.log("no cross collateral", i);
 
             vm.startPrank(Alice);
             pp.liquidate(
@@ -4480,11 +4931,14 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
+            console2.log("");
+            console2.log("cross collateral", i);
+
             pp.liquidate(
                 new TokenId[](0),
                 Bob,
@@ -4494,6 +4948,8 @@ contract Misctest is Test, PositionUtils {
 
             vm.revertTo(snapshot);
         }
+        console2.log("");
+        console2.log("");
 
         /// @dev strangles, liquidation through decrease in collateral, no-cross collateral
 
@@ -4576,8 +5032,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4670,8 +5126,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4764,8 +5220,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -4886,8 +5342,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -5008,8 +5464,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
@@ -5130,8 +5586,8 @@ contract Misctest is Test, PositionUtils {
             for (uint256 j = 0; j < 100; ++j) {
                 vm.warp(block.timestamp + 120);
                 vm.roll(block.number + 10);
-                swapperc.mint(uniPool, -10, 10, 10 ** 18);
-                swapperc.burn(uniPool, -10, 10, 10 ** 18);
+                swapperc.mint(uniPool, -887200, 887200, 10 ** 18);
+                swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
             }
 
             vm.startPrank(Alice);
