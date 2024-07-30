@@ -1325,7 +1325,7 @@ contract PanopticPoolActions is CollateralActions {
 
     /// @custom:property PANO-SYS-006 Users can't have an open position but no collateral
     /// @custom:precondition The user has a position open
-    function invariant_collateral_for_positions() public {
+    function in_variantcollateral_for_positions() public {
         // If user has positions open, the collateral must be greater than zero
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
@@ -1362,7 +1362,7 @@ contract PanopticPoolActions is CollateralActions {
 
     /// @custom:property PANO-SYS-007 The owed premia is not less than the available premia
     /// @custom:precondition The user has a position open
-    function invariant_unsettled_premium() public {
+    function in_variantunsettled_premium() public {
         // Owed premia
         (int128 p0o, int128 p1o, ) = panopticPool.calculateAccumulatedFeesBatch(
             msg.sender,

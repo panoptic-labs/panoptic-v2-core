@@ -1,6 +1,7 @@
 [profile.default]
 src = 'contracts'
-test = 'test/foundry'
+# also includes Echidna tests; refrain from using Foundry keywords there
+test = 'test'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"

@@ -166,7 +166,7 @@ contract CollateralActions is SFPMActions {
     /// @custom:property PANO-SYS-001 The max withdrawal or redemption amount of users with open positions is zero, excluding the overloaded withdraw that takes in a positionId list
     /// @custom:property PANO-SYS-002 Users can't withdraw or redeem collateral with open positions, excluding the overloaded withdraw that takes in a positionId list
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal_via_withdrawal_or_redemption(
+    function in_variantcollateral_removal_via_withdrawal_or_redemption(
         uint256 fuzzNumerator,
         uint256 fuzzDenominator,
         address recipient,
@@ -234,7 +234,7 @@ contract CollateralActions is SFPMActions {
     /// @custom:property PANO-SYS-003 The max transfer amount of users with open positions is zero
     /// @custom:property PANO-SYS-004 Users can't transfer collateral with open positions
     /// @custom:precondition The user has a position open
-    function invariant_collateral_removal_via_transfer(
+    function in_variantcollateral_removal_via_transfer(
         uint256 fuzzNumerator,
         uint256 fuzzDenominator,
         address recipient,
@@ -301,7 +301,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
-    function invariant_collateral_overremoval_with_open_positions(
+    function in_variantcollateral_overremoval_with_open_positions(
         CollateralTracker collToken,
         uint256 amountToWithdraw
     ) public {
@@ -347,7 +347,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-009 No user can ever withdraw greater than the Collateral Tracker's internally-accounted poolAssets
-    function invariant_no_withdrawal_gt_pool_assets(
+    function in_variantno_withdrawal_gt_pool_assets(
         address owner,
         address recipient,
         uint256 amountOver,
@@ -411,12 +411,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -432,12 +432,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -457,12 +457,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -504,12 +504,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
+                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
                     );
                 }
             }
@@ -517,7 +517,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-010 No user can ever withdraw, redeem, nor transfer an amount greater than their own balance
-    function invariant_never_allow_overremoval(
+    function in_variantnever_allow_overremoval(
         address owner,
         address recipient,
         uint256 amountOver,
@@ -651,7 +651,7 @@ contract CollateralActions is SFPMActions {
     //////////////////////////////////////////////////////////////*/
 
     /// @custom:property PANO-SYS-008 The Collateral Tracker's internal accounting always shows it has less than or equal to its true balance of the underlying token
-    function invariant_never_overcount_underlying_token() public {
+    function in_variantnever_overcount_underlying_token() public {
         (uint256 ct0_s_poolAssets, , ) = collToken0.getPoolData();
         assertWithMsg(
             ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)) + 1,
@@ -666,7 +666,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-011 The pool can never have a utilisation over 100%
-    function invariant_never_allow_pool_utilisation_over_100p() public {
+    function in_variantnever_allow_pool_utilisation_over_100p() public {
         (, , int256 collToken0PU) = collToken0.getPoolData();
         assertWithMsg(
             collToken0PU <= 10000,
@@ -681,7 +681,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-012 Users can't deposit more than the maximum allowed amount, 2^104
-    function invariant_never_allow_overdeposit(
+    function in_variantnever_allow_overdeposit(
         address receiver,
         uint256 tooLargeDepositAmount,
         bool depositToSelf
@@ -724,7 +724,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-013 Users can't mint more than the maximum allowed amount, 2^104
-    function invariant_never_allow_overmint(
+    function in_variantnever_allow_overmint(
         address minter,
         address receiver,
         uint256 tooLargeMintAmount,
@@ -766,7 +766,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-014 Users can't deposit/mint more than their balance
-    function invariant_no_mint_nor_deposit_over_balance(
+    function in_variantno_mint_nor_deposit_over_balance(
         address receiver,
         uint256 amountOver,
         bool viaMint
