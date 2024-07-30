@@ -7,7 +7,10 @@ deployContracts:
     ["0xde0002", "UniSwapRouterDeployer"],
   ]
 cryticArgs:
-  ["--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)"]
+  [
+    "--foundry-compile-all",
+    "--compile-libraries=(FeesCalc, 0x11b001),(InteractionHelper, 0x11b002),(PanopticMath,0x11b003)",
+  ]
 
 sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
 testMode: assertion
@@ -15,7 +18,7 @@ seqLen: 500
 testLimit: 3000000
 shrinkLimit: 0
 workers: 1
-corpusDir: contracts/fuzz/echidna/corpus
+corpusDir: test/echidna/corpus
 #rpcBlock: 19582800
 coverageFormats: ["html"]
 # format: text
