@@ -1404,6 +1404,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         uint256 currBalanceExternal = tokenBalances[$activeTokenId][$activeUser];
 
+        emit LogAddress("query address ", $activeUser);
         emit LogUint256("currBalanceReal", currBalanceReal);
         emit LogUint256("currBalanceExternal", currBalanceExternal);
 

@@ -260,6 +260,13 @@ contract SFPMActions is GeneralActions {
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
 
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs; i++) {
                 $activeLegIndex = i;
@@ -614,13 +621,6 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
-
-                // check the balance of their ERC1155 id increased by position size
-                {
-                    // adjust balances and verify
-                    _increment_tokenBalance(positionSize);
-                    //_check_tokenBalance();
-                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -896,6 +896,13 @@ contract SFPMActions is GeneralActions {
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
+
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs; i++) {
@@ -1281,13 +1288,6 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
-
-                // check the balance of their ERC1155 id increased by position size
-                {
-                    // adjust balances and verify
-                    _increment_tokenBalance(positionSize);
-                    //_check_tokenBalance();
-                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -1572,11 +1572,16 @@ contract SFPMActions is GeneralActions {
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
 
-            assertWithMsg(false, "check x x x xx x x ");
-
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
+
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
 
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs; i++) {
@@ -1993,13 +1998,6 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
-
-                // check the balance of their ERC1155 id increased by position size
-                {
-                    // adjust balances and verify
-                    _increment_tokenBalance(positionSize);
-                    //_check_tokenBalance();
-                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2026,15 +2024,10 @@ contract SFPMActions is GeneralActions {
         int256 strike,
         uint128 positionSize
     ) public {
-        minter_index = bound(minter_index, 0, 4);
-        if (actors[minter_index] == msg.sender) {
-            minter_index = bound(minter_index + 1, 0, 4);
-        }
-
-        address minter = actors[minter_index];
+        $activeUser = msg.sender;
 
         // must be
-        TokenId $activeTokenId = _generate_single_leg_tokenid(
+        $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2072,7 +2065,7 @@ contract SFPMActions is GeneralActions {
             (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
 
             (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
-                minter,
+                $activeUser,
                 zeroForOne,
                 swapAmount
             );
@@ -2089,18 +2082,25 @@ contract SFPMActions is GeneralActions {
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(minter));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(minter));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf($activeUser));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf($activeUser));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        hevm.prank(minter);
+        hevm.prank($activeUser);
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(minter));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(minter));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
@@ -2119,15 +2119,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                //_check_tokenBalance();
-            }
-
             // add minted option to mapping of minted SFPM positions (to grab for burn)
-            userPositionsSFPMShort[minter].push($activeTokenId);
+            userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
     }
 
@@ -2141,14 +2134,10 @@ contract SFPMActions is GeneralActions {
         int256 strike,
         uint128 positionSize
     ) public {
-        if (actors[minter_index] == msg.sender) {
-            minter_index = bound(minter_index + 1, 0, 4);
-        }
-
-        address minter = actors[minter_index];
+        $activeUser = msg.sender;
 
         // must be
-        TokenId $activeTokenId = _generate_single_leg_tokenid(
+        $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2179,18 +2168,25 @@ contract SFPMActions is GeneralActions {
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(minter));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(minter));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf($activeUser));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf($activeUser));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        hevm.prank(minter);
+        hevm.prank($activeUser);
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(minter));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(minter));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
@@ -2209,15 +2205,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                //_check_tokenBalance();
-            }
-
             // add minted option to mapping of minted SFPM positions (to grab for burn)
-            userPositionsSFPMShort[msg.sender].push($activeTokenId);
+            userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
     }
 
@@ -2230,7 +2219,9 @@ contract SFPMActions is GeneralActions {
         int256 strike,
         uint128 positionSize
     ) public {
-        TokenId $activeTokenId = _generate_single_leg_tokenid(
+        $activeUser = msg.sender;
+
+        $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2255,18 +2246,25 @@ contract SFPMActions is GeneralActions {
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf($activeUser));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf($activeUser));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        hevm.prank(msg.sender);
+        hevm.prank($activeUser);
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
@@ -2285,15 +2283,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                //_check_tokenBalance();
-            }
-
             // add minted option to mapping of minted SFPM positions (to grab for burn)
-            userPositionsSFPMShort[msg.sender].push($activeTokenId);
+            userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
     }
 
@@ -2306,7 +2297,9 @@ contract SFPMActions is GeneralActions {
         int256 strike,
         uint128 positionSize
     ) public {
-        TokenId $activeTokenId = _generate_single_leg_tokenid(
+        $activeUser = msg.sender;
+
+        $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
             false,
@@ -2331,18 +2324,25 @@ contract SFPMActions is GeneralActions {
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf($activeUser));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf($activeUser));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
-        hevm.prank(msg.sender);
+        hevm.prank($activeUser);
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
@@ -2361,15 +2361,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                //_check_tokenBalance();
-            }
-
             // add minted option to mapping of minted SFPM positions (to grab for burn)
-            userPositionsSFPMShort[msg.sender].push($activeTokenId);
+            userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
     }
 
@@ -2385,9 +2378,11 @@ contract SFPMActions is GeneralActions {
         int256 strike1,
         uint128 positionSize
     ) public {
+        $activeUser = msg.sender;
+
         // generate double leg shorts
         // dynamic numeraire and token type
-        TokenId $activeTokenId = _generate_multiple_leg_tokenid(
+        $activeTokenId = _generate_multiple_leg_tokenid(
             2,
             [asset0, asset1, false, false],
             [true, false, false, false],
@@ -2423,7 +2418,7 @@ contract SFPMActions is GeneralActions {
             emit LogBool("zeroForOne", zeroForOne);
 
             (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
-                msg.sender,
+                $activeUser,
                 zeroForOne,
                 swapAmount
             );
@@ -2440,8 +2435,8 @@ contract SFPMActions is GeneralActions {
         }
 
         // current balances
-        int256 balBefore0 = int256(IERC20(USDC).balanceOf(msg.sender));
-        int256 balBefore1 = int256(IERC20(WETH).balanceOf(msg.sender));
+        int256 balBefore0 = int256(IERC20(USDC).balanceOf($activeUser));
+        int256 balBefore1 = int256(IERC20(WETH).balanceOf($activeUser));
 
         emit LogInt256("bal before 0", balBefore0);
         emit LogInt256("bal before 1", balBefore1);
@@ -2449,11 +2444,18 @@ contract SFPMActions is GeneralActions {
         // get price before swap
         (currentSqrtPriceX96, , , , , , ) = pool.slot0();
 
-        hevm.prank(msg.sender);
+        hevm.prank($activeUser);
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitHigh, tickLimitLow) {
+            // check the balance of their ERC1155 id increased by position size
+            {
+                // adjust balances and verify
+                _increment_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // check final balances
-            int256 balAfter0 = int256(IERC20(USDC).balanceOf(msg.sender));
-            int256 balAfter1 = int256(IERC20(WETH).balanceOf(msg.sender));
+            int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
+            int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
 
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
@@ -2479,15 +2481,8 @@ contract SFPMActions is GeneralActions {
             // ensure that only token 0 was moved as this was a netting swap
             // assertWithMsg(totalMoved0 == convertedMoved1to0, "invalid conversion");
 
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                //_check_tokenBalance();
-            }
-
             // add minted option to mapping of minted SFPM positions (to grab for burn)
-            userPositionsSFPMShort[msg.sender].push($activeTokenId);
+            userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
     }
 
@@ -3022,6 +3017,12 @@ contract SFPMActions is GeneralActions {
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
 
+            {
+                // adjust balances and verify
+                _decrement_tokenBalance(positionSize);
+                _check_tokenBalance();
+            }
+
             // preform post-mint invariant checks per leg
             for (uint i = $activeNumLegs; i > 0; i--) {
                 $activeLegIndex = i;
@@ -3436,12 +3437,6 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
-
-                {
-                    // adjust balances and verify
-                    _decrement_tokenBalance(positionSize);
-                    //_check_tokenBalance();
-                }
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -3610,6 +3605,24 @@ contract SFPMActions is GeneralActions {
                 data
             )
         {
+            {
+                // delete and update record of token ownership
+                tokenBalances[$activeTokenId][randUser] += positionSize;
+                tokenBalances[$activeTokenId][$activeUser] -= positionSize;
+
+                // check accounting of final balances
+                assertWithMsg(
+                    tokenBalances[$activeTokenId][randUser] ==
+                        tokenBalances[$activeTokenId][randUser],
+                    "invalid tracked erc1155 balance recipient"
+                );
+                assertWithMsg(
+                    tokenBalances[$activeTokenId][$activeUser] ==
+                        tokenBalances[$activeTokenId][$activeUser],
+                    "invalid tracked erc1155 balance sender"
+                );
+            }
+
             for (uint256 i = 0; i < $activeNumLegs; i++) {
                 $activeLegIndex = i;
 
@@ -3701,26 +3714,7 @@ contract SFPMActions is GeneralActions {
                         "invalid recipient liquidity"
                     );
                 }
-
-                {
-                    // delete and update record of token ownership
-                    tokenBalances[$activeTokenId][randUser] += positionSize;
-                    tokenBalances[$activeTokenId][$activeUser] -= positionSize;
-
-                    assertWithMsg(
-                        tokenBalances[$activeTokenId][randUser] ==
-                            tokenBalances[$activeTokenId][randUser],
-                        "invalid tracked erc1155 balance recipient"
-                    );
-                    assertWithMsg(
-                        tokenBalances[$activeTokenId][$activeUser] ==
-                            tokenBalances[$activeTokenId][$activeUser],
-                        "invalid tracked erc1155 balance sender"
-                    );
-                }
             }
-
-            assertWithMsg(false, "success");
 
             // inverse
             assertWithMsg(!$shouldRevertSFPM, "should have reverted");
