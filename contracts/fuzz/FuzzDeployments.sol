@@ -1887,13 +1887,21 @@ contract FuzzDeployments is FuzzHelpers {
                 ) >> 64) - $projectedPremia[legIndex].idealPremium0;
                 uint256 actualPostburnGrossPremia0 = (($postburnSFPMGrossPremiaAccumulator0 -
                     $postburnGrossPremiaLast0) * $postburnShortLiquidity) >> 64;
-                assertWithMsg(
-                    // Tolerance of 1 as the contracts round s_grossPremiumLast down,
-                    // and our idealPremium calc may not
-                    actualPostburnGrossPremia0 >= projectedPostburnGrossPremia0 &&
+                if (actualPostburnGrossPremia0 >= projectedPostburnGrossPremia0) {
+                    assertWithMsg(
+                        // Tolerance of 1 as the contracts round s_grossPremiumLast down,
+                        // and our idealPremium calc may not
                         actualPostburnGrossPremia0 - projectedPostburnGrossPremia0 <= 1,
-                    "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
-                );
+                        "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
+                    );
+                } else {
+                    // Assert postburn total premium for this chunk suffices for remaining positions
+                    _assert_actual_postburn_is_gt_sum_of_ideal_premia_projections(
+                        _chunk_for($position, legIndex),
+                        actualPostburnGrossPremia0,
+                        true
+                    );
+                }
             }
 
             emit LogUint256(
@@ -1928,11 +1936,21 @@ contract FuzzDeployments is FuzzHelpers {
                 ) >> 64) - $projectedPremia[legIndex].idealPremium1;
                 uint256 actualPostburnGrossPremia1 = (($postburnSFPMGrossPremiaAccumulator1 -
                     $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64;
-                assertWithMsg(
-                    actualPostburnGrossPremia1 >= projectedPostburnGrossPremia1 &&
+                if (actualPostburnGrossPremia1 >= projectedPostburnGrossPremia1) {
+                    assertWithMsg(
+                        // Tolerance of 1 as the contracts round s_grossPremiumLast down,
+                        // and our idealPremium calc may not
                         actualPostburnGrossPremia1 - projectedPostburnGrossPremia1 <= 1,
-                    "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
-                );
+                        "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
+                    );
+                } else {
+                    // Assert postburn total premium for this chunk suffices for remaining positions
+                    _assert_actual_postburn_is_gt_sum_of_ideal_premia_projections(
+                        _chunk_for($position, legIndex),
+                        actualPostburnGrossPremia1,
+                        false
+                    );
+                }
                 if (uint256($postburnSFPMGrossPremiaAccumulator1) == 477726361074331828) {
                     assertWithMsg(false, "passed your old case!");
                 }
@@ -1948,6 +1966,76 @@ contract FuzzDeployments is FuzzHelpers {
             delete $postburnShortLiquidity;
         }
     }
+
+    function _assert_actual_postburn_is_gt_sum_of_ideal_premia_projections(
+        bytes32 chunkKey,
+        uint256 actualPostburnGrossPremia,
+        bool isToken0
+    ) internal {
+        uint256 accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk = 0;
+
+       for (uint256 actorIndex = 0; actorIndex < actors.length; actorIndex++) {
+           address actor = actors[actorIndex];
+           for (uint256 positionIndex = 0; positionIndex < userPositions[actor]; positionIndex++) {
+               TokenId position = userPositions[actor][positionIndex];
+               for (uint256 legIndex = 0; legIndex < position.countLegs(); legIndex++) {
+                   if (_chunk_for(position, accumulatorLoopLegIndex) == chunkKey) {
+                       uint256 idealPremium = _calc_ideal_premium_using_postburn_values(position, legIndex, isToken0);
+                       accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk += idealPremium;
+                   }
+               }
+           }
+       }
+
+       assertWithMsg(
+           accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk <= actualPostburnGrossPremia,
+           "Actual post-burn gross premia is below sum of ideal premia projections for outstanding positions"
+       );
+    }
+
+    function _chunk_for(TokenId position, uint256 legIndexA) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(position.strike(legIndex), position.width(legIndex), position.tokenType(legIndex));
+    }
+
+    function _calc_ideal_premium_using_postburn_values(
+        TokenId position,
+        uint256 legIndex,
+        bool isToken0
+    ) internal view returns (uint256) {
+        (uint128 sfpmGrossPremiaAccumulator0, uint128 sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators_without_itm_swap(
+            position,
+            legIndex
+        );
+
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+            position,
+            legIndex,
+            posSize
+        );
+        uint128 positionLiquidity = liquidityChunk.liquidity();
+
+        (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
+            position,
+            caller,
+            legIndex
+        );
+
+        if (isToken0) {
+            return uint128(
+                (
+                    uint256(sfpmGrossPremiaAccumulator0 - premiumGrowth0) *
+                    uint256(accumulators[legIndex].positionLiquidity)
+                ) >> 64
+            )
+        } else {
+            return uint128(
+                (
+                    uint256(sfpmGrossPremiaAccumulator1 - premiumGrowth1) *
+                    uint256(accumulators[legIndex].positionLiquidity)
+                ) >> 64
+            )
+        }
+    };
 
     function _compare_against_preburn_values(
         int128 expectedNonPremiaToken0Difference,
