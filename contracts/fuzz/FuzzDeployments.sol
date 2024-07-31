@@ -1976,11 +1976,11 @@ contract FuzzDeployments is FuzzHelpers {
 
        for (uint256 actorIndex = 0; actorIndex < actors.length; actorIndex++) {
            address actor = actors[actorIndex];
-           for (uint256 positionIndex = 0; positionIndex < userPositions[actor]; positionIndex++) {
+           for (uint256 positionIndex = 0; positionIndex < userPositions[actor].length; positionIndex++) {
                TokenId position = userPositions[actor][positionIndex];
                for (uint256 legIndex = 0; legIndex < position.countLegs(); legIndex++) {
-                   if (_chunk_for(position, accumulatorLoopLegIndex) == chunkKey) {
-                       uint256 idealPremium = _calc_ideal_premium_using_postburn_values(position, legIndex, isToken0);
+                   if (_chunk_for(position, legIndex) == chunkKey) {
+                       uint256 idealPremium = _calc_ideal_premium_using_postburn_values(position, legIndex, isToken0, actor);
                        accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk += idealPremium;
                    }
                }
@@ -1993,15 +1993,21 @@ contract FuzzDeployments is FuzzHelpers {
        );
     }
 
-    function _chunk_for(TokenId position, uint256 legIndexA) internal pure returns (bytes32) {
+    function _chunk_for(TokenId position, uint256 legIndex) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(position.strike(legIndex), position.width(legIndex), position.tokenType(legIndex)));
     }
 
     function _calc_ideal_premium_using_postburn_values(
         TokenId position,
         uint256 legIndex,
-        bool isToken0
-    ) internal view returns (uint256) {
+        bool isToken0,
+        address actor
+    ) internal returns (uint256) {
+        (uint128 posSize, , ) = panopticPool.optionPositionBalance(
+            actor,
+            position
+        );
+
         (uint128 sfpmGrossPremiaAccumulator0, uint128 sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators_without_itm_swap(
             position,
             legIndex
@@ -2016,7 +2022,7 @@ contract FuzzDeployments is FuzzHelpers {
 
         (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
             position,
-            caller,
+            actor,
             legIndex
         );
 
@@ -2024,14 +2030,14 @@ contract FuzzDeployments is FuzzHelpers {
             return uint128(
                 (
                     uint256(sfpmGrossPremiaAccumulator0 - premiumGrowth0) *
-                    uint256(accumulators[legIndex].positionLiquidity)
+                    uint256(positionLiquidity)
                 ) >> 64
             );
         } else {
             return uint128(
                 (
                     uint256(sfpmGrossPremiaAccumulator1 - premiumGrowth1) *
-                    uint256(accumulators[legIndex].positionLiquidity)
+                    uint256(positionLiquidity)
                 ) >> 64
             );
         }
