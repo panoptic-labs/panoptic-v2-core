@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -31,10 +31,6 @@ import {Pointer} from "@types/Pointer.sol";
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
 
-    function poolContext(uint64 poolId) public view returns (PoolAddressAndLock memory) {
-        return s_poolContext[poolId];
-    }
-
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
     }
@@ -62,28 +58,6 @@ contract PanopticPoolHarness is PanopticPool {
 
     function settledTokens(bytes32 chunk) external view returns (LeftRightUnsigned) {
         return s_settledTokens[chunk];
-    }
-
-    function calculateAccumulatedPremia(
-        address user,
-        bool computeAllPremia,
-        bool includePendingPremium,
-        TokenId[] calldata positionIdList
-    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
-        // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-        // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
-        (LeftRightSigned premia, uint256[2][] memory balances) = _calculateAccumulatedPremia(
-            user,
-            positionIdList,
-            computeAllPremia,
-            includePendingPremium,
-            currentTick
-        );
-
-        // Return the premia as (token0, token1)
-        return (premia.rightSlot(), premia.leftSlot(), balances);
     }
 
     // return premiaByLeg
@@ -225,9 +199,6 @@ contract PanopticPoolTest is PositionUtils {
     int256 $amount0MovedBurn;
     int256 $amount1MovedBurn;
 
-    int128 $expectedPremia0;
-    int128 $expectedPremia1;
-
     int24[] tickLowers;
     int24[] tickUppers;
     uint160[] sqrtLowers;
@@ -288,7 +259,6 @@ contract PanopticPoolTest is PositionUtils {
 
     int256 $combinedBalance0;
     int256 $combinedBalance0Premium;
-    int256 $combinedBalance0NoPremium;
     int256 $bonusCombined0;
     int256 $burnDelta0Combined;
     int256 $burnDelta0;
@@ -314,7 +284,13 @@ contract PanopticPoolTest is PositionUtils {
     uint256[] settledTokens0;
 
     int256 longPremium0;
-    LeftRightSigned $premia;
+
+    LeftRightUnsigned $longPremia;
+    LeftRightUnsigned $shortPremia;
+
+    LeftRightUnsigned $longPremiaBefore;
+    LeftRightUnsigned $shortPremiaBefore;
+
     LeftRightSigned $netExchanged;
 
     /*//////////////////////////////////////////////////////////////
@@ -1691,10 +1667,22 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[0] = tokenId;
             posIdList[1] = tokenId2;
 
-            (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
-                .calculateAccumulatedFeesBatch(Alice, false, posIdList);
-            assertEq(uint128(premium0), expectedPremia[0]);
-            assertEq(uint128(premium1), expectedPremia[1]);
+            uint256[2][] memory posBalanceArray;
+            ($shortPremia, $longPremia, posBalanceArray) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                false,
+                posIdList
+            );
+
+            assertEq(
+                int256(uint256($shortPremia.rightSlot())) -
+                    int256(uint256($longPremia.rightSlot())),
+                int256(expectedPremia[0])
+            );
+            assertEq(
+                int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot())),
+                int256(expectedPremia[1])
+            );
             assertEq(posBalanceArray[0][0], TokenId.unwrap(tokenId));
             assertEq(LeftRightUnsigned.wrap(posBalanceArray[0][1]).rightSlot(), positionSizes[0]);
             assertEq(LeftRightUnsigned.wrap(posBalanceArray[0][1]).leftSlot(), 0);
@@ -1747,7 +1735,7 @@ contract PanopticPoolTest is PositionUtils {
         premiaSeed[0] = bound(premiaSeed[0], 2 ** 64, 2 ** 120);
         premiaSeed[1] = bound(premiaSeed[1], 2 ** 64, 2 ** 120);
 
-        (int256 premium0Before, int256 premium1Before, ) = pp.calculateAccumulatedFeesBatch(
+        ($shortPremiaBefore, $longPremiaBefore, ) = pp.calculateAccumulatedFeesBatch(
             Alice,
             true,
             posIdList
@@ -1758,26 +1746,32 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
 
-        (int256 premium0, int256 premium1, ) = pp.calculateAccumulatedFeesBatch(
-            Alice,
-            false,
-            posIdList
-        );
+        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
 
         // we have not settled any accrued premium yet, so the calculated amount (excluding pending premium) should be 0
-        assertEq(premium0, 0);
-        assertEq(premium1, 0);
+        assertEq(LeftRightUnsigned.unwrap($shortPremia), 0);
+        assertEq(LeftRightUnsigned.unwrap($longPremia), 0);
 
         // if we include pending premium, the amount should be the same as the accrued premium
-        (premium0, premium1, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
+        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
 
         assertApproxEqAbs(
-            uint256(premium0 - premium0Before),
+            uint256(
+                (int256(uint256($shortPremia.rightSlot())) -
+                    int256(uint256($longPremia.rightSlot()))) -
+                    (int256(uint256($shortPremiaBefore.rightSlot())) -
+                        int256(uint256($longPremiaBefore.rightSlot())))
+            ),
             premiaSeed[0],
             premiaSeed[0] / 1_000_000
         );
         assertApproxEqAbs(
-            uint256(premium1 - premium1Before),
+            uint256(
+                (int256(uint256($shortPremia.leftSlot())) -
+                    int256(uint256($longPremia.leftSlot()))) -
+                    (int256(uint256($shortPremiaBefore.leftSlot())) -
+                        int256(uint256($longPremiaBefore.leftSlot())))
+            ),
             premiaSeed[1],
             premiaSeed[1] / 1_000_000
         );
@@ -3600,7 +3594,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
         pp.mintOptions(
             posIdList,
             positionSize * 0,
@@ -4886,19 +4880,6 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Fail_burnOptions_OptionsBalanceZero(uint256 x) public {
-        _initPool(x);
-
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
-
-        pp.burnOptions(
-            TokenId.wrap(0),
-            emptyList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
-        );
-    }
-
     function test_Fail_burnOptions_WrongIdList(
         uint256 x,
         uint256 widthSeed,
@@ -5270,11 +5251,7 @@ contract PanopticPoolTest is PositionUtils {
 
         updateIntrinsicValueBurn(longAmounts, shortAmounts);
 
-        ($expectedPremia0, $expectedPremia1, ) = pp.calculateAccumulatedFeesBatch(
-            Alice,
-            true,
-            posIdList
-        );
+        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
 
         vm.startPrank(Bob);
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
@@ -5387,13 +5364,21 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         {
-            $balanceDelta0 = int256(exerciseFeeAmounts[0]) - $intrinsicValue0 + $expectedPremia0;
+            $balanceDelta0 =
+                int256(exerciseFeeAmounts[0]) -
+                $intrinsicValue0 +
+                int256(uint256($shortPremia.rightSlot())) -
+                int256(uint256($longPremia.rightSlot()));
 
             $balanceDelta0 = $balanceDelta0 > 0
                 ? int256(uint256($balanceDelta0))
                 : -int256(uint256(-$balanceDelta0));
 
-            $balanceDelta1 = int256(exerciseFeeAmounts[1]) - $intrinsicValue1 + $expectedPremia1;
+            $balanceDelta1 =
+                int256(exerciseFeeAmounts[1]) -
+                $intrinsicValue1 +
+                int256(uint256($shortPremia.leftSlot())) -
+                int256(uint256($longPremia.leftSlot()));
 
             $balanceDelta1 = $balanceDelta1 > 0
                 ? int256(uint256($balanceDelta1))
@@ -6384,21 +6369,26 @@ contract PanopticPoolTest is PositionUtils {
         TWAPtick = pp.getUniV3TWAP_();
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        ($expectedPremia0, $expectedPremia1, $positionBalanceArray) = pp
-            .calculateAccumulatedFeesBatch(Alice, false, $posIdLists[1]);
+        ($shortPremia, $longPremia, $positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            false,
+            $posIdLists[1]
+        );
 
         $tokenData0 = ct0.getAccountMarginDetails(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $expectedPremia0
+            $shortPremia.rightSlot(),
+            $longPremia.rightSlot()
         );
 
         $tokenData1 = ct1.getAccountMarginDetails(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $expectedPremia1
+            $shortPremia.leftSlot(),
+            $longPremia.leftSlot()
         );
 
         // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
@@ -6520,14 +6510,11 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
-        {
-            (int128 premium0, int128 premium1, ) = pp.calculateAccumulatedFeesBatch(
-                Alice,
-                false,
-                $posIdLists[1]
-            );
-            $premia = LeftRightSigned.wrap(0).toRightSlot(premium0).toLeftSlot(premium1);
-        }
+        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            false,
+            $posIdLists[1]
+        );
 
         ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
             $tokenData0,
@@ -6535,7 +6522,7 @@ contract PanopticPoolTest is PositionUtils {
             Math.getSqrtRatioAtTick(TWAPtick),
             Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
-            $premia
+            $shortPremia
         );
 
         $delegated0 = uint256(
@@ -6609,14 +6596,6 @@ contract PanopticPoolTest is PositionUtils {
             "liquidator lost money"
         );
 
-        // get total balance for Alice before liquidation
-        $combinedBalance0NoPremium = int256(
-            (int256(uint256($tokenData0.rightSlot())) - Math.max($premia.rightSlot(), 0)) +
-                PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot())) - Math.max($premia.leftSlot(), 0),
-                    TickMath.getSqrtRatioAtTick(TWAPtick)
-                )
-        );
         $combinedBalance0Premium = int256(
             ($tokenData0.rightSlot()) +
                 PanopticMath.convert1to0(
@@ -6754,12 +6733,12 @@ contract PanopticPoolTest is PositionUtils {
 
         $balance0CombinedPostBurn =
             int256(uint256($tokenData0.rightSlot())) -
-            Math.max($premia.rightSlot(), 0) +
+            int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
                     int256(uint256($tokenData1.rightSlot())) -
-                        Math.max($premia.leftSlot(), 0) +
+                        int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 )
@@ -6958,21 +6937,26 @@ contract PanopticPoolTest is PositionUtils {
         TWAPtick = pp.getUniV3TWAP_();
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        ($expectedPremia0, $expectedPremia1, $positionBalanceArray) = pp
-            .calculateAccumulatedFeesBatch(Alice, false, $posIdLists[1]);
+        ($shortPremia, $longPremia, $positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            false,
+            $posIdLists[1]
+        );
 
         $tokenData0 = ct0.getAccountMarginDetails(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $expectedPremia0
+            $shortPremia.rightSlot(),
+            $longPremia.rightSlot()
         );
 
         $tokenData1 = ct1.getAccountMarginDetails(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $expectedPremia1
+            $shortPremia.leftSlot(),
+            $longPremia.leftSlot()
         );
 
         // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
@@ -7094,14 +7078,11 @@ contract PanopticPoolTest is PositionUtils {
                 TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
-        {
-            (int128 premium0, int128 premium1, ) = pp.calculateAccumulatedFeesBatch(
-                Alice,
-                false,
-                $posIdLists[1]
-            );
-            $premia = LeftRightSigned.wrap(0).toRightSlot(premium0).toLeftSlot(premium1);
-        }
+        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
+            Alice,
+            false,
+            $posIdLists[1]
+        );
 
         ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
             $tokenData0,
@@ -7109,7 +7090,7 @@ contract PanopticPoolTest is PositionUtils {
             Math.getSqrtRatioAtTick(TWAPtick),
             Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
-            $premia
+            $shortPremia
         );
 
         $delegated0 = uint256(
@@ -7183,14 +7164,6 @@ contract PanopticPoolTest is PositionUtils {
             "liquidator lost money"
         );
 
-        // get total balance for Alice before liquidation
-        $combinedBalance0NoPremium = int256(
-            (int256(uint256($tokenData0.rightSlot())) - Math.max($premia.rightSlot(), 0)) +
-                PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot())) - Math.max($premia.leftSlot(), 0),
-                    TickMath.getSqrtRatioAtTick(TWAPtick)
-                )
-        );
         $combinedBalance0Premium = int256(
             ($tokenData0.rightSlot()) +
                 PanopticMath.convert1to0(
@@ -7329,12 +7302,12 @@ contract PanopticPoolTest is PositionUtils {
 
         $balance0CombinedPostBurn =
             int256(uint256($tokenData0.rightSlot())) -
-            Math.max($premia.rightSlot(), 0) +
+            int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
                     int256(uint256($tokenData1.rightSlot())) -
-                        Math.max($premia.leftSlot(), 0) +
+                        int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 )

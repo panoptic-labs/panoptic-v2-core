@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -30,10 +30,6 @@ import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
-
-    function poolContext(uint64 poolId) public view returns (PoolAddressAndLock memory) {
-        return s_poolContext[poolId];
-    }
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
@@ -1091,11 +1087,26 @@ contract PanopticHelperTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            (int128 premium0, int128 premium1, uint256[2][] memory posBalanceArray) = pp
-                .calculateAccumulatedFeesBatch(Alice, false, posIdList);
+            (
+                LeftRightUnsigned shortPremium,
+                LeftRightUnsigned longPremium,
+                uint256[2][] memory posBalanceArray
+            ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
 
-            tokenData0 = ct0.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium0);
-            tokenData1 = ct1.getAccountMarginDetails(Alice, atTick, posBalanceArray, premium1);
+            tokenData0 = ct0.getAccountMarginDetails(
+                Alice,
+                atTick,
+                posBalanceArray,
+                shortPremium.rightSlot(),
+                longPremium.rightSlot()
+            );
+            tokenData1 = ct1.getAccountMarginDetails(
+                Alice,
+                atTick,
+                posBalanceArray,
+                shortPremium.leftSlot(),
+                longPremium.leftSlot()
+            );
 
             (calculatedCollateralBalance, calculatedRequiredCollateral) = PanopticMath
                 .convertCollateralData(tokenData0, tokenData1, returnTokenType ? 1 : 0, atTick);

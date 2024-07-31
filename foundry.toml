@@ -5,6 +5,7 @@ test = 'test'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"
+evm_version = 'cancun'
 optimizer = true
 optimizer_runs = 1
 viaIR = false

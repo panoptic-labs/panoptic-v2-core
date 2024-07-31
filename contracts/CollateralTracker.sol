@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.18;
+pragma solidity >=0.8.24;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
@@ -543,8 +543,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return shares;
     }
 
     /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
@@ -588,8 +586,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return shares;
     }
 
     /// @notice Returns the maximum amount of shares that can be redeemed for a given user.
@@ -648,8 +644,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return assets;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1144,63 +1138,31 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
     /// @param user The account to check collateral/margin health for
-    /// @param currentTick The tick at which to evaluate the account's positions
+    /// @param atTick The tick at which to evaluate the account's positions
     /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
-    /// @param premiumAllPositions The premium collected thus far across all positions
-    /// @return tokenData Information collected for the tokens about the health of the account
+    /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
+    /// @param longPremium The total amount of premium owed by the long legs of `user`
+    /// @return Information collected for the tokens about the health of the account
     /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getAccountMarginDetails(
         address user,
-        int24 currentTick,
-        uint256[2][] memory positionBalanceArray,
-        int128 premiumAllPositions
-    ) public view returns (LeftRightUnsigned tokenData) {
-        tokenData = _getAccountMargin(user, currentTick, positionBalanceArray, premiumAllPositions);
-    }
-
-    /// @notice Get the collateral status/margin details of an account/user.
-    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
-    /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user The account to check collateral/margin health for.
-    /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
-    /// @param premiumAllPositions The premium collected thus far across all positions
-    /// @return tokenData Information collected for the tokens about the health of the account;
-    /// the collateral balance of the user is in the right slot and the threshold for margin call is in the left slot
-    function _getAccountMargin(
-        address user,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
-        int128 premiumAllPositions
-    ) internal view returns (LeftRightUnsigned tokenData) {
-        uint256 tokenRequired;
-
-        // if the account has active options, compute the required collateral to keep account in good health
-        if (positionBalanceArray.length > 0) {
-            // get all collateral required for the incoming list of positions
-            tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray);
-
-            // If premium is negative (ie. user has to pay for their purchased options), add this long premium to the token requirement
-            if (premiumAllPositions < 0) {
-                unchecked {
-                    tokenRequired += uint128(-premiumAllPositions);
-                }
-            }
+        uint128 shortPremium,
+        uint128 longPremium
+    ) public view returns (LeftRightUnsigned) {
+        unchecked {
+            return
+                LeftRightUnsigned
+                    .wrap(0)
+                    .toRightSlot((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
+                    .toLeftSlot(
+                        positionBalanceArray.length > 0
+                            ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +
+                                longPremium).toUint128()
+                            : 0
+                    );
         }
-
-        // if premium is positive (ie. user will receive funds due to selling options), add this premum to the user's balance
-        uint256 netBalance = convertToAssets(balanceOf[user]);
-        if (premiumAllPositions > 0) {
-            unchecked {
-                netBalance += uint256(uint128(premiumAllPositions));
-            }
-        }
-
-        // store assetBalance and tokens required in tokenData variable
-        tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
-            tokenRequired.toUint128()
-        );
-        return tokenData;
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
@@ -1242,8 +1204,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 ++i;
             }
         }
-
-        return tokenRequired;
     }
 
     /// @notice Get the required amount of collateral tokens corresponding to a specific single position 'tokenId' at a price 'tick'.

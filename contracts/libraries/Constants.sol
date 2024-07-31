@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 /// @title Library of Constants used in Panoptic.
 /// @author Axicon Labs Limited
@@ -40,7 +40,7 @@ library Constants {
     uint256 internal constant FAST_ORACLE_PERIOD = 1;
 
     /// @notice Amount of Uniswap observations to include in the "slow" oracle price (in Uniswap mode).
-    uint256 internal constant SLOW_ORACLE_CARDINALITY = 8;
+    uint256 internal constant SLOW_ORACLE_CARDINALITY = 9;
 
     /// @notice Amount of observation indices to skip in between each observation for the "slow" oracle price.
     /// @dev Structured such that the minimum total observation time is 8 minutes on Ethereum (similar to internal median mode).
