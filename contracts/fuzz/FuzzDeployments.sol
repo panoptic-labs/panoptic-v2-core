@@ -1994,7 +1994,7 @@ contract FuzzDeployments is FuzzHelpers {
     }
 
     function _chunk_for(TokenId position, uint256 legIndexA) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(position.strike(legIndex), position.width(legIndex), position.tokenType(legIndex));
+        return keccak256(abi.encodePacked(position.strike(legIndex), position.width(legIndex), position.tokenType(legIndex)));
     }
 
     function _calc_ideal_premium_using_postburn_values(
