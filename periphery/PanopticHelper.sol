@@ -49,7 +49,7 @@ contract PanopticHelper {
         int24 atTick,
         uint256 tokenType,
         TokenId[] calldata positionIdList
-    ) public returns (uint256, uint256) {
+    ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
         (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool
             .calculateAccumulatedFeesBatch(account, false, positionIdList);
@@ -84,7 +84,7 @@ contract PanopticHelper {
         address account,
         int24 tick,
         TokenId[] calldata positionIdList
-    ) internal returns (int256) {
+    ) internal view returns (int256) {
         (uint256 balanceCross, uint256 requiredCross) = checkCollateral(
             PanopticPool(pool),
             account,
@@ -129,7 +129,7 @@ contract PanopticHelper {
         address pool,
         address account,
         TokenId[] calldata positionIdList
-    ) public returns (int24 liquidationTick) {
+    ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
         (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
         int24 x0 = currentTick - 10000;
@@ -177,7 +177,7 @@ contract PanopticHelper {
         address pool,
         address account,
         TokenId[] calldata positionIdList
-    ) public returns (int24 liquidationTick) {
+    ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
         (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
         int24 x0 = currentTick;

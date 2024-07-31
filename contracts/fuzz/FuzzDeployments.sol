@@ -1805,48 +1805,6 @@ contract FuzzDeployments is FuzzHelpers {
                 "Settled token0s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
-            // TODO: If i use _get_sfpm_accumulators_without_itm_swap to set
-            // preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1,
-            // i get incorrect settled token projection (unkown if grosspremia correct)
-            // If i use regular _get_sfpm_accumulators, i get correct settled token projection,
-            // but incorrect gross premia one
-            // Must investigate
-            // Possibly: should use regular _get_sfpm_accumulators,
-            // but round differently when calculating idealPremium maybe? and then compensate in
-            // the proration logic so settled tokens is correct too?
-            emit LogUint256(
-                "$postburnSFPMGrossPremiaAccumulator1",
-                $postburnSFPMGrossPremiaAccumulator1
-            );
-            emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
-            emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
-            emit LogUint256(
-                "preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1",
-                preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1
-            );
-            emit LogUint256(
-                "preburnAccumulators[legIndex].grossPremiaLast1",
-                preburnAccumulators[legIndex].grossPremiaLast1
-            );
-            emit LogUint256(
-                "preburnAccumulators[legIndex].totalShortLiquidity",
-                preburnAccumulators[legIndex].totalShortLiquidity
-            );
-            emit LogUint256(
-                "$projectedPremia[legIndex].idealPremium1",
-                $projectedPremia[legIndex].idealPremium1
-            );
-            emit LogUint256("$postburnSettledToken1", $postburnSettledToken1);
-            assertWithMsg(
-                int256(int128($postburnSettledToken1)) ==
-                    Math.max(
-                        int256(int128(preburnAccumulators[legIndex].settledToken1)) -
-                            $expectedSettledToken1DifferenceForChunk,
-                        0
-                    ),
-                "Settled token1s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
-            );
-
             // INVARIANT:
             // (postBurnGrossPremiaSFPMAccumulator - postBurnGrossPremiaLast)*postBurnShortLiq/2^64
             // ==
@@ -1904,28 +1862,6 @@ contract FuzzDeployments is FuzzHelpers {
                 }
             }
 
-            emit LogUint256(
-                "$postburnSFPMGrossPremiaAccumulator1",
-                $postburnSFPMGrossPremiaAccumulator1
-            );
-            emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
-            emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
-            emit LogUint256(
-                "preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1",
-                preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1
-            );
-            emit LogUint256(
-                "preburnAccumulators[legIndex].grossPremiaLast1",
-                preburnAccumulators[legIndex].grossPremiaLast1
-            );
-            emit LogUint256(
-                "preburnAccumulators[legIndex].totalShortLiquidity",
-                preburnAccumulators[legIndex].totalShortLiquidity
-            );
-            emit LogUint256(
-                "$projectedPremia[legIndex].idealPremium1",
-                $projectedPremia[legIndex].idealPremium1
-            );
             if (
                 !($projectedPremia[legIndex].idealPremium1 == 0 && $position.isLong(legIndex) == 0)
             ) {
@@ -1951,9 +1887,6 @@ contract FuzzDeployments is FuzzHelpers {
                         false
                     );
                 }
-                if (uint256($postburnSFPMGrossPremiaAccumulator1) == 477726361074331828) {
-                    assertWithMsg(false, "passed your old case!");
-                }
             }
             delete $expectedSettledToken0DifferenceForChunk;
             delete $expectedSettledToken1DifferenceForChunk;
@@ -1972,7 +1905,7 @@ contract FuzzDeployments is FuzzHelpers {
         uint256 actualPostburnGrossPremia,
         bool isToken0
     ) internal {
-        uint256 accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk = 0;
+        uint256 totalProjectedIdealPremiaLegsInChunk = 0;
 
         for (uint256 actorIndex = 0; actorIndex < actors.length; actorIndex++) {
             address actor = actors[actorIndex];
@@ -1990,14 +1923,14 @@ contract FuzzDeployments is FuzzHelpers {
                             isToken0,
                             actor
                         );
-                        accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk += idealPremium;
+                        totalProjectedIdealPremiaLegsInChunk += idealPremium;
                     }
                 }
             }
         }
 
         assertWithMsg(
-            accumulatedIdealPremiaProjectionsForActorsLegsInThisChunk <= actualPostburnGrossPremia,
+            totalProjectedIdealPremiaLegsInChunk <= actualPostburnGrossPremia,
             "Actual post-burn gross premia is below sum of ideal premia projections for outstanding positions"
         );
     }

@@ -28,7 +28,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
-    /*
     /// @notice Emitted when an account is liquidated.
     /// @dev Need to unpack bonusAmounts to get raw numbers, which are always positive.
     /// @param liquidator Address of the caller whom is liquidating the distressed account.
@@ -39,7 +38,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address indexed liquidator,
         address indexed liquidatee,
         LeftRightSigned bonusAmounts
-    ); */
+    );
 
     /// @notice Emitted when a position is force exercised.
     /// @dev Need to unpack exerciseFee to get raw numbers, represented as a negative value (fee debited).
@@ -48,12 +47,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId TokenId of the liquidated position.
     /// @param exerciseFee LeftRight encoding for the cost paid by the exercisor to force the exercise of the token.
     /// The token0 fee is in the right slot, and token1 fee is in the left slot.
-    /* event ForcedExercised(
+    event ForcedExercised(
         address indexed exercisor,
         address indexed user,
         TokenId indexed tokenId,
         LeftRightSigned exerciseFee
-    ); */
+    );
 
     /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`)
     /// @param user Address of the owner of the settled position.
@@ -382,7 +381,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external returns (int128 premium0, int128 premium1, uint256[2][] memory) {
+    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
@@ -432,7 +431,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         bool computeAllPremia,
         bool includePendingPremium,
         int24 atTick
-    ) internal returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
+    ) internal view returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
         uint256 pLength = positionIdList.length;
         balances = new uint256[2][](pLength);
 
@@ -870,7 +869,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal returns (uint256 medianData) {
+    ) internal view returns (uint256 medianData) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -1156,7 +1155,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             .toRightSlot(int128(liquidationBonus0))
             .toLeftSlot(int128(liquidationBonus1));
 
-        /* emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts); */
+        emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
@@ -1263,7 +1262,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         if (positionIdListExercisor.length > 0)
             _validateSolvency(msg.sender, positionIdListExercisor, BP_DECREASE_BUFFER);
 
-        /* emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees); */
+        emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1282,7 +1281,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick,
         int24 atTick,
         uint256 buffer
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         (
             LeftRightSigned portfolioPremium,
             uint256[2][] memory positionBalanceArray
@@ -1533,6 +1532,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
+        view
         returns (
             LeftRightSigned[4] memory premiaByLeg,
             uint256[2][4] memory premiumAccumulatorsByLeg
@@ -1566,27 +1566,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
                     // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
                     // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
-                    /* TODO: Log your values here */
-                    emit LogInt128(
-                        "pp: idealPremium0: ",
-                        int128(
-                            int256(
-                                ((premiumAccumulatorsByLeg[leg][0] -
-                                    premiumAccumulatorLast.rightSlot()) *
-                                    (liquidityChunk.liquidity())) / 2 ** 64
-                            )
-                        )
-                    );
-                    emit LogInt128(
-                        "pp: idealPremium1: ",
-                        int128(
-                            int256(
-                                ((premiumAccumulatorsByLeg[leg][1] -
-                                    premiumAccumulatorLast.leftSlot()) *
-                                    (liquidityChunk.liquidity())) / 2 ** 64
-                            )
-                        )
-                    );
                     premiaByLeg[leg] = LeftRightSigned
                         .wrap(0)
                         .toRightSlot(
@@ -1618,8 +1597,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             }
         }
     }
-
-    event LogInt128(string, int128);
 
     /*//////////////////////////////////////////////////////////////
                         AVAILABLE PREMIUM LOGIC

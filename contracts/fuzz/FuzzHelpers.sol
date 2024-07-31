@@ -186,7 +186,7 @@ contract PanopticPoolWrapper is PanopticPool {
         bool computeAllPremia,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external returns (int128 premium0, int128 premium1, uint256[2][] memory) {
+    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
@@ -512,7 +512,7 @@ contract FuzzHelpers is PropertiesAsserts {
     function _get_account_margin(
         address to_liquidate,
         int24 tick
-    ) internal returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
         require(userPositions[to_liquidate].length > 0);
         int128 premium0;
         int128 premium1;
@@ -573,7 +573,7 @@ contract FuzzHelpers is PropertiesAsserts {
     function _get_solvency_balances(
         address who,
         int24 tick
-    ) internal returns (uint256 balanceCross, uint256 thresholdCross) {
+    ) internal view returns (uint256 balanceCross, uint256 thresholdCross) {
         (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _get_account_margin(
             who,
             tick
