@@ -1486,7 +1486,7 @@ contract FuzzDeployments is FuzzHelpers {
         (
             $sfpmGrossPremiaAccumulator0,
             $sfpmGrossPremiaAccumulator1
-        ) = _get_sfpm_accumulators_without_itm_swap(position, legIndex);
+        ) = _get_sfpm_accumulators(position, legIndex);
         accumulators[legIndex].sfpmGrossPremiaAccumulator0 = $sfpmGrossPremiaAccumulator0;
         accumulators[legIndex].sfpmGrossPremiaAccumulator1 = $sfpmGrossPremiaAccumulator1;
 

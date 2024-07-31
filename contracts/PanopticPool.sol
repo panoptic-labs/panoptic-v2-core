@@ -28,7 +28,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
-
+/*
     /// @notice Emitted when an account is liquidated.
     /// @dev Need to unpack bonusAmounts to get raw numbers, which are always positive.
     /// @param liquidator Address of the caller whom is liquidating the distressed account.
@@ -39,7 +39,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address indexed liquidator,
         address indexed liquidatee,
         LeftRightSigned bonusAmounts
-    );
+    ); */
 
     /// @notice Emitted when a position is force exercised.
     /// @dev Need to unpack exerciseFee to get raw numbers, represented as a negative value (fee debited).
@@ -48,12 +48,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId TokenId of the liquidated position.
     /// @param exerciseFee LeftRight encoding for the cost paid by the exercisor to force the exercise of the token.
     /// The token0 fee is in the right slot, and token1 fee is in the left slot.
-    event ForcedExercised(
+    /* event ForcedExercised(
         address indexed exercisor,
         address indexed user,
         TokenId indexed tokenId,
         LeftRightSigned exerciseFee
-    );
+    ); */
 
     /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`)
     /// @param user Address of the owner of the settled position.
@@ -1156,7 +1156,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             .toRightSlot(int128(liquidationBonus0))
             .toLeftSlot(int128(liquidationBonus1));
 
-        emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
+        /* emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts); */
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
@@ -1263,7 +1263,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         if (positionIdListExercisor.length > 0)
             _validateSolvency(msg.sender, positionIdListExercisor, BP_DECREASE_BUFFER);
 
-        emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees);
+        /* emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees); */
     }
 
     /*//////////////////////////////////////////////////////////////
