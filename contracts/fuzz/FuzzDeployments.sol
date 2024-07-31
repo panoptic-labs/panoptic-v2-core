@@ -2013,11 +2013,7 @@ contract FuzzDeployments is FuzzHelpers {
             legIndex
         );
 
-        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-            position,
-            legIndex,
-            posSize
-        );
+        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(position, legIndex, posSize);
         uint128 positionLiquidity = liquidityChunk.liquidity();
 
         (uint128 premiumGrowth0, uint128 premiumGrowth1) = panopticPool.optionData(
