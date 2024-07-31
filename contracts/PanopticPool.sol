@@ -354,7 +354,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return shortPremium The total amount of premium owed (according to `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function calculateAccumulatedFeesBatch(
@@ -399,7 +399,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param positionIdList The list of all option positions held by user
     /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return shortPremium The total amount of premium owed (according to `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
     function _calculateAccumulatedPremia(
