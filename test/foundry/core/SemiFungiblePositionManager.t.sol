@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 import "forge-std/Test.sol";
 import {stdMath} from "forge-std/StdMath.sol";
@@ -3877,7 +3877,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -3937,7 +3937,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -3997,7 +3997,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -4042,7 +4042,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -4109,7 +4109,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.burnTokenizedPosition(
             tokenId,

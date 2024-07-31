@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -7,6 +7,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
+import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -69,7 +70,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall {
+contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -139,9 +140,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
     /// @notice Retrieve the Uniswap V3 pool address corresponding to a given poolId.
     mapping(uint64 poolId => IUniswapV3Pool pool) internal s_poolIdToAddr;
-
-    /// @notice Retrieve the per-pool reentrancy lock status for a given poolId.
-    mapping(uint64 poolId => bool reentrancyLockActive) internal s_lockStatus;
 
     /*
         We're tracking the amount of net and removed liquidity for the specific region:
@@ -290,28 +288,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     mapping(bytes32 positionKey => LeftRightSigned baseFees0And1) internal s_accountFeesBase;
 
     /*//////////////////////////////////////////////////////////////
-                           REENTRANCY LOCK
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Modifier that prohibits reentrant calls for a specific pool.
-    /// @param poolId The poolId of the pool to activate the reentrancy lock on
-    modifier ReentrancyLock(uint64 poolId) {
-        if (s_lockStatus[poolId]) revert Errors.ReentrantCall();
-
-        // most reentrancy lock implementations use a nonzero number to represent the unlocked state (i.e. 1=unlocked, 2=locked)
-        // this is because nonzero -> nonzero writes are 5000 gas when cold, and 2900 gas when hot, making the first lock 7900 gas in total,
-        // while zero -> nonzero writes are 20000 gas when cold, and nonzero -> zero writes are 100 gas (21000 total).
-        // nonzero -> zero writes confer a 19900 gas refund, but EIP-3529 limits this to 1/5 of the gas usage,
-        // making that pattern non-optimal at gas usage below 70500. Given that SFPM mints and burns tend to exceed that threshold,
-        // the zero -> nonzero -> zero pattern is optimal in many transactions where other nonzero -> zero refunds are not present.
-        s_lockStatus[poolId] = true;
-
-        _;
-
-        s_lockStatus[poolId] = false;
-    }
-
-    /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -345,18 +321,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint64 poolId = PanopticMath.getPoolId(univ3pool);
 
         // There are 281,474,976,710,655 possible pool patterns.
-        // A modern GPU can generate a collision such a space relatively quickly,
+        // A modern GPU can generate a collision in such a space relatively quickly,
         // so if a collision is detected increment the pool pattern until a unique poolId is found
         while (address(s_poolIdToAddr[poolId]) != address(0)) {
             poolId = PanopticMath.incrementPoolPattern(poolId);
         }
 
-        // store the poolId => UniswapV3Pool information in a mapping
-        // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
-        // NOTE: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
         s_poolIdToAddr[poolId] = IUniswapV3Pool(univ3pool);
 
-        // store the UniswapV3Pool => poolId information in a mapping
         // add a bit on the end to indicate that the pool is initialized
         // (this is for the case that poolId == 0, so we can make a distinction between zero and uninitialized)
         unchecked {
@@ -451,7 +423,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 slippageTickLimitHigh
     )
         external
-        ReentrancyLock(tokenId.poolId())
+        nonReentrant
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
     {
         // burn this ERC1155 token id
@@ -485,7 +457,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         int24 slippageTickLimitHigh
     )
         external
-        ReentrancyLock(tokenId.poolId())
+        nonReentrant
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
     {
         // create the option position via its ID in this erc1155
@@ -524,15 +496,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 id,
         uint256 amount,
         bytes calldata data
-    ) public override {
-        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
-        // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
-        if (s_lockStatus[TokenId.wrap(id).poolId()]) revert Errors.ReentrantCall();
-
+    ) public override nonReentrant {
         // update the position data
         registerTokenTransfer(from, to, TokenId.wrap(id), amount);
 
-        // transfer the token (note that all state updates are completed before reentrancy is possible through onReceived callbacks)
+        // transfer the token
         super.safeTransferFrom(from, to, id, amount, data);
     }
 
@@ -550,18 +518,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256[] calldata ids,
         uint256[] calldata amounts,
         bytes calldata data
-    ) public override {
-        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
-        // so just check if there is an active reentrancy lock for the relevant pool on each token
+    ) public override nonReentrant {
         for (uint256 i = 0; i < ids.length; ) {
-            if (s_lockStatus[TokenId.wrap(ids[i]).poolId()]) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
             unchecked {
                 ++i;
             }
         }
 
-        // transfer the token (note that all state updates are completed before reentrancy is possible)
+        // transfer the token
         super.safeBatchTransferFrom(from, to, ids, amounts, data);
     }
 

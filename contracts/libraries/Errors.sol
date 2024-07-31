@@ -86,9 +86,6 @@ library Errors {
     /// @notice The current tick in the pool falls outside a user-defined open interval slippage range
     error PriceBoundFail();
 
-    /// @notice SFPM: function has been called while reentrancy lock is active
-    error ReentrantCall();
-
     /// @notice An oracle price is too far away from another oracle price or the current tick
     /// This is a safeguard against price manipulation during option mints, burns, and liquidations
     error StaleTWAP();
