@@ -2026,14 +2026,14 @@ contract FuzzDeployments is FuzzHelpers {
                     uint256(sfpmGrossPremiaAccumulator0 - premiumGrowth0) *
                     uint256(accumulators[legIndex].positionLiquidity)
                 ) >> 64
-            )
+            );
         } else {
             return uint128(
                 (
                     uint256(sfpmGrossPremiaAccumulator1 - premiumGrowth1) *
                     uint256(accumulators[legIndex].positionLiquidity)
                 ) >> 64
-            )
+            );
         }
     };
 
