@@ -245,32 +245,32 @@ contract UniDeployer {
 
         /// 1bps
         factory.enableFeeAmount(100, 1);
-        pool1bps = su.createPool(100, 1446468563022924011445331901284352);
+        pool1bps = su.createPool(100, 0);
         minter.setPool(pool1bps);
         st.mintTo(0, address(minter), type(uint256).max);
         st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-500000, 500000, 1 ether);
+        minter.doMint(-887272, 887272, 0.001 ether);
 
         /// 5bps
-        pool5bps = su.createPool(500, 1446468563022924011445331901284352);
+        pool5bps = su.createPool(500, 0);
         minter.setPool(pool5bps);
         st.mintTo(0, address(minter), type(uint256).max);
         st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-500000, 500000, 1 ether);
+        minter.doMint(-887272, 887272, 0.001 ether);
 
         /// 30bps
-        pool30bps = su.createPool(3000, 1446468563022924011445331901284352);
+        pool30bps = su.createPool(3000, 0);
         minter.setPool(pool30bps);
         st.mintTo(0, address(minter), type(uint256).max);
         st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-500000, 500000, 1 ether);
+        minter.doMint(-887272, 887272, 0.001 ether);
 
         /// 100bps
-        pool100bps = su.createPool(10000, 1446468563022924011445331901284352);
+        pool100bps = su.createPool(10000, 0);
         minter.setPool(pool100bps);
         st.mintTo(0, address(minter), type(uint256).max);
         st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-500000, 500000, 1 ether);
+        minter.doMint(-887272, 887272, 0.001 ether);
     }
 
     function mintToken(bool mintToken1, address recipient, uint256 amt) public {
