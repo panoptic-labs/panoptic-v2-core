@@ -382,7 +382,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
+    ) external returns (int128 premium0, int128 premium1, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
@@ -432,7 +432,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         bool computeAllPremia,
         bool includePendingPremium,
         int24 atTick
-    ) internal view returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
+    ) internal returns (LeftRightSigned portfolioPremium, uint256[2][] memory balances) {
         uint256 pLength = positionIdList.length;
         balances = new uint256[2][](pLength);
 
@@ -870,7 +870,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData) {
+    ) internal returns (uint256 medianData) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -1282,7 +1282,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick,
         int24 atTick,
         uint256 buffer
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         (
             LeftRightSigned portfolioPremium,
             uint256[2][] memory positionBalanceArray
@@ -1533,7 +1533,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
-        view
         returns (
             LeftRightSigned[4] memory premiaByLeg,
             uint256[2][4] memory premiumAccumulatorsByLeg
@@ -1567,6 +1566,27 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // if the premium accumulatorLast is higher than current, it means the premium accumulator has overflowed and rolled over at least once
                     // we can account for one rollover by doing (acc_cur + (acc_max - acc_last))
                     // if there are multiple rollovers or the rollover goes past the last accumulator, rolled over fees will just remain unclaimed
+                    /* TODO: Log your values here */
+                    emit LogInt128(
+                        "pp: idealPremium0: ",
+                        int128(
+                            int256(
+                                ((premiumAccumulatorsByLeg[leg][0] -
+                                    premiumAccumulatorLast.rightSlot()) *
+                                    (liquidityChunk.liquidity())) / 2 ** 64
+                            )
+                        )
+                    );
+                    emit LogInt128(
+                        "pp: idealPremium1: ",
+                        int128(
+                            int256(
+                                ((premiumAccumulatorsByLeg[leg][1] -
+                                    premiumAccumulatorLast.leftSlot()) *
+                                    (liquidityChunk.liquidity())) / 2 ** 64
+                            )
+                        )
+                    );
                     premiaByLeg[leg] = LeftRightSigned
                         .wrap(0)
                         .toRightSlot(
@@ -1598,6 +1618,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             }
         }
     }
+
+    event LogInt128 (
+        string,
+        int128
+    );
 
     /*//////////////////////////////////////////////////////////////
                         AVAILABLE PREMIUM LOGIC

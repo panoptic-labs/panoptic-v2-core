@@ -1483,7 +1483,7 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].grossPremiaLast0 = $grossPremiaLastToken0;
         accumulators[legIndex].grossPremiaLast1 = $grossPremiaLastToken1;
 
-        ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators(
+        ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators_without_itm_swap(
             position,
             legIndex
         );
@@ -1621,7 +1621,7 @@ contract FuzzDeployments is FuzzHelpers {
                         (uint256(
                             accumulators[legIndex].sfpmGrossPremiaAccumulator1 -
                                 premiaCalcInputs[legIndex].premiumGrowth1
-                        ) * uint256(accumulators[legIndex].positionLiquidity)) >> 64
+                        ) * uint256(accumulators[legIndex].positionLiquidity)) / 2 ** 64
                     ),
                     proratedPremium0: 0,
                     proratedPremium1: 0
@@ -1805,6 +1805,23 @@ contract FuzzDeployments is FuzzHelpers {
                 "Settled token0s did not increase by the collected tokens and/or increase/decrease by the (prorated) premium for the leg"
             );
 
+            // TODO: If i use _get_sfpm_accumulators_without_itm_swap to set
+            // preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1,
+            // i get incorrect settled token projection (unkown if grosspremia correct)
+            // If i use regular _get_sfpm_accumulators, i get correct settled token projection,
+            // but incorrect gross premia one
+            // Must investigate
+            // Possibly: should use regular _get_sfpm_accumulators,
+            // but round differently when calculating idealPremium maybe? and then compensate in
+            // the proration logic so settled tokens is correct too?
+            emit LogUint256("$postburnSFPMGrossPremiaAccumulator1", $postburnSFPMGrossPremiaAccumulator1);
+            emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
+            emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
+            emit LogUint256("preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1", preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1);
+            emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast1", preburnAccumulators[legIndex].grossPremiaLast1);
+            emit LogUint256("preburnAccumulators[legIndex].totalShortLiquidity", preburnAccumulators[legIndex].totalShortLiquidity);
+            emit LogUint256("$projectedPremia[legIndex].idealPremium1", $projectedPremia[legIndex].idealPremium1);
+            emit LogUint256("$postburnSettledToken1", $postburnSettledToken1);
             assertWithMsg(
                 int256(int128($postburnSettledToken1)) ==
                     Math.max(
@@ -1862,11 +1879,19 @@ contract FuzzDeployments is FuzzHelpers {
                 assertWithMsg(
                     // Tolerance of 1 as the contracts round s_grossPremiumLast down,
                     // and our idealPremium calc may not
-                    actualPostburnGrossPremia0 - projectedPostburnGrossPremia0 <= 1,
+                    actualPostburnGrossPremia0 >= projectedPostburnGrossPremia0 &&
+                        actualPostburnGrossPremia0 - projectedPostburnGrossPremia0 <= 1,
                     "grossPremiaLast on token0 did not go down by the total amount of premia owed for the now-burnt position"
                 );
             }
 
+            emit LogUint256("$postburnSFPMGrossPremiaAccumulator1", $postburnSFPMGrossPremiaAccumulator1);
+            emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
+            emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
+            emit LogUint256("preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1", preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1);
+            emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast1", preburnAccumulators[legIndex].grossPremiaLast1);
+            emit LogUint256("preburnAccumulators[legIndex].totalShortLiquidity", preburnAccumulators[legIndex].totalShortLiquidity);
+            emit LogUint256("$projectedPremia[legIndex].idealPremium1", $projectedPremia[legIndex].idealPremium1);
             if (!($projectedPremia[legIndex].idealPremium1 == 0 && $position.isLong(legIndex) == 0)) {
                 uint256 projectedPostburnGrossPremia1 = (
                         uint256(
@@ -1882,9 +1907,13 @@ contract FuzzDeployments is FuzzHelpers {
                     * $postburnShortLiquidity
                 ) >> 64;
                 assertWithMsg(
-                    actualPostburnGrossPremia1 - projectedPostburnGrossPremia1 <= 1,
+                    actualPostburnGrossPremia1 >= projectedPostburnGrossPremia1 &&
+                        actualPostburnGrossPremia1 - projectedPostburnGrossPremia1 <= 1,
                     "grossPremiaLast on token1 did not go down by the total amount of premia owed for the now-burnt position"
                 );
+                if (uint256($postburnSFPMGrossPremiaAccumulator1) == 477726361074331828) {
+                    assertWithMsg(false, "passed your old case!");
+                }
             }
             delete $expectedSettledToken0DifferenceForChunk;
             delete $expectedSettledToken1DifferenceForChunk;
