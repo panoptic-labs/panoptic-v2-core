@@ -28,7 +28,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
-/*
+    /*
     /// @notice Emitted when an account is liquidated.
     /// @dev Need to unpack bonusAmounts to get raw numbers, which are always positive.
     /// @param liquidator Address of the caller whom is liquidating the distressed account.
