@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 import "forge-std/Test.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -1807,7 +1807,6 @@ contract Misctest is Test, PositionUtils {
             );
 
             // the positive premium is from the dummy short chunk
-            // @TODO might have to tweak this if rounding is changed upstream
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
                 i == 0 ? int256(107) : int256(108),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -30,10 +30,6 @@ import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
-
-    function poolContext(uint64 poolId) public view returns (PoolAddressAndLock memory) {
-        return s_poolContext[poolId];
-    }
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];

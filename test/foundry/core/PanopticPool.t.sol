@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity >=0.8.24;
 
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -30,10 +30,6 @@ import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
-
-    function poolContext(uint64 poolId) public view returns (PoolAddressAndLock memory) {
-        return s_poolContext[poolId];
-    }
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
@@ -3598,7 +3594,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
         pp.mintOptions(
             posIdList,
             positionSize * 0,
@@ -4882,19 +4878,6 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
         }
-    }
-
-    function test_Fail_burnOptions_OptionsBalanceZero(uint256 x) public {
-        _initPool(x);
-
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
-
-        pp.burnOptions(
-            TokenId.wrap(0),
-            emptyList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
-        );
     }
 
     function test_Fail_burnOptions_WrongIdList(
