@@ -658,7 +658,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (uint128) {
-        bool safeMode = _isSafeMode();
+        bool safeMode = isSafeMode();
+
         // if safeMode, enforce covered deployment
         if (safeMode) {
             if (tickLimitLow > tickLimitHigh) {
@@ -864,13 +865,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             LeftRightSigned paidAmounts
         )
     {
-        {
-            bool safeMode = _isSafeMode();
-            // if safeMode, enforce covered at assignment
-            if (safeMode) {
-                if (tickLimitLow > tickLimitHigh) {
-                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-                }
+        // if safeMode, enforce covered at assignment
+        if (isSafeMode()) {
+            if (tickLimitLow > tickLimitHigh) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
             }
         }
 
@@ -1303,9 +1301,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
-    /// @return safeMode a boolean flag, triggers safe mode when true where all newly minted positions must be fully collateralized
-    function _isSafeMode() internal view returns (bool safeMode) {
+    /// @notice Checks whether the current tick has deviated too much from the slow oracle median tick.
+    /// @return Whether the current tick has deviated from the median by > MAX_TICKS_DELTA
+    function isSafeMode() public view returns (bool) {
         // check if the price has deviated too much recently.
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
         unchecked {
@@ -1316,10 +1314,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // If ticks have recently deviated more than +/- 10%, enforce covered mints
             if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
-                safeMode = true;
+                return true;
             }
         }
-        return (safeMode);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1403,18 +1400,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return s_collateralToken1;
     }
 
-    /// @notice Checks whether the current tick has deviated too much from the slow oracle media tick
-    /// @return safeMode a boolean flag, triggers safe more when true where all newly minted positions must be fully collateralized
-    function isSafeMode() external view returns (bool) {
-        return _isSafeMode();
-    }
-
     /// @notice Computes and returns all oracle ticks.
-    /// @return currentTick The current tick in the Uniswap pool (as returned in slot0)
+    /// @return currentTick The current tick in the Uniswap pool
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
-    /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
-    /// @return medianData the updated value for `s_miniMedian`
+    /// @return slowOracleTick The slow oracle tick (either composed of Uniswap observations or tracked by `s_miniMedian`)
+    /// @return latestObservation The latest observation from the Uniswap pool
+    /// @return medianData The updated value for `s_miniMedian` (0 if MEDIAN_PERIOD not elapsed) if `pokeMedian` is called at the current state
     function getOracleTicks()
         external
         view
