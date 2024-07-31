@@ -352,7 +352,12 @@ contract FuzzHelpers is PropertiesAsserts {
     PanopticPoolWrapper panopticPool;
     uint64 poolId;
 
-    IUniswapV3Pool pool;
+    // pool that the panoptic pool was initalized on
+    IUniswapV3Pool initializedPool;
+    // pool that is currently being cycled for general action / sfpm actions
+    // cyclingPool can be equivalent to initalizedPool
+    IUniswapV3Pool cyclingPool;
+
     address token0;
     address token1;
     uint24 poolFee;
@@ -637,7 +642,8 @@ contract FuzzHelpers is PropertiesAsserts {
     //Testing uni deployment
     IUniDeployer deployer = IUniDeployer(address(0xde0001));
 
-    IUniswapV3Pool USDC_WETH_5 = IUniswapV3Pool(deployer.pool());
+    IUniswapV3Pool[4] pools = deployer.pools();
+
     IERC20 USDC = IERC20(deployer.token0());
     IERC20 WETH = IERC20(deployer.token1());
 
@@ -784,6 +790,12 @@ contract FuzzHelpers is PropertiesAsserts {
         tokenData1 = collToken1.getAccountMarginDetails(to_liquidate, tick, positions, premium1);
     }
 
+    /// cycling pool
+    /// for all general and sfpm actions cycle the underlying uniswap pool being interacted on
+    function cyclePool(IUniswapV3Pool pool) public {
+        cyclingPool = pool;
+    }
+
     /////////////////////////////////////////////////////////////
     // Calculation helpers
     /////////////////////////////////////////////////////////////
@@ -794,7 +806,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 itm1
     ) internal returns (int256 swapAmount, bool zeroForOne) {
         if ((itm0 != 0) && (itm1 != 0)) {
-            (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+            (uint160 sqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
             int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
 
@@ -834,7 +846,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 burned1;
 
         hevm.prank(address(sfpm));
-        try pool.burn($tickLowerActive, $tickUpperActive, $LiqAmountActive) returns (
+        try cyclingPool.burn($tickLowerActive, $tickUpperActive, $LiqAmountActive) returns (
             uint256 amount0,
             uint256 amount1
         ) {
@@ -846,7 +858,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         hevm.prank(address(sfpm));
         try
-            pool.collect(
+            cyclingPool.collect(
                 $activeUser, //recipient
                 $tickLowerActive,
                 $tickUpperActive,
@@ -890,9 +902,9 @@ contract FuzzHelpers is PropertiesAsserts {
             CallbackLib.CallbackData({
                 // compute by reading values from univ3pool every time
                 poolFeatures: CallbackLib.PoolFeatures({
-                    token0: pool.token0(),
-                    token1: pool.token1(),
-                    fee: pool.fee()
+                    token0: cyclingPool.token0(),
+                    token1: cyclingPool.token1(),
+                    fee: cyclingPool.fee()
                 }),
                 payer: $activeUser
             })
@@ -903,7 +915,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         hevm.prank(address(sfpm));
         try
-            pool.mint(
+            cyclingPool.mint(
                 $activeUser, //recipient
                 $tickLowerActive,
                 $tickUpperActive,
@@ -920,7 +932,7 @@ contract FuzzHelpers is PropertiesAsserts {
         //
         hevm.prank(address(sfpm));
         try
-            pool.collect(
+            cyclingPool.collect(
                 $activeUser, //recipient
                 $tickLowerActive,
                 $tickUpperActive,
@@ -959,9 +971,9 @@ contract FuzzHelpers is PropertiesAsserts {
             CallbackLib.CallbackData({
                 // compute by reading values from univ3pool every time
                 poolFeatures: CallbackLib.PoolFeatures({
-                    token0: pool.token0(),
-                    token1: pool.token1(),
-                    fee: pool.fee()
+                    token0: cyclingPool.token0(),
+                    token1: cyclingPool.token1(),
+                    fee: cyclingPool.fee()
                 }),
                 payer: msg.sender
             })
@@ -969,7 +981,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         hevm.prank(address(sfpm));
         try
-            pool.mint(
+            cyclingPool.mint(
                 msg.sender, //recipient
                 $tickLowerActive,
                 $tickUpperActive,
@@ -994,7 +1006,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         if (amountSpecified != 0) {
             hevm.prank(address(sfpm));
-            (int256 amt0, int256 amt1) = pool.swap(
+            (int256 amt0, int256 amt1) = cyclingPool.swap(
                 recipient,
                 zeroForOne,
                 amountSpecified,
@@ -1018,7 +1030,7 @@ contract FuzzHelpers is PropertiesAsserts {
         }
 
         // get current tick after swap
-        (, int24 tickAfterSwap, , , , , ) = pool.slot0();
+        (, int24 tickAfterSwap, , , , , ) = cyclingPool.slot0();
 
         revert SwapSimulationResults(swap0, swap1, tickAfterSwap);
     }
@@ -1061,7 +1073,7 @@ contract FuzzHelpers is PropertiesAsserts {
         TokenId _tokenId = tokenId;
 
         // update to latest current tick
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = cyclingPool.slot0();
 
         //
         uint256 numLegs = _tokenId.countLegs();
@@ -1128,7 +1140,7 @@ contract FuzzHelpers is PropertiesAsserts {
         bool _roundUp = roundUp;
 
         // update to latest current tick
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = cyclingPool.slot0();
 
         //
         uint256 numLegs = _tokenId.countLegs();
@@ -1417,7 +1429,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int24 tickUpper
     ) internal view returns (uint64 effectiveLiquidityFactorX32) {
         LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            address(initializedPool),
             address(panopticPool),
             legTokenType,
             tickLower,
@@ -1640,7 +1652,7 @@ contract FuzzHelpers is PropertiesAsserts {
         (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
 
         currentTickOld = currentTick;
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = cyclingPool.slot0();
 
         shareDeltasLiquidatee = [
             int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0],
@@ -1943,7 +1955,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $netLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(pool),
+                    address(initializedPool),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2072,7 +2084,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $netLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(pool),
+                    address(initializedPool),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2082,7 +2094,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $removedLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(pool),
+                    address(initializedPool),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2218,7 +2230,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
                 .getOracleTicks(
-                    pool,
+                    initializedPool,
                     uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
                 );
 
@@ -2230,7 +2242,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
                 .getOracleTicks(
-                    pool,
+                    initializedPool,
                     uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
                 );
 
@@ -2254,7 +2266,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         uint160 price;
 
-        (price, currentTick, , , , , ) = pool.slot0();
+        (price, currentTick, , , , , ) = cyclingPool.slot0();
 
         emit LogInt256("tick before swap", currentTick);
         emit LogUint256("price before swap", uint256(price));
@@ -2265,7 +2277,7 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("number of block delayed", delay_block);
 
         hevm.prank(pool_manipulator);
-        swapperc.swapTo(pool, target_sqrt_price);
+        swapperc.swapTo(initializedPool, target_sqrt_price);
         hevm.warp(block.timestamp + delay_on * delay_block * 12);
         hevm.roll(block.number + delay_on * delay_block);
 
@@ -2273,12 +2285,12 @@ contract FuzzHelpers is PropertiesAsserts {
         delay_on = ((delay >> 4) % 2) == 0 ? 1 : 0;
         if (delay_on == 1) {
             hevm.prank(pool_manipulator);
-            swapperc.mint(pool, -10, 10, 10 ** 18);
+            swapperc.mint(initializedPool, -10, 10, 10 ** 18);
             hevm.prank(pool_manipulator);
-            swapperc.burn(pool, -10, 10, 10 ** 18);
+            swapperc.burn(initializedPool, -10, 10, 10 ** 18);
         }
 
-        (price, currentTick, , , , , ) = pool.slot0();
+        (price, currentTick, , , , , ) = cyclingPool.slot0();
         emit LogInt256("tick after swap", currentTick);
         emit LogUint256("price after swap", uint256(price));
     }

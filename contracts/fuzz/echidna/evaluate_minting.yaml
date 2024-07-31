@@ -28,5 +28,5 @@ filterFunctions:
     "FuzzMint.deposit_to_ct(bool,uint256)",
   ]
 codeSize: 0xffffffff
-testMaxGas: 0xffffffff
+testMaxGas: 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 # format: text

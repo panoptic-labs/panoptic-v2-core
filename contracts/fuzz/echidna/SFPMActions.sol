@@ -82,7 +82,7 @@ contract SFPMActions is GeneralActions {
             // poke if there is pre-existing liq for the user at the positional bounds
             {
                 hevm.prank(address(sfpm));
-                try pool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
+                try cyclingPool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
             }
 
             {
@@ -90,13 +90,13 @@ contract SFPMActions is GeneralActions {
                 $positionKey[$activeLegIndex] = keccak256(
                     abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                 );
-                (uniLiquidityBefore[$activeLegIndex], , , , ) = pool.positions(
+                (uniLiquidityBefore[$activeLegIndex], , , , ) = cyclingPool.positions(
                     $positionKey[$activeLegIndex]
                 );
 
                 // get SFPM stored account liquidity before
                 LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -114,7 +114,7 @@ contract SFPMActions is GeneralActions {
                 // check s_accountFeesBase is updated correctly
                 ($oldFeesBase0[$activeLegIndex], $oldFeesBase1[$activeLegIndex]) = sfpm
                     .getAccountFeesBase(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -132,7 +132,7 @@ contract SFPMActions is GeneralActions {
                     $feeGrowthInside1LastX128Before[$activeLegIndex],
                     ,
 
-                ) = pool.positions(
+                ) = cyclingPool.positions(
                     keccak256(abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive))
                 );
 
@@ -201,7 +201,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumGrossBefore0[$activeLegIndex],
                     $accountPremiumGrossBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -225,7 +225,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumOwedBefore0[$activeLegIndex],
                     $accountPremiumOwedBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -286,7 +286,7 @@ contract SFPMActions is GeneralActions {
                 // check the liquidity deposited within uniswap
                 // ** make netting change
                 // {
-                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = pool.positions(
+                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = cyclingPool.positions(
                 //         $positionKey[$activeLegIndex]
                 //     );
 
@@ -306,7 +306,7 @@ contract SFPMActions is GeneralActions {
                 // check the net liquidity added
                 {
                     LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -351,7 +351,7 @@ contract SFPMActions is GeneralActions {
                         $feeGrowthInside1LastX128After[$activeLegIndex],
                         ,
 
-                    ) = pool.positions(
+                    ) = cyclingPool.positions(
                         keccak256(
                             abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                         )
@@ -388,7 +388,7 @@ contract SFPMActions is GeneralActions {
 
                     ($newFeesBase0[$activeLegIndex], $newFeesBase1[$activeLegIndex]) = sfpm
                         .getAccountFeesBase(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -457,7 +457,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumGrossAfter0[$activeLegIndex],
                             $accountPremiumGrossAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -471,7 +471,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumOwedAfter0[$activeLegIndex],
                             $accountPremiumOwedAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -726,7 +726,7 @@ contract SFPMActions is GeneralActions {
             // poke if there is pre-existing liq for the user at the positional bounds
             {
                 hevm.prank(address(sfpm));
-                try pool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
+                try cyclingPool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
             }
 
             {
@@ -734,13 +734,13 @@ contract SFPMActions is GeneralActions {
                 $positionKey[$activeLegIndex] = keccak256(
                     abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                 );
-                (uniLiquidityBefore[$activeLegIndex], , , , ) = pool.positions(
+                (uniLiquidityBefore[$activeLegIndex], , , , ) = cyclingPool.positions(
                     $positionKey[$activeLegIndex]
                 );
 
                 // get SFPM stored account liquidity before
                 LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -758,7 +758,7 @@ contract SFPMActions is GeneralActions {
                 // check s_accountFeesBase is updated correctly
                 ($oldFeesBase0[$activeLegIndex], $oldFeesBase1[$activeLegIndex]) = sfpm
                     .getAccountFeesBase(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -776,7 +776,7 @@ contract SFPMActions is GeneralActions {
                     $feeGrowthInside1LastX128Before[$activeLegIndex],
                     ,
 
-                ) = pool.positions(
+                ) = cyclingPool.positions(
                     keccak256(abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive))
                 );
 
@@ -838,7 +838,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumGrossBefore0[$activeLegIndex],
                     $accountPremiumGrossBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -862,7 +862,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumOwedBefore0[$activeLegIndex],
                     $accountPremiumOwedBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -923,7 +923,7 @@ contract SFPMActions is GeneralActions {
                 // check the liquidity deposited within uniswap
                 // ** make netting change
                 // {
-                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = pool.positions(
+                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = cyclingPool.positions(
                 //         $positionKey[$activeLegIndex]
                 //     );
 
@@ -943,7 +943,7 @@ contract SFPMActions is GeneralActions {
                 // check the net liquidity added
                 {
                     LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -988,7 +988,7 @@ contract SFPMActions is GeneralActions {
                         $feeGrowthInside1LastX128After[$activeLegIndex],
                         ,
 
-                    ) = pool.positions(
+                    ) = cyclingPool.positions(
                         keccak256(
                             abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                         )
@@ -1025,7 +1025,7 @@ contract SFPMActions is GeneralActions {
 
                     ($newFeesBase0[$activeLegIndex], $newFeesBase1[$activeLegIndex]) = sfpm
                         .getAccountFeesBase(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -1124,7 +1124,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumGrossAfter0[$activeLegIndex],
                             $accountPremiumGrossAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -1138,7 +1138,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumOwedAfter0[$activeLegIndex],
                             $accountPremiumOwedAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -1404,7 +1404,7 @@ contract SFPMActions is GeneralActions {
             // poke if there is pre-existing liq for the user at the positional bounds
             {
                 hevm.prank(address(sfpm));
-                try pool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
+                try cyclingPool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
             }
 
             {
@@ -1412,13 +1412,13 @@ contract SFPMActions is GeneralActions {
                 $positionKey[$activeLegIndex] = keccak256(
                     abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                 );
-                (uniLiquidityBefore[$activeLegIndex], , , , ) = pool.positions(
+                (uniLiquidityBefore[$activeLegIndex], , , , ) = cyclingPool.positions(
                     $positionKey[$activeLegIndex]
                 );
 
                 // get SFPM stored account liquidity before
                 LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -1436,7 +1436,7 @@ contract SFPMActions is GeneralActions {
                 // check s_accountFeesBase is updated correctly
                 ($oldFeesBase0[$activeLegIndex], $oldFeesBase1[$activeLegIndex]) = sfpm
                     .getAccountFeesBase(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -1454,7 +1454,7 @@ contract SFPMActions is GeneralActions {
                     $feeGrowthInside1LastX128Before[$activeLegIndex],
                     ,
 
-                ) = pool.positions(
+                ) = cyclingPool.positions(
                     keccak256(abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive))
                 );
 
@@ -1517,7 +1517,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumGrossBefore0[$activeLegIndex],
                     $accountPremiumGrossBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -1541,7 +1541,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumOwedBefore0[$activeLegIndex],
                     $accountPremiumOwedBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -1602,7 +1602,7 @@ contract SFPMActions is GeneralActions {
                 // check the liquidity deposited within uniswap
                 // ** make netting change
                 // {
-                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = pool.positions(
+                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = cyclingPool.positions(
                 //         $positionKey[$activeLegIndex]
                 //     );
 
@@ -1622,7 +1622,7 @@ contract SFPMActions is GeneralActions {
                 // check the net liquidity added
                 {
                     LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -1687,7 +1687,7 @@ contract SFPMActions is GeneralActions {
                         $feeGrowthInside1LastX128After[$activeLegIndex],
                         ,
 
-                    ) = pool.positions(
+                    ) = cyclingPool.positions(
                         keccak256(
                             abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                         )
@@ -1724,7 +1724,7 @@ contract SFPMActions is GeneralActions {
 
                     ($newFeesBase0[$activeLegIndex], $newFeesBase1[$activeLegIndex]) = sfpm
                         .getAccountFeesBase(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -1834,7 +1834,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumGrossAfter0[$activeLegIndex],
                             $accountPremiumGrossAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -1848,7 +1848,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumOwedAfter0[$activeLegIndex],
                             $accountPremiumOwedAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -1998,6 +1998,8 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
+
+                assertWithMsg(false, "fail xx x x x xx ");
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2147,7 +2149,7 @@ contract SFPMActions is GeneralActions {
             strike
         );
 
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = cyclingPool.slot0();
 
         emit LogInt256("pre-mint Tick", currentTick);
 
@@ -2442,7 +2444,7 @@ contract SFPMActions is GeneralActions {
         emit LogInt256("bal before 1", balBefore1);
 
         // get price before swap
-        (currentSqrtPriceX96, , , , , , ) = pool.slot0();
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
         hevm.prank($activeUser);
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitHigh, tickLimitLow) {
@@ -2645,7 +2647,7 @@ contract SFPMActions is GeneralActions {
 
         // check there is no pre-existing liquidity at this chunk deployed by the minter
         LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            address(cyclingPool),
             $activeUser,
             $activeTokenId.tokenType(0),
             tickLower,
@@ -2844,7 +2846,7 @@ contract SFPMActions is GeneralActions {
             // poke if there is pre-existing liq for the user at the positional bounds
             {
                 hevm.prank(address(sfpm));
-                try pool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
+                try cyclingPool.burn($tickLowerActive, $tickUpperActive, 0) {} catch {}
             }
 
             {
@@ -2852,13 +2854,13 @@ contract SFPMActions is GeneralActions {
                 $positionKey[$activeLegIndex] = keccak256(
                     abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                 );
-                (uniLiquidityBefore[$activeLegIndex], , , , ) = pool.positions(
+                (uniLiquidityBefore[$activeLegIndex], , , , ) = cyclingPool.positions(
                     $positionKey[$activeLegIndex]
                 );
 
                 // get SFPM stored account liquidity before
                 LeftRightUnsigned accountLiquiditiesBefore = sfpm.getAccountLiquidity(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -2876,7 +2878,7 @@ contract SFPMActions is GeneralActions {
                 // check s_accountFeesBase is updated correctly
                 ($oldFeesBase0[$activeLegIndex], $oldFeesBase1[$activeLegIndex]) = sfpm
                     .getAccountFeesBase(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -2894,7 +2896,7 @@ contract SFPMActions is GeneralActions {
                     $feeGrowthInside1LastX128Before[$activeLegIndex],
                     ,
 
-                ) = pool.positions(
+                ) = cyclingPool.positions(
                     keccak256(abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive))
                 );
 
@@ -2958,7 +2960,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumGrossBefore0[$activeLegIndex],
                     $accountPremiumGrossBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -2982,7 +2984,7 @@ contract SFPMActions is GeneralActions {
                     $accountPremiumOwedBefore0[$activeLegIndex],
                     $accountPremiumOwedBefore1[$activeLegIndex]
                 ) = sfpm.getAccountPremium(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $tickLowerActive,
@@ -3042,7 +3044,7 @@ contract SFPMActions is GeneralActions {
                 // check the liquidity deposited within uniswap
                 // ** make netting change
                 // {
-                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = pool.positions(
+                //     (uniLiquidityAfter[$activeLegIndex], , , , ) = cyclingPool.positions(
                 //         $positionKey[$activeLegIndex]
                 //     );
 
@@ -3062,7 +3064,7 @@ contract SFPMActions is GeneralActions {
                 // check the net liquidity added
                 {
                     LeftRightUnsigned accountLiquiditiesAfter = sfpm.getAccountLiquidity(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $tickLowerActive,
@@ -3126,7 +3128,7 @@ contract SFPMActions is GeneralActions {
                         $feeGrowthInside1LastX128After[$activeLegIndex],
                         ,
 
-                    ) = pool.positions(
+                    ) = cyclingPool.positions(
                         keccak256(
                             abi.encodePacked(address(sfpm), $tickLowerActive, $tickUpperActive)
                         )
@@ -3163,7 +3165,7 @@ contract SFPMActions is GeneralActions {
 
                     ($newFeesBase0[$activeLegIndex], $newFeesBase1[$activeLegIndex]) = sfpm
                         .getAccountFeesBase(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -3273,7 +3275,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumGrossAfter0[$activeLegIndex],
                             $accountPremiumGrossAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -3287,7 +3289,7 @@ contract SFPMActions is GeneralActions {
                             $accountPremiumOwedAfter0[$activeLegIndex],
                             $accountPremiumOwedAfter1[$activeLegIndex]
                         ) = sfpm.getAccountPremium(
-                            address(pool),
+                            address(cyclingPool),
                             $activeUser,
                             $activeTokenId.tokenType($activeLegIndex),
                             $tickLowerActive,
@@ -3522,7 +3524,7 @@ contract SFPMActions is GeneralActions {
                 // construct the positionKey for the from and to addresses
                 positionKey_from[$activeLegIndex] = keccak256(
                     abi.encodePacked(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3531,7 +3533,7 @@ contract SFPMActions is GeneralActions {
                 );
                 positionKey_to[$activeLegIndex] = keccak256(
                     abi.encodePacked(
-                        address(pool),
+                        address(cyclingPool),
                         randUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3546,7 +3548,7 @@ contract SFPMActions is GeneralActions {
                     $senderFeesBaseBefore0[$activeLegIndex],
                     $senderFeesBaseBefore1[$activeLegIndex]
                 ) = sfpm.getAccountFeesBase(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3558,7 +3560,7 @@ contract SFPMActions is GeneralActions {
                     $recipientFeesBaseBefore0[$activeLegIndex],
                     $recipientFeesBaseBefore1[$activeLegIndex]
                 ) = sfpm.getAccountFeesBase(
-                    address(pool),
+                    address(cyclingPool),
                     randUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3569,7 +3571,7 @@ contract SFPMActions is GeneralActions {
             {
                 // store account liquidity before sender (should not be 0 ~)
                 accountLiquiditiesSenderBefore[$activeLegIndex] = sfpm.getAccountLiquidity(
-                    address(pool),
+                    address(cyclingPool),
                     $activeUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3578,7 +3580,7 @@ contract SFPMActions is GeneralActions {
 
                 // store account liquidity before recipient (should be 0 ~)
                 accountLiquiditiesRecipientBefore[$activeLegIndex] = sfpm.getAccountLiquidity(
-                    address(pool),
+                    address(cyclingPool),
                     randUser,
                     $activeTokenId.tokenType($activeLegIndex),
                     $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3632,7 +3634,7 @@ contract SFPMActions is GeneralActions {
                         $senderFeesBaseAfter0[$activeLegIndex],
                         $senderFeesBaseAfter1[$activeLegIndex]
                     ) = sfpm.getAccountFeesBase(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3644,7 +3646,7 @@ contract SFPMActions is GeneralActions {
                         $recipientFeesBaseAfter0[$activeLegIndex],
                         $recipientFeesBaseAfter1[$activeLegIndex]
                     ) = sfpm.getAccountFeesBase(
-                        address(pool),
+                        address(cyclingPool),
                         randUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3655,7 +3657,7 @@ contract SFPMActions is GeneralActions {
                 {
                     // store account liquidity before sender (should not be 0 ~)
                     accountLiquiditiesSenderAfter[$activeLegIndex] = sfpm.getAccountLiquidity(
-                        address(pool),
+                        address(cyclingPool),
                         $activeUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $liquidityChunk[$activeLegIndex].tickLower(),
@@ -3664,7 +3666,7 @@ contract SFPMActions is GeneralActions {
 
                     // store account liquidity before recipient (should be 0 ~)
                     accountLiquiditiesRecipientAfter[$activeLegIndex] = sfpm.getAccountLiquidity(
-                        address(pool),
+                        address(cyclingPool),
                         randUser,
                         $activeTokenId.tokenType($activeLegIndex),
                         $liquidityChunk[$activeLegIndex].tickLower(),

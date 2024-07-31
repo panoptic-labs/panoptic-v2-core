@@ -32,12 +32,12 @@ contract PanopticPoolActions is CollateralActions {
 
         userPositions[msg.sender].push(TokenId.wrap(poolId));
 
-        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+        (, currentTick, observationIndex, observationCardinality, , , ) = initializedPool.slot0();
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
             uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-            pool
+            initializedPool
         );
 
         $safeMode = Math.abs($slowOracleTick - currentTick) > 953;
@@ -120,7 +120,7 @@ contract PanopticPoolActions is CollateralActions {
                         if (
                             sfpm
                                 .getAccountLiquidity(
-                                    address(pool),
+                                    address(initializedPool),
                                     address(panopticPool),
                                     __chunk.tokenType,
                                     $tickLower,
@@ -249,7 +249,7 @@ contract PanopticPoolActions is CollateralActions {
         // ITM spread + commission
         $commission0 = int256(
             Math.unsafeDivRoundingUp(
-                (uint256(Math.abs($colDelta0)) * pool.fee() * 2),
+                (uint256(Math.abs($colDelta0)) * initializedPool.fee() * 2),
                 (10_000 * 100)
             ) +
                 Math.unsafeDivRoundingUp(
@@ -260,7 +260,7 @@ contract PanopticPoolActions is CollateralActions {
         );
         $commission1 = int256(
             Math.unsafeDivRoundingUp(
-                (uint256(Math.abs($colDelta1)) * pool.fee() * 2),
+                (uint256(Math.abs($colDelta1)) * initializedPool.fee() * 2),
                 (10_000 * 100)
             ) +
                 Math.unsafeDivRoundingUp(
@@ -528,7 +528,7 @@ contract PanopticPoolActions is CollateralActions {
         ) {
             ($colTicks[0], $colTicks[1], $colTicks[2], $colTicks[3], ) = PanopticMath
                 .getOracleTicks(
-                    pool,
+                    initializedPool,
                     uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
                 );
 
@@ -606,11 +606,11 @@ contract PanopticPoolActions is CollateralActions {
             longIndex
         );
 
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = initializedPool.slot0();
         uint256 tokenType = position.tokenType(longIndex);
         (int24 tickLower, int24 tickUpper) = position.asTicks(longIndex);
         (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
-            address(pool),
+            address(initializedPool),
             address(panopticPool),
             tokenType,
             tickLower,
@@ -680,8 +680,8 @@ contract PanopticPoolActions is CollateralActions {
 
         userPositions[$exercisee] = $positionListExercisee;
 
-        (, currentTick, , , , , ) = pool.slot0();
-        $twapTick = PanopticMath.twapFilter(pool, 600);
+        (, currentTick, , , , , ) = initializedPool.slot0();
+        $twapTick = PanopticMath.twapFilter(initializedPool, 600);
 
         $shouldRevert = false;
 
@@ -930,8 +930,8 @@ contract PanopticPoolActions is CollateralActions {
         emit LogAddress("liquidator", liquidator);
         emit LogAddress("liquidated", liquidatee);
 
-        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
-        (, currentTick, , , , , ) = pool.slot0();
+        int24 TWAPtick = PanopticMath.twapFilter(initializedPool, 600);
+        (, currentTick, , , , , ) = initializedPool.slot0();
         emit LogInt256("TWAP tick", TWAPtick);
         emit LogInt256("Current tick", currentTick);
 
@@ -1144,8 +1144,8 @@ contract PanopticPoolActions is CollateralActions {
         address liquidatee = actors[i_liquidated];
         address liquidator = msg.sender;
 
-        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
-        (, int24 curTick, , , , , ) = pool.slot0();
+        int24 TWAPtick = PanopticMath.twapFilter(initializedPool, 600);
+        (, int24 curTick, , , , , ) = initializedPool.slot0();
         emit LogInt256("TWAP tick", TWAPtick);
         emit LogInt256("Current tick", curTick);
 
@@ -1156,7 +1156,7 @@ contract PanopticPoolActions is CollateralActions {
 
         require(liquidated_positions.length > 0);
 
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = initializedPool.slot0();
         LeftRightUnsigned lru = LeftRightUnsigned
             .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
             .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));

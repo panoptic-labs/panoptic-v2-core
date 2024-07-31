@@ -28,7 +28,7 @@ contract GeneralActions is FuzzHelpers {
         int24 width;
         int24 strike;
 
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = cyclingPool.slot0();
 
         if (is_atm) {
             (width, strike) = getATMSW(
@@ -72,7 +72,7 @@ contract GeneralActions is FuzzHelpers {
     ) internal returns (TokenId out) {
         out = TokenId.wrap(poolId);
 
-        (, currentTick, , , , , ) = pool.slot0();
+        (, currentTick, , , , , ) = cyclingPool.slot0();
 
         // The parameters come from the function parameters
         for (uint256 i = 0; i < numLegs; i++) {
@@ -289,7 +289,7 @@ contract GeneralActions is FuzzHelpers {
     // Funds and pool manipulation
     ////////////////////////////////////////////////////
 
-    /// @dev Mint USDC and WETH to the sender and approve all the system contracts
+    /// @dev Mint currently active token0 and token1 to the sender and approve all the system contracts
     function fund_and_approve() public {
         deal_USDC(msg.sender, 10000000 ether);
         deal_WETH(msg.sender, 10000 ether);
@@ -315,7 +315,7 @@ contract GeneralActions is FuzzHelpers {
     function perform_swap(uint160 target_sqrt_price) public {
         uint160 price;
 
-        (price, , , , , , ) = pool.slot0();
+        (price, , , , , , ) = cyclingPool.slot0();
 
         // bound the price between 10 and 500000 and 50% of the current price
         target_sqrt_price = uint160(
@@ -339,9 +339,9 @@ contract GeneralActions is FuzzHelpers {
         emit LogUint256("price before swap", uint256(price));
 
         hevm.prank(pool_manipulator);
-        swapperc.swapTo(pool, target_sqrt_price);
+        swapperc.swapTo(cyclingPool, target_sqrt_price);
 
-        (price, , , , , , ) = pool.slot0();
+        (price, , , , , , ) = cyclingPool.slot0();
         emit LogUint256("price after swap", uint256(price));
     }
 }

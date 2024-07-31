@@ -50,7 +50,8 @@ contract SetupTokens {
 }
 
 contract SetupUniswap {
-    UniswapV3Pool public pool;
+    uint256 poolIndex;
+    mapping(uint256 => UniswapV3Pool) public pools;
     MockERC20 token0;
     MockERC20 token1;
 
@@ -62,9 +63,14 @@ contract SetupUniswap {
         token1 = _token1;
     }
 
-    function createPool(uint24 _fee, uint160 _startPrice) public {
-        pool = UniswapV3Pool(factory.createPool(address(token0), address(token1), _fee));
-        pool.initialize(_startPrice);
+    function createPool(uint24 _fee, uint160 _startPrice) public returns (UniswapV3Pool pool) {
+        pools[poolIndex] = UniswapV3Pool(
+            factory.createPool(address(token0), address(token1), _fee)
+        );
+        pools[poolIndex].initialize(_startPrice);
+        poolIndex++;
+
+        return pools[poolIndex - 1];
     }
 }
 
@@ -202,33 +208,69 @@ contract UniswapSwapper {
 contract UniDeployer {
     event LogStr(string);
 
+    // 0.01%, 0.05%, 0.30%, and 1%
+    // 1bps, 5bps, 30bps, 100bps
+    UniswapV3Pool[4] public pools = [pool1bps, pool5bps, pool30bps, pool100bps];
+
+    // pools by fee tier
+    UniswapV3Pool public pool1bps;
+    UniswapV3Pool public pool5bps;
+    UniswapV3Pool public pool30bps;
+    UniswapV3Pool public pool100bps;
+
+    // setup by fee tier
+    SetupUniswap internal su;
+
     MockERC20 public token0;
     MockERC20 public token1;
-    UniswapV3Pool public pool;
     UniswapV3Factory public factory;
 
     SetupTokens internal st;
-    SetupUniswap internal su;
     UniswapMinter internal minter;
 
     constructor() {
+        // token setup
         st = new SetupTokens();
         token0 = MockERC20(st.token0());
         token1 = MockERC20(st.token1());
 
+        // minter setup
+        minter = new UniswapMinter(token0, token1);
+        st.mintTo(0, address(minter), type(uint256).max);
+        st.mintTo(1, address(minter), type(uint256).max);
+
+        // initial setup of factory
         su = new SetupUniswap(token0, token1);
-        // Create pool start price at 3000
-        su.createPool(500, 1446468563022924011445331901284352);
-        pool = su.pool();
         factory = su.factory();
 
-        minter = new UniswapMinter(token0, token1);
-        minter.setPool(pool);
-        st.mintTo(0, address(minter), 3000000000 ether);
-        st.mintTo(1, address(minter), 1000000 ether);
-        emit LogStr("Minted tokens");
+        /// 1bps
+        factory.enableFeeAmount(100, 1);
+        pool1bps = su.createPool(100, 1446468563022924011445331901284352);
+        minter.setPool(pool1bps);
+        st.mintTo(0, address(minter), type(uint256).max);
+        st.mintTo(1, address(minter), type(uint256).max);
         minter.doMint(-500000, 500000, 1 ether);
-        emit LogStr("Minted position");
+
+        /// 5bps
+        pool5bps = su.createPool(500, 1446468563022924011445331901284352);
+        minter.setPool(pool5bps);
+        st.mintTo(0, address(minter), type(uint256).max);
+        st.mintTo(1, address(minter), type(uint256).max);
+        minter.doMint(-500000, 500000, 1 ether);
+
+        /// 30bps
+        pool30bps = su.createPool(3000, 1446468563022924011445331901284352);
+        minter.setPool(pool30bps);
+        st.mintTo(0, address(minter), type(uint256).max);
+        st.mintTo(1, address(minter), type(uint256).max);
+        minter.doMint(-500000, 500000, 1 ether);
+
+        /// 100bps
+        pool100bps = su.createPool(10000, 1446468563022924011445331901284352);
+        minter.setPool(pool100bps);
+        st.mintTo(0, address(minter), type(uint256).max);
+        st.mintTo(1, address(minter), type(uint256).max);
+        minter.doMint(-500000, 500000, 1 ether);
     }
 
     function mintToken(bool mintToken1, address recipient, uint256 amt) public {
