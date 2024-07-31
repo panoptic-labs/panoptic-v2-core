@@ -1619,10 +1619,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    event LogInt128 (
-        string,
-        int128
-    );
+    event LogInt128(string, int128);
 
     /*//////////////////////////////////////////////////////////////
                         AVAILABLE PREMIUM LOGIC

@@ -1483,10 +1483,10 @@ contract FuzzDeployments is FuzzHelpers {
         accumulators[legIndex].grossPremiaLast0 = $grossPremiaLastToken0;
         accumulators[legIndex].grossPremiaLast1 = $grossPremiaLastToken1;
 
-        ($sfpmGrossPremiaAccumulator0, $sfpmGrossPremiaAccumulator1) = _get_sfpm_accumulators_without_itm_swap(
-            position,
-            legIndex
-        );
+        (
+            $sfpmGrossPremiaAccumulator0,
+            $sfpmGrossPremiaAccumulator1
+        ) = _get_sfpm_accumulators_without_itm_swap(position, legIndex);
         accumulators[legIndex].sfpmGrossPremiaAccumulator0 = $sfpmGrossPremiaAccumulator0;
         accumulators[legIndex].sfpmGrossPremiaAccumulator1 = $sfpmGrossPremiaAccumulator1;
 
@@ -1814,13 +1814,28 @@ contract FuzzDeployments is FuzzHelpers {
             // Possibly: should use regular _get_sfpm_accumulators,
             // but round differently when calculating idealPremium maybe? and then compensate in
             // the proration logic so settled tokens is correct too?
-            emit LogUint256("$postburnSFPMGrossPremiaAccumulator1", $postburnSFPMGrossPremiaAccumulator1);
+            emit LogUint256(
+                "$postburnSFPMGrossPremiaAccumulator1",
+                $postburnSFPMGrossPremiaAccumulator1
+            );
             emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
             emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
-            emit LogUint256("preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1", preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1);
-            emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast1", preburnAccumulators[legIndex].grossPremiaLast1);
-            emit LogUint256("preburnAccumulators[legIndex].totalShortLiquidity", preburnAccumulators[legIndex].totalShortLiquidity);
-            emit LogUint256("$projectedPremia[legIndex].idealPremium1", $projectedPremia[legIndex].idealPremium1);
+            emit LogUint256(
+                "preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1",
+                preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].grossPremiaLast1",
+                preburnAccumulators[legIndex].grossPremiaLast1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].totalShortLiquidity",
+                preburnAccumulators[legIndex].totalShortLiquidity
+            );
+            emit LogUint256(
+                "$projectedPremia[legIndex].idealPremium1",
+                $projectedPremia[legIndex].idealPremium1
+            );
             emit LogUint256("$postburnSettledToken1", $postburnSettledToken1);
             assertWithMsg(
                 int256(int128($postburnSettledToken1)) ==
@@ -1881,27 +1896,38 @@ contract FuzzDeployments is FuzzHelpers {
                 );
             }
 
-            emit LogUint256("$postburnSFPMGrossPremiaAccumulator1", $postburnSFPMGrossPremiaAccumulator1);
+            emit LogUint256(
+                "$postburnSFPMGrossPremiaAccumulator1",
+                $postburnSFPMGrossPremiaAccumulator1
+            );
             emit LogUint256("$postburnGrossPremiaLast1", $postburnGrossPremiaLast1);
             emit LogUint256("$postburnShortLiquidity", $postburnShortLiquidity);
-            emit LogUint256("preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1", preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1);
-            emit LogUint256("preburnAccumulators[legIndex].grossPremiaLast1", preburnAccumulators[legIndex].grossPremiaLast1);
-            emit LogUint256("preburnAccumulators[legIndex].totalShortLiquidity", preburnAccumulators[legIndex].totalShortLiquidity);
-            emit LogUint256("$projectedPremia[legIndex].idealPremium1", $projectedPremia[legIndex].idealPremium1);
-            if (!($projectedPremia[legIndex].idealPremium1 == 0 && $position.isLong(legIndex) == 0)) {
-                uint256 projectedPostburnGrossPremia1 = (
-                        uint256(
-                            (
-                                uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1) -
-                                uint256(preburnAccumulators[legIndex].grossPremiaLast1)
-                            )
-                            * uint256(preburnAccumulators[legIndex].totalShortLiquidity)
-                        ) >> 64
-                    ) - $projectedPremia[legIndex].idealPremium1;
-                uint256 actualPostburnGrossPremia1 = (
-                    ($postburnSFPMGrossPremiaAccumulator1 - $postburnGrossPremiaLast1)
-                    * $postburnShortLiquidity
-                ) >> 64;
+            emit LogUint256(
+                "preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1",
+                preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].grossPremiaLast1",
+                preburnAccumulators[legIndex].grossPremiaLast1
+            );
+            emit LogUint256(
+                "preburnAccumulators[legIndex].totalShortLiquidity",
+                preburnAccumulators[legIndex].totalShortLiquidity
+            );
+            emit LogUint256(
+                "$projectedPremia[legIndex].idealPremium1",
+                $projectedPremia[legIndex].idealPremium1
+            );
+            if (
+                !($projectedPremia[legIndex].idealPremium1 == 0 && $position.isLong(legIndex) == 0)
+            ) {
+                uint256 projectedPostburnGrossPremia1 = (uint256(
+                    (uint256(preburnAccumulators[legIndex].sfpmGrossPremiaAccumulator1) -
+                        uint256(preburnAccumulators[legIndex].grossPremiaLast1)) *
+                        uint256(preburnAccumulators[legIndex].totalShortLiquidity)
+                ) >> 64) - $projectedPremia[legIndex].idealPremium1;
+                uint256 actualPostburnGrossPremia1 = (($postburnSFPMGrossPremiaAccumulator1 -
+                    $postburnGrossPremiaLast1) * $postburnShortLiquidity) >> 64;
                 assertWithMsg(
                     actualPostburnGrossPremia1 >= projectedPostburnGrossPremia1 &&
                         actualPostburnGrossPremia1 - projectedPostburnGrossPremia1 <= 1,
