@@ -712,7 +712,7 @@ library PanopticMath {
     /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
     /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user
     /// @param netExchanged The net exchanged value of the closed portfolio
-    /// @param premia Premium across all positions being liquidated present in tokenData
+    /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
     /// @return bonus0 Bonus amount for token0
     /// @return bonus1 Bonus amount for token1
     /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's balance and expended tokens
@@ -722,7 +722,7 @@ library PanopticMath {
         uint160 sqrtPriceX96Twap,
         uint160 sqrtPriceX96Final,
         LeftRightSigned netExchanged,
-        LeftRightSigned premia
+        LeftRightUnsigned shortPremium
     ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
@@ -760,9 +760,9 @@ library PanopticMath {
             // negative premium (owed to the liquidatee) is credited to the collateral balance
             // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
             int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
-                Math.max(premia.rightSlot(), 0);
+                int256(uint256(shortPremium.rightSlot()));
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
-                Math.max(premia.leftSlot(), 0);
+                int256(uint256(shortPremium.leftSlot()));
 
             int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
             int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
