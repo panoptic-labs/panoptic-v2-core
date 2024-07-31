@@ -2035,7 +2035,7 @@ contract FuzzDeployments is FuzzHelpers {
                 ) >> 64
             );
         }
-    };
+    }
 
     function _compare_against_preburn_values(
         int128 expectedNonPremiaToken0Difference,
