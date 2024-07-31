@@ -497,10 +497,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 amount,
         bytes calldata data
     ) public override nonReentrant {
-        // update the position data
         registerTokenTransfer(from, to, TokenId.wrap(id), amount);
 
-        // transfer the token
         super.safeTransferFrom(from, to, id, amount, data);
     }
 
@@ -526,7 +524,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             }
         }
 
-        // transfer the token
         super.safeBatchTransferFrom(from, to, ids, amounts, data);
     }
 
