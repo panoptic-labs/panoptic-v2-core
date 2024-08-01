@@ -138,34 +138,35 @@ contract PanopticHelper {
         }
     }
 
-    /// @notice Get position balance of each of the user's position
-    /// @notice Returns the total number of contracts owned by user for a specified position.
-    /// @param user Address of the account to be checked
-    /// @param tokenId TokenId of the option position to be checked
-    /// @return balance Number of contracts of tokenId owned by the user
+    /// @notice Returns the total number of contracts owned by `account` and the pool utilization at mint for a specified `tokenId.
+    /// @param pool The PanopticPool instance corresponding to the pool specified in `TokenId`
+    /// @param account The address of the account on which to retrieve `balance` and `poolUtilization`
+    /// @return balance Number of contracts of `tokenId` owned by the user
     /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
     /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
-    function optionPositionBalance(
+    function optionPositionInfo(
         PanopticPool pool,
-        address user,
+        address account,
         TokenId tokenId
-    ) external view returns (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) {
-        LeftRightUnsigned balanceData = pool.calculateAccumulatedFeesBatch(user, false, [tokenId])[
-            0
-        ];
+    ) external view returns (uint128, uint64, uint64) {
+        TokenId[] memory tokenIdList = new TokenId[](1);
+        tokenIdList[0] = tokenId;
 
-        // Return the unpacked data: balanceOf(user, tokenId) and packed pool utilizations at the time of minting
-        balance = balanceData.rightSlot();
+        (, , uint256[2][] memory positionBalanceArray) = pool.calculateAccumulatedFeesBatch(
+            account,
+            false,
+            tokenIdList
+        );
 
-        // pool utilizations are packed into a single uint128
+        LeftRightUnsigned balanceAndUtilization = LeftRightUnsigned.wrap(
+            positionBalanceArray[0][1]
+        );
 
-        // the 64 least significant bits are the utilization of token0, so we can simply cast to uint64 to extract it
-        // (cutting off the 64 most significant bits)
-        poolUtilization0 = uint64(balanceData.leftSlot());
-
-        // the 64 most significant bits are the utilization of token1, so we can shift the number to the right by 64 to extract it
-        // (shifting away the 64 least significant bits)
-        poolUtilization1 = uint64(balanceData.leftSlot() >> 64);
+        return (
+            balanceAndUtilization.rightSlot(),
+            uint64(balanceAndUtilization.leftSlot()),
+            uint64(balanceAndUtilization.leftSlot() >> 64)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
