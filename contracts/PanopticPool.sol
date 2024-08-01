@@ -323,33 +323,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
-    /// @notice Returns the total number of contracts owned by user for a specified position.
-    /// @param user Address of the account to be checked
-    /// @param tokenId TokenId of the option position to be checked
-    /// @return balance Number of contracts of tokenId owned by the user
-    /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
-    /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
-    function optionPositionBalance(
-        address user,
-        TokenId tokenId
-    ) external view returns (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) {
-        // Extract the data stored in s_positionBalance for the provided user + tokenId
-        LeftRightUnsigned balanceData = s_positionBalance[user][tokenId];
-
-        // Return the unpacked data: balanceOf(user, tokenId) and packed pool utilizations at the time of minting
-        balance = balanceData.rightSlot();
-
-        // pool utilizations are packed into a single uint128
-
-        // the 64 least significant bits are the utilization of token0, so we can simply cast to uint64 to extract it
-        // (cutting off the 64 most significant bits)
-        poolUtilization0 = uint64(balanceData.leftSlot());
-
-        // the 64 most significant bits are the utilization of token1, so we can shift the number to the right by 64 to extract it
-        // (shifting away the 64 least significant bits)
-        poolUtilization1 = uint64(balanceData.leftSlot() >> 64);
-    }
-
     /// @notice Compute the total amount of premium accumulated for a list of positions.
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
