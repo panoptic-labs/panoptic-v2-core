@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.12;
+pragma solidity ^0.8.0;
 
 import "./FuzzHelpers.sol";
 import {PanopticPoolActions} from "./PanopticPoolActions.sol";
@@ -25,7 +25,7 @@ contract EchidnaWrapper is PanopticPoolActions {
         emit LogString("test1");
 
         //Testing uni deployment
-        deployer = UniDeployer(address(0xde0001));
+        deployer = IUniDeployer(address(0xde0001));
 
         emit LogString("test2");
 
