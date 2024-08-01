@@ -10,7 +10,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
+import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
 contract DeployProtocol is Script {
     struct PointerInfo {

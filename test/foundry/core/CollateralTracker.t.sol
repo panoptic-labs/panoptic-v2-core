@@ -7,7 +7,7 @@ import "forge-std/Test.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
+import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
 // Panoptic Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
@@ -2215,8 +2215,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
                 (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
@@ -2394,8 +2394,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -2526,8 +2526,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -2598,8 +2598,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -2732,8 +2732,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 64));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -2804,8 +2804,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -3042,8 +3042,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -3207,8 +3207,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
 
@@ -3258,8 +3258,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK
             );
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
                 (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
@@ -3293,8 +3293,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
             console2.log("PU0", poolUtilization0);
             console2.log("PU1", poolUtilization1);
 
@@ -3506,8 +3506,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -3736,8 +3736,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -3952,8 +3952,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Alice, tokenId1);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -4151,8 +4151,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -4327,8 +4327,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             // check user packed utilization
             assertApproxEqAbs(targetUtilization, poolUtilization0, 1, "utilization ct 0");
@@ -4523,8 +4523,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -4713,8 +4713,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -4900,8 +4900,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -5072,8 +5072,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             uint128 poolUtilizations = uint128(poolUtilization0) +
                 (uint128(poolUtilization1) << 64);
@@ -5238,8 +5238,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticPool
-                .optionPositionBalance(Bob, tokenId);
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Bob, tokenId);
 
             // check user packed utilization
             assertApproxEqAbs(targetUtilization, poolUtilization0, 1, "utilization ct 0");
