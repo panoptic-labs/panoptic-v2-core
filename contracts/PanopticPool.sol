@@ -376,24 +376,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
     }
 
-    /// @notice Compute the net token amounts owned by a given positionIdList in the Uniswap pool at the given price tick.
-    /// @param user Address of the user that owns the positions.
-    /// @param atTick Tick at which the portfolio value is evaluated
-    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
-    /// @return value0 Net amount of token0 in the Uniswap pool owned by the positionIdList (negative = borrowed liquidity owed to sellers)
-    /// @return value1 Net amount of token1 in the Uniswap pool owned by the positionIdList (negative = borrowed liquidity owed to sellers)
-    function calculatePortfolioValue(
-        address user,
-        int24 atTick,
-        TokenId[] calldata positionIdList
-    ) external view returns (int256 value0, int256 value1) {
-        (value0, value1) = FeesCalc.getPortfolioValue(
-            atTick,
-            s_positionBalance[user],
-            positionIdList
-        );
-    }
-
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.
     /// @param user The holder of options
     /// @param positionIdList The list of all option positions held by user
