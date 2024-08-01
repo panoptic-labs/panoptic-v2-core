@@ -5,7 +5,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PropertiesAsserts} from "./PropertiesHelper.sol";
-import {IUniDeployer} from "./fuzz-mocks/IUniDeployer.sol";
+import {UniDeployer} from "./UniDeployer.sol";
 import {IUniSwapRouterDeployer} from "./fuzz-mocks/IUniSwapRouterDeployer.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
@@ -15,7 +15,6 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticHelper} from "@periphery/PanopticHelper.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
@@ -354,7 +353,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     // pool that the panoptic pool was initalized on
     IUniswapV3Pool initializedPool;
-    // pool that is currently being cycled for general action / sfpm actions
+    // pool that is currently being cycled for general actions / sfpm actions
     // cyclingPool can be equivalent to initalizedPool
     IUniswapV3Pool cyclingPool;
 
@@ -640,12 +639,12 @@ contract FuzzHelpers is PropertiesAsserts {
     IHevm hevm = IHevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 
     //Testing uni deployment
-    IUniDeployer deployer = IUniDeployer(address(0xde0001));
+    UniDeployer deployer;
 
-    IUniswapV3Pool[4] pools = deployer.pools();
+    IUniswapV3Pool[4] pools;
 
-    IERC20 USDC = IERC20(deployer.token0());
-    IERC20 WETH = IERC20(deployer.token1());
+    IERC20 USDC;
+    IERC20 WETH;
 
     ISwapRouter router = ISwapRouter(IUniSwapRouterDeployer(address(0xde0002)).sr());
 

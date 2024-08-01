@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {UniswapV3Pool} from "univ3-core/contracts/UniswapV3Pool.sol";
 
 interface IUniDeployer {
     function token0() external returns (address);
@@ -10,7 +10,7 @@ interface IUniDeployer {
 
     function pool() external returns (address);
 
-    function pools() external returns (IUniswapV3Pool[4] memory);
+    function getPools() external returns (UniswapV3Pool[4] memory);
 
     function factory() external returns (address);
 

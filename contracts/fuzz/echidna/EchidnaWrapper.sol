@@ -22,11 +22,29 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         pool_manipulator = address(0xfaded);
 
+        emit LogString("test1");
+
+        //Testing uni deployment
+        deployer = UniDeployer(address(0xde0001));
+
+        emit LogString("test2");
+
+        pools = deployer.getPools();
+
+        emit LogString("test xx x x x ");
+
+        USDC = IERC20(deployer.token0());
+        WETH = IERC20(deployer.token1());
+
+        emit LogString("test3");
+
         for (uint i = 0; i < actors.length; i++) {
             userPositions[actors[i]] = new TokenId[](0);
         }
 
         userPositions[pool_manipulator] = new TokenId[](0);
+
+        emit LogString("test4");
 
         univ3factory = IUniswapV3Factory(deployer.factory());
         emit LogAddress("UniV3 Factory", address(univ3factory));
@@ -70,9 +88,9 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         deal_USDC(pool_manipulator, 1000000000 ether);
         deal_WETH(pool_manipulator, 1000000 ether);
-        hevm.prank(pool_manipulator);
 
-        for (uint i; i < pools.length; i++) {
+        for (uint i; i < 4; i++) {
+            hevm.prank(pool_manipulator);
             IERC20(USDC).approve(address(pools[i]), type(uint256).max);
             hevm.prank(pool_manipulator);
             IERC20(WETH).approve(address(pools[i]), type(uint256).max);

@@ -10,7 +10,7 @@ contract SetupToken {
 
     constructor() {
         // this contract will receive the total supply of 100 tokens
-        token = new MockERC20(1e12 ether);
+        token = new MockERC20(type(uint256).max);
     }
 
     function mintTo(address _recipient, uint256 _amount) public {
@@ -61,6 +61,9 @@ contract SetupUniswap {
         factory = new UniswapV3Factory();
         token0 = _token0;
         token1 = _token1;
+
+        //
+        factory.enableFeeAmount(100, 1);
     }
 
     function createPool(uint24 _fee, uint160 _startPrice) public returns (UniswapV3Pool pool) {
@@ -210,7 +213,7 @@ contract UniDeployer {
 
     // 0.01%, 0.05%, 0.30%, and 1%
     // 1bps, 5bps, 30bps, 100bps
-    UniswapV3Pool[4] public pools = [pool1bps, pool5bps, pool30bps, pool100bps];
+    UniswapV3Pool[4] public pools;
 
     // pools by fee tier
     UniswapV3Pool public pool1bps;
@@ -236,44 +239,42 @@ contract UniDeployer {
 
         // minter setup
         minter = new UniswapMinter(token0, token1);
-        st.mintTo(0, address(minter), type(uint256).max);
-        st.mintTo(1, address(minter), type(uint256).max);
+        st.mintTo(0, address(minter), type(uint128).max);
+        st.mintTo(1, address(minter), type(uint128).max);
 
         // initial setup of factory
         su = new SetupUniswap(token0, token1);
         factory = su.factory();
 
         /// 1bps
-        factory.enableFeeAmount(100, 1);
-        pool1bps = su.createPool(100, 0);
+        pool1bps = su.createPool(100, 1446468563022924011445331901284352);
         minter.setPool(pool1bps);
-        st.mintTo(0, address(minter), type(uint256).max);
-        st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-887272, 887272, 0.001 ether);
+        minter.doMint(-887272, 887272, 1e18);
 
         /// 5bps
-        pool5bps = su.createPool(500, 0);
+        pool5bps = su.createPool(500, 1446468563022924011445331901284352);
         minter.setPool(pool5bps);
-        st.mintTo(0, address(minter), type(uint256).max);
-        st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-887272, 887272, 0.001 ether);
+        minter.doMint(-887270, 887270, 1e18);
 
         /// 30bps
-        pool30bps = su.createPool(3000, 0);
+        pool30bps = su.createPool(3000, 1446468563022924011445331901284352);
         minter.setPool(pool30bps);
-        st.mintTo(0, address(minter), type(uint256).max);
-        st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-887272, 887272, 0.001 ether);
+        minter.doMint(-887220, 887220, 1e18);
 
         /// 100bps
-        pool100bps = su.createPool(10000, 0);
+        pool100bps = su.createPool(10000, 1446468563022924011445331901284352);
         minter.setPool(pool100bps);
-        st.mintTo(0, address(minter), type(uint256).max);
-        st.mintTo(1, address(minter), type(uint256).max);
-        minter.doMint(-887272, 887272, 0.001 ether);
+        minter.doMint(-887200, 887200, 1e18);
+
+        //
+        pools = [pool1bps, pool5bps, pool30bps, pool100bps];
     }
 
     function mintToken(bool mintToken1, address recipient, uint256 amt) public {
         st.mintTo(mintToken1 ? 1 : 0, recipient, amt);
+    }
+
+    function getPools() public view returns (UniswapV3Pool[4] memory) {
+        return pools;
     }
 }
