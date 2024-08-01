@@ -65,7 +65,6 @@ contract EchidnaWrapper is PanopticPoolActions {
         emit LogAddress("USDC Token", address(USDC));
         emit LogAddress("WETH Token", address(WETH));
         emit LogAddress("USDC/WETH 5 pool", address(USDC_WETH_5));
-        emit LogAddress("UniV3 router", address(router));
 
         initialize();
 

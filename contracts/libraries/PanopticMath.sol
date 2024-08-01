@@ -73,7 +73,7 @@ library PanopticMath {
     //
     /// @param addr The address to get the number of leading zero hex characters for
     /// @return The number of leading zero hex characters in the address
-    function numberOfLeadingHexZeros(address addr) external pure returns (uint256) {
+    function numberOfLeadingHexZeros(address addr) internal pure returns (uint256) {
         unchecked {
             return addr == address(0) ? 40 : 39 - Math.mostSignificantNibble(uint160(addr));
         }
@@ -82,7 +82,7 @@ library PanopticMath {
     /// @notice Returns ERC20 symbol of `token`.
     /// @param token The address of the token to get the symbol of
     /// @return The symbol of `token` or "???" if not supported
-    function safeERC20Symbol(address token) external view returns (string memory) {
+    function safeERC20Symbol(address token) internal view returns (string memory) {
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).symbol() returns (string memory symbol) {
@@ -160,7 +160,7 @@ library PanopticMath {
         IUniswapV3Pool univ3pool,
         uint256 miniMedian
     )
-        external
+        internal
         view
         returns (
             int24 currentTick,
@@ -266,7 +266,7 @@ library PanopticMath {
         uint256 period,
         uint256 medianData,
         IUniswapV3Pool univ3pool
-    ) public view returns (int24 medianTick, uint256 updatedMedianData) {
+    ) internal view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick =
@@ -333,7 +333,7 @@ library PanopticMath {
     /// @param univ3pool The Uniswap pool from which to compute the TWAP
     /// @param twapWindow The time window to compute the TWAP over
     /// @return The final calculated TWAP tick
-    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
+    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) internal view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
         int256[] memory twapMeasurement = new int256[](19);
@@ -723,7 +723,7 @@ library PanopticMath {
         uint160 sqrtPriceX96Final,
         LeftRightSigned netExchanged,
         LeftRightUnsigned shortPremium
-    ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
+    ) internal pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
@@ -843,7 +843,7 @@ library PanopticMath {
         CollateralTracker collateral1,
         uint160 sqrtPriceX96Final,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
-    ) external returns (int256, int256) {
+    ) internal returns (int256, int256) {
         unchecked {
             // get the amount of premium paid by the liquidatee
             LeftRightSigned longPremium;
@@ -994,7 +994,7 @@ library PanopticMath {
         int24 atTick,
         CollateralTracker collateral0,
         CollateralTracker collateral1
-    ) external view returns (LeftRightSigned) {
+    ) internal view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)

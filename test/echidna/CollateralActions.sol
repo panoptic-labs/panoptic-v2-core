@@ -38,6 +38,8 @@ contract CollateralActions is SFPMActions {
         if (collToken.convertToAssets(collToken.balanceOf(depositor)) > 10 * MAX_DEPOSIT) {
             return;
         }
+
+        require(depositorBalBefore / 10 >= MIN_DEPOSIT);
         assets = bound(assets, MIN_DEPOSIT, min(MAX_DEPOSIT, depositorBalBefore / 10));
         uint256 shares = collToken.previewDeposit(assets);
 
@@ -102,6 +104,8 @@ contract CollateralActions is SFPMActions {
         uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
+
+        require(_max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer)) > 0);
 
         assetsToWithdraw = bound(
             assetsToWithdraw,

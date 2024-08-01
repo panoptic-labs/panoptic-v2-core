@@ -47,7 +47,7 @@ library FeesCalc {
         int24 atTick,
         mapping(TokenId tokenId => LeftRightUnsigned balance) storage userBalance,
         TokenId[] calldata positionIdList
-    ) external view returns (int256 value0, int256 value1) {
+    ) internal view returns (int256 value0, int256 value1) {
         for (uint256 k = 0; k < positionIdList.length; ) {
             TokenId tokenId = positionIdList[k];
             uint128 positionSize = userBalance[tokenId].rightSlot();
@@ -100,7 +100,7 @@ library FeesCalc {
         int24 tickLower,
         int24 tickUpper,
         uint128 liquidity
-    ) public view returns (LeftRightSigned) {
+    ) internal view returns (LeftRightSigned) {
         // extract the amount of AMM fees collected within the liquidity chunk`
         // NOTE: the fee variables are *per unit of liquidity*; so more "rate" variables
         (

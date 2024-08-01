@@ -326,6 +326,9 @@ contract PanopticPoolActions is CollateralActions {
         $inAMM0 = uint256(int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot());
         $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
 
+        require(int256($inAMM0) >= 0);
+        require(int256($inAMM1) >= 0);
+
         $poolUtil0 = ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0);
         emit LogUint256("poolUtil0", $poolUtil0);
         $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
@@ -721,8 +724,6 @@ contract PanopticPoolActions is CollateralActions {
         emit LogUint256("poolUtil0", $poolUtil0);
         $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
 
-        $posBalanceArray.pop();
-
         if ($safeMode) ($poolUtil0, $poolUtil1) = (10_000, 10_000);
 
         emit LogUint256("poolUtil1", $poolUtil1);
@@ -1045,6 +1046,8 @@ contract PanopticPoolActions is CollateralActions {
                 );
             }
         }
+
+        assertWithMsg(false, "burn options success");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1060,6 +1063,8 @@ contract PanopticPoolActions is CollateralActions {
                 $allPositions.push(userPositions[actors[i]][j]);
             }
         }
+
+        require($allPositions.length > 0);
 
         // find a position with at least one long leg
         if (search) {
@@ -1138,6 +1143,9 @@ contract PanopticPoolActions is CollateralActions {
 
             $balance0ExpectedP = collToken0.convertToAssets(collToken0.balanceOf($settlee));
             $balance1ExpectedP = collToken1.convertToAssets(collToken1.balanceOf($settlee));
+
+            ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+                .calculateAccumulatedFeesBatch($settlee, false, userPositions[$settlee]);
 
             _write_revert_due_solvency($settlee, 10_000);
 
@@ -1241,6 +1249,8 @@ contract PanopticPoolActions is CollateralActions {
                 $allPositions.push(userPositions[actors[i]][j]);
             }
         }
+
+        require($allPositions.length > 0);
 
         // find a position with at least one long leg - reasonably high probability of being exercisable
         if (search) {

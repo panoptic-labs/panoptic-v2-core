@@ -2,11 +2,9 @@
 pragma solidity ^0.8.12;
 
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
-import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {PropertiesAsserts} from "./PropertiesHelper.sol";
 import {IUniDeployer} from "./fuzz-mocks/IUniDeployer.sol";
-import {IUniSwapRouterDeployer} from "./fuzz-mocks/IUniSwapRouterDeployer.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -361,6 +359,8 @@ contract FuzzHelpers is PropertiesAsserts {
     LeftRightUnsigned[4] $collectedByLeg;
     LeftRightSigned $totalSwapped;
 
+    address $caller;
+
     TokenId $tokenIdActive;
     TokenId $tokenIdBkp;
 
@@ -527,8 +527,6 @@ contract FuzzHelpers is PropertiesAsserts {
     IUniswapV3Pool USDC_WETH_5 = IUniswapV3Pool(deployer.pool());
     IERC20 USDC = IERC20(deployer.token0());
     IERC20 WETH = IERC20(deployer.token1());
-
-    ISwapRouter router = ISwapRouter(IUniSwapRouterDeployer(address(0xde0002)).sr());
 
     function abs(int256 x) internal pure returns (uint256) {
         if (x >= 0) {
@@ -1221,175 +1219,201 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 collateral0,
         uint256 collateral1
     ) public returns (uint256) {
-        // position size * 2**128 / colReq
-        uint256 sizeMultiplierX128;
+        unchecked {
+            // position size * 2**128 / colReq
+            uint256 sizeMultiplierX128;
 
-        uint256 size_long = type(uint256).max;
-        for (uint256 i = 0; i < $numLegs; i++) {
-            emit LogInt256("$strikes[i]", $strikes[i]);
-            emit LogInt256("$widths[i]", $widths[i]);
-            emit LogInt256("poolTickSpacing", poolTickSpacing);
+            uint256 size_long = type(uint256).max;
+            for (uint256 i = 0; i < $numLegs; i++) {
+                emit LogInt256("$strikes[i]", $strikes[i]);
+                emit LogInt256("$widths[i]", $widths[i]);
+                emit LogInt256("poolTickSpacing", poolTickSpacing);
 
-            ($tickLower, $tickUpper) = PanopticMath.getTicks(
-                $strikes[i],
-                $widths[i],
-                poolTickSpacing
-            );
-            emit LogUint256("1", 1);
-            emit LogUint256(
-                "Math.getSqrtRatioAtTick($strikes[i])",
-                Math.getSqrtRatioAtTick($strikes[i])
-            );
-            uint256 baseCR = uint256($isLongs[i] == 0 ? 2_000 : 1_000) * 2 ** 117;
-
-            emit LogUint256("baseCR", baseCR);
-            if ($assets[i] != $tokenTypes[i]) {
-                baseCR = $tokenTypes[i] == 0
-                    ? PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($strikes[i]))
-                    : PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($strikes[i]));
-            }
-            emit LogUint256("11", 11);
-
-            emit LogUint256("baseCR", baseCR);
-
-            emit LogInt256("fastOracleTick", $fastOracleTick);
-            emit LogUint256("tokenTypes[i]", $tokenTypes[i]);
-
-            if ($riskPartners[i] != i) {
-                if (
-                    $riskPartners[$riskPartners[i]] != i && $ratios[i] == $ratios[$riskPartners[i]]
-                ) {
-                    $shouldRevert = true;
-                } else if (
-                    $isLongs[i] == $isLongs[$riskPartners[i]] &&
-                    $tokenTypes[i] == $tokenTypes[$riskPartners[i]]
-                ) {
-                    if ($isLongs[i] == 1) $shouldRevert = true;
-                    baseCR /= 2;
-                } else if ($isLongs[i] == 0 && $tokenTypes[i] != $tokenTypes[$riskPartners[i]]) {
-                    // spreads are complicated to get collateral multipliers for, and should be covered by the default sizing range (as a small efficiency improvement)
-                } else {
-                    $shouldRevert = true;
-                }
-            }
-
-            sizeMultiplierX128 += Math.mulDiv(
-                10_000 * 2 ** 117,
-                2 ** 128,
-                (((
-                    (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
-                        ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
-                        ? baseCR
-                        : $tokenTypes[i] == 0
-                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
-                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
-                ) * 13_333) / 10_000) * $ratios[i]
-            );
-            emit LogUint256("2", 2);
-
-            $netLiquidity = sfpm
-                .getAccountLiquidity(
-                    address(pool),
-                    address(panopticPool),
-                    $tokenTypes[i],
-                    $tickLower,
-                    $tickUpper
-                )
-                .rightSlot();
-
-            if ($netLiquidity > 0 && $isLongs[i] == 1) {
-                size_long = Math.min(
-                    size_long,
-                    $assets[i] == 0
-                        ? LiquidityAmounts.getAmount0ForLiquidity(
-                            Math.getSqrtRatioAtTick($tickLower),
-                            Math.getSqrtRatioAtTick($tickUpper),
-                            uint128(Math.mulDiv($netLiquidity, multiplierX64, 2 ** 64) / $ratios[i])
-                        )
-                        : LiquidityAmounts.getAmount1ForLiquidity(
-                            Math.getSqrtRatioAtTick($tickLower),
-                            Math.getSqrtRatioAtTick($tickUpper),
-                            uint128(Math.mulDiv($netLiquidity, multiplierX64, 2 ** 64) / $ratios[i])
-                        )
+                ($tickLower, $tickUpper) = PanopticMath.getTicks(
+                    $strikes[i],
+                    $widths[i],
+                    poolTickSpacing
                 );
-            }
+                emit LogUint256("1", 1);
+                emit LogUint256(
+                    "Math.getSqrtRatioAtTick($strikes[i])",
+                    Math.getSqrtRatioAtTick($strikes[i])
+                );
+                uint256 baseCR = uint256($isLongs[i] == 0 ? 2_000 : 1_000) * 2 ** 117;
 
-            if (
-                $isLongs[i] == 0 &&
-                !((($fastOracleTick >= $tickUpper) && ($tokenTypes[i] == 1)) ||
-                    (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 0)))
-            ) {
-                // amountMoved for 2k posSize
-                uint256 ITMCR = baseCR;
-
-                uint160 ratio = $tokenTypes[i] == 1
-                    ? Math.getSqrtRatioAtTick(
-                        Math.max24(2 * ($fastOracleTick - $strikes[i]), Constants.MIN_V3POOL_TICK)
-                    )
-                    : Math.getSqrtRatioAtTick(
-                        Math.max24(2 * ($strikes[i] - $fastOracleTick), Constants.MIN_V3POOL_TICK)
-                    );
-
-                if (
-                    (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 1)) ||
-                    (($fastOracleTick >= $tickUpper) && ($tokenTypes[i] == 0))
-                ) {
-                    uint256 c2 = Constants.FP96 - ratio;
-
-                    ITMCR = Math.mulDiv96RoundingUp(ITMCR, c2);
-                } else {
-                    uint160 scaleFactor = Math.getSqrtRatioAtTick(
-                        ($tickUpper - $strikes[i]) + ($strikes[i] - $tickLower)
-                    );
-                    ITMCR = Math.mulDivRoundingUp(
-                        ITMCR,
-                        scaleFactor - ratio,
-                        scaleFactor + Constants.FP96
-                    );
+                emit LogUint256("baseCR", baseCR);
+                if ($assets[i] != $tokenTypes[i]) {
+                    baseCR = $tokenTypes[i] == 0
+                        ? PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($strikes[i]))
+                        : PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($strikes[i]));
                 }
-                emit LogUint256("3", 4);
+                emit LogUint256("11", 11);
+
+                emit LogUint256("baseCR", baseCR);
+
+                emit LogInt256("fastOracleTick", $fastOracleTick);
+                emit LogUint256("tokenTypes[i]", $tokenTypes[i]);
+
+                if ($riskPartners[i] != i) {
+                    if (
+                        $riskPartners[$riskPartners[i]] != i &&
+                        $ratios[i] == $ratios[$riskPartners[i]]
+                    ) {
+                        $shouldRevert = true;
+                    } else if (
+                        $isLongs[i] == $isLongs[$riskPartners[i]] &&
+                        $tokenTypes[i] == $tokenTypes[$riskPartners[i]]
+                    ) {
+                        if ($isLongs[i] == 1) $shouldRevert = true;
+                        baseCR /= 2;
+                    } else if (
+                        $isLongs[i] == 0 && $tokenTypes[i] != $tokenTypes[$riskPartners[i]]
+                    ) {
+                        // spreads are complicated to get collateral multipliers for, and should be covered by the default sizing range (as a small efficiency improvement)
+                    } else {
+                        $shouldRevert = true;
+                    }
+                }
 
                 sizeMultiplierX128 += Math.mulDiv(
-                    2_000 * 2 ** 117,
+                    10_000 * 2 ** 117,
                     2 ** 128,
                     (((
                         (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
-                            ? ITMCR
+                            ? baseCR
                             : $tokenTypes[i] == 0
                             ? PanopticMath.convert0to1(
-                                ITMCR,
+                                baseCR,
                                 Math.getSqrtRatioAtTick($fastOracleTick)
                             )
                             : PanopticMath.convert1to0(
-                                ITMCR,
+                                baseCR,
                                 Math.getSqrtRatioAtTick($fastOracleTick)
                             )
                     ) * 13_333) / 10_000) * $ratios[i]
                 );
+                emit LogUint256("2", 2);
+
+                $netLiquidity = sfpm
+                    .getAccountLiquidity(
+                        address(pool),
+                        address(panopticPool),
+                        $tokenTypes[i],
+                        $tickLower,
+                        $tickUpper
+                    )
+                    .rightSlot();
+
+                if ($netLiquidity > 0 && $isLongs[i] == 1) {
+                    size_long = Math.min(
+                        size_long,
+                        $assets[i] == 0
+                            ? LiquidityAmounts.getAmount0ForLiquidity(
+                                Math.getSqrtRatioAtTick($tickLower),
+                                Math.getSqrtRatioAtTick($tickUpper),
+                                uint128(
+                                    Math.mulDiv($netLiquidity, multiplierX64, 2 ** 64) / $ratios[i]
+                                )
+                            )
+                            : LiquidityAmounts.getAmount1ForLiquidity(
+                                Math.getSqrtRatioAtTick($tickLower),
+                                Math.getSqrtRatioAtTick($tickUpper),
+                                uint128(
+                                    Math.mulDiv($netLiquidity, multiplierX64, 2 ** 64) / $ratios[i]
+                                )
+                            )
+                    );
+                }
+
+                if (
+                    $isLongs[i] == 0 &&
+                    !((($fastOracleTick >= $tickUpper) && ($tokenTypes[i] == 1)) ||
+                        (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 0)))
+                ) {
+                    // amountMoved for 2k posSize
+                    uint256 ITMCR = baseCR;
+
+                    uint160 ratio = $tokenTypes[i] == 1
+                        ? Math.getSqrtRatioAtTick(
+                            Math.max24(
+                                2 * ($fastOracleTick - $strikes[i]),
+                                Constants.MIN_V3POOL_TICK
+                            )
+                        )
+                        : Math.getSqrtRatioAtTick(
+                            Math.max24(
+                                2 * ($strikes[i] - $fastOracleTick),
+                                Constants.MIN_V3POOL_TICK
+                            )
+                        );
+
+                    if (
+                        (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 1)) ||
+                        (($fastOracleTick >= $tickUpper) && ($tokenTypes[i] == 0))
+                    ) {
+                        uint256 c2 = Constants.FP96 - ratio;
+
+                        ITMCR = Math.mulDiv96RoundingUp(ITMCR, c2);
+                    } else {
+                        uint160 scaleFactor = Math.getSqrtRatioAtTick(
+                            ($tickUpper - $strikes[i]) + ($strikes[i] - $tickLower)
+                        );
+                        ITMCR = Math.mulDivRoundingUp(
+                            ITMCR,
+                            scaleFactor - ratio,
+                            scaleFactor + Constants.FP96
+                        );
+                    }
+                    emit LogUint256("3", 4);
+
+                    sizeMultiplierX128 += Math.mulDiv(
+                        2_000 * 2 ** 117,
+                        2 ** 128,
+                        (((
+                            (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                                ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                                ? ITMCR
+                                : $tokenTypes[i] == 0
+                                ? PanopticMath.convert0to1(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                                : PanopticMath.convert1to0(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                        ) * 13_333) / 10_000) * $ratios[i]
+                    );
+                }
             }
+            emit LogUint256("4", 4);
+
+            uint256 targetCross = Math.mulDiv64(
+                $fastOracleTick > 0
+                    ? collateral0 +
+                        PanopticMath.convert1to0(
+                            collateral1,
+                            Math.getSqrtRatioAtTick($fastOracleTick)
+                        )
+                    : PanopticMath.convert0to1(
+                        collateral0,
+                        Math.getSqrtRatioAtTick($fastOracleTick)
+                    ) + collateral1,
+                multiplierX64
+            );
+            emit LogUint256("5", 5);
+
+            emit LogUint256("targetCross", targetCross);
+            emit LogUint256("sizeMultiplierX128", sizeMultiplierX128);
+
+            emit LogUint256("size_collat", Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
+            emit LogUint256("size_long", size_long);
+
+            // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
+            // or, bound it to the long position size (based on available liq)
+            return Math.min(size_long, Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
         }
-        emit LogUint256("4", 4);
-
-        uint256 targetCross = Math.mulDiv64(
-            $fastOracleTick > 0
-                ? collateral0 +
-                    PanopticMath.convert1to0(collateral1, Math.getSqrtRatioAtTick($fastOracleTick))
-                : PanopticMath.convert0to1(collateral0, Math.getSqrtRatioAtTick($fastOracleTick)) +
-                    collateral1,
-            multiplierX64
-        );
-        emit LogUint256("5", 5);
-
-        emit LogUint256("targetCross", targetCross);
-        emit LogUint256("sizeMultiplierX128", sizeMultiplierX128);
-
-        emit LogUint256("size_collat", Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
-        emit LogUint256("size_long", size_long);
-
-        // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
-        // or, bound it to the long position size (based on available liq)
-        return Math.min(size_long, Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
     }
 
     function write_mintburn_transfer_amts() internal {
@@ -1521,6 +1545,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     // this might seem circular, but the point is really just so we can use grossPremium/settledTokens values that are independently verified later for collateral calcs
     function quote_fees_postburn() internal {
+        $caller = msg.sender;
         try this.feequote_postburn_sim() {} catch (bytes memory results) {
             emit LogBytes("r", results);
             assembly ("memory-safe") {
@@ -1582,20 +1607,20 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function feequote_postburn_sim() external {
         // ensures they have sufficient collateral - if it fails with another type of error it can be caught elsewhere
-        collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
-        collToken1.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+        collToken0.delegate($caller, (2 ** 104 - 1) * 10_000);
+        collToken1.delegate($caller, (2 ** 104 - 1) * 10_000);
 
-        hevm.prank(msg.sender);
+        hevm.prank($caller);
         try
             panopticPool.burnOptions(
                 $tokenIdActive,
-                userPositions[msg.sender],
+                userPositions[$caller],
                 $tickLimitLow,
                 $tickLimitHigh
             )
         {
             ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-                .calculateAccumulatedFeesBatch(msg.sender, false, userPositions[msg.sender]);
+                .calculateAccumulatedFeesBatch($caller, false, userPositions[$caller]);
             revert FeeQuotePostBurnSimResError($shortPremium, $longPremium, $posBalanceArray);
         } catch {
             revert FeeQuotePostBurnSimResError(
@@ -1672,7 +1697,9 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function validate_exercisable_ext(TokenId eid, int24 tickEat) external pure {
+    function validate_exercisable_ext(TokenId eid, int24 tickEat) external view {
+        // prevent fuzzer from calling this directly with weird out-of-bounds numbers
+        require(msg.sender == address(this));
         eid.validateIsExercisable(tickEat);
     }
 

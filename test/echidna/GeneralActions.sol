@@ -15,10 +15,6 @@ contract GeneralActions is FuzzHelpers {
         deal_WETH(msg.sender, 10000 ether);
 
         hevm.prank(msg.sender);
-        IERC20(USDC).approve(address(router), type(uint256).max);
-        hevm.prank(msg.sender);
-        IERC20(WETH).approve(address(router), type(uint256).max);
-        hevm.prank(msg.sender);
         IERC20(USDC).approve(address(panopticPool), type(uint256).max);
         hevm.prank(msg.sender);
         IERC20(WETH).approve(address(panopticPool), type(uint256).max);
