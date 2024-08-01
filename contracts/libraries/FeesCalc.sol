@@ -5,10 +5,8 @@ pragma solidity >=0.8.24;
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Math} from "@libraries/Math.sol";
-import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
-import {TokenId} from "@types/TokenId.sol";
 
 /// @title Library for Fee Calculations.
 /// @author Axicon Labs Limited
@@ -120,7 +118,7 @@ library FeesCalc {
                     liquidity
                         ▲           upperOut0
                         │◄─^v─────────────────────►
-                        │     
+                        │
                         │     lowerOut0  ┌────────┐
                         │◄─^v───────────►│ chunk  │
                         │                │        │
@@ -140,7 +138,7 @@ library FeesCalc {
                         ▲        feeGrowthGlobal0X128 = global fee growth
                         │                             = (all fees collected for the entire price range for token 0)
                         │
-                        │                        
+                        │
                         │     lowerOut0  ┌──────────────┐ upperOut0
                         │◄─^v───────────►│              │◄─────^v───►
                         │                │     chunk    │
