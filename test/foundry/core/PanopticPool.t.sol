@@ -3111,8 +3111,10 @@ contract PanopticPoolTest is PositionUtils {
 
                 assertEq(pp.numberOfPositions(Alice), 1);
 
+                TokenId _tokenId = tokenId;
+
                 (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
-                    .optionPositionInfo(pp, Alice, tokenId);
+                    .optionPositionInfo(pp, Alice, _tokenId);
 
                 assertEq(balance, positionSizes[1]);
                 assertEq(
