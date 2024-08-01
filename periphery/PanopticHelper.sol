@@ -150,11 +150,9 @@ contract PanopticHelper {
         address user,
         TokenId tokenId
     ) external view returns (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) {
-        LeftRightUnsigned balanceData = pool.calculateAccumulatedFeesBatch(
-            user,
-            false,
-            [tokenId]
-        )[0];
+        LeftRightUnsigned balanceData = pool.calculateAccumulatedFeesBatch(user, false, [tokenId])[
+            0
+        ];
 
         // Return the unpacked data: balanceOf(user, tokenId) and packed pool utilizations at the time of minting
         balance = balanceData.rightSlot();
