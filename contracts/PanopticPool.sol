@@ -1304,18 +1304,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Checks whether the current tick has deviated too much from the slow oracle median tick.
     /// @return Whether the current tick has deviated from the median by > MAX_TICKS_DELTA
     function isSafeMode() public view returns (bool) {
-        // check if the price has deviated too much recently.
+        // check if the price has deviated too much recently
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+
+        uint256 medianData = s_miniMedian;
         unchecked {
-            uint256 medianData = s_miniMedian;
             int24 medianTick = (int24(
                 uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
             // If ticks have recently deviated more than +/- 10%, enforce covered mints
-            if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
-                return true;
-            }
+            return Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA;
         }
     }
 
