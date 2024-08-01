@@ -352,7 +352,7 @@ contract FuzzHelpers is PropertiesAsserts {
     uint64 poolId;
 
     // pool that the panoptic pool was initalized on
-    IUniswapV3Pool initializedPool;
+    IUniswapV3Pool pool;
     // pool that is currently being cycled for general actions / sfpm actions
     // cyclingPool can be equivalent to initalizedPool
     IUniswapV3Pool cyclingPool;
@@ -1428,7 +1428,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int24 tickUpper
     ) internal view returns (uint64 effectiveLiquidityFactorX32) {
         LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
-            address(initializedPool),
+            address(pool),
             address(panopticPool),
             legTokenType,
             tickLower,
@@ -1954,7 +1954,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $netLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(initializedPool),
+                    address(pool),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2083,7 +2083,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $netLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(initializedPool),
+                    address(pool),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2093,7 +2093,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $removedLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(initializedPool),
+                    address(pool),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2229,7 +2229,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
                 .getOracleTicks(
-                    initializedPool,
+                    pool,
                     uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
                 );
 
@@ -2241,7 +2241,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
                 .getOracleTicks(
-                    initializedPool,
+                    pool,
                     uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
                 );
 
@@ -2276,7 +2276,7 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("number of block delayed", delay_block);
 
         hevm.prank(pool_manipulator);
-        swapperc.swapTo(initializedPool, target_sqrt_price);
+        swapperc.swapTo(pool, target_sqrt_price);
         hevm.warp(block.timestamp + delay_on * delay_block * 12);
         hevm.roll(block.number + delay_on * delay_block);
 
@@ -2284,9 +2284,9 @@ contract FuzzHelpers is PropertiesAsserts {
         delay_on = ((delay >> 4) % 2) == 0 ? 1 : 0;
         if (delay_on == 1) {
             hevm.prank(pool_manipulator);
-            swapperc.mint(initializedPool, -10, 10, 10 ** 18);
+            swapperc.mint(pool, -10, 10, 10 ** 18);
             hevm.prank(pool_manipulator);
-            swapperc.burn(initializedPool, -10, 10, 10 ** 18);
+            swapperc.burn(pool, -10, 10, 10 ** 18);
         }
 
         (price, currentTick, , , , , ) = cyclingPool.slot0();

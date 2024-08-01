@@ -112,18 +112,18 @@ contract EchidnaWrapper is PanopticPoolActions {
         }
 
         // reset cyclingPool to initial
-        cyclingPool = initializedPool;
+        cyclingPool = pool;
     }
 
     function initialize() internal {
         // initalize current pool we are deploying
-        initializedPool = pools[0];
-        cyclingPool = initializedPool; // to start off with
-        poolFee = initializedPool.fee();
-        poolTickSpacing = initializedPool.tickSpacing();
+        pool = pools[0];
+        cyclingPool = pool; // to start off with
+        poolFee = pool.fee();
+        poolTickSpacing = pool.tickSpacing();
 
-        assert(initializedPool.token0() == address(USDC));
-        assert(initializedPool.token1() == address(WETH));
+        assert(pool.token0() == address(USDC));
+        assert(pool.token1() == address(WETH));
 
         // give test contract a sufficient amount of tokens to deploy a new pool
         deal_USDC(address(this), 10000000 ether);
@@ -145,16 +145,16 @@ contract EchidnaWrapper is PanopticPoolActions {
         USDC.approve(address(this), type(uint256).max);
         WETH.approve(address(this), type(uint256).max);
 
-        (currentSqrtPriceX96, currentTick, , , , , ) = initializedPool.slot0();
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        sfpm.initializeAMMPool(initializedPool.token0(), initializedPool.token1(), poolFee);
-        poolId = sfpm.getPoolId(address(initializedPool));
+        sfpm.initializeAMMPool(pool.token0(), pool.token1(), poolFee);
+        poolId = sfpm.getPoolId(address(pool));
 
         panopticPool = PanopticPoolWrapper(
             address(
                 panopticFactory.deployNewPool(
-                    initializedPool.token0(),
-                    initializedPool.token1(),
+                    pool.token0(),
+                    pool.token1(),
                     poolFee,
                     uint96(0),
                     type(uint256).max,
@@ -167,13 +167,13 @@ contract EchidnaWrapper is PanopticPoolActions {
         collToken1 = panopticPool.collateralToken1();
 
         hevm.prank(address(collToken0));
-        IERC20(collToken0.asset()).approve(address(initializedPool), type(uint256).max);
+        IERC20(collToken0.asset()).approve(address(pool), type(uint256).max);
         hevm.prank(address(collToken0));
-        IERC20(collToken1.asset()).approve(address(initializedPool), type(uint256).max);
+        IERC20(collToken1.asset()).approve(address(pool), type(uint256).max);
 
         hevm.prank(address(collToken1));
-        IERC20(collToken0.asset()).approve(address(initializedPool), type(uint256).max);
+        IERC20(collToken0.asset()).approve(address(pool), type(uint256).max);
         hevm.prank(address(collToken1));
-        IERC20(collToken1.asset()).approve(address(initializedPool), type(uint256).max);
+        IERC20(collToken1.asset()).approve(address(pool), type(uint256).max);
     }
 }

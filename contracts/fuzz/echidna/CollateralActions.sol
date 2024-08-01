@@ -892,18 +892,11 @@ contract CollateralActions is SFPMActions {
         uint256 assetsToWithdraw,
         bool isToken0
     ) internal returns (bool withdrawalCausesInsolvency) {
-        (
-            ,
-            int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
-
-        ) = initializedPool.slot0();
+        (, int24 currentTick, uint16 observationIndex, uint16 observationCardinality, , , ) = pool
+            .slot0();
 
         (int24 fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            initializedPool,
+            pool,
             observationIndex,
             observationCardinality,
             FAST_ORACLE_CARDINALITY,
@@ -917,7 +910,7 @@ contract CollateralActions is SFPMActions {
             observationCardinality,
             MEDIAN_PERIOD,
             miniMedian,
-            initializedPool
+            pool
         );
 
         withdrawalCausesInsolvency = !_checkSolvencyAtTickForPossibleWithdrawal(
