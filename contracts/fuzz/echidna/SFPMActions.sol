@@ -652,7 +652,7 @@ contract SFPMActions is GeneralActions {
         $activeNumLegs = bound(numLegs, 1, 4);
 
         // initialize tokenId
-        $activeTokenId = TokenId.wrap(poolId);
+        $activeTokenId = TokenId.wrap(sfpmPoolId);
 
         {
             // search for a tokenId that the current actor has sold

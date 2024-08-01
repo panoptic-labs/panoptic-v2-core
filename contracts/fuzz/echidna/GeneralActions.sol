@@ -18,7 +18,7 @@ contract GeneralActions is FuzzHelpers {
         uint24 width_in,
         int256 strike_in
     ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
+        out = TokenId.wrap(sfpmPoolId);
 
         // Rest of the parameters come from the function parameters
         uint256 asset = asset_in == true ? 1 : 0;
@@ -70,7 +70,7 @@ contract GeneralActions is FuzzHelpers {
         uint24[4] memory width_in,
         int256[4] memory strike_in
     ) internal returns (TokenId out) {
-        out = TokenId.wrap(poolId);
+        out = TokenId.wrap(sfpmPoolId);
 
         (, currentTick, , , , , ) = cyclingPool.slot0();
 
