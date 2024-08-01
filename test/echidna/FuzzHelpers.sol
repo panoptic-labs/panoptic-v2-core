@@ -181,21 +181,19 @@ contract PanopticPoolWrapper is PanopticPool {
         bool computeAllPremia,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (int128 premium0, int128 premium1, uint256[2][] memory) {
+    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
-        (LeftRightSigned premia, uint256[2][] memory balances) = _calculateAccumulatedPremia(
-            user,
-            positionIdList,
-            computeAllPremia,
-            includePendingPremium,
-            currentTick
-        );
-
-        // Return the premia as (token0, token1)
-        return (premia.rightSlot(), premia.leftSlot(), balances);
+        return
+            _calculateAccumulatedPremia(
+                user,
+                positionIdList,
+                computeAllPremia,
+                includePendingPremium,
+                currentTick
+            );
     }
 
     // return premiaByLeg
@@ -261,7 +259,11 @@ contract FuzzHelpers is PropertiesAsserts {
 
     error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24[4], bool);
 
+    error SFPMBurnResError(LeftRightUnsigned[4], LeftRightSigned, int24[4], bool);
+
     error PPBurnSimResError(int256, int256, bool);
+
+    error FeeQuotePostBurnSimResError(LeftRightUnsigned, LeftRightUnsigned, uint256[2][]);
 
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
@@ -296,7 +298,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 liquidatorValueBefore0;
         uint256 liquidatorValueAfter0;
         uint256 settledTokens0;
-        LeftRightSigned premia;
+        LeftRightUnsigned shortPremium;
         int256 bonusCombined0;
         int256 protocolLoss0Actual;
         int256 protocolLoss0Expected;
@@ -360,7 +362,10 @@ contract FuzzHelpers is PropertiesAsserts {
     LeftRightSigned $totalSwapped;
 
     TokenId $tokenIdActive;
+    TokenId $tokenIdBkp;
+
     uint128 $positionSizeActive;
+    uint128 $positionSizeBkp;
 
     uint256 $numLegs;
 
@@ -395,11 +400,10 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $found;
 
-    int256 $intrinsicDelta0;
-    int256 $intrinsicDelta1;
+    LeftRightUnsigned $shortPremiumIdeal;
 
-    int128 $premia0;
-    int128 $premia1;
+    LeftRightUnsigned $shortPremium;
+    LeftRightUnsigned $longPremium;
 
     uint256 $balanceCross;
     uint256 $thresholdCross;
@@ -428,11 +432,11 @@ contract FuzzHelpers is PropertiesAsserts {
     LeftRightUnsigned $tokenData1;
 
     TokenId[] $posIdListOld;
+    TokenId[] $positionsNew;
 
     uint256[2][] $posBalanceArray;
 
     bool $shouldRevert;
-    bool $sfpmRevert;
 
     int24 $fastOracleTick;
     int24 $slowOracleTick;
@@ -474,7 +478,30 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256[4] $grossPremiaTotal0;
     uint256[4] $grossPremiaTotal1;
 
+    bool $gross0Correct;
+    bool $gross1Correct;
+
+    uint256[4] $idealPremium0;
+    uint256[4] $idealPremium1;
+
+    uint256[4] $proratedPremium0;
+    uint256[4] $proratedPremium1;
+
+    int256 $premiumDelta0Net;
+    int256 $premiumDelta1Net;
+
+    uint256 $grossPremiumTotalSumLegs0;
+    uint256 $grossPremiumTotalSumLegs1;
+
+    uint256[4] $premiumGrowth0;
+    uint256[4] $premiumGrowth1;
+
+    uint256 $premiumGrowthLeg0;
+    uint256 $premiumGrowthLeg1;
+
     uint256 $shortLiquidity;
+
+    uint256 $legLiquidity;
 
     SwapperC swapperc;
 
@@ -574,19 +601,29 @@ contract FuzzHelpers is PropertiesAsserts {
     function _get_account_margin(
         address to_liquidate,
         int24 tick
-    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+    ) internal returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
         require(userPositions[to_liquidate].length > 0);
-        int128 premium0;
-        int128 premium1;
         uint256[2][] memory positions;
 
-        (premium0, premium1, positions) = panopticPool.calculateAccumulatedFeesBatch(
+        ($shortPremium, $longPremium, positions) = panopticPool.calculateAccumulatedFeesBatch(
             to_liquidate,
             false,
             userPositions[to_liquidate]
         );
-        tokenData0 = collToken0.getAccountMarginDetails(to_liquidate, tick, positions, premium0);
-        tokenData1 = collToken1.getAccountMarginDetails(to_liquidate, tick, positions, premium1);
+        tokenData0 = collToken0.getAccountMarginDetails(
+            to_liquidate,
+            tick,
+            positions,
+            $shortPremium.rightSlot(),
+            $longPremium.rightSlot()
+        );
+        tokenData1 = collToken1.getAccountMarginDetails(
+            to_liquidate,
+            tick,
+            positions,
+            $shortPremium.leftSlot(),
+            $longPremium.leftSlot()
+        );
     }
 
     /////////////////////////////////////////////////////////////
@@ -633,22 +670,24 @@ contract FuzzHelpers is PropertiesAsserts {
                     sUser,
                     $colTicks[i],
                     $posBalanceArray,
-                    $premia0
+                    $shortPremium.rightSlot(),
+                    $longPremium.rightSlot()
                 );
                 $tokenData1 = collToken1.getAccountMarginDetails(
                     sUser,
                     $colTicks[i],
                     $posBalanceArray,
-                    $premia1
+                    $shortPremium.leftSlot(),
+                    $longPremium.leftSlot()
                 );
                 $balanceCross =
                     Math.mulDiv(
-                        $balance1ExpectedP + uint128($premia1 > 0 ? $premia1 : int128(0)),
+                        $balance1ExpectedP + $shortPremium.leftSlot(),
                         2 ** 96,
                         TickMath.getSqrtRatioAtTick($colTicks[i])
                     ) +
                     Math.mulDiv96(
-                        $balance0ExpectedP + uint128($premia0 > 0 ? $premia0 : int128(0)),
+                        $balance0ExpectedP + $shortPremium.rightSlot(),
                         TickMath.getSqrtRatioAtTick($colTicks[i])
                     );
 
@@ -671,22 +710,24 @@ contract FuzzHelpers is PropertiesAsserts {
                 sUser,
                 $colTicks[1],
                 $posBalanceArray,
-                $premia0
+                $shortPremium.rightSlot(),
+                $longPremium.rightSlot()
             );
             $tokenData1 = collToken1.getAccountMarginDetails(
                 sUser,
                 $colTicks[1],
                 $posBalanceArray,
-                $premia1
+                $shortPremium.leftSlot(),
+                $longPremium.leftSlot()
             );
             $balanceCross =
                 Math.mulDiv(
-                    $balance1ExpectedP + uint128($premia1 > 0 ? $premia1 : int128(0)),
+                    $balance1ExpectedP + $shortPremium.leftSlot(),
                     2 ** 96,
                     TickMath.getSqrtRatioAtTick($colTicks[1])
                 ) +
                 Math.mulDiv96(
-                    $balance0ExpectedP + uint128($premia0 > 0 ? $premia0 : int128(0)),
+                    $balance0ExpectedP + $shortPremium.rightSlot(),
                     TickMath.getSqrtRatioAtTick($colTicks[1])
                 );
 
@@ -748,7 +789,7 @@ contract FuzzHelpers is PropertiesAsserts {
     function _get_solvency_balances(
         address who,
         int24 tick
-    ) internal view returns (uint256 balanceCross, uint256 thresholdCross) {
+    ) internal returns (uint256 balanceCross, uint256 thresholdCross) {
         (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _get_account_margin(
             who,
             tick
@@ -851,12 +892,12 @@ contract FuzzHelpers is PropertiesAsserts {
         );
 
         int256 balance0CombinedPostBurn = int256(uint256(liqResults.margin0.rightSlot())) -
-            Math.max(liqResults.premia.rightSlot(), 0) +
+            int256(uint256(liqResults.shortPremium.rightSlot())) +
             burnSimResults.burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
                     int256(uint256(liqResults.margin1.rightSlot())) -
-                        Math.max(liqResults.premia.leftSlot(), 0) +
+                        int256(uint256(liqResults.shortPremium.leftSlot())) +
                         burnSimResults.burnDelta1,
                     TickMath.getSqrtRatioAtTick(curtick)
                 )
@@ -1045,12 +1086,28 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function _calculate_margins_and_premia(address who, int24 tick) internal {
-        (int128 expectedP0, int128 expectedP1, uint256[2][] memory posBal) = panopticPool
-            .calculateAccumulatedFeesBatch(who, false, userPositions[who]);
+        uint256[2][] memory posBal;
+        ($shortPremium, $longPremium, posBal) = panopticPool.calculateAccumulatedFeesBatch(
+            who,
+            false,
+            userPositions[who]
+        );
 
-        liqResults.margin0 = collToken0.getAccountMarginDetails(who, tick, posBal, expectedP0);
-        liqResults.margin1 = collToken1.getAccountMarginDetails(who, tick, posBal, expectedP1);
-        liqResults.premia = LeftRightSigned.wrap(0).toRightSlot(expectedP0).toLeftSlot(expectedP1);
+        liqResults.margin0 = collToken0.getAccountMarginDetails(
+            who,
+            tick,
+            posBal,
+            $shortPremium.rightSlot(),
+            $longPremium.rightSlot()
+        );
+        liqResults.margin1 = collToken1.getAccountMarginDetails(
+            who,
+            tick,
+            posBal,
+            $shortPremium.leftSlot(),
+            $longPremium.leftSlot()
+        );
+        liqResults.shortPremium = $shortPremium;
     }
 
     function _calculate_liquidation_bonus(int24 twaptick, int24 curtick) internal {
@@ -1060,7 +1117,7 @@ contract FuzzHelpers is PropertiesAsserts {
             Math.getSqrtRatioAtTick(twaptick),
             Math.getSqrtRatioAtTick(curtick),
             burnSimResults.netExchanged,
-            liqResults.premia
+            liqResults.shortPremium
         );
     }
 
@@ -1430,7 +1487,22 @@ contract FuzzHelpers is PropertiesAsserts {
             );
 
             $shouldRevert = $shouldRevert || sRevert;
-            $sfpmRevert = sRevert;
+        }
+    }
+
+    function quote_sfpm_burn() internal {
+        try this.sfpm_burn_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            bool sRevert;
+            ($collectedByLeg, $totalSwapped, $colTicks, sRevert) = abi.decode(
+                results,
+                (LeftRightUnsigned[4], LeftRightSigned, int24[4], bool)
+            );
+
+            $shouldRevert = $shouldRevert || sRevert;
         }
     }
 
@@ -1444,6 +1516,20 @@ contract FuzzHelpers is PropertiesAsserts {
             ($colDelta0, $colDelta1, sRevert) = abi.decode(results, (int256, int256, bool));
 
             $shouldRevert = $shouldRevert || sRevert;
+        }
+    }
+
+    // this might seem circular, but the point is really just so we can use grossPremium/settledTokens values that are independently verified later for collateral calcs
+    function quote_fees_postburn() internal {
+        try this.feequote_postburn_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            ($shortPremium, $longPremium, $posBalanceArray) = abi.decode(
+                results,
+                (LeftRightUnsigned, LeftRightUnsigned, uint256[2][])
+            );
         }
     }
 
@@ -1494,6 +1580,32 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function feequote_postburn_sim() external {
+        // ensures they have sufficient collateral - if it fails with another type of error it can be caught elsewhere
+        collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+        collToken1.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+
+        hevm.prank(msg.sender);
+        try
+            panopticPool.burnOptions(
+                $tokenIdActive,
+                userPositions[msg.sender],
+                $tickLimitLow,
+                $tickLimitHigh
+            )
+        {
+            ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+                .calculateAccumulatedFeesBatch(msg.sender, false, userPositions[msg.sender]);
+            revert FeeQuotePostBurnSimResError($shortPremium, $longPremium, $posBalanceArray);
+        } catch {
+            revert FeeQuotePostBurnSimResError(
+                LeftRightUnsigned.wrap(0),
+                LeftRightUnsigned.wrap(0),
+                new uint256[2][](0)
+            );
+        }
+    }
+
     function sfpm_mint_sim() external {
         hevm.prank(address(panopticPool));
         try
@@ -1524,6 +1636,39 @@ contract FuzzHelpers is PropertiesAsserts {
                 );
 
             revert SFPMMintResError(collectedByLeg, totalSwapped, __colTicks, true);
+        }
+    }
+
+    function sfpm_burn_sim() external {
+        hevm.prank(address(panopticPool));
+        try
+            sfpm.burnTokenizedPosition(
+                $tokenIdActive,
+                $positionSizeActive,
+                $tickLimitLow,
+                $tickLimitHigh
+            )
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+            int24[4] memory __colTicks;
+            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
+                .getOracleTicks(
+                    pool,
+                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                );
+
+            revert SFPMBurnResError(collectedByLeg, totalSwapped, __colTicks, false);
+        } catch {
+            LeftRightUnsigned[4] memory collectedByLeg;
+            LeftRightSigned totalSwapped;
+
+            int24[4] memory __colTicks;
+            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
+                .getOracleTicks(
+                    pool,
+                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                );
+
+            revert SFPMBurnResError(collectedByLeg, totalSwapped, __colTicks, true);
         }
     }
 
@@ -1676,8 +1821,8 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("    liquidatorValueBefore0", liqResults.liquidatorValueBefore0);
         emit LogUint256("    liquidatorValueAfter0", liqResults.liquidatorValueAfter0);
         emit LogUint256("    settledTokens0", liqResults.settledTokens0);
-        emit LogInt256("    premia L", liqResults.premia.leftSlot());
-        emit LogInt256("    premia R", liqResults.premia.rightSlot());
+        emit LogUint256("    premia L", liqResults.shortPremium.leftSlot());
+        emit LogUint256("    premia R", liqResults.shortPremium.rightSlot());
         emit LogInt256("    bonusCombined0", liqResults.bonusCombined0);
         emit LogInt256("    protocolLoss0Actual", liqResults.protocolLoss0Actual);
         emit LogInt256("    protocolLoss0Expected", liqResults.protocolLoss0Expected);

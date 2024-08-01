@@ -77,10 +77,10 @@ contract CollateralActions is SFPMActions {
         if (numOfPositions > 0) {
             if (token0) {
                 emit LogString("Attempting to withdraw token0 with open positions");
-                _withdraw_with_open_positions_and_check(collToken0, assets, withdrawer, true);
+                _withdraw_with_open_positions_and_check(collToken0, assets, withdrawer);
             } else {
                 emit LogString("Attempting to withdraw token1 with open positions");
-                _withdraw_with_open_positions_and_check(collToken1, assets, withdrawer, false);
+                _withdraw_with_open_positions_and_check(collToken1, assets, withdrawer);
             }
         } else {
             if (token0) {
@@ -166,7 +166,7 @@ contract CollateralActions is SFPMActions {
     /// @custom:property PANO-SYS-001 The max withdrawal or redemption amount of users with open positions is zero, excluding the overloaded withdraw that takes in a positionId list
     /// @custom:property PANO-SYS-002 Users can't withdraw or redeem collateral with open positions, excluding the overloaded withdraw that takes in a positionId list
     /// @custom:precondition The user has a position open
-    function in_variantcollateral_removal_via_withdrawal_or_redemption(
+    function assertion_invariant_collateral_removal_via_withdrawal_or_redemption(
         uint256 fuzzNumerator,
         uint256 fuzzDenominator,
         address recipient,
@@ -234,7 +234,7 @@ contract CollateralActions is SFPMActions {
     /// @custom:property PANO-SYS-003 The max transfer amount of users with open positions is zero
     /// @custom:property PANO-SYS-004 Users can't transfer collateral with open positions
     /// @custom:precondition The user has a position open
-    function in_variantcollateral_removal_via_transfer(
+    function assertion_invariant_collateral_removal_via_transfer(
         uint256 fuzzNumerator,
         uint256 fuzzDenominator,
         address recipient,
@@ -301,18 +301,16 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
-    function in_variantcollateral_overremoval_with_open_positions(
-        CollateralTracker collToken,
+    function assertion_invariant_collateral_overremoval_with_open_positions(
         uint256 amountToWithdraw
     ) public {
-        _attempt_collateral_overremoval(collToken0, msg.sender, true, amountToWithdraw);
-        _attempt_collateral_overremoval(collToken1, msg.sender, false, amountToWithdraw);
+        _attempt_collateral_overremoval(collToken0, msg.sender, amountToWithdraw);
+        _attempt_collateral_overremoval(collToken1, msg.sender, amountToWithdraw);
     }
 
     function _attempt_collateral_overremoval(
         CollateralTracker collToken,
         address withdrawer,
-        bool isToken0,
         uint256 amountToWithdraw
     ) internal {
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
@@ -347,7 +345,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-009 No user can ever withdraw greater than the Collateral Tracker's internally-accounted poolAssets
-    function in_variantno_withdrawal_gt_pool_assets(
+    function assertion_invariant_no_withdrawal_gt_pool_assets(
         address owner,
         address recipient,
         uint256 amountOver,
@@ -411,12 +409,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -432,12 +430,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -457,12 +455,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max withdrawal of ct_s_poolAssets"
                     );
                 }
             }
@@ -504,12 +502,12 @@ contract CollateralActions is SFPMActions {
                     collToken.balanceOf(owner)
                 ) {
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded because user didnt have enough shares to attempt overwithdrawal"
                     );
                 } else {
                     // NOTE: we could add a deal of the collToken.asset() if we wanted to ensure we hit this case more often
                     emit LogString(
-                        "in_variantno_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
+                        "assertion_invariant_no_withdrawal_gt_pool_assets succeeded, possibly because we correctly enforced a max redemption of convertToShares(ct_s_poolAssets)"
                     );
                 }
             }
@@ -517,7 +515,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-010 No user can ever withdraw, redeem, nor transfer an amount greater than their own balance
-    function in_variantnever_allow_overremoval(
+    function assertion_invariant_never_allow_overremoval(
         address owner,
         address recipient,
         uint256 amountOver,
@@ -651,7 +649,7 @@ contract CollateralActions is SFPMActions {
     //////////////////////////////////////////////////////////////*/
 
     /// @custom:property PANO-SYS-008 The Collateral Tracker's internal accounting always shows it has less than or equal to its true balance of the underlying token
-    function in_variantnever_overcount_underlying_token() public {
+    function assertion_invariant_never_overcount_underlying_token() public {
         (uint256 ct0_s_poolAssets, , ) = collToken0.getPoolData();
         assertWithMsg(
             ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)) + 1,
@@ -666,7 +664,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-011 The pool can never have a utilisation over 100%
-    function in_variantnever_allow_pool_utilisation_over_100p() public {
+    function assertion_invariant_never_allow_pool_utilisation_over_100p() public {
         (, , int256 collToken0PU) = collToken0.getPoolData();
         assertWithMsg(
             collToken0PU <= 10000,
@@ -681,7 +679,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-012 Users can't deposit more than the maximum allowed amount, 2^104
-    function in_variantnever_allow_overdeposit(
+    function assertion_invariant_never_allow_overdeposit(
         address receiver,
         uint256 tooLargeDepositAmount,
         bool depositToSelf
@@ -724,7 +722,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-013 Users can't mint more than the maximum allowed amount, 2^104
-    function in_variantnever_allow_overmint(
+    function assertion_invariant_never_allow_overmint(
         address minter,
         address receiver,
         uint256 tooLargeMintAmount,
@@ -766,7 +764,7 @@ contract CollateralActions is SFPMActions {
     }
 
     /// @custom:property PANO-SYS-014 Users can't deposit/mint more than their balance
-    function in_variantno_mint_nor_deposit_over_balance(
+    function assertion_invariant_no_mint_nor_deposit_over_balance(
         address receiver,
         uint256 amountOver,
         bool viaMint
@@ -808,8 +806,7 @@ contract CollateralActions is SFPMActions {
     function _withdraw_with_open_positions_and_check(
         CollateralTracker collToken,
         uint256 assetsToWithdraw,
-        address withdrawer,
-        bool isToken0
+        address withdrawer
     ) internal {
         // check whether current positions are solvent; revert if not
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
@@ -861,17 +858,15 @@ contract CollateralActions is SFPMActions {
                 );
             }
         } catch {
-            // if .withdraw reverted for some unknown reason, we failed an invariant, but if we just
-            // reverted because the withdrawal causes insolvency everything is fine:
-            assertWithMsg(
-                _does_withdrawal_cause_insolvency(
-                    withdrawer,
-                    withdrawersOpenPositions,
-                    assetsToWithdraw,
-                    isToken0
-                ),
-                "Withdrawal reverted for reason other than causing insolvency"
-            );
+            hevm.prank(address(panopticPool));
+            collToken.revoke(withdrawer, expectedSharesBurnt);
+
+            try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
+                assertWithMsg(
+                    false,
+                    "Withdrawal reverted for reason other than causing insolvency"
+                );
+            } catch {}
         }
     }
 
@@ -884,96 +879,5 @@ contract CollateralActions is SFPMActions {
         maxAssetsWithdrawable = ct_s_poolAssets - 1 < withdrawersAssetsInCT
             ? ct_s_poolAssets - 1
             : withdrawersAssetsInCT;
-    }
-
-    function _does_withdrawal_cause_insolvency(
-        address withdrawer,
-        TokenId[] memory withdrawersOpenPositions,
-        uint256 assetsToWithdraw,
-        bool isToken0
-    ) internal returns (bool withdrawalCausesInsolvency) {
-        (, int24 currentTick, uint16 observationIndex, uint16 observationCardinality, , , ) = pool
-            .slot0();
-
-        (int24 fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            pool,
-            observationIndex,
-            observationCardinality,
-            FAST_ORACLE_CARDINALITY,
-            FAST_ORACLE_PERIOD
-        );
-
-        // s_miniMedian, an internal var in the PanopticPool, can be found in storage slot 1:
-        uint256 miniMedian = uint256(hevm.load(address(panopticPool), bytes32(uint256(1))));
-        (int24 slowOracleTick, ) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            MEDIAN_PERIOD,
-            miniMedian,
-            pool
-        );
-
-        withdrawalCausesInsolvency = !_checkSolvencyAtTickForPossibleWithdrawal(
-            withdrawer,
-            withdrawersOpenPositions,
-            currentTick,
-            fastOracleTick,
-            BP_DECREASE_BUFFER,
-            assetsToWithdraw,
-            isToken0
-        );
-
-        // If one of the ticks is too stale, we fall back to the more conservative tick, i.e, the user must be solvent at both the fast and slow oracle ticks.
-        withdrawalCausesInsolvency =
-            withdrawalCausesInsolvency ||
-            ((Math.abs(int256(fastOracleTick) - slowOracleTick) > MAX_SLOW_FAST_DELTA) &&
-                !_checkSolvencyAtTickForPossibleWithdrawal(
-                    withdrawer,
-                    withdrawersOpenPositions,
-                    currentTick,
-                    slowOracleTick,
-                    BP_DECREASE_BUFFER,
-                    assetsToWithdraw,
-                    isToken0
-                ));
-    }
-
-    function _checkSolvencyAtTickForPossibleWithdrawal(
-        address account,
-        TokenId[] memory positionIdList,
-        int24 currentTick,
-        int24 atTick,
-        uint256 buffer,
-        uint256 amountWithdrawn,
-        bool isToken0
-    ) internal returns (bool) {
-        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = panopticPool
-            .calculateAccumulatedFeesBatch(account, ONLY_AVAILABLE_PREMIUM, positionIdList);
-
-        LeftRightUnsigned tokenData0 = collToken0.getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            premium0
-        );
-        LeftRightUnsigned tokenData1 = collToken1.getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            premium1
-        );
-
-        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(atTick),
-            amountWithdrawn,
-            isToken0
-        );
-
-        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
-        unchecked {
-            return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
-        }
     }
 }
