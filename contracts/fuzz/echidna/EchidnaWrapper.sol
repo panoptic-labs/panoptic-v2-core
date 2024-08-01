@@ -138,7 +138,7 @@ contract EchidnaWrapper is PanopticPoolActions {
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         for (uint256 i; i < pools.length; i++) {
-            sfpm.initializeAMMPool(pool[i].token0(), pool[i].token1(), pool[i].fee);
+            sfpm.initializeAMMPool(pools[i].token0(), pools[i].token1(), pools[i].fee());
         }
         poolId = sfpm.getPoolId(address(pool));
 

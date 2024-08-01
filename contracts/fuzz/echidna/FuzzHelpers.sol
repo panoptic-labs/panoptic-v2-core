@@ -350,6 +350,7 @@ contract FuzzHelpers is PropertiesAsserts {
     PanopticFactory panopticFactory;
     PanopticPoolWrapper panopticPool;
     uint64 poolId;
+    uint64 sfpmPoolId;
 
     // pool that the panoptic pool was initalized on
     IUniswapV3Pool pool;
@@ -359,7 +360,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     address token0;
     address token1;
-    uint24[4] poolFee;
+    uint24 poolFee;
     int24 poolTickSpacing;
     uint160 currentSqrtPriceX96;
     int24 currentTick;
