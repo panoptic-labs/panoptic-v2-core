@@ -636,6 +636,9 @@ contract SFPMActions is GeneralActions {
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
+
+            // reverse test state changes
+            revert();
         }
     }
 
@@ -1305,6 +1308,9 @@ contract SFPMActions is GeneralActions {
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
+
+            // reverse test state changes
+            revert();
         }
     }
 
@@ -2017,6 +2023,9 @@ contract SFPMActions is GeneralActions {
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
+
+            // reverse test state changes
+            revert();
         }
     }
 
@@ -3456,6 +3465,9 @@ contract SFPMActions is GeneralActions {
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
+
+            // reverse test state changes
+            revert();
         }
     }
 
@@ -3734,6 +3746,9 @@ contract SFPMActions is GeneralActions {
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
+
+            // reverse test state changes
+            revert();
         }
     }
 
