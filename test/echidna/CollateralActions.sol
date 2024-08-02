@@ -81,10 +81,22 @@ contract CollateralActions is SFPMActions {
         if (numOfPositions > 0) {
             if (token0) {
                 emit LogString("Attempting to withdraw token0 with open positions");
-                _withdraw_with_open_positions_and_check(collToken0, assets, owner, toSelf, receiver);
+                _withdraw_with_open_positions_and_check(
+                    collToken0,
+                    assets,
+                    owner,
+                    toSelf,
+                    receiver
+                );
             } else {
                 emit LogString("Attempting to withdraw token1 with open positions");
-                _withdraw_with_open_positions_and_check(collToken1, assets, owner, toSelf, receiver);
+                _withdraw_with_open_positions_and_check(
+                    collToken1,
+                    assets,
+                    owner,
+                    toSelf,
+                    receiver
+                );
             }
         } else {
             if (token0) {
