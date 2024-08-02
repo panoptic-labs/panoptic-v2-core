@@ -2821,7 +2821,7 @@ contract SFPMActions is GeneralActions {
         }
 
         // pre-mint calculations/actions for storage
-        for (uint i = $activeNumLegs; i > 0; i--) {
+        for (uint i = $activeNumLegs; i < $activeNumLegs; i++) {
             $activeLegIndex = i;
 
             emit LogUint256("active leg index: ", $activeLegIndex);
@@ -3039,7 +3039,7 @@ contract SFPMActions is GeneralActions {
             }
 
             // preform post-mint invariant checks per leg
-            for (uint i = $activeNumLegs; i > 0; i--) {
+            for (uint i = $activeNumLegs; i < $activeNumLegs; i++) {
                 $activeLegIndex = i;
 
                 emit LogUint256("active leg index: ", $activeLegIndex);
