@@ -888,9 +888,7 @@ contract CollateralActions is SFPMActions {
             );
 
             // show we are still solvent:
-            try
-                panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions)
-            {} catch {
+            try panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions) {} catch {
                 assertWithMsg(
                     false,
                     "User not solvent after seemingly legal withdrawal-with-open-positions"
