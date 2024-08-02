@@ -141,6 +141,7 @@ contract EchidnaWrapper is PanopticPoolActions {
             sfpm.initializeAMMPool(pools[i].token0(), pools[i].token1(), pools[i].fee());
         }
         poolId = sfpm.getPoolId(address(pool));
+        sfpmPoolId = poolId;
 
         panopticPool = PanopticPoolWrapper(
             address(

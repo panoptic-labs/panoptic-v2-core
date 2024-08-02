@@ -628,6 +628,8 @@ contract SFPMActions is GeneralActions {
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
+
+            assertWithMsg(!$shouldRevertSFPM, "sfpm multiShort: missing revert");
         } catch Error(string memory reason) {
             emit LogString(reason);
 
@@ -1295,6 +1297,8 @@ contract SFPMActions is GeneralActions {
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
+
+            assertWithMsg(!$shouldRevertSFPM, "sfpm multiLong: missing revert");
         } catch Error(string memory reason) {
             emit LogString(reason);
 
@@ -1998,8 +2002,6 @@ contract SFPMActions is GeneralActions {
                         }
                     }
                 }
-
-                assertWithMsg(false, "fail xx x x x xx ");
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
@@ -2007,6 +2009,8 @@ contract SFPMActions is GeneralActions {
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
+
+            assertWithMsg(!$shouldRevertSFPM, "sfpm mint general: missing revert");
         } catch Error(string memory reason) {
             emit LogString(reason);
 
@@ -3722,6 +3726,8 @@ contract SFPMActions is GeneralActions {
             assertWithMsg(!$shouldRevertSFPM, "should have reverted");
 
             // transfer should fail if trying to transfer bal > before bal
+
+            assertWithMsg(!$shouldRevertSFPM, "sfpm burn general: missing revert");
         } catch Error(string memory reason) {
             emit LogString(reason);
 
