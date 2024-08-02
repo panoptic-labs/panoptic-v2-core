@@ -77,7 +77,7 @@ contract CollateralActions is SFPMActions {
         bool toSelf,
         address receiver
     ) public {
-        uint256 numOfPositions = panopticPool.numberOfPositions(withdrawer);
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions > 0) {
             if (token0) {
                 emit LogString("Attempting to withdraw token0 with open positions");
@@ -863,13 +863,13 @@ contract CollateralActions is SFPMActions {
         // Figure out how many shares we expect to see burnt:
         uint256 expectedSharesBurnt = collToken.previewWithdraw(assetsToWithdraw);
 
-        hevm.prank(withdrawer);
+        hevm.prank(owner);
         if (!toSelf) {
             collToken.approve(receiver, expectedSharesBurnt);
             hevm.prank(receiver);
         }
 
-        try collToken.withdraw(assetsToWithdraw, receiver, owner, withdrawersOpenPositions) {
+        try collToken.withdraw(assetsToWithdraw, receiver, owner, ownersOpenPositions) {
             // assert assets & shares were deducted/incremented appropriately:
             uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(address(panopticPool));
             uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
@@ -889,7 +889,7 @@ contract CollateralActions is SFPMActions {
 
             // show we are still solvent:
             try
-                panopticPool.validateCollateralWithdrawable(owner, withdrawersOpenPositions)
+                panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions)
             {} catch {
                 assertWithMsg(
                     false,
@@ -900,7 +900,7 @@ contract CollateralActions is SFPMActions {
             hevm.prank(address(panopticPool));
             collToken.revoke(owner, expectedSharesBurnt);
 
-            try panopticPool.validateCollateralWithdrawable(owner, withdrawersOpenPositions) {
+            try panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions) {
                 assertWithMsg(
                     false,
                     "Withdrawal reverted for reason other than causing insolvency"
