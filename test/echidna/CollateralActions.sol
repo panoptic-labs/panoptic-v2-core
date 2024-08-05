@@ -73,24 +73,38 @@ contract CollateralActions is SFPMActions {
         bool token0,
         bool viaRedeem,
         uint256 assets,
-        address withdrawer
+        address owner,
+        bool toSelf,
+        address receiver
     ) public {
-        uint256 numOfPositions = panopticPool.numberOfPositions(withdrawer);
+        uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions > 0) {
             if (token0) {
                 emit LogString("Attempting to withdraw token0 with open positions");
-                _withdraw_with_open_positions_and_check(collToken0, assets, withdrawer);
+                _withdraw_with_open_positions_and_check(
+                    collToken0,
+                    assets,
+                    owner,
+                    toSelf,
+                    receiver
+                );
             } else {
                 emit LogString("Attempting to withdraw token1 with open positions");
-                _withdraw_with_open_positions_and_check(collToken1, assets, withdrawer);
+                _withdraw_with_open_positions_and_check(
+                    collToken1,
+                    assets,
+                    owner,
+                    toSelf,
+                    receiver
+                );
             }
         } else {
             if (token0) {
                 emit LogString("Attempting to withdraw/redeem token0 without open positions");
-                _regular_withdraw_and_check(collToken0, viaRedeem, assets, withdrawer);
+                _regular_withdraw_and_check(collToken0, viaRedeem, assets, owner, toSelf, receiver);
             } else {
                 emit LogString("Attempting to withdraw/redeem token1 without open positions");
-                _regular_withdraw_and_check(collToken1, viaRedeem, assets, withdrawer);
+                _regular_withdraw_and_check(collToken1, viaRedeem, assets, owner, toSelf, receiver);
             }
         }
     }
@@ -99,62 +113,73 @@ contract CollateralActions is SFPMActions {
         CollateralTracker collToken,
         bool viaRedeem,
         uint256 assetsToWithdraw,
-        address withdrawer
+        address owner,
+        bool toSelf,
+        address receiver
     ) internal {
-        uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
-        uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
-        uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
+        if (toSelf) {
+            receiver = owner;
+        }
 
-        require(_max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer)) > 0);
+        uint256 receiverAssetsBefore = IERC20(collToken.asset()).balanceOf(receiver);
+        uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 ownerSharesBefore = collToken.balanceOf(owner);
+
+        require(_max_assets_withdrawable(collToken, collToken.balanceOf(owner)) > 0);
 
         assetsToWithdraw = bound(
             assetsToWithdraw,
             1,
-            _max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer))
+            _max_assets_withdrawable(collToken, collToken.balanceOf(owner))
         );
 
         uint256 sharesToWithdraw = collToken.previewWithdraw(assetsToWithdraw);
 
-        hevm.prank(withdrawer);
+        hevm.prank(owner);
+        if (!toSelf) {
+            collToken.approve(receiver, sharesToWithdraw);
+            hevm.prank(receiver);
+        }
+
         if (viaRedeem) {
-            try collToken.redeem(sharesToWithdraw, withdrawer, withdrawer) {
+            try collToken.redeem(sharesToWithdraw, receiver, owner) {
                 uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
                     address(panopticPool)
                 );
-                uint256 withdrawerAssetsAfter = IERC20(collToken.asset()).balanceOf(withdrawer);
-                uint256 withdrawerSharesAfter = collToken.balanceOf(withdrawer);
+                uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
+                uint256 ownerSharesAfter = collToken.balanceOf(owner);
                 assertWithMsg(
                     poolAssetsBefore - poolAssetsAfter == assetsToWithdraw,
                     "Pool asset balance incorrect after redemption"
                 );
                 assertWithMsg(
-                    withdrawerAssetsAfter - withdrawerAssetsBefore == assetsToWithdraw,
+                    receiverAssetsAfter - receiverAssetsBefore == assetsToWithdraw,
                     "User balance incorrect after redemption"
                 );
                 assertWithMsg(
-                    withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
+                    ownerSharesBefore - ownerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after redemption"
                 );
             } catch {
                 assertWithMsg(false, "Failed to redeem for unknown reason");
             }
         } else {
-            try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer) {
+            try collToken.withdraw(assetsToWithdraw, receiver, owner) {
                 uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
                     address(panopticPool)
                 );
-                uint256 withdrawerAssetsAfter = IERC20(collToken.asset()).balanceOf(withdrawer);
-                uint256 withdrawerSharesAfter = collToken.balanceOf(withdrawer);
+                uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
+                uint256 ownerSharesAfter = collToken.balanceOf(owner);
                 assertWithMsg(
                     poolAssetsBefore - poolAssetsAfter == assetsToWithdraw,
                     "Pool asset balance incorrect after withdrawal"
                 );
                 assertWithMsg(
-                    withdrawerAssetsAfter - withdrawerAssetsBefore == assetsToWithdraw,
+                    receiverAssetsAfter - receiverAssetsBefore == assetsToWithdraw,
                     "User balance incorrect after withdrawal"
                 );
                 assertWithMsg(
-                    withdrawerSharesBefore - withdrawerSharesAfter == sharesToWithdraw,
+                    ownerSharesBefore - ownerSharesAfter == sharesToWithdraw,
                     "User share balance incorrect after withdrawal"
                 );
             } catch {
@@ -835,17 +860,23 @@ contract CollateralActions is SFPMActions {
     function _withdraw_with_open_positions_and_check(
         CollateralTracker collToken,
         uint256 assetsToWithdraw,
-        address withdrawer
+        address owner,
+        bool toSelf,
+        address receiver
     ) internal {
-        // check whether current positions are solvent; revert if not
-        TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
+        if (toSelf) {
+            receiver = owner;
+        }
 
-        panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions);
+        // check whether current positions are solvent; revert if not
+        TokenId[] memory ownersOpenPositions = userPositions[owner];
+
+        panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions);
 
         // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately
-        uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
+        uint256 receiverAssetsBefore = IERC20(collToken.asset()).balanceOf(receiver);
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
-        uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
+        uint256 ownerSharesBefore = collToken.balanceOf(owner);
 
         require(_max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer)) > 0);
 
@@ -854,35 +885,37 @@ contract CollateralActions is SFPMActions {
         assetsToWithdraw = bound(
             assetsToWithdraw,
             1,
-            _max_assets_withdrawable(collToken, withdrawerSharesBefore)
+            _max_assets_withdrawable(collToken, ownerSharesBefore)
         );
         // Figure out how many shares we expect to see burnt:
         uint256 expectedSharesBurnt = collToken.previewWithdraw(assetsToWithdraw);
 
-        hevm.prank(withdrawer);
+        hevm.prank(owner);
+        if (!toSelf) {
+            collToken.approve(receiver, expectedSharesBurnt);
+            hevm.prank(receiver);
+        }
 
-        try collToken.withdraw(assetsToWithdraw, withdrawer, withdrawer, withdrawersOpenPositions) {
+        try collToken.withdraw(assetsToWithdraw, receiver, owner, ownersOpenPositions) {
             // assert assets & shares were deducted/incremented appropriately:
             uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(address(panopticPool));
-            uint256 withdrawerAssetsAfter = IERC20(collToken.asset()).balanceOf(withdrawer);
-            uint256 withdrawerSharesAfter = collToken.balanceOf(withdrawer);
+            uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
+            uint256 ownerSharesAfter = collToken.balanceOf(owner);
             assertWithMsg(
                 poolAssetsBefore - poolAssetsAfter == assetsToWithdraw,
                 "Pool asset balance incorrect after withdrawal"
             );
             assertWithMsg(
-                withdrawerAssetsAfter - withdrawerAssetsBefore == assetsToWithdraw,
+                receiverAssetsAfter - receiverAssetsBefore == assetsToWithdraw,
                 "User balance incorrect after deposit"
             );
             assertWithMsg(
-                withdrawerSharesBefore - withdrawerSharesAfter == expectedSharesBurnt,
+                ownerSharesBefore - ownerSharesAfter == expectedSharesBurnt,
                 "User share balance incorrect after withdrawal"
             );
 
             // show we are still solvent:
-            try
-                panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions)
-            {} catch {
+            try panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions) {} catch {
                 assertWithMsg(
                     false,
                     "User not solvent after seemingly legal withdrawal-with-open-positions"
@@ -890,9 +923,9 @@ contract CollateralActions is SFPMActions {
             }
         } catch {
             hevm.prank(address(panopticPool));
-            collToken.revoke(withdrawer, expectedSharesBurnt);
+            collToken.revoke(owner, expectedSharesBurnt);
 
-            try panopticPool.validateCollateralWithdrawable(withdrawer, withdrawersOpenPositions) {
+            try panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions) {
                 assertWithMsg(
                     false,
                     "Withdrawal reverted for reason other than causing insolvency"
