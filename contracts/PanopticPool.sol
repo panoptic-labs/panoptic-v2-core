@@ -11,7 +11,6 @@ import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
@@ -323,33 +322,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
-    /// @notice Returns the total number of contracts owned by user for a specified position.
-    /// @param user Address of the account to be checked
-    /// @param tokenId TokenId of the option position to be checked
-    /// @return balance Number of contracts of tokenId owned by the user
-    /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
-    /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
-    function optionPositionBalance(
-        address user,
-        TokenId tokenId
-    ) external view returns (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) {
-        // Extract the data stored in s_positionBalance for the provided user + tokenId
-        LeftRightUnsigned balanceData = s_positionBalance[user][tokenId];
-
-        // Return the unpacked data: balanceOf(user, tokenId) and packed pool utilizations at the time of minting
-        balance = balanceData.rightSlot();
-
-        // pool utilizations are packed into a single uint128
-
-        // the 64 least significant bits are the utilization of token0, so we can simply cast to uint64 to extract it
-        // (cutting off the 64 most significant bits)
-        poolUtilization0 = uint64(balanceData.leftSlot());
-
-        // the 64 most significant bits are the utilization of token1, so we can shift the number to the right by 64 to extract it
-        // (shifting away the 64 least significant bits)
-        poolUtilization1 = uint64(balanceData.leftSlot() >> 64);
-    }
-
     /// @notice Compute the total amount of premium accumulated for a list of positions.
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
@@ -374,24 +346,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 includePendingPremium,
                 currentTick
             );
-    }
-
-    /// @notice Compute the net token amounts owned by a given positionIdList in the Uniswap pool at the given price tick.
-    /// @param user Address of the user that owns the positions.
-    /// @param atTick Tick at which the portfolio value is evaluated
-    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
-    /// @return value0 Net amount of token0 in the Uniswap pool owned by the positionIdList (negative = borrowed liquidity owed to sellers)
-    /// @return value1 Net amount of token1 in the Uniswap pool owned by the positionIdList (negative = borrowed liquidity owed to sellers)
-    function calculatePortfolioValue(
-        address user,
-        int24 atTick,
-        TokenId[] calldata positionIdList
-    ) external view returns (int256 value0, int256 value1) {
-        (value0, value1) = FeesCalc.getPortfolioValue(
-            atTick,
-            s_positionBalance[user],
-            positionIdList
-        );
     }
 
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.
@@ -1304,18 +1258,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Checks whether the current tick has deviated too much from the slow oracle median tick.
     /// @return Whether the current tick has deviated from the median by > MAX_TICKS_DELTA
     function isSafeMode() public view returns (bool) {
-        // check if the price has deviated too much recently.
+        // check if the price has deviated too much recently
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+
+        uint256 medianData = s_miniMedian;
         unchecked {
-            uint256 medianData = s_miniMedian;
             int24 medianTick = (int24(
                 uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
             // If ticks have recently deviated more than +/- 10%, enforce covered mints
-            if (Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA) {
-                return true;
-            }
+            return Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA;
         }
     }
 

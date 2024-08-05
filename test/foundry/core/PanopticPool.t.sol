@@ -22,7 +22,7 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
+import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -1881,8 +1881,8 @@ contract PanopticPoolTest is PositionUtils {
             );
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance | position size");
 
@@ -2000,8 +2000,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize);
 
@@ -2134,8 +2134,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize);
             assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply());
@@ -2227,8 +2227,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "user balance");
             assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
@@ -2321,8 +2321,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize);
             assertEq(poolUtilization1, (amount1 * 10000) / ct1.totalSupply());
@@ -2432,8 +2432,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
             assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
@@ -2536,8 +2536,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
             assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
@@ -2713,8 +2713,8 @@ contract PanopticPoolTest is PositionUtils {
 
                 assertEq(pp.numberOfPositions(Alice), 1);
 
-                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                    .optionPositionBalance(Alice, tokenId);
+                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                    .optionPositionInfo(pp, Alice, tokenId);
 
                 assertEq(balance, positionSize);
                 assertEq(
@@ -2869,8 +2869,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize);
             assertEq(
@@ -3111,8 +3111,10 @@ contract PanopticPoolTest is PositionUtils {
 
                 assertEq(pp.numberOfPositions(Alice), 1);
 
-                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                    .optionPositionBalance(Alice, tokenId);
+                TokenId _tokenId = tokenId;
+
+                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                    .optionPositionInfo(pp, Alice, _tokenId);
 
                 assertEq(balance, positionSizes[1]);
                 assertEq(
@@ -3309,8 +3311,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 1);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSizes[1]);
             assertEq(
@@ -3766,8 +3768,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 0);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, 0);
             assertEq(poolUtilization0, 0);
@@ -3901,8 +3903,8 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(pp.positionsHash(Alice), 0);
             assertEq(pp.numberOfPositions(Alice), 0);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
             assertEq(balance, 0);
             assertEq(poolUtilization0, 0);
             assertEq(poolUtilization1, 0);
@@ -4071,8 +4073,8 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(pp.positionsHash(Alice), 0);
             assertEq(pp.numberOfPositions(Alice), 0);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
             assertEq(balance, 0);
             assertEq(poolUtilization0, 0);
             assertEq(poolUtilization1, 0);
@@ -4629,8 +4631,8 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            (uint256 token0Balance, , ) = pp.optionPositionBalance(Alice, tokenId);
-            (uint256 token1Balance, , ) = pp.optionPositionBalance(Alice, tokenId2);
+            (uint256 token0Balance, , ) = ph.optionPositionInfo(pp, Alice, tokenId);
+            (uint256 token1Balance, , ) = ph.optionPositionInfo(pp, Alice, tokenId2);
             assertEq(token0Balance, 0);
             assertEq(token1Balance, 0);
         }
@@ -5355,8 +5357,8 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfPositions(Alice), 0);
 
-            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = pp
-                .optionPositionBalance(Alice, tokenId);
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, 0);
             assertEq(poolUtilization0, 0);

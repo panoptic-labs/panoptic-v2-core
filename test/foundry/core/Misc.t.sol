@@ -7,7 +7,7 @@ import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
+import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
@@ -2457,7 +2457,8 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
+            pp,
             Bob,
             $posIdList[0]
         );
@@ -2629,7 +2630,8 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
+            pp,
             Bob,
             $posIdList[0]
         );
@@ -2881,7 +2883,8 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
+            pp,
             Bob,
             $posIdList[0]
         );
@@ -2970,7 +2973,8 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK
         );
 
-        (uint128 balance, uint64 utilization0, uint64 utilization1) = pp.optionPositionBalance(
+        (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
+            pp,
             Bob,
             $posIdList[0]
         );
