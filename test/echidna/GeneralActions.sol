@@ -22,12 +22,24 @@ contract GeneralActions is FuzzHelpers {
         IERC20(USDC).approve(address(collToken0), type(uint256).max);
         hevm.prank(msg.sender);
         IERC20(WETH).approve(address(collToken1), type(uint256).max);
+
+        hevm.prank(msg.sender);
+        IERC20(USDC).approve(address(sfpm), type(uint256).max);
+        hevm.prank(msg.sender);
+        IERC20(WETH).approve(address(sfpm), type(uint256).max);
+    }
+
+    /// cycling pool
+    /// for all general and sfpm actions cycle the underlying uniswap pool being interacted on
+    function cyclePool(IUniswapV3Pool pool) external {
+        cyclingPool = pool;
+        sfpmPoolId = sfpm.getPoolId(address(cyclingPool));
     }
 
     function perform_swap(uint160 target_sqrt_price) public {
         uint160 price;
 
-        (price, , , , , , ) = pool.slot0();
+        (price, , , , , , ) = cyclingPool.slot0();
 
         // bound the price within 50% of the current price
         target_sqrt_price = uint160(
@@ -37,9 +49,9 @@ contract GeneralActions is FuzzHelpers {
         emit LogUint256("price before swap", uint256(price));
 
         hevm.prank(pool_manipulator);
-        swapperc.swapTo(pool, target_sqrt_price);
+        swapperc.swapTo(cyclingPool, target_sqrt_price);
 
-        (price, , , , , , ) = pool.slot0();
+        (price, , , , , , ) = cyclingPool.slot0();
         emit LogUint256("price after swap", uint256(price));
     }
 }

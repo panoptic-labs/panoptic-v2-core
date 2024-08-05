@@ -22,6 +22,13 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         pool_manipulator = address(0xfaded);
 
+        deployer = IUniDeployer(address(0xde0001));
+
+        pools = deployer.getPools();
+
+        USDC = IERC20(deployer.token0());
+        WETH = IERC20(deployer.token1());
+
         for (uint i = 0; i < actors.length; i++) {
             userPositions[actors[i]] = new TokenId[](0);
         }
@@ -64,32 +71,41 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         emit LogAddress("USDC Token", address(USDC));
         emit LogAddress("WETH Token", address(WETH));
-        emit LogAddress("USDC/WETH 5 pool", address(USDC_WETH_5));
 
         initialize();
 
         deal_USDC(pool_manipulator, 1000000000 ether);
         deal_WETH(pool_manipulator, 1000000 ether);
-        hevm.prank(pool_manipulator);
-        IERC20(USDC).approve(address(pool), type(uint256).max);
-        hevm.prank(pool_manipulator);
-        IERC20(WETH).approve(address(pool), type(uint256).max);
+
+        for (uint i; i < 4; i++) {
+            hevm.prank(pool_manipulator);
+            IERC20(USDC).approve(address(pools[i]), type(uint256).max);
+            hevm.prank(pool_manipulator);
+            IERC20(WETH).approve(address(pools[i]), type(uint256).max);
+        }
+
         hevm.prank(pool_manipulator);
         IERC20(USDC).approve(address(swapperc), type(uint256).max);
         hevm.prank(pool_manipulator);
         IERC20(WETH).approve(address(swapperc), type(uint256).max);
 
-        for (uint i = 0; i < 100; i++) {
-            _perform_swap_with_delay(
-                uint160(uint256(bytes32(keccak256(abi.encode(1, i))))),
-                uint256(bytes32(keccak256(abi.encode(i))))
-            );
+        for (uint i; i < pools.length; i++) {
+            cyclingPool = pools[i];
+            for (uint j = 0; j < 100; i++) {
+                _perform_swap_with_delay(
+                    uint160(uint256(bytes32(keccak256(abi.encode(1, j))))),
+                    uint256(bytes32(keccak256(abi.encode(j))))
+                );
+            }
         }
+
+        cyclingPool = pool;
     }
 
     function initialize() internal {
         // initalize current pool we are deploying
-        pool = USDC_WETH_5;
+        pool = pools[0];
+        cyclingPool = pool;
         poolFee = pool.fee();
         poolTickSpacing = pool.tickSpacing();
 
@@ -118,8 +134,11 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        sfpm.initializeAMMPool(pool.token0(), pool.token1(), poolFee);
+        for (uint256 i; i < pools.length; i++) {
+            sfpm.initializeAMMPool(pools[i].token0(), pools[i].token1(), pools[i].fee());
+        }
         poolId = sfpm.getPoolId(address(pool));
+        sfpmPoolId = poolId;
 
         panopticPool = PanopticPoolWrapper(
             address(
