@@ -9,8 +9,7 @@ contract SetupToken {
     MockERC20 public token;
 
     constructor() {
-        // this contract will receive the total supply of 100 tokens
-        token = new MockERC20(1e12 ether);
+        token = new MockERC20(type(uint248).max);
     }
 
     function mintTo(address _recipient, uint256 _amount) public {

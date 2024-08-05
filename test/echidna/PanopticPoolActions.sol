@@ -241,14 +241,9 @@ contract PanopticPoolActions is CollateralActions {
 
         $shouldRevert = userPositions[msg.sender].length > 32 ? true : $shouldRevert;
 
-        // and check if should revert due to 0 liquidity
+        // spread limit checks
+        $isBurn = false;
         write_mintburn_transfer_amts();
-
-        // pool has insufficient tokens to mint the option
-        $shouldRevert = $shouldRevert
-            ? $shouldRevert
-            : $maxTransfer0 > int256(USDC.balanceOf(address(panopticPool))) ||
-                $maxTransfer1 > int256(WETH.balanceOf(address(panopticPool)));
 
         emit LogUint256("maxTransfer0", uint256($maxTransfer0));
         emit LogUint256("maxTransfer1", uint256($maxTransfer1));
@@ -274,10 +269,14 @@ contract PanopticPoolActions is CollateralActions {
         emit LogInt256("$totalSwapped.rs", $totalSwapped.rightSlot());
         emit LogInt256("$totalSwapped.ls", $totalSwapped.leftSlot());
 
-        ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(
-            $tokenIdActive,
-            $positionSizeActive
-        );
+        if (!$shouldRevert) {
+            ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(
+                $tokenIdActive,
+                $positionSizeActive
+            );
+        } else {
+            ($longAmounts, $shortAmounts) = (LeftRightSigned.wrap(0), LeftRightSigned.wrap(0));
+        }
 
         // intrinsic val
         $colDelta0 = -($totalSwapped.rightSlot() -
@@ -320,17 +319,33 @@ contract PanopticPoolActions is CollateralActions {
         ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
         ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
 
-        $poolAssets0 = uint256(int256($poolAssets0) - $totalSwapped.rightSlot());
-        $poolAssets1 = uint256(int256($poolAssets1) - $totalSwapped.leftSlot());
+        if (int256($poolAssets0) - $totalSwapped.rightSlot() >= 0) {
+            $poolAssets0 = uint256(int256($poolAssets0) - $totalSwapped.rightSlot());
+        } else {
+            $shouldRevert = true;
+        }
 
-        $inAMM0 = uint256(int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot());
-        $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
+        if (int256($poolAssets1) - $totalSwapped.leftSlot() >= 0) {
+            $poolAssets1 = uint256(int256($poolAssets1) - $totalSwapped.leftSlot());
+        } else {
+            $shouldRevert = true;
+        }
 
-        require(int256($inAMM0) >= 0);
-        require(int256($inAMM1) >= 0);
+        if (int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot() >= 0) {
+            $inAMM0 = uint256(
+                int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot()
+            );
+        } else {
+            $shouldRevert = true;
+        }
+
+        if (int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot() >= 0) {
+            $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
+        } else {
+            $shouldRevert = true;
+        }
 
         $poolUtil0 = ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0);
-        emit LogUint256("poolUtil0", $poolUtil0);
         $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
 
         if ($safeMode) ($poolUtil0, $poolUtil1) = (10_000, 10_000);
@@ -402,7 +417,9 @@ contract PanopticPoolActions is CollateralActions {
                 )
             );
 
-            _write_revert_due_solvency(msg.sender, 13_333);
+            if (!$shouldRevert) {
+                _write_revert_due_solvency(msg.sender, 13_333);
+            }
 
             emit LogInt256("colDelta0", $colDelta0);
             emit LogInt256("colDelta1", $colDelta1);
@@ -425,7 +442,6 @@ contract PanopticPoolActions is CollateralActions {
         $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
         $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
 
-        // assert(!($found && $positionSizeActive != 0));
         hevm.prank(msg.sender);
         try
             panopticPool.mintOptions(
@@ -488,35 +504,35 @@ contract PanopticPoolActions is CollateralActions {
             assertWithMsg(
                 int256($settledToken0Post) ==
                     int256($settledToken0[i]) + int256(uint256($collectedByLeg[i].rightSlot())),
-                "PanopticPool: Settled token0 did not increase by the amount collected in the SFPM"
+                "mintOptions: Settled token0 did not increase by the amount collected in the SFPM"
             );
 
             assertWithMsg(
                 int256($settledToken1Post) ==
                     int256($settledToken1[i]) + int256(uint256($collectedByLeg[i].leftSlot())),
-                "PanopticPool: Settled token1 did not increase by the amount collected in the SFPM"
+                "mintOptions: Settled token1 did not increase by the amount collected in the SFPM"
             );
 
             ($tickLower, $tickUpper) = PanopticMath.getTicks(
-                $strikes[i],
-                $widths[i],
+                $tokenIdActive.strike(i),
+                $tokenIdActive.width(i),
                 poolTickSpacing
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
                 address(pool),
                 address(panopticPool),
-                $tokenTypes[i],
+                $tokenIdActive.tokenType(i),
                 $tickLower,
                 $tickUpper,
                 type(int24).max,
-                $isLongs[i]
+                $tokenIdActive.isLong(i)
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
                 address(pool),
                 address(panopticPool),
-                $tokenTypes[i],
+                $tokenIdActive.tokenType(i),
                 $tickLower,
                 $tickUpper
             );
@@ -536,7 +552,7 @@ contract PanopticPoolActions is CollateralActions {
                             ? 0
                             : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
                     ),
-                "PanopticPool: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
+                "mintOptions: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
             );
 
             assertWithMsg(
@@ -552,7 +568,7 @@ contract PanopticPoolActions is CollateralActions {
                             ? 0
                             : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
                     ),
-                "PanopticPool: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
+                "mintOptions: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
             );
         }
     }
@@ -599,6 +615,10 @@ contract PanopticPoolActions is CollateralActions {
             }
         }
 
+        $shouldRevert = false;
+
+        quote_sfpm_burn();
+
         $premiumDelta0Net = 0;
         $premiumDelta1Net = 0;
         for (uint256 i = 0; i < $tokenIdActive.countLegs(); i++) {
@@ -617,25 +637,25 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             ($tickLower, $tickUpper) = PanopticMath.getTicks(
-                $strikes[i],
-                $widths[i],
+                $tokenIdActive.strike(i),
+                $tokenIdActive.width(i),
                 poolTickSpacing
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
                 address(pool),
                 address(panopticPool),
-                $tokenTypes[i],
+                $tokenIdActive.tokenType(i),
                 $tickLower,
                 $tickUpper,
                 currentTick,
-                $isLongs[i]
+                $tokenIdActive.isLong(i)
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
                 address(pool),
                 address(panopticPool),
-                $tokenTypes[i],
+                $tokenIdActive.tokenType(i),
                 $tickLower,
                 $tickUpper
             );
@@ -653,50 +673,60 @@ contract PanopticPoolActions is CollateralActions {
                 .getLiquidityChunk($tokenIdActive, i, $positionSizeActive)
                 .liquidity();
 
-            $idealPremium0[i] = Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $legLiquidity);
-            $idealPremium1[i] = Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $legLiquidity);
-
+            $idealPremium0[i] = Math.mulDiv64($grossPremia0 - $premiumGrowth0[i], $legLiquidity);
+            $idealPremium1[i] = Math.mulDiv64($grossPremia1 - $premiumGrowth1[i], $legLiquidity);
+            emit LogUint256("idealPremium0", $idealPremium0[i]);
+            emit LogUint256("idealPremium1", $idealPremium1[i]);
             $proratedPremium0[i] = $grossPremiaTotal0[i] == 0 || $tokenIdActive.isLong(i) != 0
                 ? 0
-                : Math.mulDiv(
-                    $idealPremium0[i],
-                    $settledToken0[i] + $collectedByLeg[i].rightSlot(),
-                    $grossPremiaTotal0[i]
+                : Math.min(
+                    Math.mulDiv(
+                        $idealPremium0[i],
+                        $settledToken0[i] + $collectedByLeg[i].rightSlot(),
+                        $grossPremiaTotal0[i]
+                    ),
+                    $idealPremium0[i]
                 );
             $proratedPremium1[i] = $grossPremiaTotal1[i] == 0 || $tokenIdActive.isLong(i) != 0
                 ? 0
-                : Math.mulDiv(
-                    $idealPremium1[i],
-                    $settledToken1[i] + $collectedByLeg[i].leftSlot(),
-                    $grossPremiaTotal1[i]
+                : Math.min(
+                    Math.mulDiv(
+                        $idealPremium1[i],
+                        $settledToken1[i] + $collectedByLeg[i].leftSlot(),
+                        $grossPremiaTotal1[i]
+                    ),
+                    $idealPremium1[i]
                 );
+
+            emit LogUint256("settled0", $settledToken0[i] + $collectedByLeg[i].rightSlot());
+            emit LogUint256("settled1", $settledToken1[i] + $collectedByLeg[i].leftSlot());
+
+            emit LogUint256("grossPremiaTotal0", $grossPremiaTotal0[i]);
+            emit LogUint256("grossPremiaTotal1", $grossPremiaTotal1[i]);
+
+            emit LogUint256("proratedPremium0", $proratedPremium0[i]);
+            emit LogUint256("proratedPremium1", $proratedPremium1[i]);
 
             $premiumDelta0Net += $tokenIdActive.isLong(i) == 0
                 ? int256($proratedPremium0[i])
-                : -int256($idealPremium1[i]);
+                : -int256($idealPremium0[i]);
             $premiumDelta1Net += $tokenIdActive.isLong(i) == 0
                 ? int256($proratedPremium1[i])
                 : -int256($idealPremium1[i]);
         }
 
-        quote_sfpm_burn();
-
         $tokenIdBkp = $tokenIdActive;
 
         $tokenIdActive = $tokenIdActive.flipToBurnToken();
 
+        // spread limit checks
+        $isBurn = true;
         write_mintburn_transfer_amts();
 
         $tokenIdActive = $tokenIdBkp;
 
-        // pool has insufficient tokens to burn the option
-        $shouldRevert = $shouldRevert
-            ? $shouldRevert
-            : $maxTransfer0 > int256(USDC.balanceOf(address(panopticPool))) ||
-                $maxTransfer1 > int256(WETH.balanceOf(address(panopticPool)));
-
         ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(
-            $tokenIdActive,
+            $tokenIdActive.flipToBurnToken(),
             $positionSizeActive
         );
 
@@ -708,23 +738,49 @@ contract PanopticPoolActions is CollateralActions {
             ($shortAmounts.leftSlot() - $longAmounts.leftSlot()));
         emit LogInt256("intrinsicDelta1", $colDelta1);
 
+        $colDelta0 += $premiumDelta0Net;
+        $colDelta1 += $premiumDelta1Net;
+
+        emit LogInt256("premiumDelta0Net", $premiumDelta0Net);
+        emit LogInt256("premiumDelta1Net", $premiumDelta1Net);
+
         // gets shortpremium/longpremium/posBalanceArray with post-burn premium accum values
         quote_fees_postburn();
 
         ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
         ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
 
-        $poolAssets0 = uint256(int256($poolAssets0) - $totalSwapped.rightSlot());
-        $poolAssets1 = uint256(int256($poolAssets1) - $totalSwapped.leftSlot());
+        if (int256($poolAssets0) - $totalSwapped.rightSlot() >= 0) {
+            $poolAssets0 = uint256(int256($poolAssets0) - $totalSwapped.rightSlot());
+        } else {
+            $shouldRevert = true;
+        }
 
-        $inAMM0 = uint256(int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot());
-        $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
+        if (int256($poolAssets1) - $totalSwapped.leftSlot() >= 0) {
+            $poolAssets1 = uint256(int256($poolAssets1) - $totalSwapped.leftSlot());
+        } else {
+            $shouldRevert = true;
+        }
+
+        if (int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot() >= 0) {
+            $inAMM0 = uint256(
+                int256($inAMM0) + $shortAmounts.rightSlot() - $longAmounts.rightSlot()
+            );
+        } else {
+            $shouldRevert = true;
+        }
+
+        if (int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot() >= 0) {
+            $inAMM1 = uint256(int256($inAMM1) + $shortAmounts.leftSlot() - $longAmounts.leftSlot());
+        } else {
+            $shouldRevert = true;
+        }
 
         $poolUtil0 = ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0);
-        emit LogUint256("poolUtil0", $poolUtil0);
         $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
 
         if ($safeMode) ($poolUtil0, $poolUtil1) = (10_000, 10_000);
+        emit LogUint256("poolUtil0", $poolUtil0);
 
         emit LogUint256("poolUtil1", $poolUtil1);
 
@@ -759,7 +815,7 @@ contract PanopticPoolActions is CollateralActions {
                         ($colDelta0 * int256($totalSupply0)) /
                         int256($totalAssets0)
                 ),
-                uint256(int256($totalAssets0) + $colDelta0 + $premiumDelta0Net),
+                uint256(int256($totalAssets0) + $colDelta0),
                 uint256(
                     int256($totalSupply0) +
                         ($colDelta0 * int256($totalSupply0)) /
@@ -772,7 +828,7 @@ contract PanopticPoolActions is CollateralActions {
                         ($colDelta1 * int256($totalSupply1)) /
                         int256($totalAssets1)
                 ),
-                uint256(int256($totalAssets1) + $colDelta1 + $premiumDelta1Net),
+                uint256(int256($totalAssets1) + $colDelta1),
                 uint256(
                     int256($totalSupply1) +
                         ($colDelta1 * int256($totalSupply1)) /
@@ -852,7 +908,7 @@ contract PanopticPoolActions is CollateralActions {
             "burnOptions 1 mismatch"
         );
 
-        for (uint256 i = 0; i < $numLegs; ++i) {
+        for (uint256 i = 0; i < $tokenIdActive.countLegs(); ++i) {
             (
                 $settledToken0Post,
                 $settledToken1Post,
@@ -869,7 +925,7 @@ contract PanopticPoolActions is CollateralActions {
                                 ? int256($idealPremium0[i])
                                 : -int256($proratedPremium0[i])
                         ),
-                "PanopticPool: Settled token0 did not increase by the amount collected in the SFPM + premium paid by long leg - premium collected by short leg"
+                "burnOptions: Settled token0 did not change by the amount collected in the SFPM + premium paid by long leg - premium collected by short leg"
             );
 
             assertWithMsg(
@@ -881,29 +937,29 @@ contract PanopticPoolActions is CollateralActions {
                                 ? int256($idealPremium1[i])
                                 : -int256($proratedPremium1[i])
                         ),
-                "PanopticPool: Settled token1 did not increase by the amount collected in the SFPM + premium paid by long leg - premium collected by short leg"
+                "burnOptions: Settled token1 did not change by the amount collected in the SFPM + premium paid by long leg - premium collected by short leg"
             );
 
             ($tickLower, $tickUpper) = PanopticMath.getTicks(
-                $strikes[i],
-                $widths[i],
+                $tokenIdActive.strike(i),
+                $tokenIdActive.width(i),
                 poolTickSpacing
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
                 address(pool),
                 address(panopticPool),
-                $tokenTypes[i],
+                $tokenIdActive.tokenType(i),
                 $tickLower,
                 $tickUpper,
                 type(int24).max,
-                $isLongs[i]
+                $tokenIdActive.isLong(i)
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
                 address(pool),
                 address(panopticPool),
-                $tokenTypes[i],
+                $tokenIdActive.tokenType(i),
                 $tickLower,
                 $tickUpper
             );
@@ -1006,17 +1062,14 @@ contract PanopticPoolActions is CollateralActions {
                 }
                 if (!$gross0Correct && $grossPremiaLast0 == 0) {
                     assertWithMsg(
-                        (
-                            $shortLiquidity == 0
-                                ? 0
-                                : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
-                        ) >= $grossPremiumTotalSumLegs0,
-                        "PanopticPool: Calculated total gross premium for token0 fell below summed gross premium for all legs in the chunk"
+                        Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity) >=
+                            $grossPremiumTotalSumLegs0,
+                        "burnOptions: Calculated total gross premium for token0 fell below summed gross premium for all legs in the chunk"
                     );
                 } else {
                     assertWithMsg(
                         $gross0Correct,
-                        "PanopticPool: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
+                        "burnOptions: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
                     );
                 }
 
@@ -1027,27 +1080,121 @@ contract PanopticPoolActions is CollateralActions {
                                 ? 0
                                 : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
                         ) >= $grossPremiumTotalSumLegs1,
-                        "PanopticPool: Calculated total gross premium for token1 fell below summed gross premium for all legs in the chunk"
+                        "burnOptions: Calculated total gross premium for token1 fell below summed gross premium for all legs in the chunk"
                     );
                 } else {
                     assertWithMsg(
                         $gross1Correct,
-                        "PanopticPool: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
+                        "burnOptions: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
                     );
                 }
             } else {
                 assertWithMsg(
                     $gross0Correct,
-                    "PanopticPool: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
+                    "burnOptions: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
                 );
                 assertWithMsg(
                     $gross1Correct,
-                    "PanopticPool: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
+                    "burnOptions: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
                 );
             }
         }
+    }
 
-        assertWithMsg(false, "burn options success");
+    function burn_many_options(uint256 numOptions, int24[2] memory tickLimitSeeds) public {
+        require(panopticPool.numberOfPositions(msg.sender) > 0);
+
+        $numOptions = bound(numOptions, 1, userPositions[msg.sender].length);
+
+        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+
+        ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
+            60,
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            pool
+        );
+
+        $safeMode = Math.abs($slowOracleTick - currentTick) > 953;
+
+        $tickLimitLow = tickLimitSeeds[0];
+        $tickLimitHigh = tickLimitSeeds[1];
+
+        if ($safeMode) {
+            if ($tickLimitLow > $tickLimitHigh) {
+                ($tickLimitLow, $tickLimitHigh) = ($tickLimitHigh, $tickLimitLow);
+            }
+        }
+
+        panopticPool.pokeMedian();
+
+        quote_pp_burn_many();
+
+        // safeMode/covered changed mid-mint; cannot compare
+        if ($shouldSkip) revert();
+
+        $posIdListOld = userPositions[msg.sender];
+
+        for (uint256 i = $numOptions; i < userPositions[msg.sender].length; i++) {
+            $posIdListOld.pop();
+        }
+
+        for (uint256 i = 0; i < $numOptions; ++i) {
+            userPositions[msg.sender] = _get_list_without_tokenid(
+                userPositions[msg.sender],
+                userPositions[msg.sender][0]
+            );
+        }
+
+        hevm.prank(msg.sender);
+        try
+            panopticPool.burnOptions(
+                $posIdListOld,
+                userPositions[msg.sender],
+                $tickLimitLow,
+                $tickLimitHigh
+            )
+        {
+            assertWithMsg(!$shouldRevert, "burnManyOptions: missing revert");
+        } catch {
+            assertWithMsg($shouldRevert, "burnManyOptions: unexpected revert");
+            // reverse test state changes (i.e. positionidlist)
+            revert();
+        }
+
+        for (uint256 i = 0; i < $numOptions; ++i) {
+            assertWithMsg(
+                sfpm.balanceOf(address(panopticPool), TokenId.unwrap($posIdListOld[i])) ==
+                    $burnManySimResults.sfpmBals[i],
+                "burnManyOptions: incorrect amount of SFPM tokens burned"
+            );
+
+            for (uint256 j = 0; j < $posIdListOld[i].countLegs(); ++j) {
+                (
+                    $settledToken0Post,
+                    $settledToken1Post,
+                    $grossPremiaLast0,
+                    $grossPremiaLast1
+                ) = panopticPool.premiaSettlementData($posIdListOld[i], j);
+
+                assertWithMsg(
+                    $burnManySimResults.settledTokens0Portfolio[i][j] == $settledToken0Post,
+                    "burnManyOptions: settledToken0 diverged from burn_one"
+                );
+                assertWithMsg(
+                    $burnManySimResults.settledTokens1Portfolio[i][j] == $settledToken1Post,
+                    "burnManyOptions: settledToken1 diverged from burn_one"
+                );
+
+                assertWithMsg(
+                    $burnManySimResults.grossPremiaL0Portfolio[i][j] == $grossPremiaLast0,
+                    "burnManyOptions: grossPremiaLast0 diverged from burn_one"
+                );
+                assertWithMsg(
+                    $burnManySimResults.grossPremiaL1Portfolio[i][j] == $grossPremiaLast1,
+                    "burnManyOptions: grossPremiaLast1 diverged from burn_one"
+                );
+            }
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1230,8 +1377,8 @@ contract PanopticPoolActions is CollateralActions {
             currentTick,
             1
         );
-        premium0 = ((premiumAccumulator0 - optionData0) * liquidity) >> 64;
-        premium1 = ((premiumAccumulator1 - optionData1) * liquidity) >> 64;
+        premium0 = uint128(Math.mulDiv64(premiumAccumulator0 - optionData0, liquidity));
+        premium1 = uint128(Math.mulDiv64(premiumAccumulator1 - optionData1, liquidity));
         emit LogUint256("premium0-calc", premium0);
         emit LogUint256("premium1-calc", premium1);
     }

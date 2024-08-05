@@ -41,11 +41,11 @@
         }
       },
       "propertyTesting": {
-        "enabled": true,
+        "enabled": false,
         "testPrefixes": ["property_"]
       },
       "optimizationTesting": {
-        "enabled": true,
+        "enabled": false,
         "testPrefixes": ["optimize_"]
       },
       "targetFunctionSignatures": [],

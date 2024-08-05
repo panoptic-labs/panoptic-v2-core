@@ -29,23 +29,9 @@ contract GeneralActions is FuzzHelpers {
 
         (price, , , , , , ) = pool.slot0();
 
-        // bound the price between 10 and 500000 and 50% of the current price
+        // bound the price within 50% of the current price
         target_sqrt_price = uint160(
-            bound(
-                price,
-                uint256(
-                    Math.max(
-                        int256(Math.mulDiv(price, 7_071, 10_000)),
-                        112028621795169773357271145775104
-                    )
-                ),
-                uint256(
-                    Math.min(
-                        int256(Math.mulDiv(price, 14_142, 10_000)),
-                        25054084147398268684193622782902272
-                    )
-                )
-            )
+            bound(price, Math.mulDiv(price, 7_071, 10_000), Math.mulDiv(price, 14_142, 10_000))
         );
 
         emit LogUint256("price before swap", uint256(price));

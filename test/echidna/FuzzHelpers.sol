@@ -263,6 +263,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     error FeeQuotePostBurnSimResError(LeftRightUnsigned, LeftRightUnsigned, uint256[2][]);
 
+    error PPBurnManySimResError(uint256, uint256, BurnManySimResults, bool, bool);
+
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
         LeftRightSigned totalSwapped;
@@ -307,6 +309,14 @@ contract FuzzHelpers is PropertiesAsserts {
         int24 strike;
         int24 width;
         uint256 tokenType;
+    }
+
+    struct BurnManySimResults {
+        uint256[4][] grossPremiaL0Portfolio;
+        uint256[4][] grossPremiaL1Portfolio;
+        uint256[4][] settledTokens0Portfolio;
+        uint256[4][] settledTokens1Portfolio;
+        uint256[] sfpmBals;
     }
 
     uint256 internal constant FAST_ORACLE_CARDINALITY = 3;
@@ -368,6 +378,8 @@ contract FuzzHelpers is PropertiesAsserts {
     uint128 $positionSizeBkp;
 
     uint256 $numLegs;
+
+    uint256 $numOptions;
 
     uint256 $netLiquidity;
     uint256 $removedLiquidity;
@@ -438,6 +450,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $shouldRevert;
 
+    bool $shouldSkip;
+
     int24 $fastOracleTick;
     int24 $slowOracleTick;
 
@@ -461,6 +475,8 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256 $settleIndex;
 
     bool $safeMode;
+
+    bool $isBurn;
 
     address $exercisee;
     TokenId[] $touchedId;
@@ -495,6 +511,16 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256[4] $premiumGrowth0;
     uint256[4] $premiumGrowth1;
+
+    uint256[4][] $settledTokens0Portfolio;
+    uint256[4][] $settledTokens1Portfolio;
+
+    uint256[4][] $grossPremiaL0Portfolio;
+    uint256[4][] $grossPremiaL1Portfolio;
+
+    uint256[] $sfpmBals;
+
+    BurnManySimResults $burnManySimResults;
 
     uint256 $premiumGrowthLeg0;
     uint256 $premiumGrowthLeg1;
@@ -1475,7 +1501,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 $netTokenTransfers0 -= int256(amount0);
                 $netTokenTransfers0 -= int256(amount1);
                 $spreadRatio =
-                    (($removedLiquidity + liquidityChunk.liquidity()) * (2 ** 32)) /
+                    (($removedLiquidity + ($isBurn ? 0 : liquidityChunk.liquidity())) * (2 ** 32)) /
                     uint256(
                         Math.max(
                             1,
@@ -1486,7 +1512,7 @@ contract FuzzHelpers is PropertiesAsserts {
                     );
                 emit LogUint256("$spreadRatioL", $spreadRatio);
 
-                $shouldRevert = $shouldRevert
+                $shouldRevert = $shouldRevert || $isBurn
                     ? $shouldRevert
                     : int256($netLiquidity) - int256(uint256(liquidityChunk.liquidity())) == 0;
                 $shouldRevert = $shouldRevert ? $shouldRevert : $spreadRatio > 9 * (2 ** 32);
@@ -1543,6 +1569,25 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function quote_pp_burn_many() internal {
+        $caller = msg.sender;
+
+        try this.pp_burn_many_sim() {} catch (bytes memory results) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+
+            (
+                $balance0ExpectedP,
+                $balance1ExpectedP,
+                $burnManySimResults,
+                $shouldSkip,
+                $shouldRevert
+            ) = abi.decode(results, (uint256, uint256, BurnManySimResults, bool, bool));
+        }
+    }
+
     // this might seem circular, but the point is really just so we can use grossPremium/settledTokens values that are independently verified later for collateral calcs
     function quote_fees_postburn() internal {
         $caller = msg.sender;
@@ -1559,6 +1604,9 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function pp_burn_sim() external {
+        // prevent fuzzer from calling this directly with weird out-of-bounds numbers
+        require(msg.sender == address(this));
+
         hevm.prank($exercisee);
         try
             panopticPool.burnOptions(
@@ -1605,9 +1653,96 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function pp_burn_many_sim() external {
+        // prevent fuzzer from calling this directly with weird out-of-bounds numbers
+        require(msg.sender == address(this));
+
+        $settledTokens0Portfolio = new uint256[4][]($numOptions);
+        $settledTokens1Portfolio = new uint256[4][]($numOptions);
+        $grossPremiaL0Portfolio = new uint256[4][]($numOptions);
+        $grossPremiaL1Portfolio = new uint256[4][]($numOptions);
+        $sfpmBals = new uint256[]($numOptions);
+
+        for (uint256 i = 0; i < $numOptions; i++) {
+            (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+
+            ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
+                60,
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+                pool
+            );
+
+            // if safemode changes mid-burn-simulation due to swaps we cannot compare to a batch burn
+            if ($safeMode != Math.abs($slowOracleTick - currentTick) > 953) {
+                revert PPBurnManySimResError(
+                    collToken0.balanceOf($caller),
+                    collToken1.balanceOf($caller),
+                    $burnManySimResults,
+                    true,
+                    false
+                );
+            }
+
+            $tokenIdActive = userPositions[$caller][0];
+            userPositions[$caller] = _get_list_without_tokenid(
+                userPositions[$caller],
+                $tokenIdActive
+            );
+            hevm.prank($caller);
+
+            try
+                panopticPool.burnOptions(
+                    $tokenIdActive,
+                    userPositions[$caller],
+                    $tickLimitLow,
+                    $tickLimitHigh
+                )
+            {
+                $sfpmBals[i] = sfpm.balanceOf(
+                    address(panopticPool),
+                    TokenId.unwrap($tokenIdActive)
+                );
+                for (uint256 j = 0; j < $tokenIdActive.countLegs(); j++) {
+                    (
+                        $settledTokens0Portfolio[i][j],
+                        $settledTokens1Portfolio[i][j],
+                        $grossPremiaL0Portfolio[i][j],
+                        $grossPremiaL1Portfolio[i][j]
+                    ) = panopticPool.premiaSettlementData($tokenIdActive, j);
+                }
+            } catch {
+                revert PPBurnManySimResError(
+                    collToken0.balanceOf($caller),
+                    collToken1.balanceOf($caller),
+                    $burnManySimResults,
+                    false,
+                    true
+                );
+            }
+        }
+
+        $burnManySimResults.settledTokens0Portfolio = $settledTokens0Portfolio;
+        $burnManySimResults.settledTokens1Portfolio = $settledTokens1Portfolio;
+        $burnManySimResults.grossPremiaL0Portfolio = $grossPremiaL0Portfolio;
+        $burnManySimResults.grossPremiaL1Portfolio = $grossPremiaL1Portfolio;
+        $burnManySimResults.sfpmBals = $sfpmBals;
+        revert PPBurnManySimResError(
+            collToken0.balanceOf($caller),
+            collToken1.balanceOf($caller),
+            $burnManySimResults,
+            false,
+            false
+        );
+    }
+
     function feequote_postburn_sim() external {
+        // prevent fuzzer from calling this directly with weird out-of-bounds numbers
+        require(msg.sender == address(this));
+
         // ensures they have sufficient collateral - if it fails with another type of error it can be caught elsewhere
+        hevm.prank(address(panopticPool));
         collToken0.delegate($caller, (2 ** 104 - 1) * 10_000);
+        hevm.prank(address(panopticPool));
         collToken1.delegate($caller, (2 ** 104 - 1) * 10_000);
 
         hevm.prank($caller);
@@ -1632,6 +1767,9 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function sfpm_mint_sim() external {
+        // prevent fuzzer from calling this directly with weird out-of-bounds numbers
+        require(msg.sender == address(this));
+
         hevm.prank(address(panopticPool));
         try
             sfpm.mintTokenizedPosition(
@@ -1665,6 +1803,9 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function sfpm_burn_sim() external {
+        // prevent fuzzer from calling this directly with weird out-of-bounds numbers
+        require(msg.sender == address(this));
+
         hevm.prank(address(panopticPool));
         try
             sfpm.burnTokenizedPosition(

@@ -203,11 +203,21 @@ contract CollateralActions is SFPMActions {
             if (fullOrSelfFuzz % 3 == 0) fuzzNumerator = fuzzDenominator;
             if (fullOrSelfFuzz % 5 == 0) recipient = msg.sender;
 
-            uint256 fuzzedSharesToRedeem0 = (shareBal0 * fuzzNumerator) / fuzzDenominator;
-            uint256 fuzzedSharesToRedeem1 = (shareBal1 * fuzzNumerator) / fuzzDenominator;
+            require(fuzzDenominator > 0);
 
-            uint256 fuzzedAssetsToWithdraw0 = (assetBal0 * fuzzNumerator) / fuzzDenominator;
-            uint256 fuzzedAssetsToWithdraw1 = (assetBal1 * fuzzNumerator) / fuzzDenominator;
+            uint256 fuzzedSharesToRedeem0 = Math.mulDiv(shareBal0, fuzzNumerator, fuzzDenominator);
+            uint256 fuzzedSharesToRedeem1 = Math.mulDiv(shareBal1, fuzzNumerator, fuzzDenominator);
+
+            uint256 fuzzedAssetsToWithdraw0 = Math.mulDiv(
+                assetBal0,
+                fuzzNumerator,
+                fuzzDenominator
+            );
+            uint256 fuzzedAssetsToWithdraw1 = Math.mulDiv(
+                assetBal1,
+                fuzzNumerator,
+                fuzzDenominator
+            );
 
             if (fuzzedAssetsToWithdraw0 > 0) {
                 hevm.prank(msg.sender);
@@ -255,8 +265,10 @@ contract CollateralActions is SFPMActions {
             if (fuzzNumerator > fuzzDenominator)
                 (fuzzNumerator, fuzzDenominator) = (fuzzDenominator, fuzzNumerator);
 
-            uint256 fuzzedAmtToTransfer0 = (bal0 * fuzzNumerator) / fuzzDenominator;
-            uint256 fuzzedAmtToTransfer1 = (bal1 * fuzzNumerator) / fuzzDenominator;
+            require(fuzzDenominator > 0);
+
+            uint256 fuzzedAmtToTransfer0 = Math.mulDiv(bal0, fuzzNumerator, fuzzDenominator);
+            uint256 fuzzedAmtToTransfer1 = Math.mulDiv(bal1, fuzzNumerator, fuzzDenominator);
 
             // attempt a full withdrawal every 4th attempt, to ensure we're testing that case too
             if (fullOrNotFuzz % 4 == 0) (fuzzedAmtToTransfer0, fuzzedAmtToTransfer1) = (bal0, bal1);
@@ -320,6 +332,8 @@ contract CollateralActions is SFPMActions {
         TokenId[] memory withdrawersOpenPositions = userPositions[withdrawer];
         // return early if user has no open positions
         if (withdrawersOpenPositions.length == 0) return;
+
+        require(_max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer)) > 0);
 
         amountToWithdraw = bound(
             amountToWithdraw,
@@ -570,7 +584,11 @@ contract CollateralActions is SFPMActions {
         bool nonOwnerCall
     ) internal {
         uint256 ownersAssets = collToken.convertToAssets(collToken.balanceOf(owner));
-        amountOver = bound(amountOver, 1, type(uint256).max - ownersAssets);
+        amountOver = bound(
+            amountOver,
+            1,
+            type(uint256).max - collToken.convertToShares(ownersAssets)
+        );
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         TokenId[] memory withdrawersOpenPositions = userPositions[owner];
 
@@ -701,14 +719,16 @@ contract CollateralActions is SFPMActions {
     ) internal {
         CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxDeposit = type(uint104).max;
-        tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint256).max);
+        tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint224).max);
 
         if (depositToSelf) {
             receiver = depositor;
         }
 
         uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
-        uint256 shortfallForDeposit = tooLargeDepositAmount - depositorBalance;
+        uint256 shortfallForDeposit = uint256(
+            Math.max(int256(tooLargeDepositAmount) - int256(depositorBalance), 1)
+        );
         isToken0
             ? deal_USDC(depositor, shortfallForDeposit)
             : deal_WETH(depositor, shortfallForDeposit);
@@ -745,14 +765,19 @@ contract CollateralActions is SFPMActions {
     ) internal {
         CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxMint = collToken.previewDeposit(type(uint104).max);
-        tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint256).max);
+        tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint224).max);
 
         if (mintToSelf) {
             receiver = minter;
         }
 
         uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
-        uint256 shortfallForMint = collToken.previewDeposit(tooLargeMintAmount) - minterBalance;
+        uint256 shortfallForMint = uint256(
+            Math.max(
+                1,
+                int256(collToken.previewDeposit(tooLargeMintAmount)) - int256(minterBalance)
+            )
+        );
         isToken0 ? deal_USDC(minter, shortfallForMint) : deal_WETH(minter, shortfallForMint);
 
         hevm.prank(minter);
@@ -821,6 +846,8 @@ contract CollateralActions is SFPMActions {
         uint256 withdrawerAssetsBefore = IERC20(collToken.asset()).balanceOf(withdrawer);
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 withdrawerSharesBefore = collToken.balanceOf(withdrawer);
+
+        require(_max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer)) > 0);
 
         // Bound the fuzzed assets-to-withdraw to max assets withdrawable:
         // the smaller of the s_poolAssets and the user's assets in the CT
