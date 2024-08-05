@@ -91,7 +91,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         for (uint i; i < pools.length; i++) {
             cyclingPool = pools[i];
-            for (uint j = 0; j < 100; i++) {
+            for (uint j = 0; j < 10; j++) {
                 _perform_swap_with_delay(
                     uint160(uint256(bytes32(keccak256(abi.encode(1, j))))),
                     uint256(bytes32(keccak256(abi.encode(j))))

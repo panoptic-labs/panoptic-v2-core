@@ -878,7 +878,7 @@ contract CollateralActions is SFPMActions {
         uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
         uint256 ownerSharesBefore = collToken.balanceOf(owner);
 
-        require(_max_assets_withdrawable(collToken, collToken.balanceOf(withdrawer)) > 0);
+        require(_max_assets_withdrawable(collToken, ownerSharesBefore) > 0);
 
         // Bound the fuzzed assets-to-withdraw to max assets withdrawable:
         // the smaller of the s_poolAssets and the user's assets in the CT

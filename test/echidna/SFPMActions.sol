@@ -15,10 +15,10 @@ contract SFPMActions is GeneralActions {
     // ** add moved amts check
     function mint_option_SFPM_multiShort(
         uint256 numLegs,
-        bool[4] memory asset_in,
-        bool[4] memory is_call_in,
-        bool[4] memory is_otm_in,
-        bool[4] memory is_atm_in,
+        bool[4] calldata asset_in,
+        bool[4] calldata is_call_in,
+        bool[4] calldata is_otm_in,
+        bool[4] calldata is_atm_in,
         uint24[4] memory width_in,
         int256[4] memory strike_in,
         uint128 positionSize,
@@ -33,7 +33,7 @@ contract SFPMActions is GeneralActions {
         $activeNumLegs = numLegs = bound(numLegs, 1, 4);
 
         $activeTokenId = _generate_multiple_leg_tokenid(
-            numLegs,
+            $activeNumLegs,
             asset_in,
             is_call_in,
             [false, false, false, false], // generate short
@@ -644,7 +644,6 @@ contract SFPMActions is GeneralActions {
 
     function mint_option_SFPM_multiLong(
         uint8 numLegs,
-        uint8 randNumber,
         uint128 positionSize,
         bool swapAtMint
     ) public {
@@ -674,9 +673,6 @@ contract SFPMActions is GeneralActions {
 
             for (uint i; i < maxLoop; i++) {
                 TokenId currTokenId = userPositionsSFPMLong[$activeUser][maxLoop - i];
-
-                // grab random leg from random tokenId
-                uint256 legIndex = bound(randNumber, 0, currTokenId.countLegs() - 1);
 
                 // append the leg to the constructed long leg
                 $activeTokenId.addLeg(
@@ -1314,18 +1310,18 @@ contract SFPMActions is GeneralActions {
         }
     }
 
-    /// *** general multiple mints of longs + shorts
+    // / *** general multiple mints of longs + shorts
     // check for should revert flag and bound so that it is a valid event
     // looks for chunks minted via the panoptic pool
     function mint_option_SFPM_general(
         uint256 numLegs,
-        bool[4] memory asset_in,
-        bool[4] memory is_call_in,
-        bool[4] memory is_long_in,
-        bool[4] memory is_otm_in,
-        bool[4] memory is_atm_in,
-        uint24[4] memory width_in,
-        int256[4] memory strike_in,
+        bool[4] calldata asset_in,
+        bool[4] calldata is_call_in,
+        bool[4] calldata is_long_in,
+        bool[4] calldata is_otm_in,
+        bool[4] calldata is_atm_in,
+        uint24[4] calldata width_in,
+        int256[4] calldata strike_in,
         uint128 positionSize,
         bool swapAtMint,
         uint8 randSeed
@@ -1341,7 +1337,7 @@ contract SFPMActions is GeneralActions {
         // initialize tokenId
         // ** find matching short chunks for the long legs to increase success rate ??
         $activeTokenId = _generate_multiple_leg_tokenid(
-            numLegs,
+            $activeNumLegs,
             asset_in,
             is_call_in,
             is_long_in,
@@ -1352,9 +1348,7 @@ contract SFPMActions is GeneralActions {
         );
 
         // if the count of legs is less than 4 then add a chunk minted via the panoptic pool
-        if ($activeNumLegs < 4) {
-            uint256 totalPPChunks = touchedPanopticChunks.length;
-
+        if ($activeNumLegs < 4 && bound(randSeed, 0, 1) == 1 && touchedPanopticChunks.length > 0) {
             ChunkWithTokenType memory touchedChunk = touchedPanopticChunks[
                 bound(randSeed, 0, touchedPanopticChunks.length - 1)
             ];
@@ -2031,10 +2025,8 @@ contract SFPMActions is GeneralActions {
 
     // mint SFPM Swap At Mint = true, and ITM = true
     function mint_option_SFPM_swapT_ITMT(
-        uint256 minter_index,
         bool asset,
         bool is_call,
-        bool is_long,
         uint24 width,
         int256 strike,
         uint128 positionSize
@@ -2079,7 +2071,7 @@ contract SFPMActions is GeneralActions {
 
             (int256 swapAmount, bool zeroForOne) = _compute_swap_amounts(itm0, itm1);
 
-            (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
+            (int256 swap0, int256 swap1, ) = _execute_swap_simulation(
                 $activeUser,
                 zeroForOne,
                 swapAmount
@@ -2141,10 +2133,8 @@ contract SFPMActions is GeneralActions {
 
     // mint SFPM regular mint Swap At Mint = false, and ITM = false
     function mint_option_SFPM_swapF_ITMF(
-        uint256 minter_index,
         bool asset,
         bool is_call,
-        bool is_long,
         uint24 width,
         int256 strike,
         uint128 positionSize
@@ -2229,7 +2219,6 @@ contract SFPMActions is GeneralActions {
     function mint_option_SFPM_swapT_ITMF(
         bool asset,
         bool is_call,
-        bool is_long,
         uint24 width,
         int256 strike,
         uint128 positionSize
@@ -2307,7 +2296,6 @@ contract SFPMActions is GeneralActions {
     function mint_option_SFPM_swapF_ITMT(
         bool asset,
         bool is_call,
-        bool is_long,
         uint24 width,
         int256 strike,
         uint128 positionSize
@@ -2420,7 +2408,7 @@ contract SFPMActions is GeneralActions {
                 int256 moved1,
                 int256 itm0,
                 int256 itm1
-            ) = _calculate_moved_and_ITM_amounts($activeTokenId, positionSize, false);
+            ) = _calculate_moved_and_ITM_amounts($activeTokenId, positionSize);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2432,7 +2420,7 @@ contract SFPMActions is GeneralActions {
             emit LogInt256("swapAmount", swapAmount);
             emit LogBool("zeroForOne", zeroForOne);
 
-            (int256 swap0, int256 swap1, int24 tickAfterSwap) = _execute_swap_simulation(
+            (int256 swap0, int256 swap1, ) = _execute_swap_simulation(
                 $activeUser,
                 zeroForOne,
                 swapAmount
@@ -2502,11 +2490,10 @@ contract SFPMActions is GeneralActions {
     }
 
     // mint SFPM position size = 0
-    function invariant_mint_option_SFPM_posSize0(
+    function assertion_invariant_mint_option_SFPM_posSize0(
         uint256 minter_index,
         bool asset,
         bool is_call,
-        bool is_long,
         bool is_otm,
         bool is_atm,
         bool swapAtMint,
@@ -2514,9 +2501,7 @@ contract SFPMActions is GeneralActions {
         int256 strike
     ) public {
         minter_index = bound(minter_index, 0, 4);
-        if (actors[minter_index] == msg.sender) {
-            minter_index = bound(minter_index + 1, 0, 4);
-        }
+        require(actors[minter_index] != msg.sender);
 
         address minter = actors[minter_index];
 
@@ -2545,11 +2530,10 @@ contract SFPMActions is GeneralActions {
     }
 
     // token composition is over 127 bits on either side should fail
-    function invariant_mint_option_SFPM_PositionTooLarge(
+    function assertion_invariant_mint_option_SFPM_PositionTooLarge(
         uint256 minter_index,
         bool asset,
         bool is_call,
-        bool is_long,
         bool is_otm,
         bool is_atm,
         bool swapAtMint,
@@ -2558,9 +2542,7 @@ contract SFPMActions is GeneralActions {
         uint128 positionSize
     ) public {
         minter_index = bound(minter_index, 0, 4);
-        if (actors[minter_index] == msg.sender) {
-            minter_index = bound(minter_index + 1, 0, 4);
-        }
+        require(actors[minter_index] != msg.sender);
 
         address minter = actors[minter_index];
 
@@ -2614,11 +2596,10 @@ contract SFPMActions is GeneralActions {
     }
 
     // attempt to purchase more liquidity than exists at the chunk
-    function invariant_mint_option_SFPM_NotEnoughLiquidity(
+    function assertion_invariant_mint_option_SFPM_NotEnoughLiquidity(
         uint256 minter_index,
         bool asset,
         bool is_call,
-        bool is_long,
         bool is_otm,
         bool is_atm,
         bool swapAtMint,
@@ -2628,9 +2609,7 @@ contract SFPMActions is GeneralActions {
         uint128 sizeIncrement
     ) public {
         minter_index = bound(minter_index, 0, 4);
-        if (actors[minter_index] == msg.sender) {
-            minter_index = bound(minter_index + 1, 0, 4);
-        }
+        require(actors[minter_index] != msg.sender);
 
         $activeUser = actors[minter_index];
 
@@ -2704,10 +2683,9 @@ contract SFPMActions is GeneralActions {
     }
 
     // can't mint a position that defies the slippage bounds
-    function invariant_mint_option_SFPM_PriceBoundFail(
+    function assertion_invariant_mint_option_SFPM_PriceBoundFail(
         bool asset,
         bool is_call,
-        bool is_long,
         bool is_otm,
         bool is_atm,
         bool swapAtMint,
@@ -2780,7 +2758,6 @@ contract SFPMActions is GeneralActions {
     /// burn
 
     function burn_option_SFPM_general(
-        uint256 numLegs,
         uint128 positionSize,
         bool swapAtMint,
         bool isLong,
@@ -3778,13 +3755,7 @@ contract SFPMActions is GeneralActions {
         (, currentTick, , , , , ) = cyclingPool.slot0();
 
         if (is_atm) {
-            (width, strike) = getATMSW(
-                width_in,
-                strike_in,
-                uint24(poolTickSpacing),
-                currentTick,
-                call_put
-            );
+            (width, strike) = getATMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick);
         } else if (is_otm_in) {
             (width, strike) = getOTMSW(
                 width_in,
@@ -3835,8 +3806,7 @@ contract SFPMActions is GeneralActions {
                     width_in[i],
                     strike_in[i],
                     uint24(poolTickSpacing),
-                    currentTick,
-                    call_put
+                    currentTick
                 );
             } else if (is_otm_in[i]) {
                 (width, strike) = getOTMSW(
@@ -3889,7 +3859,7 @@ contract SFPMActions is GeneralActions {
         uint256 ts_,
         int24 _currentTick,
         uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
+    ) internal pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -3932,7 +3902,7 @@ contract SFPMActions is GeneralActions {
         uint256 ts_,
         int24 _currentTick,
         uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
+    ) internal pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -3973,9 +3943,8 @@ contract SFPMActions is GeneralActions {
         uint256 _widthSeed,
         int256 _strikeSeed,
         uint256 ts_,
-        int24 _currentTick,
-        uint256 _tokenType
-    ) internal view returns (int24 width, int24 strike) {
+        int24 _currentTick
+    ) internal pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -3987,7 +3956,7 @@ contract SFPMActions is GeneralActions {
         int24 rangeUp;
         (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(ts));
 
-        (int24 strikeOffset, int24 minTick, int24 maxTick) = getContext(ts_, _currentTick, width);
+        (int24 strikeOffset, , ) = getContext(ts_, _currentTick, width);
 
         int24 lowerBound = int24(_currentTick + ts - oneSidedRange - strikeOffset);
         int24 upperBound = int24(_currentTick + oneSidedRange - strikeOffset);
@@ -4009,7 +3978,7 @@ contract SFPMActions is GeneralActions {
         int256 _strikeSeed,
         uint256 ts_,
         int24 _currentTick
-    ) internal view returns (int24 width, int24 strike) {
+    ) internal pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1

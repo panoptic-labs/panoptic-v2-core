@@ -595,7 +595,11 @@ contract PanopticPoolActions is CollateralActions {
             $tokenIdActive
         );
 
-        ($positionSizeActive, , ) = panopticPool.optionPositionBalance(msg.sender, $tokenIdActive);
+        ($positionSizeActive, , ) = panopticHelper.optionPositionInfo(
+            panopticPool,
+            msg.sender,
+            $tokenIdActive
+        );
 
         ($tickLimitLow, $tickLimitHigh) = (tickLimitSeeds[0], tickLimitSeeds[1]);
 
@@ -1040,7 +1044,8 @@ contract PanopticPoolActions is CollateralActions {
                                     legIndex
                                 );
 
-                                ($positionSizeBkp, , ) = panopticPool.optionPositionBalance(
+                                ($positionSizeBkp, , ) = panopticHelper.optionPositionInfo(
+                                    panopticPool,
                                     actor,
                                     position
                                 );
@@ -1351,7 +1356,8 @@ contract PanopticPoolActions is CollateralActions {
         TokenId position,
         uint256 longIndex
     ) internal returns (uint128 premium0, uint128 premium1) {
-        (uint128 numContractsOfPosition, , ) = panopticPool.optionPositionBalance(
+        (uint128 numContractsOfPosition, , ) = panopticHelper.optionPositionInfo(
+            panopticPool,
             settlee,
             position
         );
@@ -1430,7 +1436,11 @@ contract PanopticPoolActions is CollateralActions {
             );
         }
 
-        ($positionSizeActive, , ) = panopticPool.optionPositionBalance($exercisee, $tokenIdActive);
+        ($positionSizeActive, , ) = panopticHelper.optionPositionInfo(
+            panopticPool,
+            $exercisee,
+            $tokenIdActive
+        );
 
         $touchedId = [$tokenIdActive];
         $positionListExercisor = userPositions[msg.sender];

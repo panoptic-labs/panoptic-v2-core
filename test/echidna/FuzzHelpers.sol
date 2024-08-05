@@ -11,7 +11,7 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
+import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {TokenId} from "@types/TokenId.sol";
@@ -330,7 +330,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256[] sfpmBals;
     }
 
-    uint256 MAX_UINT128 = type(uint128).max;
+    uint256 private constant MAX_UINT128 = type(uint128).max;
 
     int256 private constant INT256_MIN =
         -57896044618658097711785492504343953926634992332820282019728792003956564819968;
@@ -848,7 +848,7 @@ contract FuzzHelpers is PropertiesAsserts {
     function _compute_swap_amounts(
         int256 itm0,
         int256 itm1
-    ) internal returns (int256 swapAmount, bool zeroForOne) {
+    ) internal view returns (int256 swapAmount, bool zeroForOne) {
         if ((itm0 != 0) && (itm1 != 0)) {
             (uint160 sqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
@@ -1096,7 +1096,7 @@ contract FuzzHelpers is PropertiesAsserts {
         address recipient,
         bool zeroForOne,
         int256 amountSpecified
-    ) internal returns (int256, int256, int24) {
+    ) internal returns (int256 swap0, int256 swap1, int24 tickAfterSwap) {
         try this.simulate_swap(recipient, zeroForOne, amountSpecified) {
             assertWithMsg(false, "swap succeeded ??");
         } catch (bytes memory results) {
@@ -1108,10 +1108,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
 
-            (int256 swap0, int256 swap1, int24 tickAfterSwap) = abi.decode(
-                results,
-                (int256, int256, int24)
-            );
+            (swap0, swap1, tickAfterSwap) = abi.decode(results, (int256, int256, int24));
 
             return (swap0, swap1, tickAfterSwap);
         }
@@ -1170,7 +1167,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 tokenType,
         int256 moved0,
         int256 moved1
-    ) internal returns (int256 itm0, int256 itm1) {
+    ) internal pure returns (int256 itm0, int256 itm1) {
         if (tokenType == 0) {
             itm1 += moved1;
         } else {
@@ -1181,8 +1178,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function _calculate_moved_and_ITM_amounts(
         TokenId tokenId,
-        uint128 positionSize,
-        bool roundUp
+        uint128 positionSize
     ) internal returns (int256, int256, int256, int256) {
         //
         int256 moved0;
@@ -1194,7 +1190,6 @@ contract FuzzHelpers is PropertiesAsserts {
 
         uint128 _positionSize = positionSize;
         TokenId _tokenId = tokenId;
-        bool _roundUp = roundUp;
 
         // update to latest current tick
         (, currentTick, , , , , ) = cyclingPool.slot0();
@@ -1322,7 +1317,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 premiumGross1,
         uint256 deltaPremiumGross0,
         uint256 deltaPremiumGross1
-    ) internal returns (uint256 owed0, uint256 owed1, uint256 gross0, uint256 gross1) {
+    ) internal pure returns (uint256 owed0, uint256 owed1, uint256 gross0, uint256 gross1) {
         // add together the new owed premiums
         uint256 newOwed0 = premiumOwed0 + deltaPremiumOwed0;
         uint256 newOwed1 = premiumOwed1 + deltaPremiumOwed1;
@@ -1330,9 +1325,6 @@ contract FuzzHelpers is PropertiesAsserts {
         // add together the new gross premiums
         uint256 newGross0 = premiumGross0 + deltaPremiumGross0;
         uint256 newGross1 = premiumGross1 + deltaPremiumGross1;
-
-        bool r_Enabled = !(newOwed0 > MAX_UINT128 || newGross0 > MAX_UINT128);
-        bool l_Enabled = !(newOwed1 > MAX_UINT128 || newGross1 > MAX_UINT128);
 
         // assign final values and check for cap / overflow
         owed0 = newOwed0 > MAX_UINT128 ? MAX_UINT128 : newOwed0;
@@ -2570,7 +2562,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         uint160 price;
 
-        (price, currentTick, , , , , ) = pool.slot0();
+        (price, currentTick, , , , , ) = cyclingPool.slot0();
 
         emit LogInt256("tick before swap", currentTick);
         emit LogUint256("price before swap", uint256(price));
@@ -2581,7 +2573,7 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("number of block delayed", delay_block);
 
         hevm.prank(pool_manipulator);
-        swapperc.swapTo(pool, target_sqrt_price);
+        swapperc.swapTo(cyclingPool, target_sqrt_price);
         hevm.warp(block.timestamp + delay_on * delay_block * 12);
         hevm.roll(block.number + delay_on * delay_block);
 
@@ -2589,12 +2581,12 @@ contract FuzzHelpers is PropertiesAsserts {
         delay_on = ((delay >> 4) % 2) == 0 ? 1 : 0;
         if (delay_on == 1) {
             hevm.prank(pool_manipulator);
-            swapperc.mint(pool, -10, 10, 10 ** 18);
+            swapperc.mint(cyclingPool, -300_000, 300_000, 100);
             hevm.prank(pool_manipulator);
-            swapperc.burn(pool, -10, 10, 10 ** 18);
+            swapperc.burn(cyclingPool, -300_000, 300_000, 100);
         }
 
-        (price, currentTick, , , , , ) = pool.slot0();
+        (price, currentTick, , , , , ) = cyclingPool.slot0();
         emit LogInt256("tick after swap", currentTick);
         emit LogUint256("price after swap", uint256(price));
     }
