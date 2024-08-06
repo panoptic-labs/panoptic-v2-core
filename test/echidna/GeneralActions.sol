@@ -31,9 +31,10 @@ contract GeneralActions is FuzzHelpers {
 
     /// cycling pool
     /// for all general and sfpm actions cycle the underlying uniswap pool being interacted on
-    function cyclePool(IUniswapV3Pool pool) external {
+    function cyclePool(IUniswapV3Pool pool) public {
         cyclingPool = pool;
         sfpmPoolId = sfpm.getPoolId(address(cyclingPool));
+        sfpmTickSpacing = cyclingPool.tickSpacing();
     }
 
     function perform_swap(uint160 target_sqrt_price) public {

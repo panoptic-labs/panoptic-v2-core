@@ -668,25 +668,38 @@ contract SFPMActions is GeneralActions {
             }
 
             // either bound to the max amount of short tokenId's or active number of legs
-            uint256 maxIndex = totalPosLen - 1;
-            uint256 maxLoop = maxIndex > $activeNumLegs ? maxIndex : $activeNumLegs;
+            uint256 maxLoop = totalPosLen > $activeNumLegs ? $activeNumLegs : totalPosLen;
+
+            emit LogUint256("max loop", maxLoop);
+            emit LogUint256("totalPosLen", totalPosLen);
+            emit LogUint256("$activeNumLegs", $activeNumLegs);
 
             for (uint i; i < maxLoop; i++) {
-                TokenId currTokenId = userPositionsSFPMLong[$activeUser][maxLoop - i];
+                emit LogString("first");
+                emit LogUint256("i", i);
+                // grab the tokenId in reverse order
+                TokenId currTokenId = userPositionsSFPMShort[$activeUser][maxLoop - i - 1];
+                emit LogString("second");
+
+                uint256 applicableIndex = (bound(i, 0, currTokenId.countLegs() - 1));
+
+                emit LogString("third");
 
                 // append the leg to the constructed long leg
                 $activeTokenId.addLeg(
                     i,
-                    currTokenId.optionRatio(i),
-                    currTokenId.asset(i),
+                    currTokenId.optionRatio(applicableIndex),
+                    currTokenId.asset(applicableIndex),
                     1, // flip long
-                    currTokenId.tokenType(i),
-                    currTokenId.riskPartner(i),
-                    currTokenId.strike(i),
-                    currTokenId.width(i)
+                    currTokenId.tokenType(applicableIndex),
+                    currTokenId.riskPartner(applicableIndex),
+                    currTokenId.strike(applicableIndex),
+                    currTokenId.width(applicableIndex)
                 );
             }
         }
+
+        emit LogString("check xxxxx");
 
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
@@ -1326,6 +1339,8 @@ contract SFPMActions is GeneralActions {
         bool swapAtMint,
         uint8 randSeed
     ) public {
+        emit LogString("start ");
+
         $shouldRevertSFPM = false;
 
         // store the current actor
@@ -1347,6 +1362,8 @@ contract SFPMActions is GeneralActions {
             strike_in
         );
 
+        emit LogString("after token gen");
+
         // if the count of legs is less than 4 then add a chunk minted via the panoptic pool
         if ($activeNumLegs < 4 && bound(randSeed, 0, 1) == 1 && touchedPanopticChunks.length > 0) {
             ChunkWithTokenType memory touchedChunk = touchedPanopticChunks[
@@ -1364,6 +1381,8 @@ contract SFPMActions is GeneralActions {
                 touchedChunk.strike,
                 touchedChunk.width
             );
+
+            emit LogString("after token gen 2222");
 
             // increment active number of legs
             $activeNumLegs++;
@@ -1404,6 +1423,8 @@ contract SFPMActions is GeneralActions {
                 emit LogInt256("tick upper", $tickUpperActive);
                 emit LogUint256("liquidity amounts", $LiqAmountActive);
             }
+
+            emit LogString("before burn");
 
             // poke if there is pre-existing liq for the user at the positional bounds
             {
@@ -1472,6 +1493,8 @@ contract SFPMActions is GeneralActions {
                     $feeGrowthInside1LastX128Before[$activeLegIndex]
                 );
             }
+
+            emit LogString("midpoint ");
 
             {
                 $newFeesBaseRoundDown0[$activeLegIndex] = int128(
@@ -1569,6 +1592,8 @@ contract SFPMActions is GeneralActions {
         // reverse tick order if swap at mint
         int24 tickLimitLow = swapAtMint ? int24(887272) : int24(-887272);
         int24 tickLimitHigh = swapAtMint ? int24(-887272) : int24(887272);
+
+        emit LogString("reached ??");
 
         hevm.prank($activeUser);
         try
@@ -2608,10 +2633,7 @@ contract SFPMActions is GeneralActions {
         uint128 positionSize,
         uint128 sizeIncrement
     ) public {
-        minter_index = bound(minter_index, 0, 4);
-        require(actors[minter_index] != msg.sender);
-
-        $activeUser = actors[minter_index];
+        $activeUser = msg.sender;
 
         TokenId $activeTokenId = _generate_single_leg_tokenid(
             asset,
@@ -2652,13 +2674,26 @@ contract SFPMActions is GeneralActions {
             sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh);
         }
 
+        uint256 newPosSize;
+        unchecked {
+            newPosSize = positionSize + sizeIncrement;
+        }
+
+        if (
+            newPosSize < positionSize ||
+            newPosSize < sizeIncrement ||
+            newPosSize > type(uint128).max
+        ) {
+            revert();
+        }
+
         // invoke actions as the chosen minter
         hevm.prank($activeUser);
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         try
             sfpm.mintTokenizedPosition(
                 tokenIdLong,
-                positionSize + sizeIncrement,
+                uint128(newPosSize),
                 tickLimitLow,
                 tickLimitHigh
             )
@@ -2667,7 +2702,7 @@ contract SFPMActions is GeneralActions {
                 .getLiquidityChunk($activeTokenId, 0, positionSize)
                 .liquidity();
             uint256 longLiq = PanopticMath
-                .getLiquidityChunk(tokenIdLong, 0, positionSize + sizeIncrement)
+                .getLiquidityChunk(tokenIdLong, 0, uint128(newPosSize))
                 .liquidity();
 
             emit LogUint256("shortLiq", shortLiq);
@@ -2741,13 +2776,21 @@ contract SFPMActions is GeneralActions {
             tickLimitLow = int24(-887272);
 
             // set invalid tickHigh
-            tickLimitHigh = tickAfterSwap + int24(Math.abs(randTick));
+            unchecked {
+                tickLimitHigh = tickAfterSwap + int24(Math.abs(randTick));
+            }
+
+            if (tickLimitHigh < tickLimitLow) {
+                revert(); // overflow
+            }
         }
 
         // flip ticks for swap at mint signal
         if (swapAtMint) {
             (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
         }
+
+        emit LogString("before mint");
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
@@ -2795,6 +2838,12 @@ contract SFPMActions is GeneralActions {
 
             // delete from owner
             userPositionsSFPMShort[$activeUser][randIndex] = TokenId.wrap(0);
+        }
+
+        // bound the position size to the amount owned by the user for that tokenId
+        uint256 currBalance = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+        if (positionSize > currBalance) {
+            revert();
         }
 
         // pre-mint calculations/actions for storage
@@ -3436,6 +3485,8 @@ contract SFPMActions is GeneralActions {
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
+
+            assertWithMsg(false, "reached");
         } catch Error(string memory reason) {
             emit LogString(reason);
 
@@ -3792,6 +3843,8 @@ contract SFPMActions is GeneralActions {
 
         (, currentTick, , , , , ) = cyclingPool.slot0();
 
+        emit LogString("after current tick");
+
         // The parameters come from the function parameters
         for (uint256 i = 0; i < numLegs; i++) {
             uint256 asset = asset_in[i] == true ? 1 : 0;
@@ -3801,18 +3854,24 @@ contract SFPMActions is GeneralActions {
             int24 width;
             int24 strike;
 
+            emit LogString("before selector");
+
+            emit LogUint256("width", width_in[i]);
+            emit LogInt256("strike", strike_in[i]);
+            emit LogInt256("sfpmTickSpacing", sfpmTickSpacing);
+
             if (is_atm_in[i]) {
                 (width, strike) = getATMSW(
                     width_in[i],
                     strike_in[i],
-                    uint24(poolTickSpacing),
+                    uint24(sfpmTickSpacing),
                     currentTick
                 );
             } else if (is_otm_in[i]) {
                 (width, strike) = getOTMSW(
                     width_in[i],
                     strike_in[i],
-                    uint24(poolTickSpacing),
+                    uint24(sfpmTickSpacing),
                     currentTick,
                     call_put
                 );
@@ -3820,11 +3879,13 @@ contract SFPMActions is GeneralActions {
                 (width, strike) = getITMSW(
                     width_in[i],
                     strike_in[i],
-                    uint24(poolTickSpacing),
+                    uint24(sfpmTickSpacing),
                     currentTick,
                     call_put
                 );
             }
+
+            emit LogString("before adding leg");
 
             out = out.addLeg(i, 1, asset, long_short, call_put, i, strike, width);
             log_tokenid_leg(out, i);
@@ -3839,7 +3900,7 @@ contract SFPMActions is GeneralActions {
         uint256 ts_,
         int24 _currentTick,
         int24 _width
-    ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
+    ) internal returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
         strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
@@ -3859,8 +3920,10 @@ contract SFPMActions is GeneralActions {
         uint256 ts_,
         int24 _currentTick,
         uint256 _tokenType
-    ) internal pure returns (int24 width, int24 strike) {
+    ) internal returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
+
+        emit LogString("OTM");
 
         width = ts == 1
             ? width = int24(int256(bound(_widthSeed, 1, 1000)))
@@ -3902,8 +3965,10 @@ contract SFPMActions is GeneralActions {
         uint256 ts_,
         int24 _currentTick,
         uint256 _tokenType
-    ) internal pure returns (int24 width, int24 strike) {
+    ) internal returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
+
+        emit LogString("ITM");
 
         width = ts == 1
             ? width = int24(int256(bound(_widthSeed, 1, 1000)))
@@ -3944,7 +4009,9 @@ contract SFPMActions is GeneralActions {
         int256 _strikeSeed,
         uint256 ts_,
         int24 _currentTick
-    ) internal pure returns (int24 width, int24 strike) {
+    ) internal returns (int24 width, int24 strike) {
+        emit LogString("ATM");
+
         int256 ts = int256(ts_);
 
         width = ts == 1
@@ -3962,8 +4029,8 @@ contract SFPMActions is GeneralActions {
         int24 upperBound = int24(_currentTick + oneSidedRange - strikeOffset);
 
         if (ts == 1) {
-            lowerBound = int24(_currentTick + rangeDown - strikeOffset);
-            upperBound = int24(_currentTick + ts - rangeUp - strikeOffset);
+            upperBound = int24(_currentTick + rangeDown - strikeOffset);
+            lowerBound = int24(_currentTick + ts - rangeUp - strikeOffset);
         }
 
         // strike MUST be defined as a multiple of tickSpacing because the range extends out equally on both sides,
@@ -3978,7 +4045,7 @@ contract SFPMActions is GeneralActions {
         int256 _strikeSeed,
         uint256 ts_,
         int24 _currentTick
-    ) internal pure returns (int24 width, int24 strike) {
+    ) internal returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1

@@ -362,6 +362,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     TokenId $activeTokenId;
 
+    int24 sfpmTickSpacing;
+
     uint256 $activeNumLegs;
 
     bytes32[4] $positionKey;
@@ -2015,14 +2017,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? baseCR
                             : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                                ? PanopticMath.convert0to1(
+                                    baseCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                                : PanopticMath.convert1to0(
+                                    baseCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
                     ) * 13_333) / 10_000) * $ratios[i]
                 );
                 emit LogUint256("2", 2);
@@ -2107,14 +2109,14 @@ contract FuzzHelpers is PropertiesAsserts {
                                 ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                                 ? ITMCR
                                 : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
+                                    ? PanopticMath.convert0to1(
+                                        ITMCR,
+                                        Math.getSqrtRatioAtTick($fastOracleTick)
+                                    )
+                                    : PanopticMath.convert1to0(
+                                        ITMCR,
+                                        Math.getSqrtRatioAtTick($fastOracleTick)
+                                    )
                         ) * 13_333) / 10_000) * $ratios[i]
                     );
                 }
