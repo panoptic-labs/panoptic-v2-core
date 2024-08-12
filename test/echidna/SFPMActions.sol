@@ -3485,8 +3485,6 @@ contract SFPMActions is GeneralActions {
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
-
-            assertWithMsg(false, "reached");
         } catch Error(string memory reason) {
             emit LogString(reason);
 
