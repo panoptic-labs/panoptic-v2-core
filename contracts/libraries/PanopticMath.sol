@@ -709,8 +709,7 @@ library PanopticMath {
     /// @notice Check that the account is liquidatable, get the split of bonus0 and bonus1 amounts.
     /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot
     /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot
-    /// @param sqrtPriceX96Twap The sqrt(price) of the TWAP tick before liquidation used to evaluate solvency
-    /// @param sqrtPriceX96Final The current sqrt(price) of the AMM after liquidating a user
+    /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netExchanged The net exchanged value of the closed portfolio
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
     /// @return bonus0 Bonus amount for token0
@@ -719,8 +718,7 @@ library PanopticMath {
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
-        uint160 sqrtPriceX96Twap,
-        uint160 sqrtPriceX96Final,
+        uint160 atSqrtPriceX96,
         LeftRightSigned netExchanged,
         LeftRightUnsigned shortPremium
     ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
@@ -729,10 +727,7 @@ library PanopticMath {
             {
                 // compute the ratio of token0 to total collateral requirements
                 // evaluate at TWAP price to keep consistentcy with solvency calculations
-                uint256 required0 = PanopticMath.convert0to1(
-                    tokenData0.leftSlot(),
-                    sqrtPriceX96Twap
-                );
+                uint256 required0 = PanopticMath.convert0to1(tokenData0.leftSlot(), atSqrtPriceX96);
                 uint256 required1 = tokenData1.leftSlot();
 
                 uint256 requiredRatioX128 = Math.mulDiv(required0, 2 ** 128, required0 + required1);
@@ -741,7 +736,7 @@ library PanopticMath {
                     tokenData0,
                     tokenData1,
                     0,
-                    sqrtPriceX96Twap
+                    atSqrtPriceX96
                 );
 
                 uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
@@ -752,7 +747,7 @@ library PanopticMath {
                 bonus1 = int256(
                     PanopticMath.convert0to1(
                         Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                        sqrtPriceX96Final
+                        atSqrtPriceX96
                     )
                 );
             }
@@ -783,10 +778,10 @@ library PanopticMath {
                     // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
                     bonus1 += Math.min(
                         balance1 - paid1,
-                        PanopticMath.convert0to1(paid0 - balance0, sqrtPriceX96Final)
+                        PanopticMath.convert0to1(paid0 - balance0, atSqrtPriceX96)
                     );
                     bonus0 -= Math.min(
-                        PanopticMath.convert1to0(balance1 - paid1, sqrtPriceX96Final),
+                        PanopticMath.convert1to0(balance1 - paid1, atSqrtPriceX96),
                         paid0 - balance0
                     );
                 }
@@ -801,10 +796,10 @@ library PanopticMath {
                     // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
                     bonus0 += Math.min(
                         balance0 - paid0,
-                        PanopticMath.convert1to0(paid1 - balance1, sqrtPriceX96Final)
+                        PanopticMath.convert1to0(paid1 - balance1, atSqrtPriceX96)
                     );
                     bonus1 -= Math.min(
-                        PanopticMath.convert0to1(balance0 - paid0, sqrtPriceX96Final),
+                        PanopticMath.convert0to1(balance0 - paid0, atSqrtPriceX96),
                         paid1 - balance1
                     );
                 }
@@ -828,7 +823,7 @@ library PanopticMath {
     /// @param positionIdList The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
-    /// @param sqrtPriceX96Final The sqrt price at which to convert between token0/token1 when awarding the bonus
+    /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param collateral0 The collateral tracker for token0
     /// @param collateral1 The collateral tracker for token1
     /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
@@ -841,7 +836,7 @@ library PanopticMath {
         LeftRightSigned collateralRemaining,
         CollateralTracker collateral0,
         CollateralTracker collateral1,
-        uint160 sqrtPriceX96Final,
+        uint160 atSqrtPriceX96,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
     ) external returns (int256, int256) {
         unchecked {
@@ -874,14 +869,14 @@ library PanopticMath {
                         collateralDelta0 - longPremium.rightSlot(),
                         PanopticMath.convert1to0(
                             longPremium.leftSlot() - collateralDelta1,
-                            sqrtPriceX96Final
+                            atSqrtPriceX96
                         )
                     ),
                     Math.min(
                         longPremium.leftSlot() - collateralDelta1,
                         PanopticMath.convert0to1(
                             collateralDelta0 - longPremium.rightSlot(),
-                            sqrtPriceX96Final
+                            atSqrtPriceX96
                         )
                     )
                 );
@@ -898,14 +893,14 @@ library PanopticMath {
                         longPremium.rightSlot() - collateralDelta0,
                         PanopticMath.convert1to0(
                             collateralDelta1 - longPremium.leftSlot(),
-                            sqrtPriceX96Final
+                            atSqrtPriceX96
                         )
                     ),
                     -Math.min(
                         collateralDelta1 - longPremium.leftSlot(),
                         PanopticMath.convert0to1(
                             longPremium.rightSlot() - collateralDelta0,
-                            sqrtPriceX96Final
+                            atSqrtPriceX96
                         )
                     )
                 );
