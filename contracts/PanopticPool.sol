@@ -973,7 +973,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(twapTick),
-                    Math.getSqrtRatioAtTick(twapTick),
                     netExchanged,
                     shortPremium
                 );
