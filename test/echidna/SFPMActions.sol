@@ -681,13 +681,20 @@ contract SFPMActions is GeneralActions {
                 TokenId currTokenId = userPositionsSFPMShort[$activeUser][maxLoop - i - 1];
                 emit LogString("second");
 
-                uint256 applicableIndex = (bound(i, 0, currTokenId.countLegs() - 1));
+                uint256 numLegs = currTokenId.countLegs();
+                if (numLegs == 0) {
+                    // if this tokenId is empty (burnt position)
+                    $activeNumLegs - 1;
+                    continue;
+                }
+
+                uint256 applicableIndex = (bound(i, 0, numLegs - 1));
 
                 emit LogString("third");
 
                 // append the leg to the constructed long leg
                 $activeTokenId.addLeg(
-                    i,
+                    $activeTokenId.countLegs(),
                     currTokenId.optionRatio(applicableIndex),
                     currTokenId.asset(applicableIndex),
                     1, // flip long
@@ -698,8 +705,6 @@ contract SFPMActions is GeneralActions {
                 );
             }
         }
-
-        emit LogString("check xxxxx");
 
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
