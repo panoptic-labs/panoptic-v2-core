@@ -1298,58 +1298,57 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         LeftRightUnsigned acctPremia;
 
+        LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
+        uint128 netLiquidity = accountLiquidities.rightSlot();
+
         // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
-        if (atTick < type(int24).max) {
+        if (atTick < type(int24).max && netLiquidity != 0) {
             // unique key to identify the liquidity chunk in this uniswap pool
-            LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
-            uint128 netLiquidity = accountLiquidities.rightSlot();
-            if (netLiquidity != 0) {
-                LeftRightUnsigned amountToCollect;
-                {
-                    IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
-                    int24 _tickLower = tickLower;
-                    int24 _tickUpper = tickUpper;
+            LeftRightUnsigned amountToCollect;
+            {
+                IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
+                int24 _tickLower = tickLower;
+                int24 _tickUpper = tickUpper;
 
-                    // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
-                    // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
-                    // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())
-                    // oldFeesGrowth is the last stored update of fee growth within the position range in the past (feeGrowthRange*liquidityChunk.liquidity()) (s_accountFeesBase[positionKey])
-                    LeftRightSigned feesBase = FeesCalc.calculateAMMSwapFees(
-                        _univ3pool,
-                        atTick,
-                        _tickLower,
-                        _tickUpper,
-                        netLiquidity
-                    );
-
-                    // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
-                    // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
-                    // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-                    // Guaranteed to be positive, so swap to unsigned type
-                    amountToCollect = LeftRightUnsigned.wrap(
-                        uint256(
-                            LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
-                        )
-                    );
-                }
-
-                (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
-                    accountLiquidities,
-                    amountToCollect
+                // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
+                // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
+                // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())
+                // oldFeesGrowth is the last stored update of fee growth within the position range in the past (feeGrowthRange*liquidityChunk.liquidity()) (s_accountFeesBase[positionKey])
+                LeftRightSigned feesBase = FeesCalc.calculateAMMSwapFees(
+                    _univ3pool,
+                    atTick,
+                    _tickLower,
+                    _tickUpper,
+                    netLiquidity
                 );
 
-                // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
-                // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
-                // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
-                (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
-                    s_accountPremiumOwed[positionKey],
-                    premiumOwed,
-                    s_accountPremiumGross[positionKey],
-                    premiumGross
+                // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+                // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+                // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+                // Guaranteed to be positive, so swap to unsigned type
+                amountToCollect = LeftRightUnsigned.wrap(
+                    uint256(
+                        LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
+                    )
                 );
-
-                acctPremia = isLong == 1 ? premiumOwed : premiumGross;
             }
+
+            (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
+                accountLiquidities,
+                amountToCollect
+            );
+
+            // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
+            // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
+            // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
+            (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
+                s_accountPremiumOwed[positionKey],
+                premiumOwed,
+                s_accountPremiumGross[positionKey],
+                premiumGross
+            );
+
+            acctPremia = isLong == 1 ? premiumOwed : premiumGross;
         } else {
             // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
             acctPremia = isLong == 1
