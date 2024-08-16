@@ -7,7 +7,6 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
-import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -70,7 +69,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
+contract SemiFungiblePositionManager is ERC1155, Multicall {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -421,11 +420,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    )
-        external
-        nonReentrant
-        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
-    {
+    ) external returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
         // burn this ERC1155 token id
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -455,11 +450,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    )
-        external
-        nonReentrant
-        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
-    {
+    ) external returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
         // create the option position via its ID in this erc1155
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -496,7 +487,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 id,
         uint256 amount,
         bytes calldata data
-    ) public override nonReentrant {
+    ) public override {
         registerTokenTransfer(from, to, TokenId.wrap(id), amount);
 
         super.safeTransferFrom(from, to, id, amount, data);
@@ -516,7 +507,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256[] calldata ids,
         uint256[] calldata amounts,
         bytes calldata data
-    ) public override nonReentrant {
+    ) public override {
         for (uint256 i = 0; i < ids.length; ) {
             registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
             unchecked {

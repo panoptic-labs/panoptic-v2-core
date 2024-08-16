@@ -463,6 +463,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $shouldRevertSFPM;
 
+    bool $locked;
+
     /// ^^ SFPM
 
     address[] $allPositionOwners;
@@ -617,6 +619,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $isBurn;
 
+    uint256 $sizeMultiplierDenominator;
+
     address $exercisee;
     TokenId[] $touchedId;
     TokenId[] $positionListExercisor;
@@ -632,6 +636,9 @@ contract FuzzHelpers is PropertiesAsserts {
     uint128 $grossPremia1;
     uint256[4] $grossPremiaTotal0;
     uint256[4] $grossPremiaTotal1;
+
+    uint128 $owedPremia0;
+    uint128 $owedPremia1;
 
     bool $gross0Correct;
     bool $gross1Correct;
@@ -762,7 +769,9 @@ contract FuzzHelpers is PropertiesAsserts {
         return _min + (value % range);
     }
 
-    function boundLog(uint256 value, uint256 _min, uint256 _max) internal pure returns (uint256) {
+    function boundLog(uint256 value, uint256 _min, uint256 _max) internal returns (uint256) {
+        emit LogUint256("logboundingmin", _min);
+        emit LogUint256("logboundingmax", _max);
         uint256 power = bound(value, FixedPointMathLib.log2(_min), FixedPointMathLib.log2(_max));
         uint256 remainder = bound(
             uint256(keccak256(abi.encode(value))),
@@ -770,7 +779,8 @@ contract FuzzHelpers is PropertiesAsserts {
             min(_max - 2 ** power, 2 ** power - 1)
         );
 
-        return power + remainder;
+        emit LogUint256("logboundres", 2 ** power + remainder);
+        return 2 ** power + remainder;
     }
 
     function bound(int256 value, int256 _min, int256 _max) internal pure returns (int256) {
@@ -1391,6 +1401,10 @@ contract FuzzHelpers is PropertiesAsserts {
             insolventTicks += $thresholdCross > $balanceCross ? 1 : 0;
         }
 
+        // assertWithMsg(insolventTicks != $colTicks.length, "all tick insolvent");
+        // assertWithMsg(insolventTicks == 0, "one ticks insolvent");
+        $locked = false;
+        $locked = insolventTicks == $colTicks.length;
         if (insolventTicks != $colTicks.length) $shouldRevert = true;
     }
 
@@ -1712,7 +1726,15 @@ contract FuzzHelpers is PropertiesAsserts {
         LeftRightSigned netExchanged;
 
         hevm.prank(who);
-        (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
+        try
+            panopticPool.burnAllOptionsFrom(userPositions[who], type(int24).min, type(int24).max)
+        returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
+            premiasByLeg = _premiasByLeg;
+            netExchanged = _netExchanged;
+            assertWithMsg(false, "burn succeeded ??");
+        } catch (bytes memory results) {
+            assertWithMsg(!$locked, "BURN TEST FAILED");
+        }
 
         currentTickOld = currentTick;
         (, currentTick, , , , , ) = pool.slot0();
@@ -1967,9 +1989,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 collateral1
     ) public returns (uint256) {
         unchecked {
-            // position size * 2**128 / colReq
-            uint256 sizeMultiplierX128;
-
+            $sizeMultiplierDenominator = 0;
             uint256 size_long = type(uint256).max;
             for (uint256 i = 0; i < $numLegs; i++) {
                 emit LogInt256("$strikes[i]", $strikes[i]);
@@ -2000,6 +2020,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
                 emit LogInt256("fastOracleTick", $fastOracleTick);
                 emit LogUint256("tokenTypes[i]", $tokenTypes[i]);
+                emit LogUint256("ratios[i]", $ratios[i]);
+                emit LogUint256("isLongs[i]", $isLongs[i]);
+                emit LogUint256("$assets[i]", $assets[i]);
 
                 if ($riskPartners[i] != i) {
                     if (
@@ -2022,24 +2045,22 @@ contract FuzzHelpers is PropertiesAsserts {
                     }
                 }
 
-                sizeMultiplierX128 += Math.mulDiv(
-                    10_000 * 2 ** 117,
-                    2 ** 128,
-                    (((
-                        (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
-                            ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
-                            ? baseCR
-                            : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    baseCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    baseCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                    ) * 13_333) / 10_000) * $ratios[i]
-                );
+                $sizeMultiplierDenominator += (((
+                    (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                        ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                        ? baseCR
+                        : $tokenTypes[i] == 0
+                            ? PanopticMath.convert0to1(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                ) *
+                    13_333 *
+                    $ratios[i]) / 10_000);
                 emit LogUint256("2", 2);
 
                 $netLiquidity = sfpm
@@ -2079,7 +2100,7 @@ contract FuzzHelpers is PropertiesAsserts {
                         (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 0)))
                 ) {
                     // amountMoved for 2k posSize
-                    uint256 ITMCR = baseCR;
+                    uint256 ITMCR = baseCR * 5;
 
                     uint160 ratio = $tokenTypes[i] == 1
                         ? Math.getSqrtRatioAtTick(
@@ -2113,25 +2134,24 @@ contract FuzzHelpers is PropertiesAsserts {
                         );
                     }
                     emit LogUint256("3", 4);
+                    emit LogUint256("ITMCR", ITMCR);
 
-                    sizeMultiplierX128 += Math.mulDiv(
-                        2_000 * 2 ** 117,
-                        2 ** 128,
-                        (((
-                            (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
-                                ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
-                                ? ITMCR
-                                : $tokenTypes[i] == 0
-                                    ? PanopticMath.convert0to1(
-                                        ITMCR,
-                                        Math.getSqrtRatioAtTick($fastOracleTick)
-                                    )
-                                    : PanopticMath.convert1to0(
-                                        ITMCR,
-                                        Math.getSqrtRatioAtTick($fastOracleTick)
-                                    )
-                        ) * 13_333) / 10_000) * $ratios[i]
-                    );
+                    $sizeMultiplierDenominator = (((
+                        (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                            ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                            ? ITMCR
+                            : $tokenTypes[i] == 0
+                                ? PanopticMath.convert0to1(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                                : PanopticMath.convert1to0(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                    ) *
+                        13_333 *
+                        $ratios[i]) / 10_000);
                 }
             }
             emit LogUint256("4", 4);
@@ -2149,17 +2169,28 @@ contract FuzzHelpers is PropertiesAsserts {
                     ) + collateral1,
                 multiplierX64
             );
+
+            $sizeMultiplierDenominator = max($sizeMultiplierDenominator, 1);
             emit LogUint256("5", 5);
 
             emit LogUint256("targetCross", targetCross);
-            emit LogUint256("sizeMultiplierX128", sizeMultiplierX128);
+            emit LogUint256("sizeMultiplierNumerator", 10_000 * 2 ** 117);
+            emit LogUint256("sizeMultiplierDenominator", $sizeMultiplierDenominator);
+            // emit LogUint256("sizeMultiplierX128", Math.mulDiv(2**128, $sizeMultiplierNumerator, $sizeMultiplierDenominator));
 
-            emit LogUint256("size_collat", Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
+            emit LogUint256(
+                "size_collat",
+                Math.mulDiv(targetCross, 10_000 * 2 ** 117, $sizeMultiplierDenominator)
+            );
             emit LogUint256("size_long", size_long);
 
-            // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
+            // desired_collateral * (position_size / colReq) = desired_position_size
             // or, bound it to the long position size (based on available liq)
-            return Math.min(size_long, Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
+            return
+                Math.min(
+                    size_long,
+                    Math.mulDiv(targetCross, 10_000 * 2 ** 117, $sizeMultiplierDenominator)
+                );
         }
     }
 

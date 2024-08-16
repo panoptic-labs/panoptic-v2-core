@@ -31,3 +31,4 @@ docs
 crytic-export
 
 test/echidna/medusa_corpus
+test/echidna/corpus
