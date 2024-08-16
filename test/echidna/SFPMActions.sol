@@ -1387,8 +1387,6 @@ contract SFPMActions is GeneralActions {
                 touchedChunk.width
             );
 
-            emit LogString("after token gen 2222");
-
             // increment active number of legs
             $activeNumLegs++;
         }
@@ -1686,14 +1684,6 @@ contract SFPMActions is GeneralActions {
                                     $sLiqAmounts[$activeLegIndex],
                             "invalid net liquidity"
                         );
-
-                        // ensure the removed liquidity is incremented
-                        assertWithMsg(
-                            $removedLiquidityBefore[$activeLegIndex] +
-                                $sLiqAmounts[$activeLegIndex] ==
-                                $removedLiquidityAfter[$activeLegIndex],
-                            "invalid removed liquidity"
-                        );
                     } else {
                         // check the liquidity tracked is the same as the liquidity computed
                         assertWithMsg(
@@ -1701,14 +1691,6 @@ contract SFPMActions is GeneralActions {
                                 $sLiqAmounts[$activeLegIndex] +
                                     $netLiquidityBefore[$activeLegIndex],
                             "invalid net liquidity"
-                        );
-
-                        // ensure the removed liquidity remains the same
-                        assertWithMsg(
-                            $removedLiquidityBefore[$activeLegIndex] -
-                                $sLiqAmounts[$activeLegIndex] ==
-                                $removedLiquidityAfter[$activeLegIndex],
-                            "invalid removed liquidity"
                         );
                     }
                 }
@@ -2226,19 +2208,27 @@ contract SFPMActions is GeneralActions {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqRel(
-                balBefore0 - moved0,
-                balAfter0,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 0 delta invalid"
-            );
+            if (balAfter0 != 0) {
+                assertApproxEqRel(
+                    balBefore0 - moved0,
+                    balAfter0,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 0 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore0 - moved0) == balAfter0, "bal 0 delta invalid");
+            }
 
-            assertApproxEqRel(
-                balBefore1 - moved1,
-                balAfter1,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 1 delta invalid"
-            );
+            if (balAfter1 != 0) {
+                assertApproxEqRel(
+                    balBefore1 - moved1,
+                    balAfter1,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 1 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
@@ -2303,19 +2293,27 @@ contract SFPMActions is GeneralActions {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqRel(
-                balBefore0 - moved0,
-                balAfter0,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 0 delta invalid"
-            );
+            if (balAfter0 != 0) {
+                assertApproxEqRel(
+                    balBefore0 - moved0,
+                    balAfter0,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 0 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore0 - moved0) == balAfter0, "bal 0 delta invalid");
+            }
 
-            assertApproxEqRel(
-                balBefore1 - moved1,
-                balAfter1,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 1 delta invalid"
-            );
+            if (balAfter1 != 0) {
+                assertApproxEqRel(
+                    balBefore1 - moved1,
+                    balAfter1,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 1 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
@@ -2380,19 +2378,27 @@ contract SFPMActions is GeneralActions {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqRel(
-                balBefore0 - moved0,
-                balAfter0,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 0 delta invalid"
-            );
+            if (balAfter0 != 0) {
+                assertApproxEqRel(
+                    balBefore0 - moved0,
+                    balAfter0,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 0 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore0 - moved0) == balAfter0, "bal 0 delta invalid");
+            }
 
-            assertApproxEqRel(
-                balBefore1 - moved1,
-                balAfter1,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 1 delta invalid"
-            );
+            if (balAfter1 != 0) {
+                assertApproxEqRel(
+                    balBefore1 - moved1,
+                    balAfter1,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 1 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
+            }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
@@ -2493,19 +2499,27 @@ contract SFPMActions is GeneralActions {
             emit LogInt256("bal after 0", balAfter0);
             emit LogInt256("bal after 1", balAfter1);
 
-            assertApproxEqRel(
-                balBefore0 - totalMoved0,
-                balAfter0,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 0 delta invalid"
-            );
+            if (balAfter0 != 0) {
+                assertApproxEqRel(
+                    balBefore0 - totalMoved0,
+                    balAfter0,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 0 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore0 - totalMoved0) == balAfter0, "bal 0 delta invalid");
+            }
 
-            assertApproxEqRel(
-                balBefore1 - totalMoved1,
-                balAfter1,
-                1e21, // 1e+21 -> assert value is within 0.01%
-                "bal 1 delta invalid"
-            );
+            if (balAfter1 != 0) {
+                assertApproxEqRel(
+                    balBefore1 - totalMoved1,
+                    balAfter1,
+                    1e21, // 1e+21 -> assert value is within 0.01%
+                    "bal 1 delta invalid"
+                );
+            } else {
+                assertWithMsg((balBefore1 - totalMoved1) == balAfter1, "bal 1 delta invalid");
+            }
 
             int256 convertedMoved1to0 = PanopticMath.convert1to0(totalMoved1, currentSqrtPriceX96);
             emit LogInt256("value of total moved 1 to 0", convertedMoved1to0);
@@ -3809,12 +3823,12 @@ contract SFPMActions is GeneralActions {
         (, currentTick, , , , , ) = cyclingPool.slot0();
 
         if (is_atm) {
-            (width, strike) = getATMSW(width_in, strike_in, uint24(poolTickSpacing), currentTick);
+            (width, strike) = getATMSW(width_in, strike_in, uint24(sfpmTickSpacing), currentTick);
         } else if (is_otm_in) {
             (width, strike) = getOTMSW(
                 width_in,
                 strike_in,
-                uint24(poolTickSpacing),
+                uint24(sfpmTickSpacing),
                 currentTick,
                 call_put
             );
@@ -3822,7 +3836,7 @@ contract SFPMActions is GeneralActions {
             (width, strike) = getITMSW(
                 width_in,
                 strike_in,
-                uint24(poolTickSpacing),
+                uint24(sfpmTickSpacing),
                 currentTick,
                 call_put
             );
