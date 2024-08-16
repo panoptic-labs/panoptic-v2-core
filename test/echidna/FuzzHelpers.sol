@@ -26,6 +26,8 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 
+import {FixedPointMathLib} from "lib/solady/src/utils/FixedPointMathLib.sol";
+
 interface IHevm {
     function warp(uint256 newTimestamp) external;
 
@@ -461,6 +463,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $shouldRevertSFPM;
 
+    bool $locked;
+
     /// ^^ SFPM
 
     address[] $allPositionOwners;
@@ -615,6 +619,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $isBurn;
 
+    uint256 $sizeMultiplierDenominator;
+
     address $exercisee;
     TokenId[] $touchedId;
     TokenId[] $positionListExercisor;
@@ -630,6 +636,9 @@ contract FuzzHelpers is PropertiesAsserts {
     uint128 $grossPremia1;
     uint256[4] $grossPremiaTotal0;
     uint256[4] $grossPremiaTotal1;
+
+    uint128 $owedPremia0;
+    uint128 $owedPremia1;
 
     bool $gross0Correct;
     bool $gross1Correct;
@@ -760,6 +769,20 @@ contract FuzzHelpers is PropertiesAsserts {
         return _min + (value % range);
     }
 
+    function boundLog(uint256 value, uint256 _min, uint256 _max) internal returns (uint256) {
+        emit LogUint256("logboundingmin", _min);
+        emit LogUint256("logboundingmax", _max);
+        uint256 power = bound(value, FixedPointMathLib.log2(_min), FixedPointMathLib.log2(_max));
+        uint256 remainder = bound(
+            uint256(keccak256(abi.encode(value))),
+            _min > 2 ** power ? _min - 2 ** power : 0,
+            min(_max - 2 ** power, 2 ** power - 1)
+        );
+
+        emit LogUint256("logboundres", 2 ** power + remainder);
+        return 2 ** power + remainder;
+    }
+
     function bound(int256 value, int256 _min, int256 _max) internal pure returns (int256) {
         int256 range = _max - _min + 1;
         return _min + Math.abs(value % range);
@@ -813,34 +836,6 @@ contract FuzzHelpers is PropertiesAsserts {
             uint256 new_supply = uint256(int256(orig_supply) + _delta);
             hevm.store(token, slot_supply, bytes32(new_supply));
         }
-    }
-
-    function _get_account_margin(
-        address to_liquidate,
-        int24 tick
-    ) internal returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
-        require(userPositions[to_liquidate].length > 0);
-        uint256[2][] memory positions;
-
-        ($shortPremium, $longPremium, positions) = panopticPool.calculateAccumulatedFeesBatch(
-            to_liquidate,
-            false,
-            userPositions[to_liquidate]
-        );
-        tokenData0 = collToken0.getAccountMarginDetails(
-            to_liquidate,
-            tick,
-            positions,
-            $shortPremium.rightSlot(),
-            $longPremium.rightSlot()
-        );
-        tokenData1 = collToken1.getAccountMarginDetails(
-            to_liquidate,
-            tick,
-            positions,
-            $shortPremium.leftSlot(),
-            $longPremium.leftSlot()
-        );
     }
 
     /////////////////////////////////////////////////////////////
@@ -1361,6 +1356,54 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function _write_liquidation_solvency_revert(address sUser) internal {
+        ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+            .calculateAccumulatedFeesBatch(sUser, false, userPositions[sUser]);
+
+        uint256 insolventTicks;
+        for (uint256 i = 0; i < $colTicks.length; i++) {
+            $tokenData0 = collToken0.getAccountMarginDetails(
+                sUser,
+                $colTicks[i],
+                $posBalanceArray,
+                $shortPremium.rightSlot(),
+                $longPremium.rightSlot()
+            );
+            $tokenData1 = collToken1.getAccountMarginDetails(
+                sUser,
+                $colTicks[i],
+                $posBalanceArray,
+                $shortPremium.leftSlot(),
+                $longPremium.leftSlot()
+            );
+            $balanceCross =
+                Math.mulDiv(
+                    $tokenData1.rightSlot(),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($colTicks[i])
+                ) +
+                Math.mulDiv96($tokenData0.rightSlot(), TickMath.getSqrtRatioAtTick($colTicks[i]));
+
+            $thresholdCross =
+                Math.mulDivRoundingUp(
+                    $tokenData1.leftSlot(),
+                    2 ** 96,
+                    TickMath.getSqrtRatioAtTick($colTicks[i])
+                ) +
+                Math.mulDiv96RoundingUp(
+                    $tokenData0.leftSlot(),
+                    TickMath.getSqrtRatioAtTick($colTicks[i])
+                );
+            insolventTicks += $thresholdCross > $balanceCross ? 1 : 0;
+        }
+
+        // assertWithMsg(insolventTicks != $colTicks.length, "all tick insolvent");
+        // assertWithMsg(insolventTicks == 0, "one ticks insolvent");
+        $locked = false;
+        $locked = insolventTicks == $colTicks.length;
+        if (insolventTicks != $colTicks.length) $shouldRevert = true;
+    }
+
     function _write_revert_due_solvency(address sUser, uint256 buffer) internal {
         if (
             int256($colTicks[0] - $colTicks[1]) ** 2 +
@@ -1513,29 +1556,6 @@ contract FuzzHelpers is PropertiesAsserts {
                 collToken0.convertToAssets(collToken0.balanceOf(who)),
                 TickMath.getSqrtRatioAtTick(tick)
             );
-    }
-
-    function _get_solvency_balances(
-        address who,
-        int24 tick
-    ) internal returns (uint256 balanceCross, uint256 thresholdCross) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _get_account_margin(
-            who,
-            tick
-        );
-        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(tick);
-        unchecked {
-            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
-            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
-            balanceCross =
-                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
-            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overstimate by rounding up
-            thresholdCross =
-                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
-        }
     }
 
     function _get_list_without_tokenid(
@@ -1702,7 +1722,15 @@ contract FuzzHelpers is PropertiesAsserts {
         LeftRightSigned netExchanged;
 
         hevm.prank(who);
-        (premiasByLeg, netExchanged) = panopticPool.burnAllOptionsFrom(userPositions[who], 0, 0);
+        try
+            panopticPool.burnAllOptionsFrom(userPositions[who], type(int24).min, type(int24).max)
+        returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
+            premiasByLeg = _premiasByLeg;
+            netExchanged = _netExchanged;
+            assertWithMsg(false, "burn succeeded ??");
+        } catch (bytes memory results) {
+            assertWithMsg(!$locked, "BURN TEST FAILED");
+        }
 
         currentTickOld = currentTick;
         (, currentTick, , , , , ) = pool.slot0();
@@ -1810,7 +1838,6 @@ contract FuzzHelpers is PropertiesAsserts {
             burnSimResults.burnDelta0 = burnDelta.leftSlot();
             burnSimResults.burnDelta1 = burnDelta.rightSlot();
             burnSimResults.netExchanged = netExchanged;
-            burnSimResults.settledTokens = abi.decode(results, (uint256[2][4][32]));
         }
     }
 
@@ -1839,12 +1866,27 @@ contract FuzzHelpers is PropertiesAsserts {
         liqResults.shortPremium = $shortPremium;
     }
 
-    function _calculate_liquidation_bonus(int24 twaptick, int24 curtick) internal {
+    function _calculate_liquidation_bonus(int24 twaptick) external {
+        emit LogInt256("twaptick", twaptick);
+        emit LogUint256("liqResults.margin0.rightSlot()", liqResults.margin0.rightSlot());
+        emit LogUint256("liqResults.margin0.leftSlot()", liqResults.margin0.leftSlot());
+        emit LogUint256("liqResults.margin1.rightSlot()", liqResults.margin1.rightSlot());
+        emit LogUint256("liqResults.margin1.leftSlot()", liqResults.margin1.leftSlot());
+        emit LogInt256(
+            "burnSimResults.netExchanged.rightSlot()",
+            burnSimResults.netExchanged.rightSlot()
+        );
+        emit LogInt256(
+            "burnSimResults.netExchanged.leftSlot()",
+            burnSimResults.netExchanged.leftSlot()
+        );
+        emit LogUint256("liqResults.shortPremium.rightSlot()", liqResults.shortPremium.rightSlot());
+        emit LogUint256("liqResults.shortPremium.leftSlot()", liqResults.shortPremium.leftSlot());
+
         (liqResults.bonus0, liqResults.bonus1, ) = PanopticMath.getLiquidationBonus(
             liqResults.margin0,
             liqResults.margin1,
             Math.getSqrtRatioAtTick(twaptick),
-            Math.getSqrtRatioAtTick(curtick),
             burnSimResults.netExchanged,
             liqResults.shortPremium
         );
@@ -1899,16 +1941,8 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 ts = int256(ts_);
 
         width = distribution
-            ? int24(
-                int256(
-                    bound(
-                        _widthSeed,
-                        ts_,
-                        uint256((TickMath.MAX_TICK - TickMath.MIN_TICK) / ts / 10)
-                    )
-                )
-            )
-            : int24(int256(bound(_widthSeed, ts_, 4096 / ts_)));
+            ? int24(int256(bound(_widthSeed, 1, 4095)))
+            : int24(int256(bound(_widthSeed, 1, 4095 / ts_)));
 
         int24 rangeDown;
         int24 rangeUp;
@@ -1951,9 +1985,7 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 collateral1
     ) public returns (uint256) {
         unchecked {
-            // position size * 2**128 / colReq
-            uint256 sizeMultiplierX128;
-
+            $sizeMultiplierDenominator = 0;
             uint256 size_long = type(uint256).max;
             for (uint256 i = 0; i < $numLegs; i++) {
                 emit LogInt256("$strikes[i]", $strikes[i]);
@@ -1984,6 +2016,9 @@ contract FuzzHelpers is PropertiesAsserts {
 
                 emit LogInt256("fastOracleTick", $fastOracleTick);
                 emit LogUint256("tokenTypes[i]", $tokenTypes[i]);
+                emit LogUint256("ratios[i]", $ratios[i]);
+                emit LogUint256("isLongs[i]", $isLongs[i]);
+                emit LogUint256("$assets[i]", $assets[i]);
 
                 if ($riskPartners[i] != i) {
                     if (
@@ -2006,24 +2041,22 @@ contract FuzzHelpers is PropertiesAsserts {
                     }
                 }
 
-                sizeMultiplierX128 += Math.mulDiv(
-                    10_000 * 2 ** 117,
-                    2 ** 128,
-                    (((
-                        (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
-                            ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
-                            ? baseCR
-                            : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    baseCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    baseCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                    ) * 13_333) / 10_000) * $ratios[i]
-                );
+                $sizeMultiplierDenominator += (((
+                    (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                        ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                        ? baseCR
+                        : $tokenTypes[i] == 0
+                            ? PanopticMath.convert0to1(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                ) *
+                    13_333 *
+                    $ratios[i]) / 10_000);
                 emit LogUint256("2", 2);
 
                 $netLiquidity = sfpm
@@ -2063,7 +2096,7 @@ contract FuzzHelpers is PropertiesAsserts {
                         (($fastOracleTick < $tickLower) && ($tokenTypes[i] == 0)))
                 ) {
                     // amountMoved for 2k posSize
-                    uint256 ITMCR = baseCR;
+                    uint256 ITMCR = baseCR * 5;
 
                     uint160 ratio = $tokenTypes[i] == 1
                         ? Math.getSqrtRatioAtTick(
@@ -2097,25 +2130,24 @@ contract FuzzHelpers is PropertiesAsserts {
                         );
                     }
                     emit LogUint256("3", 4);
+                    emit LogUint256("ITMCR", ITMCR);
 
-                    sizeMultiplierX128 += Math.mulDiv(
-                        2_000 * 2 ** 117,
-                        2 ** 128,
-                        (((
-                            (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
-                                ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
-                                ? ITMCR
-                                : $tokenTypes[i] == 0
-                                    ? PanopticMath.convert0to1(
-                                        ITMCR,
-                                        Math.getSqrtRatioAtTick($fastOracleTick)
-                                    )
-                                    : PanopticMath.convert1to0(
-                                        ITMCR,
-                                        Math.getSqrtRatioAtTick($fastOracleTick)
-                                    )
-                        ) * 13_333) / 10_000) * $ratios[i]
-                    );
+                    $sizeMultiplierDenominator = (((
+                        (($tokenTypes[i] == 0 && $fastOracleTick > 0) ||
+                            ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
+                            ? ITMCR
+                            : $tokenTypes[i] == 0
+                                ? PanopticMath.convert0to1(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                                : PanopticMath.convert1to0(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                    ) *
+                        13_333 *
+                        $ratios[i]) / 10_000);
                 }
             }
             emit LogUint256("4", 4);
@@ -2133,17 +2165,28 @@ contract FuzzHelpers is PropertiesAsserts {
                     ) + collateral1,
                 multiplierX64
             );
+
+            $sizeMultiplierDenominator = max($sizeMultiplierDenominator, 1);
             emit LogUint256("5", 5);
 
             emit LogUint256("targetCross", targetCross);
-            emit LogUint256("sizeMultiplierX128", sizeMultiplierX128);
+            emit LogUint256("sizeMultiplierNumerator", 10_000 * 2 ** 117);
+            emit LogUint256("sizeMultiplierDenominator", $sizeMultiplierDenominator);
+            // emit LogUint256("sizeMultiplierX128", Math.mulDiv(2**128, $sizeMultiplierNumerator, $sizeMultiplierDenominator));
 
-            emit LogUint256("size_collat", Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
+            emit LogUint256(
+                "size_collat",
+                Math.mulDiv(targetCross, 10_000 * 2 ** 117, $sizeMultiplierDenominator)
+            );
             emit LogUint256("size_long", size_long);
 
-            // desired_collateral * 2**128 / (position_size * 2**128 / colReq)
+            // desired_collateral * (position_size / colReq) = desired_position_size
             // or, bound it to the long position size (based on available liq)
-            return Math.min(size_long, Math.mulDiv(targetCross, 2 ** 128, sizeMultiplierX128));
+            return
+                Math.min(
+                    size_long,
+                    Math.mulDiv(targetCross, 10_000 * 2 ** 117, $sizeMultiplierDenominator)
+                );
         }
     }
 
@@ -2678,7 +2721,6 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogInt256("    burnDelta1", burnSimResults.burnDelta1);
         emit LogInt256("    netExchanged L", burnSimResults.netExchanged.leftSlot());
         emit LogInt256("    netExchanged R", burnSimResults.netExchanged.rightSlot());
-        emit LogUint256("    chunk", burnSimResults.settledTokens[0][0][0]);
     }
 
     function log_liquidation_results() internal {

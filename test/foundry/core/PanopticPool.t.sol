@@ -6522,7 +6522,6 @@ contract PanopticPoolTest is PositionUtils {
             $tokenData0,
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
-            Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
             $shortPremia
         );
@@ -7089,7 +7088,6 @@ contract PanopticPoolTest is PositionUtils {
         ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
             $tokenData0,
             $tokenData1,
-            Math.getSqrtRatioAtTick(TWAPtick),
             Math.getSqrtRatioAtTick(TWAPtick),
             $netExchanged,
             $shortPremia

@@ -77,6 +77,7 @@ contract CollateralActions is SFPMActions {
         bool toSelf,
         address receiver
     ) public {
+        require(receiver != address(panopticPool));
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions > 0) {
             if (token0) {
@@ -731,6 +732,8 @@ contract CollateralActions is SFPMActions {
         uint256 tooLargeDepositAmount,
         bool depositToSelf
     ) public {
+        require(receiver != address(panopticPool));
+
         _attempt_overdeposit(true, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
         _attempt_overdeposit(false, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
     }
@@ -742,6 +745,8 @@ contract CollateralActions is SFPMActions {
         uint256 tooLargeDepositAmount,
         bool depositToSelf
     ) internal {
+        require(receiver != address(panopticPool));
+
         CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxDeposit = type(uint104).max;
         tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint224).max);
@@ -777,6 +782,8 @@ contract CollateralActions is SFPMActions {
         uint256 tooLargeMintAmount,
         bool mintToSelf
     ) public {
+        require(receiver != address(panopticPool));
+
         _attempt_overmint(true, minter, receiver, tooLargeMintAmount, mintToSelf);
         _attempt_overmint(false, minter, receiver, tooLargeMintAmount, mintToSelf);
     }
@@ -823,6 +830,8 @@ contract CollateralActions is SFPMActions {
         uint256 amountOver,
         bool viaMint
     ) public {
+        require(receiver != address(panopticPool));
+
         _attempt_deposit_over_balance(collToken0, msg.sender, receiver, amountOver, viaMint);
         _attempt_deposit_over_balance(collToken1, msg.sender, receiver, amountOver, viaMint);
     }

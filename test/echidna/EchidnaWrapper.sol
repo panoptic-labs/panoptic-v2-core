@@ -74,8 +74,8 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         initialize();
 
-        deal_USDC(pool_manipulator, 1000000000 ether);
-        deal_WETH(pool_manipulator, 1000000 ether);
+        deal_USDC(pool_manipulator, type(uint240).max);
+        deal_WETH(pool_manipulator, type(uint240).max);
 
         for (uint i; i < 4; i++) {
             hevm.prank(pool_manipulator);
@@ -91,12 +91,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         for (uint i; i < pools.length; i++) {
             cyclingPool = pools[i];
-            for (uint j = 0; j < 10; j++) {
-                _perform_swap_with_delay(
-                    uint160(uint256(bytes32(keccak256(abi.encode(1, j))))),
-                    uint256(bytes32(keccak256(abi.encode(j))))
-                );
-            }
+            perform_swap_and_align_prices(uint256(keccak256(abi.encodePacked(i))));
         }
 
         cyclingPool = pool;

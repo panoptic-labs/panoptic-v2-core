@@ -31,35 +31,70 @@ contract GeneralActions is FuzzHelpers {
 
     /// cycling pool
     /// for all general and sfpm actions cycle the underlying uniswap pool being interacted on
-    function cyclePool() public {
-        IUniswapV3Pool pool;
-        if (cyclingPoolIndex + 1 > pools.length - 1) {
-            cyclingPoolIndex = 0;
-        } else {
-            cyclingPoolIndex += 1;
-        }
-
-        cyclingPool = pools[cyclingPoolIndex];
+    function cyclePool(uint256 pool_idx) external {
+        cyclingPool = pools[bound(pool_idx, 0, pools.length - 1)];
         sfpmPoolId = sfpm.getPoolId(address(cyclingPool));
         sfpmTickSpacing = cyclingPool.tickSpacing();
     }
 
-    function perform_swap(uint160 target_sqrt_price) public {
-        uint160 price;
+    // function perform_swap(uint256 target_sqrt_price) public {
+    //     (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
-        (price, , , , , , ) = cyclingPool.slot0();
+    //     // bound the price within 50% of the current price
+    //     target_sqrt_price = boundLog(
+    //         target_sqrt_price,
+    //         Math.getSqrtRatioAtTick(TickMath.MIN_TICK + 2),
+    //         Math.getSqrtRatioAtTick(TickMath.MAX_TICK - 2)
+    //     );
+
+    //     emit LogUint256("price before swap", currentSqrtPriceX96);
+
+    //     hevm.prank(pool_manipulator);
+    //     swapperc.swapTo(cyclingPool, uint160(target_sqrt_price));
+
+    //     (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+    //     emit LogUint256("price after swap", currentSqrtPriceX96);
+    // }
+
+    function perform_swap_and_align_prices(uint256 target_sqrt_price) public {
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
         // bound the price within 50% of the current price
-        target_sqrt_price = uint160(
-            bound(price, Math.mulDiv(price, 7_071, 10_000), Math.mulDiv(price, 14_142, 10_000))
+        target_sqrt_price = boundLog(
+            target_sqrt_price,
+            Math.getSqrtRatioAtTick(TickMath.MIN_TICK + 2),
+            Math.getSqrtRatioAtTick(TickMath.MAX_TICK - 2)
         );
 
-        emit LogUint256("price before swap", uint256(price));
+        emit LogUint256("price before swap", currentSqrtPriceX96);
 
         hevm.prank(pool_manipulator);
-        swapperc.swapTo(cyclingPool, target_sqrt_price);
+        swapperc.swapTo(cyclingPool, uint160(target_sqrt_price));
 
-        (price, , , , , , ) = cyclingPool.slot0();
-        emit LogUint256("price after swap", uint256(price));
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+        emit LogUint256("price after swap", currentSqrtPriceX96);
+
+        // align TWAP and fast oracle prices
+        for (uint256 i; i < 10; i++) {
+            hevm.warp(block.timestamp + 600);
+            hevm.roll(block.number + 1);
+            int24 _ts = cyclingPool.tickSpacing();
+
+            hevm.prank(pool_manipulator);
+            swapperc.mint(
+                cyclingPool,
+                (TickMath.MIN_TICK / _ts) * _ts,
+                (TickMath.MAX_TICK / _ts) * _ts,
+                1
+            );
+            hevm.prank(pool_manipulator);
+            swapperc.burn(
+                cyclingPool,
+                (TickMath.MIN_TICK / _ts) * _ts,
+                (TickMath.MAX_TICK / _ts) * _ts,
+                1
+            );
+            if (i > 1) panopticPool.pokeMedian();
+        }
     }
 }

@@ -5,7 +5,7 @@
     "timeout": 0,
     "testLimit": 0,
     "shrinkLimit": 0,
-    "callSequenceLength": 500,
+    "callSequenceLength": 5000,
     "corpusDirectory": "test/echidna/medusa_corpus",
     "coverageEnabled": true,
     "targetContracts": ["EchidnaWrapper"],

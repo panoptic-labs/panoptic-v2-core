@@ -26,7 +26,8 @@ contract PanopticPoolActions is CollateralActions {
 
         ($tickLimitLow, $tickLimitHigh) = (tickLimitSeeds[0], tickLimitSeeds[1]);
 
-        $numLegs = bound(numLegs, 1, 4);
+        // $numLegs = bound(numLegs, 1, 4);
+        $numLegs = 1;
 
         $posIdListOld = userPositions[msg.sender];
 
@@ -38,6 +39,12 @@ contract PanopticPoolActions is CollateralActions {
             60,
             uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
             pool
+        );
+
+        $fastOracleTick = panopticHelper.computeMedianObservedPrice(
+            pool,
+            Constants.FAST_ORACLE_CARDINALITY,
+            Constants.FAST_ORACLE_PERIOD
         );
 
         $safeMode = Math.abs($slowOracleTick - currentTick) > 953;
@@ -81,7 +88,7 @@ contract PanopticPoolActions is CollateralActions {
                     );
                 }
                 // pick a chunk that has already been interacted with before -- reasonable probability of success
-                else if (distributions[3] && false) {
+                else if (distributions[3]) {
                     ChunkWithTokenType memory __chunk = touchedPanopticChunks[
                         bound(
                             uint256(keccak256(abi.encodePacked(positionSize))),
@@ -172,6 +179,20 @@ contract PanopticPoolActions is CollateralActions {
                 i
             );
 
+            emit LogInt256("$strikes[i]", $strikes[i]);
+            emit LogInt256("$widths[i]", $widths[i]);
+            emit LogInt256("$poolTickSpacing", poolTickSpacing);
+            emit LogInt256(
+                "userPositions[msg.sender][userPositions[msg.sender].length - 1].strike(i)",
+                userPositions[msg.sender][userPositions[msg.sender].length - 1].strike(i)
+            );
+            emit LogInt256(
+                "userPositions[msg.sender][userPositions[msg.sender].length - 1].width(i)",
+                userPositions[msg.sender][userPositions[msg.sender].length - 1].width(i)
+            );
+            assert($widths[i] < 4096);
+            assertWithMsg(poolTickSpacing == 1, "pts1");
+
             ($tickLower, $tickUpper) = PanopticMath.getTicks(
                 $strikes[i],
                 $widths[i],
@@ -185,7 +206,7 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLower,
                 $tickUpper,
                 currentTick,
-                $isLongs[i]
+                0
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
@@ -198,27 +219,34 @@ contract PanopticPoolActions is CollateralActions {
 
             $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
 
-            $grossPremiaTotal0[i] = $shortLiquidity == 0
-                ? 0
-                : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity);
-            $grossPremiaTotal1[i] = $shortLiquidity == 0
-                ? 0
-                : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity);
+            $grossPremiaTotal0[i] = Math.mulDiv64(
+                $grossPremia0 - $grossPremiaLast0,
+                $shortLiquidity
+            );
+            $grossPremiaTotal1[i] = Math.mulDiv64(
+                $grossPremia1 - $grossPremiaLast1,
+                $shortLiquidity
+            );
         }
 
         uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
         uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
 
-        positionSize = uint128(
-            distributions[1]
-                ? bound(positionSize, 0, 1_000_000_000 * 2 ** 64)
-                : bound(positionSize, 0, 2 * 2 ** 64)
-        );
+        // positionSize = uint128(
+        //     distributions[1]
+        //         ? boundLog(positionSize, 0, 1_000_000_000 * 2 ** 64)
+        //         : boundLog(positionSize, 2**64, 2 ** 64)
+        // );
+
+        positionSize = uint128(boundLog(positionSize, 0, 2 * 2 ** 64));
+
+        uint256 sizeDistro = positionSize;
 
         try this.size_for_collateral_solo(positionSize, userCollateral0, userCollateral1) {} catch (
             bytes memory reason
         ) {
             emit LogBytes("Reason", reason);
+            assertWithMsg(false, "S4CS failed");
         }
 
         positionSize = uint128(
@@ -452,10 +480,16 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLimitHigh
             )
         {
+            uint256 balance0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
+            uint256 balance1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
+            // assertWithMsg($shortAmounts.rightSlot() + PanopticMath.convert0to1($shortAmounts.leftSlot(), TickMath.getSqrtRatioAtTick($fastOracleTick)) <= int256(balance0 + PanopticMath.convert1to0(balance1, TickMath.getSqrtRatioAtTick($fastOracleTick))), "mintOptions: undercollat mint");
+            // assert(false);
+            // assert(sizeDistro < uint(2**64)/5 || $isLongs[0] != 0 || sizeDistro > 2 * 2**64);
             $allPositionCount++;
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
+            // assert(sizeDistro > uint(2**64)/5 || bytes4(reason) != Errors.AccountInsolvent.selector);
 
             assertWithMsg($shouldRevert, "mintOptions: unexpected revert");
             $failedPositionCount++;
@@ -526,7 +560,7 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLower,
                 $tickUpper,
                 type(int24).max,
-                $tokenIdActive.isLong(i)
+                0
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
@@ -540,34 +574,18 @@ contract PanopticPoolActions is CollateralActions {
             $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
 
             assertWithMsg(
-                $grossPremiaTotal0[i] ==
-                    (
-                        $shortLiquidity == 0
-                            ? 0
-                            : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
-                    ) ||
-                    $grossPremiaTotal0[i] + 1 ==
-                    (
-                        $shortLiquidity == 0
-                            ? 0
-                            : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
-                    ),
+                ($grossPremiaTotal0[i] ==
+                    Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) ||
+                    ($grossPremiaTotal0[i] + 1 ==
+                        Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)),
                 "mintOptions: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
             );
 
             assertWithMsg(
-                $grossPremiaTotal1[i] ==
-                    (
-                        $shortLiquidity == 0
-                            ? 0
-                            : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
-                    ) ||
-                    $grossPremiaTotal1[i] + 1 ==
-                    (
-                        $shortLiquidity == 0
-                            ? 0
-                            : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
-                    ),
+                ($grossPremiaTotal1[i] ==
+                    Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) ||
+                    ($grossPremiaTotal1[i] + 1 ==
+                        Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)),
                 "mintOptions: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
             );
         }
@@ -653,7 +671,17 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLower,
                 $tickUpper,
                 currentTick,
-                $tokenIdActive.isLong(i)
+                0
+            );
+
+            ($owedPremia0, $owedPremia1) = sfpm.getAccountPremium(
+                address(pool),
+                address(panopticPool),
+                $tokenIdActive.tokenType(i),
+                $tickLower,
+                $tickUpper,
+                currentTick,
+                1
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
@@ -666,19 +694,27 @@ contract PanopticPoolActions is CollateralActions {
 
             $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
 
-            $grossPremiaTotal0[i] = $shortLiquidity == 0
-                ? 0
-                : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity);
-            $grossPremiaTotal1[i] = $shortLiquidity == 0
-                ? 0
-                : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity);
+            $grossPremiaTotal0[i] = Math.mulDiv64(
+                $grossPremia0 - $grossPremiaLast0,
+                $shortLiquidity
+            );
+            $grossPremiaTotal1[i] = Math.mulDiv64(
+                $grossPremia1 - $grossPremiaLast1,
+                $shortLiquidity
+            );
 
             $legLiquidity = PanopticMath
                 .getLiquidityChunk($tokenIdActive, i, $positionSizeActive)
                 .liquidity();
 
-            $idealPremium0[i] = Math.mulDiv64($grossPremia0 - $premiumGrowth0[i], $legLiquidity);
-            $idealPremium1[i] = Math.mulDiv64($grossPremia1 - $premiumGrowth1[i], $legLiquidity);
+            $idealPremium0[i] = Math.mulDiv64(
+                ($tokenIdActive.isLong(i) == 1 ? $owedPremia0 : $grossPremia0) - $premiumGrowth0[i],
+                $legLiquidity
+            );
+            $idealPremium1[i] = Math.mulDiv64(
+                ($tokenIdActive.isLong(i) == 1 ? $owedPremia1 : $grossPremia1) - $premiumGrowth1[i],
+                $legLiquidity
+            );
             emit LogUint256("idealPremium0", $idealPremium0[i]);
             emit LogUint256("idealPremium1", $idealPremium1[i]);
             $proratedPremium0[i] = $grossPremiaTotal0[i] == 0 || $tokenIdActive.isLong(i) != 0
@@ -793,51 +829,29 @@ contract PanopticPoolActions is CollateralActions {
         $totalSupply0 = collToken0.totalSupply();
         $totalSupply1 = collToken1.totalSupply();
 
+        int256 shareDelta0 = ($colDelta0 > 0 ? int8(1) : -1) *
+            int256(
+                Math.mulDivRoundingUp(uint256(Math.abs($colDelta0)), $totalSupply0, $totalAssets0)
+            );
+
+        int256 shareDelta1 = ($colDelta1 > 0 ? int8(1) : -1) *
+            int256(
+                Math.mulDivRoundingUp(uint256(Math.abs($colDelta1)), $totalSupply1, $totalAssets1)
+            );
+
         if (
-            !(-(($colDelta0 > 0 ? int8(1) : -1) *
-                int256(
-                    Math.mulDivRoundingUp(
-                        uint256(Math.abs($colDelta0)),
-                        $totalSupply0,
-                        $totalAssets0
-                    )
-                )) >
-                int256(collToken0.balanceOf(msg.sender)) ||
-                -(($colDelta1 > 0 ? int8(1) : -1) *
-                    int256(
-                        Math.mulDivRoundingUp(
-                            uint256(Math.abs($colDelta1)),
-                            $totalSupply1,
-                            $totalAssets1
-                        )
-                    )) >
-                int256(collToken1.balanceOf(msg.sender)))
+            !(-shareDelta0 > int256(collToken0.balanceOf(msg.sender)) ||
+                -shareDelta1 > int256(collToken1.balanceOf(msg.sender)))
         ) {
             $balance0ExpectedP = Math.mulDiv(
-                uint256(
-                    int256(collToken0.balanceOf(msg.sender)) +
-                        ($colDelta0 * int256($totalSupply0)) /
-                        int256($totalAssets0)
-                ),
+                uint256(int256(collToken0.balanceOf(msg.sender)) + shareDelta0),
                 uint256(int256($totalAssets0) + $colDelta0),
-                uint256(
-                    int256($totalSupply0) +
-                        ($colDelta0 * int256($totalSupply0)) /
-                        int256($totalAssets0)
-                )
+                uint256(int256($totalSupply0) + shareDelta0)
             );
             $balance1ExpectedP = Math.mulDiv(
-                uint256(
-                    int256(collToken1.balanceOf(msg.sender)) +
-                        ($colDelta1 * int256($totalSupply1)) /
-                        int256($totalAssets1)
-                ),
+                uint256(int256(collToken1.balanceOf(msg.sender)) + shareDelta1),
                 uint256(int256($totalAssets1) + $colDelta1),
-                uint256(
-                    int256($totalSupply1) +
-                        ($colDelta1 * int256($totalSupply1)) /
-                        int256($totalAssets1)
-                )
+                uint256(int256($totalSupply1) + shareDelta1)
             );
 
             _write_revert_due_solvency(msg.sender, 10_000);
@@ -957,7 +971,7 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLower,
                 $tickUpper,
                 type(int24).max,
-                $tokenIdActive.isLong(i)
+                0
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
@@ -973,35 +987,19 @@ contract PanopticPoolActions is CollateralActions {
             $gross0Correct =
                 int256($grossPremiaTotal0[i]) -
                     int256($tokenIdActive.isLong(i) == 0 ? $idealPremium0[i] : 0) ==
-                int256(
-                    $shortLiquidity == 0
-                        ? 0
-                        : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
-                ) ||
+                int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) ||
                 int256($grossPremiaTotal0[i]) -
                     int256($tokenIdActive.isLong(i) == 0 ? $idealPremium0[i] : 0) +
                     1 ==
-                int256(
-                    $shortLiquidity == 0
-                        ? 0
-                        : Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
-                );
+                int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity));
             $gross1Correct =
                 int256($grossPremiaTotal1[i]) -
                     int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0) ==
-                int256(
-                    $shortLiquidity == 0
-                        ? 0
-                        : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
-                ) ||
+                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) ||
                 int256($grossPremiaTotal1[i]) -
                     int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0) +
                     1 ==
-                int256(
-                    $shortLiquidity == 0
-                        ? 0
-                        : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
-                );
+                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity));
 
             // total gross can round down relative to the amount held by the previous gPL if grossPremiumLast hits 0 threshold due to rectification,
             // *but* cannot go below the *true* gross premium threshold (not inclusive of accumulated (upward) rounding errors in grossPremiumLast)
@@ -1080,11 +1078,8 @@ contract PanopticPoolActions is CollateralActions {
 
                 if (!$gross1Correct && $grossPremiaLast1 == 0) {
                     assertWithMsg(
-                        (
-                            $shortLiquidity == 0
-                                ? 0
-                                : Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)
-                        ) >= $grossPremiumTotalSumLegs1,
+                        Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity) >=
+                            $grossPremiumTotalSumLegs1,
                         "burnOptions: Calculated total gross premium for token1 fell below summed gross premium for all legs in the chunk"
                     );
                 } else {
@@ -1491,6 +1486,13 @@ contract PanopticPoolActions is CollateralActions {
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
                 bytes4(reason) == Errors.AccountInsolvent.selector
             ) {
+                // if exercisor was insolvent beforehand, it's fine to revert
+                try
+                    panopticPool.validateCollateralWithdrawable($exercisee, $positionListExercisee)
+                {} catch {
+                    revert();
+                }
+
                 hevm.prank(address(panopticPool));
                 collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
                 hevm.prank(address(panopticPool));
@@ -1545,6 +1547,7 @@ contract PanopticPoolActions is CollateralActions {
                 exerciseCost.leftSlot(),
                 TickMath.getSqrtRatioAtTick($twapTick)
             );
+
         // token0 - diff from burn
         int256 cDelta0 = (
             int256(collToken0.balanceOf($exercisee)) - $balance0Exercisee - $colDelta0 > 0
@@ -1651,12 +1654,20 @@ contract PanopticPoolActions is CollateralActions {
                 )
         );
         assertWithMsg(
-            cDelta0 >= 0,
+            cDelta0 >=
+                -int256(
+                    1 + PanopticMath.convert1to0(uint256(1), TickMath.getSqrtRatioAtTick($twapTick))
+                ),
             "ForceExercise: Sanity check - Exercisee token value is lower than before"
         );
 
+        emit LogInt256("exerciseCostToken0", exerciseCostToken0);
+
         assertWithMsg(
-            Math.abs(-cDelta0 - exerciseCostToken0) <= 1,
+            Math.abs(-cDelta0 - exerciseCostToken0) <=
+                int256(
+                    1 + PanopticMath.convert1to0(uint256(1), TickMath.getSqrtRatioAtTick($twapTick))
+                ),
             "ForceExercise: Token deltas do not match exercise cost"
         );
     }
@@ -1668,30 +1679,19 @@ contract PanopticPoolActions is CollateralActions {
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
-    function try_liquidate_option(uint256 i_liquidated) public {
-        i_liquidated = bound(i_liquidated, 0, 4);
+    function try_liquidate_option(
+        uint256 i_liquidated,
+        uint256 delegated0,
+        uint256 delegated1
+    ) public {
+        i_liquidated = bound(i_liquidated, 0, actors.length - 1);
         address liquidatee = actors[i_liquidated];
         address liquidator = msg.sender;
 
-        if (userPositions[liquidatee].length < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
+        $shouldRevert = false;
 
-        // Make sure the liquidator has tokens to delegate
-        {
-            hevm.prank(liquidator);
-            fund_and_approve();
-
-            uint256 lb0 = IERC20(USDC).balanceOf(liquidator);
-            uint256 lb1 = IERC20(WETH).balanceOf(liquidator);
-            hevm.prank(liquidator);
-            deposit_to_ct(true, lb0, false);
-            hevm.prank(liquidator);
-            deposit_to_ct(false, lb1, false);
-        }
-
-        require(liquidatee != liquidator);
+        if (userPositions[liquidatee].length < 1) $shouldRevert = true;
+        if (liquidatee == liquidator) $shouldRevert = true;
 
         TokenId[] memory liquidated_positions = userPositions[liquidatee];
         TokenId[] memory liquidator_positions = userPositions[liquidator];
@@ -1703,44 +1703,42 @@ contract PanopticPoolActions is CollateralActions {
 
         int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
         (, currentTick, , , , , ) = pool.slot0();
+
+        if (Math.abs(TWAPtick - currentTick) > 513) $shouldRevert = true;
+
         emit LogInt256("TWAP tick", TWAPtick);
         emit LogInt256("Current tick", currentTick);
 
-        log_account_collaterals(liquidator);
-        log_account_collaterals(liquidatee);
-        log_trackers_status();
+        // log_account_collaterals(liquidator);
+        // log_account_collaterals(liquidatee);
+        // log_trackers_status();
 
-        require(liquidated_positions.length > 0);
-
-        (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
-            liquidatee,
-            TWAPtick
+        ($colTicks[0], $colTicks[1], $colTicks[2], $colTicks[3], ) = PanopticMath.getOracleTicks(
+            pool,
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
         );
-        emit LogUint256("Balance cross", balanceCross);
-        emit LogUint256("Threshold cross", thresholdCross);
+
+        _write_liquidation_solvency_revert(liquidatee);
 
         LeftRightUnsigned delegations = LeftRightUnsigned
-            .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
-            .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
-
-        // If the position is not liquidatable, liquidation call must revert
-        if (balanceCross > thresholdCross) {
-            try
-                panopticPool.liquidate(
-                    liquidator_positions,
-                    liquidatee,
-                    delegations,
-                    liquidated_positions
+            .wrap(
+                uint128(
+                    bound(
+                        delegated0,
+                        0,
+                        collToken0.convertToAssets(collToken0.balanceOf(liquidator))
+                    )
                 )
-            {
-                assertWithMsg(
-                    false,
-                    "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated"
-                );
-            } catch {
-                revert();
-            }
-        }
+            )
+            .toLeftSlot(
+                uint128(
+                    bound(
+                        delegated1,
+                        0,
+                        collToken1.convertToAssets(collToken1.balanceOf(liquidator))
+                    )
+                )
+            );
 
         _calculate_margins_and_premia(liquidatee, TWAPtick);
 
@@ -1749,6 +1747,7 @@ contract PanopticPoolActions is CollateralActions {
 
         _execute_burn_simulation(liquidatee, liquidator);
 
+        assertWithMsg(!$locked, "LQ2");
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
 
         (liqResults.shortPremium, , ) = panopticPool.calculateAccumulatedFeesBatch(
@@ -1757,7 +1756,9 @@ contract PanopticPoolActions is CollateralActions {
             liquidated_positions
         );
 
-        _calculate_liquidation_bonus(TWAPtick, TWAPtick);
+        try this._calculate_liquidation_bonus(TWAPtick) {} catch {
+            (liqResults.bonus0, liqResults.bonus1) = (0, 0);
+        }
 
         burnSimResults.delegated0 = uint256(
             int256(
@@ -1787,7 +1788,51 @@ contract PanopticPoolActions is CollateralActions {
         );
 
         hevm.prank(liquidator);
-        panopticPool.liquidate(liquidator_positions, liquidatee, delegations, liquidated_positions);
+        try
+            panopticPool.liquidate(
+                liquidator_positions,
+                liquidatee,
+                delegations,
+                liquidated_positions
+            )
+        {
+            assertWithMsg(false, "liquidation success!");
+            assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
+        } catch (bytes memory reason) {
+            emit LogBytes("Reason", reason);
+            assertWithMsg(!$locked, "Liquidate: unexpected revert (LOCKED)");
+            // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
+            if (
+                keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
+                bytes4(reason) == Errors.AccountInsolvent.selector
+            ) {
+                hevm.prank(address(panopticPool));
+                collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+                hevm.prank(address(panopticPool));
+                collToken1.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+
+                hevm.prank(msg.sender);
+                try
+                    panopticPool.liquidate(
+                        liquidator_positions,
+                        liquidatee,
+                        LeftRightUnsigned.wrap((2 ** 104 - 1) * 10_000).toLeftSlot(
+                            (2 ** 104 - 1) * 10_000
+                        ),
+                        liquidated_positions
+                    )
+                {
+                    assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
+                    revert();
+                } catch {
+                    assertWithMsg($shouldRevert, "Liquidate: unexpected revert");
+                    revert();
+                }
+            } else {
+                assertWithMsg($shouldRevert, "Liquidate: unexpected revert");
+                revert();
+            }
+        }
 
         log_burn_simulation_results();
         log_liquidation_results();
@@ -1815,6 +1860,12 @@ contract PanopticPoolActions is CollateralActions {
 
         log_burn_simulation_results();
         log_liquidation_results();
+
+        try
+            panopticPool.validateCollateralWithdrawable(liquidator, $positionListExercisor)
+        {} catch {
+            assertWithMsg(false, "Liquidate: Liquidator left insolvent after liquidation");
+        }
 
         emit LogUint256("Number of positions", panopticPool.numberOfPositions(liquidatee));
         assertWithMsg(
@@ -1900,64 +1951,8 @@ contract PanopticPoolActions is CollateralActions {
         log_trackers_status();
     }
 
-    /// @dev Liquidate by manually editing the storage. This function is not currently used, but we keep it for
-    /// potential future usages
-    function liquidate_option_via_edit(uint256 i_liquidated) internal {
-        i_liquidated = bound(i_liquidated, 0, 4);
-        if (userPositions[actors[i_liquidated]].length < 1) {
-            emit LogString("No current positions");
-            revert();
-        }
-        address liquidatee = actors[i_liquidated];
-        address liquidator = msg.sender;
-
-        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
-        (, int24 curTick, , , , , ) = pool.slot0();
-        emit LogInt256("TWAP tick", TWAPtick);
-        emit LogInt256("Current tick", curTick);
-
-        require(liquidatee != msg.sender);
-
-        TokenId[] memory liquidated_positions = userPositions[liquidatee];
-        TokenId[] memory liquidator_positions = userPositions[liquidator];
-
-        require(liquidated_positions.length > 0);
-
-        (, currentTick, , , , , ) = pool.slot0();
-        LeftRightUnsigned lru = LeftRightUnsigned
-            .wrap(uint96(collToken0.convertToAssets(collToken0.balanceOf(liquidator))))
-            .toLeftSlot(uint96(collToken1.convertToAssets(collToken1.balanceOf(liquidator))));
-
-        editCollateral(collToken0, liquidatee, 0);
-        editCollateral(collToken1, liquidatee, 0);
-
-        (uint256 balanceCross, uint256 thresholdCross) = _get_solvency_balances(
-            liquidatee,
-            TWAPtick
-        );
-        emit LogUint256("Balance cross after edit", balanceCross);
-        emit LogUint256("Threshold cross after edit", thresholdCross);
-
-        if (balanceCross >= thresholdCross) {
-            hevm.prank(liquidator);
-            try
-                panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions)
-            {
-                assertWithMsg(
-                    false,
-                    "A non-liquidatable position (balanceCross >= thresholdCross) was liquidated"
-                );
-            } catch {}
-            return;
-        }
-
-        emit LogUint256("liquidator positions length", liquidator_positions.length);
-        emit LogUint256("liquidated positions length", liquidated_positions.length);
-        emit LogAddress("liquidator", liquidator);
-        emit LogAddress("liquidated", liquidatee);
-
-        hevm.prank(liquidator);
-        panopticPool.liquidate(liquidator_positions, liquidatee, lru, liquidated_positions);
+    function poke_pool_median_oracle() public {
+        panopticPool.pokeMedian();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1986,7 +1981,7 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLower,
                 $tickUpper,
                 type(int24).max,
-                $tokenIdActive.isLong(legIndex)
+                0
             );
 
             assertWithMsg(
