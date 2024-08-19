@@ -366,7 +366,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     int24 sfpmTickSpacing;
 
-    uint256 $activeNumLegs;
+    uint8 $activeNumLegs;
 
     bytes32[4] $positionKey;
 

@@ -14,7 +14,7 @@ contract SFPMActions is GeneralActions {
     // mint option sfpm standard mint of full shorts (store this position in mapping)
     // ** add moved amts check
     function mint_option_SFPM_multiShort(
-        uint256 numLegs,
+        uint8 numLegs,
         bool[4] calldata asset_in,
         bool[4] calldata is_call_in,
         bool[4] calldata is_otm_in,
@@ -30,7 +30,7 @@ contract SFPMActions is GeneralActions {
         $activeUser = msg.sender;
 
         // generate a random number of legs
-        $activeNumLegs = numLegs = bound(numLegs, 1, 4);
+        $activeNumLegs = uint8(bound(uint256(numLegs), 1, 4));
 
         $activeTokenId = _generate_multiple_leg_tokenid(
             $activeNumLegs,
@@ -653,7 +653,7 @@ contract SFPMActions is GeneralActions {
         $activeUser = msg.sender;
 
         // generate a random number of legs
-        $activeNumLegs = bound(numLegs, 1, 4);
+        $activeNumLegs = uint8(bound(uint256(numLegs), 1, 4));
 
         // initialize tokenId
         $activeTokenId = TokenId.wrap(sfpmPoolId);
@@ -1331,7 +1331,7 @@ contract SFPMActions is GeneralActions {
     // check for should revert flag and bound so that it is a valid event
     // looks for chunks minted via the panoptic pool
     function mint_option_SFPM_general(
-        uint256 numLegs,
+        uint8 numLegs,
         bool[4] calldata asset_in,
         bool[4] calldata is_call_in,
         bool[4] calldata is_long_in,
@@ -1351,7 +1351,7 @@ contract SFPMActions is GeneralActions {
         $activeUser = msg.sender;
 
         // generate a random number of legs
-        $activeNumLegs = bound(numLegs, 1, 4);
+        $activeNumLegs = uint8(bound(uint256(numLegs), 1, 4));
 
         // initialize tokenId
         // ** find matching short chunks for the long legs to increase success rate ??
@@ -2858,9 +2858,15 @@ contract SFPMActions is GeneralActions {
             userPositionsSFPMShort[$activeUser][randIndex] = TokenId.wrap(0);
         }
 
+        // As pulled from the tokenId
+        IUniswapV3Pool originalPool = cyclingPool;
+        cyclingPool = sfpm.getUniswapV3PoolFromId($activeTokenId.poolId());
+
+        $activeNumLegs = uint8($activeTokenId.countLegs());
+
         // bound the position size to the amount owned by the user for that tokenId
         uint256 currBalance = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
-        if (positionSize > currBalance) {
+        if (positionSize > currBalance || TokenId.unwrap($activeTokenId) == uint256(0)) {
             revert();
         }
 
@@ -2928,6 +2934,12 @@ contract SFPMActions is GeneralActions {
                 //  before mint
                 $removedLiquidityBefore[$activeLegIndex] = accountLiquiditiesBefore.leftSlot();
                 $netLiquidityBefore[$activeLegIndex] = accountLiquiditiesBefore.rightSlot();
+
+                emit LogUint256(
+                    "removed liquidity before",
+                    $removedLiquidityBefore[$activeLegIndex]
+                );
+                emit LogUint256("net liquidity before", $netLiquidityBefore[$activeLegIndex]);
             }
 
             {
@@ -3503,6 +3515,9 @@ contract SFPMActions is GeneralActions {
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
+
+            // reset the pool
+            cyclingPool = originalPool;
         } catch Error(string memory reason) {
             emit LogString(reason);
 
@@ -3523,6 +3538,7 @@ contract SFPMActions is GeneralActions {
         bool transferToPP, // transfer to panoptic pool flag
         bool isLong,
         bool isMix,
+        bool boundTransfer,
         uint256 randSeed,
         bytes calldata data
     ) public {
@@ -3544,7 +3560,7 @@ contract SFPMActions is GeneralActions {
             userPositionsSFPMix[$activeUser][randIndex] = TokenId.wrap(0);
             userPositionsSFPMix[randUser].push($activeTokenId);
         } else if (isLong && userPositionsSFPMLong[$activeUser].length != 0) {
-            // burn a long
+            // transfer a long
             uint256 randIndex = bound(randSeed, 0, userPositionsSFPMLong[$activeUser].length - 1);
             $activeTokenId = userPositionsSFPMLong[$activeUser][randIndex];
 
@@ -3569,7 +3585,12 @@ contract SFPMActions is GeneralActions {
         tokenBalanceSenderBefore = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
         tokenBalanceRecipientBefore = sfpm.balanceOf(randUser, TokenId.unwrap($activeTokenId));
 
-        $activeNumLegs = $activeTokenId.countLegs();
+        // bound the transfer within a reasonable range
+        if (boundTransfer) {
+            positionSize = uint128(bound(positionSize, 0, tokenBalanceSenderBefore));
+        }
+
+        $activeNumLegs = uint8($activeTokenId.countLegs());
         for (uint256 i = 0; i < $activeNumLegs; i++) {
             $activeLegIndex = i;
 
@@ -3846,7 +3867,7 @@ contract SFPMActions is GeneralActions {
     }
 
     function _generate_multiple_leg_tokenid(
-        uint256 numLegs,
+        uint8 numLegs,
         bool[4] memory asset_in,
         bool[4] memory is_call_in,
         bool[4] memory is_long_in,
