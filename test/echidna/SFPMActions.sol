@@ -702,6 +702,12 @@ contract SFPMActions is GeneralActions {
                     currTokenId.strike(applicableIndex),
                     currTokenId.width(applicableIndex)
                 );
+
+                // bound the positionSize to the smallest of each leg
+                uint256 currPosSize = sfpm.balanceOf($activeUser, TokenId.unwrap(currTokenId));
+                if (currPosSize < positionSize) {
+                    positionSize = uint128(currPosSize);
+                }
             }
         }
 
@@ -711,13 +717,14 @@ contract SFPMActions is GeneralActions {
 
             emit LogUint256("active leg index: ", $activeLegIndex);
 
+            // get the amount of liquidity being deposited
+            $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
+                $activeTokenId,
+                $activeLegIndex,
+                positionSize
+            );
+
             {
-                // get the amount of liquidity being deposited
-                $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
-                    $activeTokenId,
-                    $activeLegIndex,
-                    positionSize
-                );
 
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
                 $sTickUpper[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickUpper();
@@ -3523,7 +3530,9 @@ contract SFPMActions is GeneralActions {
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
-            if (reason == "SPL") {
+            string memory spl = "SPL";
+
+            if (keccak256(abi.encodePacked(reason)) == keccak256(abi.encodePacked(spl))) {
                 revert();
             }
 
@@ -3576,7 +3585,7 @@ contract SFPMActions is GeneralActions {
                 revert();
             }
 
-            // burn a short
+            // transfer a short
             uint256 randIndex = bound(randSeed, 0, userPositionsSFPMShort[$activeUser].length - 1);
             $activeTokenId = userPositionsSFPMShort[$activeUser][randIndex];
 
@@ -3584,6 +3593,10 @@ contract SFPMActions is GeneralActions {
             userPositionsSFPMShort[$activeUser][randIndex] = TokenId.wrap(0);
             userPositionsSFPMShort[randUser].push($activeTokenId);
         }
+
+        // As pulled from the tokenId
+        IUniswapV3Pool originalPool = cyclingPool;
+        cyclingPool = sfpm.getUniswapV3PoolFromId($activeTokenId.poolId());
 
         // check internal balance of that tokenId
         tokenBalanceSenderBefore = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
@@ -3809,6 +3822,9 @@ contract SFPMActions is GeneralActions {
             // transfer should fail if trying to transfer bal > before bal
 
             assertWithMsg(!$shouldRevertSFPM, "sfpm burn general: missing revert");
+
+            // reset the pool
+            cyclingPool = originalPool;
         } catch Error(string memory reason) {
             emit LogString(reason);
 
