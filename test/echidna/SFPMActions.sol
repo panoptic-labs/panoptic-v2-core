@@ -3523,6 +3523,10 @@ contract SFPMActions is GeneralActions {
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
+            if (reason == "SPL") {
+                revert();
+            }
+
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
 
             // reverse test state changes
