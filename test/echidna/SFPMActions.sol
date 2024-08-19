@@ -725,7 +725,6 @@ contract SFPMActions is GeneralActions {
             );
 
             {
-
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
                 $sTickUpper[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickUpper();
                 $sLiqAmounts[$activeLegIndex] = $liquidityChunk[$activeLegIndex].liquidity();
