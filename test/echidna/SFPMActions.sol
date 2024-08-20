@@ -624,7 +624,7 @@ contract SFPMActions is GeneralActions {
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
-            userPositionsSFPMShort[msg.sender].push($activeTokenId);
+            userPositionsSFPMShort[$activeUser].push($activeTokenId);
 
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
@@ -652,12 +652,6 @@ contract SFPMActions is GeneralActions {
         // store the current actor
         $activeUser = msg.sender;
 
-        // generate a random number of legs
-        $activeNumLegs = uint8(bound(uint256(numLegs), 1, 4));
-
-        // initialize tokenId
-        $activeTokenId = TokenId.wrap(sfpmPoolId);
-
         {
             // search for a tokenId that the current actor has sold
             uint256 totalPosLen = userPositionsSFPMShort[$activeUser].length;
@@ -667,49 +661,28 @@ contract SFPMActions is GeneralActions {
                 revert();
             }
 
-            // either bound to the max amount of short tokenId's or active number of legs
-            uint256 maxLoop = totalPosLen > $activeNumLegs ? $activeNumLegs : totalPosLen;
+            // grab the tokenId in reverse order
+            $activeTokenId = userPositionsSFPMShort[$activeUser][totalPosLen - 1];
 
-            emit LogUint256("max loop", maxLoop);
-            emit LogUint256("totalPosLen", totalPosLen);
-            emit LogUint256("$activeNumLegs", $activeNumLegs);
+            // flip the isLong bit
+            $activeTokenId = $activeTokenId.flipToBurnToken();
 
-            for (uint i; i < maxLoop; i++) {
-                emit LogString("first");
-                emit LogUint256("i", i);
-                // grab the tokenId in reverse order
-                TokenId currTokenId = userPositionsSFPMShort[$activeUser][maxLoop - i - 1];
-                emit LogString("second");
+            $activeNumLegs = uint8($activeTokenId.countLegs());
 
-                if (currTokenId.countLegs() == 0) {
-                    // if this tokenId is empty (burnt position)
-                    $activeNumLegs - 1;
-                    continue;
-                }
+            if ($activeNumLegs == 0) {
+                revert();
+            }
 
-                uint256 applicableIndex = (bound(i, 0, currTokenId.countLegs() - 1));
-
-                emit LogString("third");
-
-                // append the leg to the constructed long leg
-                $activeTokenId.addLeg(
-                    $activeTokenId.countLegs(),
-                    currTokenId.optionRatio(applicableIndex),
-                    currTokenId.asset(applicableIndex),
-                    1, // flip long
-                    currTokenId.tokenType(applicableIndex),
-                    currTokenId.riskPartner(applicableIndex),
-                    currTokenId.strike(applicableIndex),
-                    currTokenId.width(applicableIndex)
-                );
-
-                // bound the positionSize to the smallest of each leg
-                uint256 currPosSize = sfpm.balanceOf($activeUser, TokenId.unwrap(currTokenId));
-                if (currPosSize < positionSize) {
-                    positionSize = uint128(currPosSize);
-                }
+            // bound the positionSize
+            uint256 currPosSize = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+            if (currPosSize < positionSize) {
+                positionSize = uint128(currPosSize);
             }
         }
+
+        // As pulled from the tokenId
+        IUniswapV3Pool originalPool = cyclingPool;
+        cyclingPool = sfpm.getUniswapV3PoolFromId($activeTokenId.poolId());
 
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
@@ -717,14 +690,13 @@ contract SFPMActions is GeneralActions {
 
             emit LogUint256("active leg index: ", $activeLegIndex);
 
-            // get the amount of liquidity being deposited
-            $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
-                $activeTokenId,
-                $activeLegIndex,
-                positionSize
-            );
-
             {
+                // get the amount of liquidity being deposited
+                $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
+                    $activeTokenId,
+                    $activeLegIndex,
+                    positionSize
+                );
 
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
                 $sTickUpper[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickUpper();
@@ -1322,6 +1294,9 @@ contract SFPMActions is GeneralActions {
             $activeTokenId = TokenId.wrap(uint256(0));
 
             assertWithMsg(!$shouldRevertSFPM, "sfpm multiLong: missing revert");
+
+            // reset the pool
+            cyclingPool = originalPool;
         } catch Error(string memory reason) {
             emit LogString(reason);
 
