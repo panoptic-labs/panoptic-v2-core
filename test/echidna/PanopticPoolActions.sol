@@ -5,10 +5,6 @@ import "./FuzzHelpers.sol";
 import {CollateralActions} from "./CollateralActions.sol";
 
 contract PanopticPoolActions is CollateralActions {
-    /*//////////////////////////////////////////////////////////////
-                             OPTION MINTING
-    //////////////////////////////////////////////////////////////*/
-
     function mint_option(
         uint256[4] memory isLongs,
         uint256[4] memory tokenTypes,
@@ -26,8 +22,7 @@ contract PanopticPoolActions is CollateralActions {
 
         ($tickLimitLow, $tickLimitHigh) = (tickLimitSeeds[0], tickLimitSeeds[1]);
 
-        // $numLegs = bound(numLegs, 1, 4);
-        $numLegs = 1;
+        $numLegs = bound(numLegs, 1, 4);
 
         $posIdListOld = userPositions[msg.sender];
 
@@ -232,21 +227,16 @@ contract PanopticPoolActions is CollateralActions {
         uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
         uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
 
-        // positionSize = uint128(
-        //     distributions[1]
-        //         ? boundLog(positionSize, 0, 1_000_000_000 * 2 ** 64)
-        //         : boundLog(positionSize, 2**64, 2 ** 64)
-        // );
-
-        positionSize = uint128(boundLog(positionSize, 0, 2 * 2 ** 64));
-
-        uint256 sizeDistro = positionSize;
+        positionSize = uint128(
+            distributions[1]
+                ? boundLog(positionSize, 0, 1_000_000_000 * 2 ** 64)
+                : boundLog(positionSize, 0, 2 * 2 ** 64)
+        );
 
         try this.size_for_collateral_solo(positionSize, userCollateral0, userCollateral1) {} catch (
             bytes memory reason
         ) {
             emit LogBytes("Reason", reason);
-            assertWithMsg(false, "S4CS failed");
         }
 
         positionSize = uint128(
@@ -482,14 +472,11 @@ contract PanopticPoolActions is CollateralActions {
         {
             uint256 balance0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
             uint256 balance1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
-            // assertWithMsg($shortAmounts.rightSlot() + PanopticMath.convert0to1($shortAmounts.leftSlot(), TickMath.getSqrtRatioAtTick($fastOracleTick)) <= int256(balance0 + PanopticMath.convert1to0(balance1, TickMath.getSqrtRatioAtTick($fastOracleTick))), "mintOptions: undercollat mint");
-            // assert(false);
-            // assert(sizeDistro < uint(2**64)/5 || $isLongs[0] != 0 || sizeDistro > 2 * 2**64);
+
             $allPositionCount++;
             assertWithMsg(!$shouldRevert, "mintOptions: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
-            // assert(sizeDistro > uint(2**64)/5 || bytes4(reason) != Errors.AccountInsolvent.selector);
 
             assertWithMsg($shouldRevert, "mintOptions: unexpected revert");
             $failedPositionCount++;
@@ -1747,7 +1734,6 @@ contract PanopticPoolActions is CollateralActions {
 
         _execute_burn_simulation(liquidatee, liquidator);
 
-        assertWithMsg(!$locked, "LQ2");
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
 
         (liqResults.shortPremium, , ) = panopticPool.calculateAccumulatedFeesBatch(
@@ -1796,11 +1782,9 @@ contract PanopticPoolActions is CollateralActions {
                 liquidated_positions
             )
         {
-            assertWithMsg(false, "liquidation success!");
             assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
-            assertWithMsg(!$locked, "Liquidate: unexpected revert (LOCKED)");
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||

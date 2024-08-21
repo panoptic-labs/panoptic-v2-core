@@ -463,8 +463,6 @@ contract FuzzHelpers is PropertiesAsserts {
 
     bool $shouldRevertSFPM;
 
-    bool $locked;
-
     /// ^^ SFPM
 
     address[] $allPositionOwners;
@@ -1397,10 +1395,6 @@ contract FuzzHelpers is PropertiesAsserts {
             insolventTicks += $thresholdCross > $balanceCross ? 1 : 0;
         }
 
-        // assertWithMsg(insolventTicks != $colTicks.length, "all tick insolvent");
-        // assertWithMsg(insolventTicks == 0, "one ticks insolvent");
-        $locked = false;
-        $locked = insolventTicks == $colTicks.length;
         if (insolventTicks != $colTicks.length) $shouldRevert = true;
     }
 
@@ -1727,10 +1721,7 @@ contract FuzzHelpers is PropertiesAsserts {
         returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
             premiasByLeg = _premiasByLeg;
             netExchanged = _netExchanged;
-            assertWithMsg(false, "burn succeeded ??");
-        } catch (bytes memory results) {
-            assertWithMsg(!$locked, "BURN TEST FAILED");
-        }
+        } catch {}
 
         currentTickOld = currentTick;
         (, currentTick, , , , , ) = pool.slot0();

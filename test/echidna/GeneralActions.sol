@@ -37,24 +37,24 @@ contract GeneralActions is FuzzHelpers {
         sfpmTickSpacing = cyclingPool.tickSpacing();
     }
 
-    // function perform_swap(uint256 target_sqrt_price) public {
-    //     (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+    function perform_swap(uint256 target_sqrt_price) public {
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
-    //     // bound the price within 50% of the current price
-    //     target_sqrt_price = boundLog(
-    //         target_sqrt_price,
-    //         Math.getSqrtRatioAtTick(TickMath.MIN_TICK + 2),
-    //         Math.getSqrtRatioAtTick(TickMath.MAX_TICK - 2)
-    //     );
+        // bound the price within 50% of the current price
+        target_sqrt_price = boundLog(
+            target_sqrt_price,
+            Math.getSqrtRatioAtTick(TickMath.MIN_TICK + 2),
+            Math.getSqrtRatioAtTick(TickMath.MAX_TICK - 2)
+        );
 
-    //     emit LogUint256("price before swap", currentSqrtPriceX96);
+        emit LogUint256("price before swap", currentSqrtPriceX96);
 
-    //     hevm.prank(pool_manipulator);
-    //     swapperc.swapTo(cyclingPool, uint160(target_sqrt_price));
+        hevm.prank(pool_manipulator);
+        swapperc.swapTo(cyclingPool, uint160(target_sqrt_price));
 
-    //     (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
-    //     emit LogUint256("price after swap", currentSqrtPriceX96);
-    // }
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+        emit LogUint256("price after swap", currentSqrtPriceX96);
+    }
 
     function perform_swap_and_align_prices(uint256 target_sqrt_price) public {
         (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
