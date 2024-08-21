@@ -22,6 +22,17 @@ contract CollateralActions is SFPMActions {
         }
     }
 
+    function deposit_agnostic(bool token, uint256 assets) public {
+        assets = boundLog(assets, 1, 100 ether);
+
+        hevm.prank(msg.sender);
+        if (!token) {
+            collToken0.deposit(assets, msg.sender);
+        } else {
+            collToken1.deposit(assets, msg.sender);
+        }
+    }
+
     function _deposit_and_check(
         CollateralTracker collToken,
         bool viaMint,

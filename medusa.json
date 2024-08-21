@@ -3,7 +3,7 @@
     "workers": 32,
     "workerResetLimit": 50,
     "timeout": 0,
-    "testLimit": 0,
+    "testLimit": 3000000,
     "shrinkLimit": 0,
     "callSequenceLength": 5000,
     "corpusDirectory": "test/echidna/medusa_corpus",
