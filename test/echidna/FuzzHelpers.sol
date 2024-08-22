@@ -230,6 +230,19 @@ contract PanopticPoolWrapper is PanopticPool {
         return (settled.rightSlot(), settled.leftSlot(), gross.rightSlot(), gross.leftSlot());
     }
 
+    function premiaSettlementData(
+        FuzzHelpers.ChunkWithTokenType memory _chunk
+    ) public view returns (uint128, uint128, uint128, uint128) {
+        bytes32 chunkKey = keccak256(
+            abi.encodePacked(_chunk.strike, _chunk.width, _chunk.tokenType)
+        );
+
+        LeftRightUnsigned settled = s_settledTokens[chunkKey];
+        LeftRightUnsigned gross = s_grossPremiumLast[chunkKey];
+
+        return (settled.rightSlot(), settled.leftSlot(), gross.rightSlot(), gross.leftSlot());
+    }
+
     function optionData(
         TokenId tokenId,
         address account,
@@ -309,7 +322,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 sharesD0;
         int256 sharesD1;
         uint256 liquidatorValueBefore0;
-        uint256 liquidatorValueAfter0;
+        int256 liquidatorValueAfter0;
         uint256 settledTokens0;
         LeftRightUnsigned shortPremium;
         int256 bonusCombined0;
@@ -668,6 +681,11 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256 $premiumGrowthLeg0;
     uint256 $premiumGrowthLeg1;
+
+    uint256 $undelegatedShares0;
+    uint256 $undelegatedShares1;
+
+    uint256 $undelegatedValue0T;
 
     uint256 $shortLiquidity;
 
@@ -2725,7 +2743,7 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogInt256("    sharesD0", liqResults.sharesD0);
         emit LogInt256("    sharesD1", liqResults.sharesD1);
         emit LogUint256("    liquidatorValueBefore0", liqResults.liquidatorValueBefore0);
-        emit LogUint256("    liquidatorValueAfter0", liqResults.liquidatorValueAfter0);
+        emit LogInt256("    liquidatorValueAfter0", liqResults.liquidatorValueAfter0);
         emit LogUint256("    settledTokens0", liqResults.settledTokens0);
         emit LogUint256("    premia L", liqResults.shortPremium.leftSlot());
         emit LogUint256("    premia R", liqResults.shortPremium.rightSlot());
