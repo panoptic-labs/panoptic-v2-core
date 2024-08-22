@@ -505,7 +505,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external {
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
 
-        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        (uint256 medianData, ) = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -530,7 +530,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionIdList
         );
 
-        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        (uint256 medianData, ) = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -583,7 +583,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        uint256 medianData = _validateSolvency(msg.sender, positionIdList, BP_DECREASE_BUFFER);
+        (uint256 medianData, uint96 tickData) = _validateSolvency(
+            msg.sender,
+            positionIdList,
+            BP_DECREASE_BUFFER
+        );
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -593,7 +597,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
-            uint96(0)
+            tickData
         );
 
         emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
@@ -755,7 +759,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData) {
+    ) internal view returns (uint256 medianData, uint96 tickData) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -766,6 +770,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
             int24 lastObservedTick,
             uint256 _medianData
         ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+
+        tickData = PositionBalanceLibrary.packTickData(
+            currentTick,
+            fastOracleTick,
+            slowOracleTick,
+            lastObservedTick
+        );
 
         medianData = _medianData;
 
@@ -1384,6 +1395,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Get the `tokenId` position data for `user`
+    /// @param user The account to query
+    /// @param tokenId The tokenId for that account
+    /// @return currentTickAtMint currentTick at mint
+    /// @return fastOracleTickAtMint fast oracle tick at mint
+    /// @return slowOracleTickAtMint slow oracle tick at mint
+    /// @return lastObservedTickAtMint last observed tick at mint
+    /// @return utilization0AtMint utilization of token0 at mint
+    /// @return utilization1AtMint utilization of token1 at mint
+    /// @return positionSize size of the position
     function positionData(
         address user,
         TokenId tokenId
