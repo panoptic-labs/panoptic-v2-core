@@ -155,6 +155,15 @@ library PositionBalanceLibrary {
         }
     }
 
+    /// @notice Get both token0 and token1 utilizations of `self`.
+    /// @param self The PositionBalance to get utilization
+    /// @return The token utilizations, stored in bips
+    function utilizations(PositionBalance self) internal pure returns (uint32) {
+        unchecked {
+            return uint32(PositionBalance.unwrap(self) >> 128);
+        }
+    }
+
     /// @notice Get the positionSize of `self`.
     /// @param self The PositionBalance to get the size from
     /// @return The positionSize of `self`

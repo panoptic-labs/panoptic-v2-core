@@ -17,6 +17,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
@@ -219,7 +220,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //        token0          token1
     //  |<-- 64 bits -->|<-- 64 bits -->|<---------- 128 bits ---------->|
     //  |<-------------------------- 256 bits -------------------------->|
-    mapping(address account => mapping(TokenId tokenId => LeftRightUnsigned balanceAndUtilizations))
+    mapping(address account => mapping(TokenId tokenId => PositionBalance positionBalance))
         internal s_positionBalance;
 
     //    numPositions (32 positions max)    user positions hash
@@ -380,7 +381,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             TokenId tokenId = positionIdList[k];
 
             balances[k][0] = TokenId.unwrap(tokenId);
-            balances[k][1] = LeftRightUnsigned.unwrap(s_positionBalance[c_user][tokenId]);
+            balances[k][1] = PositionBalance.unwrap(s_positionBalance[c_user][tokenId]);
 
             (
                 LeftRightSigned[4] memory premiaByLeg,
@@ -568,11 +569,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // disallow user to mint exact same position
         // in order to do it, user should burn it first and then mint
-        if (LeftRightUnsigned.unwrap(s_positionBalance[msg.sender][tokenId]) != 0)
+        if (PositionBalance.unwrap(s_positionBalance[msg.sender][tokenId]) != 0)
             revert Errors.PositionAlreadyMinted();
 
         // Mint in the SFPM and update state of collateral
-        uint128 poolUtilizations = _mintInSFPMAndUpdateCollateral(
+        uint32 poolUtilizations = _mintInSFPMAndUpdateCollateral(
             tokenId,
             positionSize,
             effectiveLiquidityLimitX32,
@@ -580,19 +581,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
-        // update the users options balance of position 'tokenId'
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        s_positionBalance[msg.sender][tokenId] = LeftRightUnsigned
-            .wrap(0)
-            .toLeftSlot(poolUtilizations)
-            .toRightSlot(positionSize);
-
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         uint256 medianData = _validateSolvency(msg.sender, positionIdList, BP_DECREASE_BUFFER);
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
+
+        // update the users options balance of position 'tokenId'
+        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+        s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
+            positionSize,
+            poolUtilizations,
+            uint96(0)
+        );
 
         emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
     }
@@ -611,7 +613,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (uint128) {
+    ) internal returns (uint32) {
         bool safeMode = isSafeMode();
 
         // if safeMode, enforce covered deployment
@@ -631,10 +633,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
             effectiveLiquidityLimitX32
         );
 
-        uint128 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
+        uint32 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         if (safeMode) {
-            return uint128(10_000) + uint128(10_000 << 64);
+            return uint32(10_000) + uint32(10_000 << 16);
         } else {
             return poolUtilizations;
         }
@@ -651,18 +653,18 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId tokenId,
         uint128 positionSize,
         LeftRightSigned totalSwapped
-    ) internal returns (uint128) {
+    ) internal returns (uint32) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        int256 utilization0 = s_collateralToken0.takeCommissionAddData(
+        int16 utilization0 = s_collateralToken0.takeCommissionAddData(
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot()
         );
-        int256 utilization1 = s_collateralToken1.takeCommissionAddData(
+        int16 utilization1 = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -671,7 +673,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // return pool utilizations as a uint128 (pool Utilization is always < 10000)
         unchecked {
-            return uint128(uint256(utilization0) + uint128(uint256(utilization1) << 64));
+            return uint32(uint16(utilization0) + uint32(uint16(utilization1) << 64));
         }
     }
 
@@ -726,7 +728,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
-        uint128 positionSize = s_positionBalance[owner][tokenId].rightSlot();
+        uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
 
         LeftRightSigned premiaOwed;
         // burn position and do exercise checks
@@ -1050,7 +1052,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        uint128 positionBalance = s_positionBalance[account][touchedId[0]].rightSlot();
+        uint128 positionBalance = s_positionBalance[account][touchedId[0]].positionSize();
 
         int24 twapTick = getUniV3TWAP();
 
@@ -1524,7 +1526,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             legIndex,
-            s_positionBalance[owner][tokenId].rightSlot()
+            s_positionBalance[owner][tokenId].positionSize()
         );
 
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
@@ -1944,7 +1946,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // reset balances and delete stored option data
-        s_positionBalance[owner][tokenId] = LeftRightUnsigned.wrap(0);
+        s_positionBalance[owner][tokenId] = PositionBalance.wrap(0);
 
         // REMOVE the current tikenId from the position list hash (hash = XOR of all keccak256(tokenId), remove by XOR'ing again)
         // and decrease the number of positions counter by 1.
