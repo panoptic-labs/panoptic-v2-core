@@ -1952,11 +1952,22 @@ contract PanopticPoolActions is CollateralActions {
             bound(positionIndex, 0, userPositions[msg.sender].length - 1)
         ];
 
+        emit LogUint256("tokenIdActive", TokenId.unwrap($tokenIdActive));
+
         for (uint legIndex = 0; legIndex < $tokenIdActive.countLegs(); legIndex++) {
             (, , $grossPremiaLast0, $grossPremiaLast1) = panopticPool.premiaSettlementData(
                 $tokenIdActive,
                 legIndex
             );
+
+            ($tickLower, $tickUpper) = PanopticMath.getTicks(
+                $tokenIdActive.strike(legIndex),
+                $tokenIdActive.width(legIndex),
+                poolTickSpacing
+            );
+
+            emit LogInt256("tickLower-post", $tickLower);
+            emit LogInt256("tickUpper-post", $tickUpper);
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
                 address(pool),
