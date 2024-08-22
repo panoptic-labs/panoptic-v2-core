@@ -82,7 +82,7 @@ library PositionBalanceLibrary {
         }
     }
 
-    function createTickData(
+    function packTickData(
         int24 currentTick,
         int24 fastOracleTick,
         int24 slowOracleTick,
@@ -100,6 +100,8 @@ library PositionBalanceLibrary {
     /*//////////////////////////////////////////////////////////////
                                 DECODING
     //////////////////////////////////////////////////////////////*/
+
+    function unpackTickData(uint96 tickData) internal pure returns (int24, int24, int24, int24) {}
 
     /// @notice Get the last observed tick of `self`.
     /// @param self The PositionBalance to get the requested tick
@@ -137,6 +139,15 @@ library PositionBalanceLibrary {
         }
     }
 
+    /// @notice Get the tickData of `self`.
+    /// @param self The PositionBalance to get utilization
+    /// @return The packed tickData
+    function tickData(PositionBalance self) internal pure returns (uint96) {
+        unchecked {
+            return uint96(PositionBalance.unwrap(self) >> 160);
+        }
+    }
+
     /// @notice Get token1 utilization of `self`.
     /// @param self The PositionBalance to get utilization
     /// @return The token1 utilization, stored in bips
@@ -144,6 +155,26 @@ library PositionBalanceLibrary {
         unchecked {
             return int256((PositionBalance.unwrap(self) >> 144) % 2 ** 16);
         }
+    }
+
+    /// @notice Get the unpacked tickData of `self`.
+    /// @param self The PositionBalance to get utilization
+    function unpackTickData(
+        PositionBalance self
+    )
+        internal
+        pure
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 lastObservedTick
+        )
+    {
+        currentTick = self.currentTick();
+        fastOracleTick = self.fastOracleTick();
+        slowOracleTick = self.slowOracleTick();
+        lastObservedTick = self.lastObservedTick();
     }
 
     /// @notice Get token0 utilization of `self`.

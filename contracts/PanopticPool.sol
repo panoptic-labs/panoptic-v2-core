@@ -1383,6 +1383,38 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 
+    /// @notice Get the `tokenId` position data for `user`
+    function positionData(
+        address user,
+        TokenId tokenId
+    )
+        external
+        view
+        returns (
+            int24 currentTickAtMint,
+            int24 fastOracleTickAtMint,
+            int24 slowOracleTickAtMint,
+            int24 lastObservedTickAtMint,
+            int256 utilization0AtMint,
+            int256 utilization1AtMint,
+            uint128 positionSize
+        )
+    {
+        PositionBalance positionBalance = s_positionBalance[user][tokenId];
+
+        (
+            currentTickAtMint,
+            fastOracleTickAtMint,
+            slowOracleTickAtMint,
+            lastObservedTickAtMint
+        ) = positionBalance.unpackTickData();
+
+        utilization0AtMint = positionBalance.utilization0();
+        utilization1AtMint = positionBalance.utilization1();
+
+        positionSize = positionBalance.positionSize();
+    }
+
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getUniV3TWAP() internal view returns (int24 twapTick) {
