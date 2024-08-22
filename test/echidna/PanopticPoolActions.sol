@@ -1726,6 +1726,8 @@ contract PanopticPoolActions is CollateralActions {
         _execute_burn_simulation(liquidatee, liquidator);
 
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
+        $totalSupply0 = collToken0.totalSupply();
+        $totalSupply1 = collToken1.totalSupply();
 
         $undelegatedShares0 = collToken0.balanceOf(liquidator) - delegations.rightSlot();
         $undelegatedShares1 = collToken1.balanceOf(liquidator) - delegations.leftSlot();
@@ -1774,6 +1776,14 @@ contract PanopticPoolActions is CollateralActions {
             )
         );
 
+        emit LogUint256("total supply 0 pre-liquidation", collToken0.totalSupply());
+        emit LogUint256("total supply 1 pre-liquidation", collToken1.totalSupply());
+        emit LogUint256("total assets 0 pre-liquidation", collToken0.totalAssets());
+        emit LogUint256("total assets 1 pre-liquidation", collToken1.totalAssets());
+
+        emit LogUint256("liquidator balance pre-liq 0", collToken0.balanceOf(liquidator));
+        emit LogUint256("liquidator balance pre-liq 1", collToken1.balanceOf(liquidator));
+
         hevm.prank(liquidator);
         try
             panopticPool.liquidate(
@@ -1819,6 +1829,13 @@ contract PanopticPoolActions is CollateralActions {
             }
         }
 
+        emit LogUint256("total supply 0 post-liquidation", collToken0.totalSupply());
+        emit LogUint256("total supply 1 post-liquidation", collToken1.totalSupply());
+        emit LogUint256("total assets 0 post-liquidation", collToken0.totalAssets());
+        emit LogUint256("total assets 1 post-liquidation", collToken1.totalAssets());
+        emit LogUint256("liquidator balance post-liq 0", collToken0.balanceOf(liquidator));
+        emit LogUint256("liquidator balance post-liq 1", collToken1.balanceOf(liquidator));
+
         log_burn_simulation_results();
         log_liquidation_results();
 
@@ -1840,6 +1857,18 @@ contract PanopticPoolActions is CollateralActions {
                     )
             );
 
+        emit LogInt256(
+            "liquidator value 0 correction",
+            int256($undelegatedValue0T) -
+                int256(
+                    collToken0.convertToAssets($undelegatedShares0) +
+                        PanopticMath.convert1to0(
+                            collToken1.convertToAssets($undelegatedShares1),
+                            TickMath.getSqrtRatioAtTick(TWAPtick)
+                        )
+                )
+        );
+
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(TWAPtick);
         _calculate_protocol_loss_expected_0(TWAPtick, TWAPtick);
@@ -1857,7 +1886,7 @@ contract PanopticPoolActions is CollateralActions {
         log_liquidation_results();
 
         try
-            panopticPool.validateCollateralWithdrawable(liquidator, $positionListExercisor)
+            panopticPool.validateCollateralWithdrawable(liquidator, userPositions[liquidator])
         {} catch {
             assertWithMsg(false, "Liquidate: Liquidator left insolvent after liquidation");
         }
@@ -1905,14 +1934,21 @@ contract PanopticPoolActions is CollateralActions {
             liqResults.liquidatorValueAfter0 - int256(liqResults.liquidatorValueBefore0)
         );
         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
-        assertLt(
-            abs(
-                (liqResults.liquidatorValueAfter0 - int256(liqResults.liquidatorValueBefore0)) -
-                    liqResults.bonusCombined0
-            ),
-            10,
-            "Liquidator did not receive correct bonus"
-        );
+
+        // if protocol loss exceeds total assets the full bonus cannot be distributed to the liquidator and they can be left at a loss
+        if (
+            !(collToken0.totalSupply() / $totalSupply0 >= collToken0.totalAssets() ||
+                collToken1.totalSupply() / $totalSupply1 >= collToken1.totalAssets())
+        ) {
+            assertLt(
+                abs(
+                    (liqResults.liquidatorValueAfter0 - int256(liqResults.liquidatorValueBefore0)) -
+                        liqResults.bonusCombined0
+                ),
+                10,
+                "Liquidator did not receive correct bonus"
+            );
+        }
 
         emit LogInt256(
             "Delta settled tokens",
