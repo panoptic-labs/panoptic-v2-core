@@ -3869,8 +3869,6 @@ contract Misctest is Test, PositionUtils {
         // L = 1
         uniPool.liquidity();
 
-        /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
-
         uint256 asset = 0;
         uint256 tokenType = 0;
         TokenId tokenId = TokenId
