@@ -23,7 +23,7 @@ contract SFPMActions is GeneralActions {
         int256[4] memory strike_in,
         uint128 positionSize,
         bool swapAtMint
-    ) public {
+    ) public canonicalTimeState {
         $shouldRevertSFPM = false;
 
         // store the current actor
@@ -646,7 +646,7 @@ contract SFPMActions is GeneralActions {
         uint8 numLegs,
         uint128 positionSize,
         bool swapAtMint
-    ) public {
+    ) public canonicalTimeState {
         $shouldRevertSFPM = false;
 
         // store the current actor
@@ -1324,7 +1324,7 @@ contract SFPMActions is GeneralActions {
         uint128 positionSize,
         bool swapAtMint,
         uint8 randSeed
-    ) public {
+    ) public canonicalTimeState {
         emit LogString("start ");
 
         $shouldRevertSFPM = false;
@@ -2023,7 +2023,7 @@ contract SFPMActions is GeneralActions {
         uint24 width,
         int256 strike,
         uint128 positionSize
-    ) public {
+    ) public canonicalTimeState {
         $activeUser = msg.sender;
 
         // must be
@@ -2131,7 +2131,7 @@ contract SFPMActions is GeneralActions {
         uint24 width,
         int256 strike,
         uint128 positionSize
-    ) public {
+    ) public canonicalTimeState {
         $activeUser = msg.sender;
 
         // must be
@@ -2223,7 +2223,7 @@ contract SFPMActions is GeneralActions {
         uint24 width,
         int256 strike,
         uint128 positionSize
-    ) public {
+    ) public canonicalTimeState {
         $activeUser = msg.sender;
 
         $activeTokenId = _generate_single_leg_tokenid(
@@ -2308,7 +2308,7 @@ contract SFPMActions is GeneralActions {
         uint24 width,
         int256 strike,
         uint128 positionSize
-    ) public {
+    ) public canonicalTimeState {
         $activeUser = msg.sender;
 
         $activeTokenId = _generate_single_leg_tokenid(
@@ -2397,7 +2397,7 @@ contract SFPMActions is GeneralActions {
         int256 strike0,
         int256 strike1,
         uint128 positionSize
-    ) public {
+    ) public canonicalTimeState {
         $activeUser = msg.sender;
 
         // generate double leg shorts
@@ -2524,7 +2524,7 @@ contract SFPMActions is GeneralActions {
         bool swapAtMint,
         uint24 width,
         int256 strike
-    ) public {
+    ) public canonicalTimeState {
         minter_index = bound(minter_index, 0, 4);
         require(actors[minter_index] != msg.sender);
 
@@ -2565,7 +2565,7 @@ contract SFPMActions is GeneralActions {
         uint24 width,
         int256 strike,
         uint128 positionSize
-    ) public {
+    ) public canonicalTimeState {
         minter_index = bound(minter_index, 0, 4);
         require(actors[minter_index] != msg.sender);
 
@@ -2632,7 +2632,7 @@ contract SFPMActions is GeneralActions {
         int256 strike,
         uint128 positionSize,
         uint128 sizeIncrement
-    ) public {
+    ) public canonicalTimeState {
         $activeUser = msg.sender;
 
         TokenId $activeTokenId = _generate_single_leg_tokenid(
@@ -2729,7 +2729,7 @@ contract SFPMActions is GeneralActions {
         uint128 positionSize,
         bool slippageDirection,
         int24 randTick
-    ) public {
+    ) public canonicalTimeState {
         TokenId $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
@@ -2806,7 +2806,7 @@ contract SFPMActions is GeneralActions {
         bool isLong,
         bool isMix,
         uint256 randSeed
-    ) public {
+    ) public canonicalTimeState {
         $shouldRevertSFPM = false;
 
         // store the current actor
@@ -3529,7 +3529,7 @@ contract SFPMActions is GeneralActions {
         bool boundTransfer,
         uint256 randSeed,
         bytes calldata data
-    ) public {
+    ) public canonicalTimeState {
         $shouldRevertSFPM = false;
 
         $activeUser = msg.sender;

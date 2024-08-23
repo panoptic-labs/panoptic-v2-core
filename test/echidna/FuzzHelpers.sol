@@ -256,6 +256,33 @@ contract PanopticPoolWrapper is PanopticPool {
     constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
 }
 
+contract CollateralTrackerWrapper is CollateralTracker {
+    constructor(
+        uint256 _commissionFee,
+        uint256 _sellerCollateralRatio,
+        uint256 _buyerCollateralRatio,
+        int256 _forceExerciseCost,
+        uint256 _targetPoolUtilization,
+        uint256 _saturatedPoolUtilization,
+        uint256 _ITMSpreadMultiplier
+    )
+        CollateralTracker(
+            _commissionFee,
+            _sellerCollateralRatio,
+            _buyerCollateralRatio,
+            _forceExerciseCost,
+            _targetPoolUtilization,
+            _saturatedPoolUtilization,
+            _ITMSpreadMultiplier
+        )
+    {}
+
+    function credit(address account, uint256 assets) external {
+        _mint(account, convertToShares(assets));
+        s_poolAssets += uint128(assets);
+    }
+}
+
 contract FuzzHelpers is PropertiesAsserts {
     using Math for uint256;
     using Math for int256;
@@ -271,13 +298,13 @@ contract FuzzHelpers is PropertiesAsserts {
     error SimulationResults(
         LeftRightUnsigned,
         LeftRightUnsigned,
-        LeftRightUnsigned,
         LeftRightSigned,
         int256,
         LeftRightSigned,
         LeftRightSigned,
         uint256,
         int256,
+        LeftRightUnsigned,
         bytes
     );
 
@@ -312,6 +339,8 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 burnDelta1;
         LeftRightSigned netExchanged;
         uint256[2][4][32] settledTokens;
+        uint256 delegateeBalance0;
+        uint256 delegateeBalance1;
     }
 
     struct LiquidationResults {
@@ -507,8 +536,8 @@ contract FuzzHelpers is PropertiesAsserts {
     uint16 observationIndex;
     uint16 observationCardinality;
 
-    CollateralTracker collToken0;
-    CollateralTracker collToken1;
+    CollateralTrackerWrapper collToken0;
+    CollateralTrackerWrapper collToken1;
 
     int24[4] $widths;
     int24[4] $strikes;
@@ -692,6 +721,9 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256 $legLiquidity;
 
     SwapperC swapperc;
+
+    uint256 canonicalTimestamp;
+    uint256 canonicalBlock;
 
     mapping(address => TokenId[]) userPositions;
 
@@ -1606,7 +1638,10 @@ contract FuzzHelpers is PropertiesAsserts {
         out[l - 1] = target;
     }
 
-    function convertToAssets(CollateralTracker ct, int256 amount) internal view returns (int256) {
+    function convertToAssets(
+        CollateralTrackerWrapper ct,
+        int256 amount
+    ) internal view returns (int256) {
         return (amount > 0 ? int8(1) : -1) * int256(ct.convertToAssets(uint256(Math.abs(amount))));
     }
 
@@ -1711,14 +1746,15 @@ contract FuzzHelpers is PropertiesAsserts {
         return (settledTokens0, abi.encode(settledTokens));
     }
 
-    function simulate_burning(address who, address liquidator) external {
+    function simulate_burning(
+        address who,
+        address liquidator,
+        LeftRightUnsigned delegations
+    ) external {
         require(msg.sender == address(this));
 
-        uint128 delegated0 = uint128(collToken0.convertToAssets(collToken0.balanceOf(liquidator)));
-        uint128 delegated1 = uint128(collToken1.convertToAssets(collToken1.balanceOf(liquidator)));
-        LeftRightUnsigned delegated = LeftRightUnsigned.wrap(0).toLeftSlot(delegated0).toRightSlot(
-            delegated1
-        );
+        uint128 delegated0 = delegations.rightSlot();
+        uint128 delegated1 = delegations.leftSlot();
 
         hevm.prank(address(panopticPool));
         collToken0.delegate(liquidator, who, delegated0);
@@ -1785,27 +1821,45 @@ contract FuzzHelpers is PropertiesAsserts {
                 convertToAssets(collToken1, shareDeltasLiquidatee[1]),
                 TickMath.getSqrtRatioAtTick(currentTick)
             );
+
+        address _who = who;
+        LeftRightUnsigned delegateeBalances = LeftRightUnsigned
+            .wrap(0)
+            .toLeftSlot(uint128(collToken0.balanceOf(_who)))
+            .toRightSlot(uint128(collToken1.balanceOf(_who)));
+
+        int256[2] memory _shareDeltasLiquidatee = shareDeltasLiquidatee;
         LeftRightSigned burnDelta = LeftRightSigned
             .wrap(0)
-            .toLeftSlot(int128(convertToAssets(collToken0, shareDeltasLiquidatee[0])))
-            .toRightSlot(int128(convertToAssets(collToken1, shareDeltasLiquidatee[1])));
+            .toLeftSlot(int128(convertToAssets(collToken0, _shareDeltasLiquidatee[0])))
+            .toRightSlot(int128(convertToAssets(collToken1, _shareDeltasLiquidatee[1])));
 
+        LeftRightSigned __netExchanged = netExchanged;
+        uint256 _settledTokens0 = settledTokens0;
+        int256 _longPremium0 = longPremium0;
+        bytes memory _settledTokens = settledTokens;
         revert SimulationResults(
             supply,
             assets,
-            delegated,
             shareDelta,
             burnDelta0C,
             burnDelta,
-            netExchanged,
-            settledTokens0,
-            longPremium0,
-            settledTokens
+            __netExchanged,
+            _settledTokens0,
+            _longPremium0,
+            delegateeBalances,
+            _settledTokens
         );
     }
 
-    function _execute_burn_simulation(address liquidatee, address liquidator) internal {
-        try this.simulate_burning(liquidatee, liquidator) {} catch (bytes memory results) {
+    function _execute_burn_simulation(
+        address liquidatee,
+        address liquidator,
+        LeftRightUnsigned delegations
+    ) internal {
+        try this.simulate_burning(liquidatee, liquidator, delegations) {} catch (
+            bytes memory results
+        ) {
             bytes4 selector = bytes4(results);
             require(selector == SimulationResults.selector);
             emit LogBytes("r", results);
@@ -1819,17 +1873,19 @@ contract FuzzHelpers is PropertiesAsserts {
             LeftRightSigned netExchanged;
             uint256 settledTokens0;
             int256 longPremium0;
+            LeftRightUnsigned delegateeBalances;
 
             assembly ("memory-safe") {
                 totalSupply := mload(add(results, 0x24))
                 totalAssets := mload(add(results, 0x44))
                 delegated := mload(add(results, 0x64))
-                shareDelta := mload(add(results, 0x84))
-                burnDelta0C := mload(add(results, 0xa4))
-                burnDelta := mload(add(results, 0xc4))
-                netExchanged := mload(add(results, 0xe4))
-                settledTokens0 := mload(add(results, 0x104))
-                longPremium0 := mload(add(results, 0x124))
+                shareDelta := mload(add(results, 0x64))
+                burnDelta0C := mload(add(results, 0x84))
+                burnDelta := mload(add(results, 0xa4))
+                netExchanged := mload(add(results, 0xc4))
+                settledTokens0 := mload(add(results, 0xe4))
+                longPremium0 := mload(add(results, 0x104))
+                delegateeBalances := mload(add(results, 0x124))
                 results := mload(add(results, 0x144))
             }
 
@@ -1847,6 +1903,8 @@ contract FuzzHelpers is PropertiesAsserts {
             burnSimResults.burnDelta0 = burnDelta.leftSlot();
             burnSimResults.burnDelta1 = burnDelta.rightSlot();
             burnSimResults.netExchanged = netExchanged;
+            burnSimResults.delegateeBalance0 = delegateeBalances.rightSlot();
+            burnSimResults.delegateeBalance1 = delegateeBalances.leftSlot();
         }
     }
 
@@ -2642,7 +2700,11 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("price after swap", uint256(price));
     }
 
-    function editCollateral(CollateralTracker ct, address owner, uint256 newShares) internal {
+    function editCollateral(
+        CollateralTrackerWrapper ct,
+        address owner,
+        uint256 newShares
+    ) internal {
         int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
         int256 assetDelta = convertToAssets(ct, shareDelta);
         hevm.store(

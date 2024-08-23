@@ -12,7 +12,7 @@ contract CollateralActions is SFPMActions {
     /// @custom:property PANO-DEP-001 The Panoptic pool balance must increase by the deposited amount when a deposit is made (or the corresponding amount of assets for a given share value when a mint is made)
     /// @custom:property PANO-DEP-002 The user balance must decrease by the deposited amount when a deposit is made (or the corresponding amount of assets for a given share value when a mint is made)
     /// @custom:property PANO-DEP-003 A user's share balance must increase by the amount of shares previewMint returns
-    function deposit_to_ct(bool token0, uint256 assets, bool viaMint) public {
+    function deposit_to_ct(bool token0, uint256 assets, bool viaMint) public canonicalTimeState {
         if (token0) {
             emit LogString("Attempting to deposit/mint token0");
             _deposit_and_check(collToken0, viaMint, assets, msg.sender);
@@ -22,7 +22,7 @@ contract CollateralActions is SFPMActions {
         }
     }
 
-    function deposit_agnostic(bool token, uint256 assets) public {
+    function deposit_agnostic(bool token, uint256 assets) public canonicalTimeState {
         assets = boundLog(assets, 1, 100 ether);
 
         hevm.prank(msg.sender);
@@ -34,7 +34,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _deposit_and_check(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         bool viaMint,
         uint256 assets,
         address depositor
@@ -87,7 +87,7 @@ contract CollateralActions is SFPMActions {
         address owner,
         bool toSelf,
         address receiver
-    ) public {
+    ) public canonicalTimeState {
         require(receiver != address(panopticPool));
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions > 0) {
@@ -122,7 +122,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _regular_withdraw_and_check(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         bool viaRedeem,
         uint256 assetsToWithdraw,
         address owner,
@@ -212,7 +212,7 @@ contract CollateralActions is SFPMActions {
         uint256 fuzzDenominator,
         address recipient,
         uint256 fullOrSelfFuzz
-    ) public {
+    ) public canonicalTimeState {
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
         emit LogUint256("Positions opened for user", numOfPositions);
@@ -290,7 +290,7 @@ contract CollateralActions is SFPMActions {
         uint256 fuzzDenominator,
         address recipient,
         uint256 fullOrNotFuzz
-    ) public {
+    ) public canonicalTimeState {
         uint256 numOfPositions = panopticPool.numberOfPositions(msg.sender);
         emit LogAddress("Caller", msg.sender);
         emit LogUint256("Positions opened for user", numOfPositions);
@@ -356,13 +356,13 @@ contract CollateralActions is SFPMActions {
     /// @custom:property PANO-SYS-005 Users can't use the overloaded withdraw to withdraw so much that it makes their open positions insolvent
     function assertion_invariant_collateral_overremoval_with_open_positions(
         uint256 amountToWithdraw
-    ) public {
+    ) public canonicalTimeState {
         _attempt_collateral_overremoval(collToken0, msg.sender, amountToWithdraw);
         _attempt_collateral_overremoval(collToken1, msg.sender, amountToWithdraw);
     }
 
     function _attempt_collateral_overremoval(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address withdrawer,
         uint256 amountToWithdraw
     ) internal {
@@ -405,7 +405,7 @@ contract CollateralActions is SFPMActions {
         address recipient,
         uint256 amountOver,
         bool nonOwnerCall
-    ) public {
+    ) public canonicalTimeState {
         _attempt_withdrawal_gt_pool_assets_via_withdraw(
             collToken0,
             owner,
@@ -438,7 +438,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _attempt_withdrawal_gt_pool_assets_via_withdraw(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address owner,
         address recipient,
         uint256 amountOver,
@@ -523,7 +523,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _attempt_withdrawal_gt_pool_assets_via_redeem(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address owner,
         address recipient,
         uint256 amountOver,
@@ -575,7 +575,7 @@ contract CollateralActions is SFPMActions {
         address recipient,
         uint256 amountOver,
         bool nonOwnerCall
-    ) public {
+    ) public canonicalTimeState {
         _attempt_overwithdrawal_via_withdraw(
             collToken0,
             owner,
@@ -614,7 +614,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _attempt_overwithdrawal_via_withdraw(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address owner,
         address recipient,
         uint256 amountOver,
@@ -660,7 +660,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _attempt_overwithdrawal_via_redeem(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address owner,
         address recipient,
         uint256 amountOver,
@@ -681,7 +681,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _attempt_overtransfer(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address owner,
         address recipient,
         uint256 amountOver,
@@ -708,22 +708,25 @@ contract CollateralActions is SFPMActions {
     //////////////////////////////////////////////////////////////*/
 
     /// @custom:property PANO-SYS-008 The Collateral Tracker's internal accounting always shows it has less than or equal to its true balance of the underlying token
-    function assertion_invariant_never_overcount_underlying_token() public {
+    function assertion_invariant_never_overcount_underlying_token() public canonicalTimeState {
         (uint256 ct0_s_poolAssets, , ) = collToken0.getPoolData();
         assertWithMsg(
             ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)) + 1,
-            "CollateralTracker0 has overcounted its token0 assets"
+            "CollateralTrackerWrapper0 has overcounted its token0 assets"
         );
 
         (uint256 ct1_s_poolAssets, , ) = collToken1.getPoolData();
         assertWithMsg(
             ct1_s_poolAssets <= IERC20(collToken1.asset()).balanceOf(address(panopticPool)) + 1,
-            "CollateralTracker1 has overcounted its token1 assets"
+            "CollateralTrackerWrapper1 has overcounted its token1 assets"
         );
     }
 
     /// @custom:property PANO-SYS-011 The pool can never have a utilisation over 100%
-    function assertion_invariant_never_allow_pool_utilisation_over_100p() public {
+    function assertion_invariant_never_allow_pool_utilisation_over_100p()
+        public
+        canonicalTimeState
+    {
         (, , int256 collToken0PU) = collToken0.getPoolData();
         assertWithMsg(
             collToken0PU <= 10000,
@@ -742,7 +745,7 @@ contract CollateralActions is SFPMActions {
         address receiver,
         uint256 tooLargeDepositAmount,
         bool depositToSelf
-    ) public {
+    ) public canonicalTimeState {
         require(receiver != address(panopticPool));
 
         _attempt_overdeposit(true, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
@@ -758,7 +761,7 @@ contract CollateralActions is SFPMActions {
     ) internal {
         require(receiver != address(panopticPool));
 
-        CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
+        CollateralTrackerWrapper collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxDeposit = type(uint104).max;
         tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint224).max);
 
@@ -792,7 +795,7 @@ contract CollateralActions is SFPMActions {
         address receiver,
         uint256 tooLargeMintAmount,
         bool mintToSelf
-    ) public {
+    ) public canonicalTimeState {
         require(receiver != address(panopticPool));
 
         _attempt_overmint(true, minter, receiver, tooLargeMintAmount, mintToSelf);
@@ -806,7 +809,7 @@ contract CollateralActions is SFPMActions {
         uint256 tooLargeMintAmount,
         bool mintToSelf
     ) internal {
-        CollateralTracker collToken = isToken0 ? collToken0 : collToken1;
+        CollateralTrackerWrapper collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxMint = collToken.previewDeposit(type(uint104).max);
         tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint224).max);
 
@@ -840,7 +843,7 @@ contract CollateralActions is SFPMActions {
         address receiver,
         uint256 amountOver,
         bool viaMint
-    ) public {
+    ) public canonicalTimeState {
         require(receiver != address(panopticPool));
 
         _attempt_deposit_over_balance(collToken0, msg.sender, receiver, amountOver, viaMint);
@@ -848,7 +851,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _attempt_deposit_over_balance(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         address depositor,
         address receiver,
         uint256 amountOver,
@@ -878,7 +881,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _withdraw_with_open_positions_and_check(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         uint256 assetsToWithdraw,
         address owner,
         bool toSelf,
@@ -955,7 +958,7 @@ contract CollateralActions is SFPMActions {
     }
 
     function _max_assets_withdrawable(
-        CollateralTracker collToken,
+        CollateralTrackerWrapper collToken,
         uint256 withdrawerSharesBefore
     ) internal view returns (uint256 maxAssetsWithdrawable) {
         (uint256 ct_s_poolAssets, , ) = collToken.getPoolData();

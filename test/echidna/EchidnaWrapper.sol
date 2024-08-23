@@ -50,7 +50,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         // Import the Collateral Tracker reference (for cloning)
         collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
+            new CollateralTrackerWrapper(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
         );
         emit LogAddress("Panoptic Collateral reference", address(collateralReference));
 
@@ -149,8 +149,8 @@ contract EchidnaWrapper is PanopticPoolActions {
             )
         );
 
-        collToken0 = panopticPool.collateralToken0();
-        collToken1 = panopticPool.collateralToken1();
+        collToken0 = CollateralTrackerWrapper(address(panopticPool.collateralToken0()));
+        collToken1 = CollateralTrackerWrapper(address(panopticPool.collateralToken1()));
 
         hevm.prank(address(collToken0));
         IERC20(collToken0.asset()).approve(address(pool), type(uint256).max);
