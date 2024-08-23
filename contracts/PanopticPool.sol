@@ -581,6 +581,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
+        // update the users options balance of position 'tokenId'
+        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+        // NOTE: cannot add the tickData yet because it is computed in _validateSolvency
+        s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
+            positionSize,
+            poolUtilizations,
+            uint96(0)
+        );
+
+
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         (uint256 medianData, uint96 tickData) = _validateSolvency(
@@ -592,13 +602,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
 
-        // update the users options balance of position 'tokenId'
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+        // update the users options balance of position 'tokenId', adding the tickData
         s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
             tickData
         );
+
 
         emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
     }
