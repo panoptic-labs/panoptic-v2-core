@@ -108,7 +108,7 @@ library PositionBalanceLibrary {
     }
 
     /// @notice Get the tickData of `self`.
-    /// @param self The PositionBalance to get utilization
+    /// @param self The PositionBalance to get the ticks
     /// @return The packed tickData
     function tickData(PositionBalance self) internal pure returns (uint96) {
         unchecked {
@@ -116,8 +116,30 @@ library PositionBalanceLibrary {
         }
     }
 
+    /// @notice Get the unpacked tickData of uint96 tickData.
+    /// @param tickData The packed tickData to get ticks from
+    function unpackTickData(
+        uint96 tickData
+    )
+        internal
+        pure
+        returns (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 lastObservedTick
+        )
+    {
+        PositionBalance self = storeBalanceData(0, 0, tickData);
+
+        currentTick = self.currentTick();
+        fastOracleTick = self.fastOracleTick();
+        slowOracleTick = self.slowOracleTick();
+        lastObservedTick = self.lastObservedTick();
+    }
+
     /// @notice Get the unpacked tickData of `self`.
-    /// @param self The PositionBalance to get utilization
+    /// @param self The PositionBalance to get ticks from
     function unpackTickData(
         PositionBalance self
     )

@@ -581,32 +581,41 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
+        uint256 medianData;
+        uint96 tickData;
+        {
+            (
+                int24 currentTick,
+                int24 fastOracleTick,
+                int24 slowOracleTick,
+                int24 lastObservedTick,
+                uint256 _medianData
+            ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+
+            tickData = PositionBalanceLibrary.packTickData(
+                currentTick,
+                fastOracleTick,
+                slowOracleTick,
+                lastObservedTick
+            );
+
+            medianData = _medianData;
+            // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
+            if (medianData != 0) s_miniMedian = medianData;
+        }
+
         // update the users options balance of position 'tokenId'
         // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
         // NOTE: cannot add the tickData yet because it is computed in _validateSolvency
         s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
-            uint96(0)
+            uint96(tickData)
         );
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        (uint256 medianData, uint96 tickData) = _validateSolvency(
-            msg.sender,
-            positionIdList,
-            BP_DECREASE_BUFFER
-        );
-
-        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
-        if (medianData != 0) s_miniMedian = medianData;
-
-        // update the users options balance of position 'tokenId', adding the tickData
-        s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
-            positionSize,
-            poolUtilizations,
-            tickData
-        );
+        _checkSolvency(msg.sender, positionIdList, tickData, BP_DECREASE_BUFFER);
 
         emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
     }
@@ -768,9 +777,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint256 buffer
     ) internal view returns (uint256 medianData, uint96 tickData) {
-        // check that the provided positionIdList matches the positions in memory
-        _validatePositionList(user, positionIdList, 0);
-
         (
             int24 currentTick,
             int24 fastOracleTick,
@@ -787,6 +793,30 @@ contract PanopticPool is ERC1155Holder, Multicall {
         );
 
         medianData = _medianData;
+
+        _checkSolvency(user, positionIdList, tickData, buffer);
+    }
+
+    /// @notice Validates the solvency of `user` from tickData.
+    /// @param user The account to validate
+    /// @param positionIdList The list of positions to validate solvency for
+    /// @param tickData the packed tick data to check solvency at
+    /// @param buffer The buffer to apply to the collateral requirement for `user`
+    function _checkSolvency(
+        address user,
+        TokenId[] calldata positionIdList,
+        uint96 tickData,
+        uint256 buffer
+    ) internal view {
+        // check that the provided positionIdList matches the positions in memory
+        _validatePositionList(user, positionIdList, 0);
+
+        (
+            int24 currentTick,
+            int24 fastOracleTick,
+            int24 slowOracleTick,
+            int24 lastObservedTick
+        ) = PositionBalanceLibrary.unpackTickData(tickData);
 
         int24[] memory atTicks;
         // Fall back to a conservative approach if there's high deviation between internal ticks:
