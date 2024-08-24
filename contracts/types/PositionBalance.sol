@@ -1,63 +1,35 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity >=0.8.24;
-
-// Custom types
-import {TokenId} from "@types/TokenId.sol";
-
+import "forge-std/Test.sol";
 type PositionBalance is uint256;
 using PositionBalanceLibrary for PositionBalance global;
 
-/// @title A Panoptic Liquidity Chunk. Tracks Tick Range and Liquidity Information for a "chunk." Used to track movement of chunks.
+/// @title A Panoptic Position Balance. Tracks the Position Size, the Pool Utilizations at mint, and the current/fastOracle/slowOracle/latestObserved ticks at mint.
 /// @author Axicon Labs Limited
 ///
-/// @notice A liquidity chunk is an amount of `liquidity` (an amount of WETH, e.g.) deployed between two ticks: `tickLower` and `tickUpper`
-/// into a concentrated liquidity AMM.
 //
-//                liquidity
-//                    ▲      liquidity chunk
-//                    │        │
-//                    │    ┌───▼────┐   ▲
-//                    │    │        │   │ liquidity/size
-//      Other AMM     │  ┌─┴────────┴─┐ ▼ of chunk
-//      liquidity  ───┼──┼─►          │
-//                    │  │            │
-//                    └──┴─▲────────▲─┴──► price ticks
-//                         │        │
-//                         │        │
-//                    tickLower     │
-//                              tickUpper
-//
-/// @notice Track Tick Range Information. Lower and Upper ticks including the liquidity deployed within that range.
-/// @notice This is used to track information about a leg in the Option Position identified by `TokenId.sol`.
-/// @notice We pack this tick range info into a uint256.
-//
-// PACKING RULES FOR A LIQUIDITYCHUNK:
+// PACKING RULES FOR A POSITIONBALANCE:
 // =================================================================================================
 //  From the LSB to the MSB:
-// (1) Liquidity        128bits  : The liquidity within the chunk (uint128).
-// ( ) (Zero-bits)       80bits  : Zero-bits to match a total uint256.
-// (2) tick Upper        24bits  : The upper tick of the chunk (int24).
-// (3) tick Lower        24bits  : The lower tick of the chunk (int24).
-// Total                256bits  : Total bits used by a chunk.
+// (1) positionSize     128bits : the size of that position  (uint128).
+// (2) poolUtilization0 16bits  : the pool utilization of token0, stored as (10000 * inAMM0)/totalAssets0 (uint16)
+// (3) poolUtilization1 16bits  : the pool utilization of token1, stored as (10000 * inAMM1)/totalAssets1 (uint16)
+// (4) currentTick      24bits  : The currentTick at mint (int24).
+// (5) fastOracleTick   24bits  : The fastOracleTick at mint (int24).
+// (6) slowOracleTick   24bits  : The slowOracleTick at mint (int24).
+// (7) lastObservedTick 24bits  : The lastObservedTick at mint (int24).
+// Total                256bits : Total bits used by a PositionBalance.
 // ===============================================================================================
 //
 // The bit pattern is therefore:
 //
-//           (3)             (2)             ( )                (1)
-//    <-- 24 bits -->  <-- 24 bits -->  <-- 80 bits -->   <-- 128 bits -->
-//        tickLower       tickUpper         Zeros             Liquidity
+//           (7)             (6)             (5)                (4)             (3)            (2)                 (1)
+//    <-- 24 bits -->  <-- 24 bits -->  <-- 24 bits -->   <-- 24 bits --> <-- 16 bits -->  <-- 16 bits -->   <-- 128 bits -->
+//   lastObservedTick   slowOracleTick   fastOracleTick     currentTick   utilization0      utilization1      positionSize
 //
 //        <--- most significant bit        least significant bit --->
 //
 library PositionBalanceLibrary {
-    /// @notice AND mask to strip the `tickLower` value from a packed LiquidityChunk.
-    uint256 internal constant CLEAR_TL_MASK =
-        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-
-    /// @notice AND mask to strip the `tickUpper` value from a packed LiquidityChunk.
-    uint256 internal constant CLEAR_TU_MASK =
-        0xFFFFFF000000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-
     /*//////////////////////////////////////////////////////////////
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
@@ -89,26 +61,22 @@ library PositionBalanceLibrary {
         int24 lastObservedTick
     ) internal pure returns (uint96) {
         return
-            uint96(
-                uint24(currentTick) +
-                    (uint24(fastOracleTick) << 24) +
-                    (uint24(slowOracleTick) << 48) +
-                    (uint24(lastObservedTick) << 72)
-            );
+            uint96(uint24(currentTick)) +
+            (uint96(uint24(fastOracleTick)) << 24) +
+            (uint96(uint24(slowOracleTick)) << 48) +
+            (uint96(uint24(lastObservedTick)) << 72);
     }
 
     /*//////////////////////////////////////////////////////////////
                                 DECODING
     //////////////////////////////////////////////////////////////*/
 
-    function unpackTickData(uint96 tickData) internal pure returns (int24, int24, int24, int24) {}
-
     /// @notice Get the last observed tick of `self`.
     /// @param self The PositionBalance to get the requested tick
     /// @return The last observed tick of self
     function lastObservedTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 232));
+            return int24(int256((PositionBalance.unwrap(self) >> 232) % 2 ** 24));
         }
     }
 
@@ -117,7 +85,7 @@ library PositionBalanceLibrary {
     /// @return The slow oracle tick of self
     function slowOracleTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 208));
+            return int24(int256((PositionBalance.unwrap(self) >> 208) % 2 ** 24));
         }
     }
 
@@ -126,7 +94,7 @@ library PositionBalanceLibrary {
     /// @return The fast oracle tick of self
     function fastOracleTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 184));
+            return int24(int256((PositionBalance.unwrap(self) >> 184) % 2 ** 24));
         }
     }
 
@@ -135,7 +103,7 @@ library PositionBalanceLibrary {
     /// @return The current tick of self
     function currentTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 160));
+            return int24(int256((PositionBalance.unwrap(self) >> 160) % 2 ** 24));
         }
     }
 
@@ -145,15 +113,6 @@ library PositionBalanceLibrary {
     function tickData(PositionBalance self) internal pure returns (uint96) {
         unchecked {
             return uint96(PositionBalance.unwrap(self) >> 160);
-        }
-    }
-
-    /// @notice Get token1 utilization of `self`.
-    /// @param self The PositionBalance to get utilization
-    /// @return The token1 utilization, stored in bips
-    function utilization1(PositionBalance self) internal pure returns (int256) {
-        unchecked {
-            return int256((PositionBalance.unwrap(self) >> 144) % 2 ** 16);
         }
     }
 
@@ -183,6 +142,15 @@ library PositionBalanceLibrary {
     function utilization0(PositionBalance self) internal pure returns (int256) {
         unchecked {
             return int256((PositionBalance.unwrap(self) >> 128) % 2 ** 16);
+        }
+    }
+
+    /// @notice Get token1 utilization of `self`.
+    /// @param self The PositionBalance to get utilization
+    /// @return The token1 utilization, stored in bips
+    function utilization1(PositionBalance self) internal pure returns (int256) {
+        unchecked {
+            return int256((PositionBalance.unwrap(self) >> 144) % 2 ** 16);
         }
     }
 
