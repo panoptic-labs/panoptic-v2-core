@@ -590,7 +590,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint96(0)
         );
 
-
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         (uint256 medianData, uint96 tickData) = _validateSolvency(
@@ -608,7 +607,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             poolUtilizations,
             tickData
         );
-
 
         emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
     }

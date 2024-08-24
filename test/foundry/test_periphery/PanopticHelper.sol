@@ -159,9 +159,7 @@ contract PanopticHelper {
             tokenIdList
         );
 
-        PositionBalance balanceAndUtilization = PositionBalance.wrap(
-            positionBalanceArray[0][1]
-        );
+        PositionBalance balanceAndUtilization = PositionBalance.wrap(positionBalanceArray[0][1]);
 
         return (
             balanceAndUtilization.positionSize(),
