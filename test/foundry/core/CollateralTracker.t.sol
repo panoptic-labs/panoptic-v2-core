@@ -16,6 +16,7 @@ import {Errors} from "@libraries/Errors.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PositionBalance} from "@types/PositionBalance.sol";
 import {Constants} from "@libraries/Constants.sol";
 // Panoptic Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -80,7 +81,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     function getRequiredCollateralAtUtilization(
         uint128 amount,
         uint256 isLong,
-        int64 utilization
+        int16 utilization
     ) external view returns (uint256 required) {
         return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
     }
@@ -101,7 +102,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function buyCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _buyCollateralRatio(uint256(utilization));
+        return _buyCollateralRatio(uint16(uint256(utilization)));
     }
 }
 
@@ -213,7 +214,7 @@ contract PanopticPoolHarness is PanopticPool {
     function positionBalance(
         address account,
         TokenId tokenId
-    ) external view returns (LeftRightUnsigned balanceAndUtilizations) {
+    ) external view returns (PositionBalance balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
     }
 }
@@ -6831,8 +6832,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                                 uint128(tokenType == 0 ? movedRight : movedLeft),
                                 1,
                                 tokenType == 0
-                                    ? int64(uint64(poolUtilizations))
-                                    : int64(uint64(poolUtilizations >> 64))
+                                    ? int16(uint16(poolUtilizations))
+                                    : int16(uint16(poolUtilizations >> 16))
                             )
                         ),
                         _tempTokensRequired
@@ -6843,8 +6844,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             uint128(tokenType == 0 ? movedRight : movedLeft),
                             1,
                             tokenType == 0
-                                ? int64(uint64(poolUtilizations))
-                                : int64(uint64(poolUtilizations >> 64))
+                                ? int16(uint16(poolUtilizations))
+                                : int16(uint16(poolUtilizations >> 16))
                         )
                     );
                     console2.log(
@@ -6854,8 +6855,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     console2.log(
                         "util req poolutil",
                         tokenType == 0
-                            ? int64(uint64(poolUtilizations))
-                            : int64(uint64(poolUtilizations >> 64))
+                            ? int16(uint16(poolUtilizations))
+                            : int16(uint16(poolUtilizations >> 16))
                     );
 
                     vm.assume(_tempTokensRequired < type(uint128).max);
