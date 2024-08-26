@@ -1187,9 +1187,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
             // read the pool utilization at mint
-            uint32 poolUtilization = PositionBalance
-                .wrap(positionBalanceArray[i][1])
-                .utilizations();
+            int16 poolUtilization = s_underlyingIsToken0
+                ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
+                : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
 
             // Get tokens required for the current tokenId (a single active position)
             uint256 _tokenRequired = _getRequiredCollateralAtTickSinglePosition(
@@ -1220,7 +1220,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         TokenId tokenId,
         uint128 positionSize,
         int24 atTick,
-        uint32 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 tokenRequired) {
         bool underlyingIsToken0 = s_underlyingIsToken0;
         uint256 numLegs = tokenId.countLegs();
@@ -1253,7 +1253,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint32 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 required) {
         return
             tokenId.riskPartner(index) == index // does this leg have a risk partner? Affects required collateral
@@ -1285,7 +1285,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint32 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 required) {
         // extract the tokenType (token0 or token1)
         uint256 tokenType = tokenId.tokenType(index);
@@ -1296,15 +1296,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
-        // match tokenType with the correct pool utilization
-        int16 utilization = tokenType == 0
-            ? int16(uint16(poolUtilization))
-            : int16(uint16(poolUtilization >> 16));
-
         uint256 isLong = tokenId.isLong(index);
 
         // start with base requirement, which is based on isLong value
-        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
+        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
 
         // if the position is long, required tokens does not depend on price
         unchecked {
@@ -1412,7 +1407,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint32 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 required) {
         // extract partner index (associated with another liquidity chunk)
         uint256 partnerIndex = tokenId.riskPartner(index);
@@ -1483,7 +1478,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 positionSize,
         uint256 index,
         uint256 partnerIndex,
-        uint32 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         // compute the total amount of funds moved for the position's current leg
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
@@ -1552,9 +1547,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             _getRequiredCollateralAtUtilization(
                 tokenType == 0 ? movedRight : movedLeft,
                 1,
-                tokenType == 0
-                    ? int16(uint16(poolUtilization))
-                    : int16(uint16(poolUtilization >> 16))
+                poolUtilization
             )
         );
     }
@@ -1573,7 +1566,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint32 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 strangleRequired) {
         // If both tokenTypes are the same, then this is a long or short strangle.
         // A strangle is an options strategy in which the investor holds a position
@@ -1599,14 +1592,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // A negative pool utilization is used to denote a position which is a strangle
             // at low pool utilization's strangle legs are evaluated at 2x capital efficiency
 
-            uint16 poolUtilization0 = uint16(poolUtilization);
-            uint16 poolUtilization1 = uint16(poolUtilization >> 16);
-
             // add 1 to handle poolUtilization = 0
-
-            poolUtilization =
-                uint32(uint16(-int16(poolUtilization0 == 0 ? 1 : poolUtilization0))) +
-                (uint32(uint16(-int16(poolUtilization1 == 0 ? 1 : poolUtilization1))) << 16);
+            poolUtilization = -(poolUtilization == 0 ? int16(1) : poolUtilization);
 
             return
                 strangleRequired = _getRequiredCollateralSingleLegNoPartner(
