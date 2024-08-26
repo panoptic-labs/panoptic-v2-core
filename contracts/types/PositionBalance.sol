@@ -84,7 +84,7 @@ library PositionBalanceLibrary {
     /// @return The last observed tick of self
     function lastObservedTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256((PositionBalance.unwrap(self) >> 232) % 2 ** 24));
+            return int24(int256(PositionBalance.unwrap(self) >> 232));
         }
     }
 
@@ -93,7 +93,7 @@ library PositionBalanceLibrary {
     /// @return The slow oracle tick of self
     function slowOracleTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256((PositionBalance.unwrap(self) >> 208) % 2 ** 24));
+            return int24(int256(PositionBalance.unwrap(self) >> 208));
         }
     }
 
@@ -102,7 +102,7 @@ library PositionBalanceLibrary {
     /// @return The fast oracle tick of self
     function fastOracleTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256((PositionBalance.unwrap(self) >> 184) % 2 ** 24));
+            return int24(int256(PositionBalance.unwrap(self) >> 184));
         }
     }
 
@@ -111,7 +111,7 @@ library PositionBalanceLibrary {
     /// @return The current tick of self
     function currentTick(PositionBalance self) internal pure returns (int24) {
         unchecked {
-            return int24(int256((PositionBalance.unwrap(self) >> 160) % 2 ** 24));
+            return int24(int256(PositionBalance.unwrap(self) >> 160));
         }
     }
 
