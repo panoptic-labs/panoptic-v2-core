@@ -776,13 +776,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData) {
+    ) internal view returns (uint256) {
         (
             int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 lastObservedTick,
-            uint256 _medianData
+            uint256 medianData
         ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
@@ -792,9 +792,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             lastObservedTick
         );
 
-        medianData = _medianData;
-
         _checkSolvency(user, positionIdList, tickData, buffer);
+
+        return medianData;
     }
 
     /// @notice Validates the solvency of `user` from tickData.
@@ -1425,14 +1425,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         medianData = s_miniMedian;
     }
 
-    /// @notice Get the current number of open positions for an account
+    /// @notice Get the current number of open positions for an account.
     /// @param user The account to query
     /// @return _numberOfPositions Number of open positions for `user`
     function numberOfPositions(address user) external view returns (uint256 _numberOfPositions) {
         _numberOfPositions = (s_positionsHash[user] >> 248);
     }
 
-    /// @notice Get the `tokenId` position data for `user`
+    /// @notice Get the `tokenId` position data for `user`.
     /// @param user The account to query
     /// @param tokenId The tokenId for that account
     /// @return currentTickAtMint currentTick at mint

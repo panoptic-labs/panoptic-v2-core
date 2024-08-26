@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity >=0.8.24;
-import "forge-std/Test.sol";
+
 type PositionBalance is uint256;
 using PositionBalanceLibrary for PositionBalance global;
 
 /// @title A Panoptic Position Balance. Tracks the Position Size, the Pool Utilizations at mint, and the current/fastOracle/slowOracle/latestObserved ticks at mint.
 /// @author Axicon Labs Limited
-///
+//
 //
 // PACKING RULES FOR A POSITIONBALANCE:
 // =================================================================================================
@@ -23,11 +23,11 @@ using PositionBalanceLibrary for PositionBalance global;
 //
 // The bit pattern is therefore:
 //
-//           (7)             (6)             (5)                (4)             (3)            (2)                 (1)
-//    <-- 24 bits -->  <-- 24 bits -->  <-- 24 bits -->   <-- 24 bits --> <-- 16 bits -->  <-- 16 bits -->   <-- 128 bits -->
-//   lastObservedTick   slowOracleTick   fastOracleTick     currentTick   utilization0      utilization1      positionSize
+//           (7)             (6)            (5)             (4)             (3)             (2)             (1)
+//    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
+//  lastObservedTick   slowOracleTick  fastOracleTick   currentTick    utilization0     utilization1    positionSize
 //
-//        <--- most significant bit        least significant bit --->
+//    <--- most significant bit                                                             least significant bit --->
 //
 library PositionBalanceLibrary {
     /*//////////////////////////////////////////////////////////////
@@ -36,8 +36,8 @@ library PositionBalanceLibrary {
 
     /// @notice Create a new `PositionBalance` given by positionSize, utilizations, and its tickData.
     /// @param positionSize The amount of option minted
-    /// @param utilizations packing of two uint16 utilizations into a 32 bit word
-    /// @param tickData packing of 4 int25s into a single uint96
+    /// @param utilizations Packing of two uint16 utilizations into a 32 bit word
+    /// @param tickData Packing of 4 int25s into a single uint96
     /// @return The new PositionBalance with the given positionSize, utilization, and tickData
     function storeBalanceData(
         uint128 positionSize,
@@ -54,17 +54,25 @@ library PositionBalanceLibrary {
         }
     }
 
+    /// @notice Concatenate all oracle ticks into a single uint96.
+    /// @param currentTick The current tick
+    /// @param fastOracleTick The fast Oracle tick
+    /// @param slowOracleTick The slow Oracle tick
+    /// @param lastObservedTick The last observed tick
+    /// @return A 96bit word concatenating all 4 input ticks
     function packTickData(
         int24 currentTick,
         int24 fastOracleTick,
         int24 slowOracleTick,
         int24 lastObservedTick
     ) internal pure returns (uint96) {
-        return
-            uint96(uint24(currentTick)) +
-            (uint96(uint24(fastOracleTick)) << 24) +
-            (uint96(uint24(slowOracleTick)) << 48) +
-            (uint96(uint24(lastObservedTick)) << 72);
+        unchecked {
+            return
+                uint96(uint24(currentTick)) +
+                (uint96(uint24(fastOracleTick)) << 24) +
+                (uint96(uint24(slowOracleTick)) << 48) +
+                (uint96(uint24(lastObservedTick)) << 72);
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -130,7 +138,7 @@ library PositionBalanceLibrary {
             int24 lastObservedTick
         )
     {
-        PositionBalance self = storeBalanceData(0, 0, tickData);
+        PositionBalance self = PositionBalance.wrap(uint256(tickData) << 160);
 
         currentTick = self.currentTick();
         fastOracleTick = self.fastOracleTick();
