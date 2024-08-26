@@ -209,7 +209,7 @@ contract PanopticPoolWrapper is PanopticPool {
                 msg.sender,
                 tickLimitLow,
                 tickLimitHigh,
-                COMMIT_LONG_SETTLED,
+                DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
 
@@ -1650,67 +1650,76 @@ contract FuzzHelpers is PropertiesAsserts {
     /////////////////////////////////////////////////////////////
 
     function _calculate_protocol_loss_0(int24 tick) internal {
-        uint256 delegated0 = burnSimResults.delegated0;
-        uint256 delegated1 = burnSimResults.delegated1;
         uint256 totalSupply0 = burnSimResults.totalSupply0;
         uint256 totalSupply1 = burnSimResults.totalSupply1;
         uint256 totalAssets0 = burnSimResults.totalAssets0;
         uint256 totalAssets1 = burnSimResults.totalAssets1;
 
         unchecked {
-            liqResults.protocolLoss0Actual = int256(
-                (collToken0.convertToAssets(
-                    (collToken0.totalSupply() - totalSupply0) -
-                        ((collToken0.totalAssets() - totalAssets0) * totalSupply0) /
-                        totalAssets0
-                ) * (totalSupply0 - delegated0)) /
-                    (totalSupply0 - (collToken0.totalSupply() - totalSupply0)) +
-                    PanopticMath.convert1to0(
-                        (collToken1.convertToAssets(
-                            (collToken1.totalSupply() - totalSupply1) -
-                                ((collToken1.totalAssets() - totalAssets1) * totalSupply1) /
-                                totalAssets1
-                        ) * (totalSupply1 - delegated1)) /
-                            (totalSupply1 - (collToken1.totalSupply() - totalSupply1)),
-                        TickMath.getSqrtRatioAtTick(tick)
+            liqResults.protocolLoss0Actual =
+                (int256(
+                    Math.mulDiv(
+                        totalSupply0 - burnSimResults.delegateeBalance0,
+                        totalAssets0,
+                        totalSupply0
                     )
-            );
+                ) -
+                    int256(
+                        collToken0.convertToAssets(totalSupply0 - burnSimResults.delegateeBalance0)
+                    )) +
+                PanopticMath.convert1to0(
+                    int256(
+                        Math.mulDiv(
+                            totalSupply1 - burnSimResults.delegateeBalance1,
+                            totalAssets1,
+                            totalSupply1
+                        )
+                    ) -
+                        int256(
+                            collToken1.convertToAssets(
+                                totalSupply1 - burnSimResults.delegateeBalance1
+                            )
+                        ),
+                    TickMath.getSqrtRatioAtTick(tick)
+                );
         }
     }
 
-    function _calculate_protocol_loss_expected_0(int24 twaptick, int24 curtick) internal {
-        int256 balanceCombined0CT = int256(
-            liqResults.margin0.rightSlot() +
-                PanopticMath.convert1to0(
-                    liqResults.margin1.rightSlot(),
-                    TickMath.getSqrtRatioAtTick(twaptick)
-                )
-        );
-
-        int256 balance0CombinedPostBurn = int256(uint256(liqResults.margin0.rightSlot())) -
-            int256(uint256(liqResults.shortPremium.rightSlot())) +
-            burnSimResults.burnDelta0 +
-            int256(
-                PanopticMath.convert1to0(
-                    int256(uint256(liqResults.margin1.rightSlot())) -
-                        int256(uint256(liqResults.shortPremium.leftSlot())) +
-                        burnSimResults.burnDelta1,
-                    TickMath.getSqrtRatioAtTick(curtick)
-                )
+    function _calculate_protocol_loss_expected_0(int24 twaptick) internal {
+        uint256 balance0CombinedPostBurn = Math.mulDiv(
+            burnSimResults.delegateeBalance0,
+            burnSimResults.totalAssets0,
+            burnSimResults.totalSupply0
+        ) +
+            PanopticMath.convert1to0(
+                Math.mulDiv(
+                    burnSimResults.delegateeBalance1,
+                    burnSimResults.totalAssets1,
+                    burnSimResults.totalSupply1
+                ),
+                TickMath.getSqrtRatioAtTick(twaptick)
             );
 
+        emit LogUint256("balance0CombinedPostBurn", balance0CombinedPostBurn);
+        emit LogUint256(
+            "balance0PostBurn",
+            Math.mulDiv(
+                burnSimResults.delegateeBalance0,
+                burnSimResults.totalAssets0,
+                burnSimResults.totalSupply0
+            )
+        );
+        emit LogUint256(
+            "balance1PostBurn",
+            Math.mulDiv(
+                burnSimResults.delegateeBalance1,
+                burnSimResults.totalAssets1,
+                burnSimResults.totalSupply1
+            )
+        );
+        emit LogInt256("PL bonusCombined0", liqResults.bonusCombined0);
         liqResults.protocolLoss0Expected = Math.max(
-            -(balance0CombinedPostBurn -
-                Math.min(
-                    balanceCombined0CT / 2,
-                    int256(
-                        liqResults.margin0.leftSlot() +
-                            PanopticMath.convert1to0(
-                                liqResults.margin1.leftSlot(),
-                                TickMath.getSqrtRatioAtTick(twaptick)
-                            )
-                    ) - balanceCombined0CT
-                )),
+            -(int256(balance0CombinedPostBurn) - liqResults.bonusCombined0),
             0
         );
     }

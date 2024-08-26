@@ -1471,7 +1471,8 @@ contract PanopticPoolActions is CollateralActions {
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
-                bytes4(reason) == Errors.AccountInsolvent.selector
+                bytes4(reason) == Errors.AccountInsolvent.selector ||
+                bytes4(reason) == Errors.DivergentSolvencyCheck.selector
             ) {
                 // if exercisor was insolvent beforehand, it's fine to revert
                 try
@@ -1867,7 +1868,7 @@ contract PanopticPoolActions is CollateralActions {
 
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(TWAPtick);
-        _calculate_protocol_loss_expected_0(TWAPtick, TWAPtick);
+        _calculate_protocol_loss_expected_0(TWAPtick);
 
         bytes memory settledLiq;
         (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(
