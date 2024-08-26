@@ -505,7 +505,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) external {
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
 
-        (uint256 medianData, ) = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -530,7 +530,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionIdList
         );
 
-        (uint256 medianData, ) = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -776,7 +776,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData, uint96 tickData) {
+    ) internal view returns (uint256 medianData) {
         (
             int24 currentTick,
             int24 fastOracleTick,
@@ -785,7 +785,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 _medianData
         ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
 
-        tickData = PositionBalanceLibrary.packTickData(
+        uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
             fastOracleTick,
             slowOracleTick,
