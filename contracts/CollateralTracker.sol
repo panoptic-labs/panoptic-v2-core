@@ -262,7 +262,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function getPoolData()
         external
         view
-        returns (uint256 poolAssets, uint256 insideAMM, int256 currentPoolUtilization)
+        returns (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization)
     {
         poolAssets = s_poolAssets;
         insideAMM = s_inAMM;
@@ -750,9 +750,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     // With total assets being the current Panoptic pool balance + the amount in the AMM.
     /// @dev compute: inAMM/totalAssets().
     /// @return poolUtilization The pool utilization in basis points
-    function _poolUtilization() internal view returns (int256 poolUtilization) {
+    function _poolUtilization() internal view returns (uint256 poolUtilization) {
         unchecked {
-            return int256((s_inAMM * DECIMALS) / totalAssets());
+            return (s_inAMM * DECIMALS) / totalAssets();
         }
     }
 
@@ -1013,7 +1013,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount
-    ) external onlyPanopticPool returns (int16 utilization) {
+    ) external onlyPanopticPool returns (uint32 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1044,7 +1044,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint256(updatedAssets).toUint128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
-            utilization = int16(_poolUtilization());
+            utilization = uint32(_poolUtilization());
         }
     }
 
