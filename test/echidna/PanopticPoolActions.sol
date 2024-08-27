@@ -224,6 +224,16 @@ contract PanopticPoolActions is CollateralActions {
             );
         }
 
+        (, currentTick, , , , , ) = pool.slot0();
+
+        // optimize the risk partners for the new TokenId
+        userPositions[msg.sender][userPositions[msg.sender].length - 1] = panopticHelper
+            .optimizeRiskPartners(
+                panopticPool,
+                currentTick,
+                userPositions[msg.sender][userPositions[msg.sender].length - 1]
+            );
+
         uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
         uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
 
@@ -1641,6 +1651,7 @@ contract PanopticPoolActions is CollateralActions {
                     )
                 )
         );
+
         assertWithMsg(
             cDelta0 >=
                 -int256(
