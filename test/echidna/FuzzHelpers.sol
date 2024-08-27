@@ -1424,24 +1424,13 @@ contract FuzzHelpers is PropertiesAsserts {
                 $shortPremium.leftSlot(),
                 $longPremium.leftSlot()
             );
-            $balanceCross =
-                Math.mulDiv(
-                    $tokenData1.rightSlot(),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($colTicks[i])
-                ) +
-                Math.mulDiv96($tokenData0.rightSlot(), TickMath.getSqrtRatioAtTick($colTicks[i]));
 
-            $thresholdCross =
-                Math.mulDivRoundingUp(
-                    $tokenData1.leftSlot(),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($colTicks[i])
-                ) +
-                Math.mulDiv96RoundingUp(
-                    $tokenData0.leftSlot(),
-                    TickMath.getSqrtRatioAtTick($colTicks[i])
-                );
+            ($balanceCross, $thresholdCross) = PanopticMath.getCrossBalances(
+                $tokenData0,
+                $tokenData1,
+                TickMath.getSqrtRatioAtTick($colTicks[i])
+            );
+
             insolventTicks += $thresholdCross > $balanceCross ? 1 : 0;
         }
 
@@ -1488,7 +1477,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
                 $shouldRevert = $shouldRevert
                     ? $shouldRevert
-                    : Math.unsafeDivRoundingUp($thresholdCross * buffer, 10_000) > $balanceCross;
+                    : Math.mulDivRoundingUp($thresholdCross, buffer, 10_000) > $balanceCross;
             }
         } else {
             $tokenData0 = collToken0.getAccountMarginDetails(
@@ -1523,7 +1512,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $shouldRevert = $shouldRevert
                 ? $shouldRevert
-                : Math.unsafeDivRoundingUp($thresholdCross * buffer, 10_000) > $balanceCross;
+                : Math.mulDivRoundingUp($thresholdCross, buffer, 10_000) > $balanceCross;
         }
     }
 
