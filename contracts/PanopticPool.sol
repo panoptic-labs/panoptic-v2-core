@@ -679,22 +679,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        int16 utilization0 = s_collateralToken0.takeCommissionAddData(
+        uint32 utilization0 = s_collateralToken0.takeCommissionAddData(
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot()
         );
-        int16 utilization1 = s_collateralToken1.takeCommissionAddData(
+        uint32 utilization1 = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
             totalSwapped.leftSlot()
         );
 
-        // return pool utilizations as a uint128 (pool Utilization is always < 10000)
+        // return pool utilizations as two uint16 (pool Utilization is always < 10000)
         unchecked {
-            return uint32(uint16(utilization0) + uint32(uint16(utilization1) << 64));
+            return utilization0 + (utilization1 << 16);
         }
     }
 
