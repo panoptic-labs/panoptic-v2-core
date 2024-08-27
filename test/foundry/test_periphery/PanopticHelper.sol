@@ -238,12 +238,7 @@ contract PanopticHelper {
                     0,
                     0
                 );
-                (, uint256 required0) = PanopticMath.convertCollateralData(
-                    tokenData0,
-                    tokenData1,
-                    0,
-                    atTick
-                );
+                (, uint256 required0) = convertCollateralData(tokenData0, tokenData1, 0, atTick);
 
                 return required0;
             }
@@ -251,6 +246,53 @@ contract PanopticHelper {
         } catch {
             return type(uint128).max;
         }
+    }
+
+    /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
+    /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
+    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
+    /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
+    /// @param sqrtPriceX96 The sqrt price at which to convert between token0/token1
+    /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
+    /// @return The combined collateral requirement for a user in terms of tokenType
+    function convertCollateralData(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint256 tokenType,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256, uint256) {
+        if (tokenType == 0) {
+            return (
+                tokenData0.rightSlot() +
+                    PanopticMath.convert1to0(tokenData1.rightSlot(), sqrtPriceX96),
+                tokenData0.leftSlot() +
+                    PanopticMath.convert1to0(tokenData1.leftSlot(), sqrtPriceX96)
+            );
+        } else {
+            return (
+                tokenData1.rightSlot() +
+                    PanopticMath.convert0to1(tokenData0.rightSlot(), sqrtPriceX96),
+                tokenData1.leftSlot() +
+                    PanopticMath.convert0to1(tokenData0.leftSlot(), sqrtPriceX96)
+            );
+        }
+    }
+
+    /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
+    /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
+    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
+    /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
+    /// @param tick The tick at which to convert between token0/token1
+    /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
+    /// @return The combined collateral requirement for a user in terms of tokenType
+    function convertCollateralData(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint256 tokenType,
+        int24 tick
+    ) internal pure returns (uint256, uint256) {
+        return
+            convertCollateralData(tokenData0, tokenData1, tokenType, Math.getSqrtRatioAtTick(tick));
     }
 
     /// @notice An external function that validates a tokenId.
