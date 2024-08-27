@@ -2254,14 +2254,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Alice,
                 currentTick,
-                1,
                 positionIdList1
             );
 
@@ -2454,14 +2456,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                1,
                 positionIdList1
             );
 
@@ -2659,14 +2663,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                1,
                 positionIdList1
             );
 
@@ -2866,14 +2872,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                1,
                 positionIdList1
             );
 
@@ -3104,14 +3112,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                1,
                 positionIdList1
             );
 
@@ -3350,14 +3360,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 1, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Alice,
                 currentTick,
-                1,
                 positionIdList1
             );
 
@@ -3573,14 +3585,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                0,
                 positionIdList1
             );
 
@@ -3803,14 +3817,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                0,
                 positionIdList1
             );
 
@@ -4019,14 +4035,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Alice,
                 currentTick,
-                0,
                 positionIdList1
             );
 
@@ -4202,14 +4220,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
 
@@ -4399,14 +4419,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
 
@@ -4590,14 +4612,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
 
@@ -4780,14 +4804,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
 
@@ -4954,14 +4980,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
 
@@ -5139,14 +5167,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
                 panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
 
@@ -5321,14 +5351,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath
-                .convertCollateralData(tokenData0, tokenData1, 0, currentTick);
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
             (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
-                PanopticPool(address(panopticPool)),
+                panopticPool,
                 Bob,
                 currentTick,
-                0,
                 positionIdList
             );
             assertEq(balanceData0, calcBalanceCross, "0");
