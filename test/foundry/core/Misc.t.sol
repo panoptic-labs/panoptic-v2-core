@@ -3780,8 +3780,9 @@ contract Misctest is Test, PositionUtils {
 
             // amount of other token when deep ITM
             // uint256 amountITM;
-            (, , util) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
+            (, , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
 
+            util = int256(_utilization);
             amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0);
             (amountBorrowed, amountITM) = tokenType == 0
                 ? (amountsMoved.rightSlot(), amountsMoved.leftSlot())

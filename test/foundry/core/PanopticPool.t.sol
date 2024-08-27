@@ -1601,16 +1601,16 @@ contract PanopticPoolTest is PositionUtils {
 
         LeftRightSigned poolUtilizationsAtMint;
         {
-            (, , int256 currentPoolUtilization) = ct0.getPoolData();
+            (, , uint256 currentPoolUtilization) = ct0.getPoolData();
             poolUtilizationsAtMint = LeftRightSigned.wrap(0).toRightSlot(
-                int128(currentPoolUtilization)
+                int128(int256(currentPoolUtilization))
             );
         }
 
         {
-            (, , int256 currentPoolUtilization) = ct1.getPoolData();
+            (, , uint256 currentPoolUtilization) = ct1.getPoolData();
             poolUtilizationsAtMint = poolUtilizationsAtMint.toLeftSlot(
-                int128(currentPoolUtilization)
+                int128(int256(currentPoolUtilization))
             );
         }
 

@@ -87,7 +87,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function poolUtilizationHook() external view returns (int128) {
-        return int128(_poolUtilization());
+        return int128(int256(_poolUtilization()));
     }
 
     function getTotalRequiredCollateral(
@@ -6265,12 +6265,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // _inAMM() * DECIMALS) / totalAssets()
         uint256 expectedPoolUtilization = (expectedInAMM * 10_000) / expectedTotalBalance;
 
-        (uint256 poolAssets, uint256 insideAMM, int256 currentPoolUtilization) = collateralToken0
+        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
             .getPoolData();
 
         assertEq(expectedBal, poolAssets);
         assertEq(expectedInAMM, insideAMM);
-        assertEq(expectedPoolUtilization, uint256(currentPoolUtilization));
+        assertEq(expectedPoolUtilization, currentPoolUtilization);
     }
 
     function test_Success_name(uint256 x) public {
