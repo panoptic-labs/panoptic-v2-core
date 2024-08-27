@@ -720,7 +720,7 @@ library PanopticMath {
                 uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
 
                 // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
-                if (sqrtPriceX96Twap < Constants.FP96) {
+                if (atSqrtPriceX96 < Constants.FP96) {
                     // required0 / (required0 + token0(required1))
                     uint256 requiredRatioX128 = Math.mulDiv(
                         tokenData0.leftSlot(),
