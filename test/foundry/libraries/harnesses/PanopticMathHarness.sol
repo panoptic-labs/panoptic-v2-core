@@ -99,28 +99,6 @@ contract PanopticMathHarness is Test {
         return lastMedianObservation;
     }
 
-    function convertCollateralData(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint256 tokenType,
-        int24 tick
-    ) public pure returns (uint256, uint256) {
-        (uint256 collateralBalance, uint256 requiredCollateral) = PanopticMath
-            .convertCollateralData(tokenData0, tokenData1, tokenType, tick);
-        return (collateralBalance, requiredCollateral);
-    }
-
-    function convertCollateralData(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint256 tokenType,
-        uint160 sqrtPriceX96
-    ) public pure returns (uint256, uint256) {
-        (uint256 collateralBalance, uint256 requiredCollateral) = PanopticMath
-            .convertCollateralData(tokenData0, tokenData1, tokenType, sqrtPriceX96);
-        return (collateralBalance, requiredCollateral);
-    }
-
     function _getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,

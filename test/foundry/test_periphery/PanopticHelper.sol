@@ -43,7 +43,6 @@ contract PanopticHelper {
     /// @param pool The PanopticPool instance to check collateral on
     /// @param account Address of the user that owns the positions
     /// @param atTick At what price is the collateral requirement evaluated at
-    /// @param tokenType whether to return the values in term of token0 or token1
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
     /// @return collateralBalance the total combined balance of token0 and token1 for a user in terms of tokenType
     /// @return requiredCollateral The combined collateral requirement for a user in terms of tokenType
@@ -51,7 +50,6 @@ contract PanopticHelper {
         PanopticPool pool,
         address account,
         int24 atTick,
-        uint256 tokenType,
         TokenId[] calldata positionIdList
     ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
@@ -78,7 +76,8 @@ contract PanopticHelper {
         );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
-        return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
+        return
+            PanopticMath.getCrossBalances(tokenData0, tokenData1, Math.getSqrtRatioAtTick(atTick));
     }
 
     /// @notice Calculate NAV of user's option portfolio at a given tick.
@@ -251,9 +250,14 @@ contract PanopticHelper {
             PanopticPool(pool),
             account,
             tick,
-            0,
             positionIdList
         );
+
+        // convert to token0 to ensure consistent units
+        if (tick > 0) {
+            balanceCross = PanopticMath.convert1to0(balanceCross, Math.getSqrtRatioAtTick(tick));
+            requiredCross = PanopticMath.convert1to0(requiredCross, Math.getSqrtRatioAtTick(tick));
+        }
 
         return int256(balanceCross) - int256(requiredCross);
     }

@@ -2374,7 +2374,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             staleTick,
-            0,
             $posIdList
         );
 
@@ -2386,7 +2385,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             $posIdList
         );
 
@@ -2473,7 +2471,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             $posIdList
         );
 
@@ -2549,7 +2546,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             staleTick,
-            0,
             $posIdList
         );
 
@@ -2561,7 +2557,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             $posIdList
         );
 
@@ -2646,7 +2641,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             $posIdList
         );
 
@@ -3324,15 +3318,14 @@ contract Misctest is Test, PositionUtils {
             0,
             0
         );
-        (uint256 balance0, uint256 required0) = PanopticMath.convertCollateralData(
+        (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
             tokenData0,
             tokenData1,
-            0,
-            currentTick
+            Math.getSqrtRatioAtTick(currentTick)
         );
 
-        assertTrue(required0 > 0, "zero collateral requirement");
-        assertTrue(required0 <= balance0, "account is solvent");
+        assertTrue(requiredCross > 0, "zero collateral requirement");
+        assertTrue(requiredCross <= balanceCross, "account is solvent");
 
         pp.burnOptions($posIdList[0], new TokenId[](0), int24(887272), int24(-887272));
     }
@@ -3827,7 +3820,7 @@ contract Misctest is Test, PositionUtils {
 
             (, currentTick, , , , , ) = uniPool.slot0();
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                .checkCollateral(pp, Bob, currentTick, posIdList);
 
             assertTrue(totalCollateralBalance0 <= totalCollateralRequired0, "Is liquidatable!");
 
@@ -4055,7 +4048,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             posIdList
         );
 
@@ -4074,7 +4066,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             posIdList
         );
 
@@ -4094,7 +4085,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 int24(twapTick),
-                0,
                 posIdList
             );
 
@@ -4110,7 +4100,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 fastOracleTick,
-                0,
                 posIdList
             );
 
@@ -4120,7 +4109,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 lastObservedTick,
-                0,
                 posIdList
             );
 
@@ -4130,7 +4118,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 currentTick,
-                0,
                 posIdList
             );
 
@@ -4193,7 +4180,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             posIdList
         );
 
@@ -4212,7 +4198,6 @@ contract Misctest is Test, PositionUtils {
             pp,
             Bob,
             currentTick,
-            0,
             posIdList
         );
 
@@ -4232,7 +4217,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 int24(twapTick),
-                0,
                 posIdList
             );
 
@@ -4331,7 +4315,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
 
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                .checkCollateral(pp, Bob, currentTick, posIdList);
 
             assertTrue(totalCollateralBalance0 >= totalCollateralRequired0, "Is not liquidatable");
 
@@ -4348,7 +4332,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 currentTick,
-                0,
                 posIdList
             );
 
@@ -4420,7 +4403,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
 
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                .checkCollateral(pp, Bob, currentTick, posIdList);
 
             assertTrue(totalCollateralBalance0 >= totalCollateralRequired0, "Is not liquidatable");
 
@@ -4437,7 +4420,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 currentTick,
-                0,
                 posIdList
             );
 
@@ -4524,7 +4506,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -4542,7 +4524,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -4622,7 +4604,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -4640,7 +4622,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -4720,7 +4702,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -4738,7 +4720,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -4813,7 +4795,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
 
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                .checkCollateral(pp, Bob, currentTick, posIdList);
 
             assertTrue(totalCollateralBalance0 >= totalCollateralRequired0, "Is not liquidatable");
 
@@ -4828,7 +4810,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 currentTick,
-                0,
                 posIdList
             );
 
@@ -4899,7 +4880,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
 
             (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                .checkCollateral(pp, Bob, currentTick, posIdList);
 
             assertTrue(totalCollateralBalance0 >= totalCollateralRequired0, "Is not liquidatable");
 
@@ -4916,7 +4897,6 @@ contract Misctest is Test, PositionUtils {
                 pp,
                 Bob,
                 currentTick,
-                0,
                 posIdList
             );
 
@@ -5004,7 +4984,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -5019,7 +4999,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -5099,7 +5079,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -5113,7 +5093,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -5193,7 +5173,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -5207,7 +5187,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -5314,7 +5294,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -5329,7 +5309,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -5437,7 +5417,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -5451,7 +5431,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }
@@ -5559,7 +5539,7 @@ contract Misctest is Test, PositionUtils {
 
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(
                     totalCollateralBalance0 >= totalCollateralRequired0,
@@ -5573,7 +5553,7 @@ contract Misctest is Test, PositionUtils {
             (, currentTick, , , , , ) = uniPool.slot0();
             {
                 (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph
-                    .checkCollateral(pp, Bob, currentTick, 0, posIdList);
+                    .checkCollateral(pp, Bob, currentTick, posIdList);
 
                 assertTrue(totalCollateralBalance0 < totalCollateralRequired0, "Is liquidatable!");
             }

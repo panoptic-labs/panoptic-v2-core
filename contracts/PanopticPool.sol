@@ -1213,7 +1213,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 i; i < numberOfTicks; ) {
             unchecked {
                 solvent += (
-                    _checkCrossBalances(
+                    _isAccountSolvent(
                         account,
                         atTicks[i],
                         positionBalanceArray,
@@ -1237,7 +1237,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Check whether a the balances of an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
+    /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
     /// @param account The account to check solvency for
     /// @param atTick The tick to check solvency at
     /// @param positionBalanceArray A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
@@ -1245,7 +1245,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param longPremium The total amount of premium owed by the long legs of `account`
     /// @param buffer The buffer to apply to the collateral requirement
     /// @return Whether the account is solvent at the given tick
-    function _checkCrossBalances(
+    function _isAccountSolvent(
         address account,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
@@ -1268,7 +1268,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             longPremium.leftSlot()
         );
 
-        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
+        (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
             tokenData0,
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
@@ -1277,31 +1277,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         unchecked {
             return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
-        }
-    }
-
-    /// @notice Get a cross-collateral balance and required threshold for a given set of token balances and collateral requirements.
-    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
-    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
-    /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
-    /// @return balanceCross The current cross-collateral balance of the option positions
-    /// @return thresholdCross The cross-collateral threshold balance under which the account is insolvent
-    function _getSolvencyBalances(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
-        unchecked {
-            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
-            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
-            balanceCross =
-                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
-            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overestimate by rounding up
-            thresholdCross =
-                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
         }
     }
 
