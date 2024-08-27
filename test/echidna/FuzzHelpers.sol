@@ -1470,27 +1470,22 @@ contract FuzzHelpers is PropertiesAsserts {
                     $shortPremium.leftSlot(),
                     $longPremium.leftSlot()
                 );
-                $balanceCross =
-                    Math.mulDiv(
-                        $balance1ExpectedP + $shortPremium.leftSlot(),
-                        2 ** 96,
-                        TickMath.getSqrtRatioAtTick($colTicks[i])
-                    ) +
-                    Math.mulDiv96(
-                        $balance0ExpectedP + $shortPremium.rightSlot(),
-                        TickMath.getSqrtRatioAtTick($colTicks[i])
-                    );
 
-                $thresholdCross =
-                    Math.mulDivRoundingUp(
-                        uint256($tokenData1.leftSlot()),
-                        2 ** 96,
-                        TickMath.getSqrtRatioAtTick($colTicks[i])
-                    ) +
-                    Math.mulDiv96RoundingUp(
-                        $tokenData0.leftSlot(),
-                        TickMath.getSqrtRatioAtTick($colTicks[i])
-                    );
+                $tokenData0 = LeftRightUnsigned
+                    .wrap(0)
+                    .toRightSlot(uint128($balance0ExpectedP + $shortPremium.rightSlot()))
+                    .toLeftSlot($tokenData0.leftSlot());
+                $tokenData1 = LeftRightUnsigned
+                    .wrap(0)
+                    .toRightSlot(uint128($balance1ExpectedP + $shortPremium.leftSlot()))
+                    .toLeftSlot($tokenData1.leftSlot());
+
+                ($balanceCross, $thresholdCross) = PanopticMath.getCrossBalances(
+                    $tokenData0,
+                    $tokenData1,
+                    TickMath.getSqrtRatioAtTick($colTicks[i])
+                );
+
                 $shouldRevert = $shouldRevert
                     ? $shouldRevert
                     : Math.unsafeDivRoundingUp($thresholdCross * buffer, 10_000) > $balanceCross;
@@ -1510,27 +1505,22 @@ contract FuzzHelpers is PropertiesAsserts {
                 $shortPremium.leftSlot(),
                 $longPremium.leftSlot()
             );
-            $balanceCross =
-                Math.mulDiv(
-                    $balance1ExpectedP + $shortPremium.leftSlot(),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($colTicks[1])
-                ) +
-                Math.mulDiv96(
-                    $balance0ExpectedP + $shortPremium.rightSlot(),
-                    TickMath.getSqrtRatioAtTick($colTicks[1])
-                );
 
-            $thresholdCross =
-                Math.mulDivRoundingUp(
-                    uint256($tokenData1.leftSlot()),
-                    2 ** 96,
-                    TickMath.getSqrtRatioAtTick($colTicks[1])
-                ) +
-                Math.mulDiv96RoundingUp(
-                    $tokenData0.leftSlot(),
-                    TickMath.getSqrtRatioAtTick($colTicks[1])
-                );
+            $tokenData0 = LeftRightUnsigned
+                .wrap(0)
+                .toRightSlot(uint128($balance0ExpectedP + $shortPremium.rightSlot()))
+                .toLeftSlot($tokenData0.leftSlot());
+            $tokenData1 = LeftRightUnsigned
+                .wrap(0)
+                .toRightSlot(uint128($balance1ExpectedP + $shortPremium.leftSlot()))
+                .toLeftSlot($tokenData1.leftSlot());
+
+            ($balanceCross, $thresholdCross) = PanopticMath.getCrossBalances(
+                $tokenData0,
+                $tokenData1,
+                TickMath.getSqrtRatioAtTick($colTicks[1])
+            );
+
             $shouldRevert = $shouldRevert
                 ? $shouldRevert
                 : Math.unsafeDivRoundingUp($thresholdCross * buffer, 10_000) > $balanceCross;

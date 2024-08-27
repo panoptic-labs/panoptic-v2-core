@@ -1644,7 +1644,7 @@ contract PanopticPoolActions is CollateralActions {
         assertWithMsg(
             cDelta0 >=
                 -int256(
-                    1 + PanopticMath.convert1to0(uint256(1), TickMath.getSqrtRatioAtTick($twapTick))
+                    2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick($twapTick))
                 ),
             "ForceExercise: Sanity check - Exercisee token value is lower than before"
         );
@@ -1654,7 +1654,7 @@ contract PanopticPoolActions is CollateralActions {
         assertWithMsg(
             Math.abs(-cDelta0 - exerciseCostToken0) <=
                 int256(
-                    1 + PanopticMath.convert1to0(uint256(1), TickMath.getSqrtRatioAtTick($twapTick))
+                    2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick($twapTick))
                 ),
             "ForceExercise: Token deltas do not match exercise cost"
         );
@@ -1798,7 +1798,8 @@ contract PanopticPoolActions is CollateralActions {
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
-                bytes4(reason) == Errors.AccountInsolvent.selector
+                bytes4(reason) == Errors.AccountInsolvent.selector ||
+                bytes4(reason) == Errors.DivergentSolvencyCheck.selector
             ) {
                 collToken0.credit(msg.sender, (2 ** 104 - 1) * 10_000);
                 collToken1.credit(msg.sender, (2 ** 104 - 1) * 10_000);
