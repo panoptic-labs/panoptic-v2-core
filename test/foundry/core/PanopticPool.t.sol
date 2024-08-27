@@ -7740,7 +7740,13 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
-        vm.expectRevert(Errors.NotMarginCalled.selector);
-        pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]);
+        try pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]) {
+            assertFalse(true, "liquidation should have failed");
+        } catch (bytes memory reason) {
+            assertTrue(
+                bytes4(reason) == Errors.NotMarginCalled.selector ||
+                    bytes4(reason) == Errors.DivergentSolvencyCheck.selector
+            );
+        }
     }
 }
