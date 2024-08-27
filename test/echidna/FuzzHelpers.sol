@@ -1493,7 +1493,7 @@ contract FuzzHelpers is PropertiesAsserts {
                     );
                 $shouldRevert = $shouldRevert
                     ? $shouldRevert
-                    : ($thresholdCross * buffer) / 10_000 > $balanceCross;
+                    : Math.unsafeDivRoundingUp($thresholdCross * buffer, 10_000) > $balanceCross;
             }
         } else {
             $tokenData0 = collToken0.getAccountMarginDetails(
@@ -1533,7 +1533,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 );
             $shouldRevert = $shouldRevert
                 ? $shouldRevert
-                : ($thresholdCross * buffer) / 10_000 > $balanceCross;
+                : Math.unsafeDivRoundingUp($thresholdCross * buffer, 10_000) > $balanceCross;
         }
     }
 
@@ -1685,7 +1685,10 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function _calculate_protocol_loss_expected_0(int24 twaptick) internal {
+    function _calculate_protocol_loss_expected_0(
+        int24 twaptick,
+        LeftRightUnsigned delegations
+    ) internal {
         uint256 balance0CombinedPostBurn = Math.mulDiv(
             burnSimResults.delegateeBalance0,
             burnSimResults.totalAssets0,
@@ -1700,7 +1703,11 @@ contract FuzzHelpers is PropertiesAsserts {
                 TickMath.getSqrtRatioAtTick(twaptick)
             );
 
+        uint256 delegationCombined0 = delegations.rightSlot() +
+            PanopticMath.convert1to0(delegations.leftSlot(), TickMath.getSqrtRatioAtTick(twaptick));
+
         emit LogUint256("balance0CombinedPostBurn", balance0CombinedPostBurn);
+        emit LogUint256("delegationCombined0", delegationCombined0);
         emit LogUint256(
             "balance0PostBurn",
             Math.mulDiv(
@@ -1719,7 +1726,9 @@ contract FuzzHelpers is PropertiesAsserts {
         );
         emit LogInt256("PL bonusCombined0", liqResults.bonusCombined0);
         liqResults.protocolLoss0Expected = Math.max(
-            -(int256(balance0CombinedPostBurn) - liqResults.bonusCombined0),
+            -(int256(balance0CombinedPostBurn) -
+                int256(delegationCombined0) -
+                liqResults.bonusCombined0),
             0
         );
     }
@@ -1834,8 +1843,8 @@ contract FuzzHelpers is PropertiesAsserts {
         address _who = who;
         LeftRightUnsigned delegateeBalances = LeftRightUnsigned
             .wrap(0)
-            .toLeftSlot(uint128(collToken0.balanceOf(_who)))
-            .toRightSlot(uint128(collToken1.balanceOf(_who)));
+            .toLeftSlot(uint128(collToken1.balanceOf(_who)))
+            .toRightSlot(uint128(collToken0.balanceOf(_who)));
 
         int256[2] memory _shareDeltasLiquidatee = shareDeltasLiquidatee;
         LeftRightSigned burnDelta = LeftRightSigned

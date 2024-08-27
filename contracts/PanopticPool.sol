@@ -19,6 +19,7 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 
+import {PropertiesAsserts} from "test/echidna/PropertiesHelper.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
@@ -318,7 +319,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function validateCollateralWithdrawable(
         address user,
         TokenId[] calldata positionIdList
-    ) external view {
+    ) external {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
@@ -753,7 +754,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256 medianData) {
+    ) internal returns (uint256 medianData) {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -1142,7 +1143,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick,
         int24[] memory atTicks,
         uint256 buffer
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -1201,7 +1202,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned longPremium,
         uint256 buffer
-    ) internal view returns (bool) {
+    ) internal returns (bool) {
         LeftRightUnsigned tokenData0 = s_collateralToken0.getAccountMarginDetails(
             account,
             atTick,
@@ -1221,6 +1222,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenData0,
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
+        );
+
+        emit PropertiesAsserts.LogUint256("balanceCross", balanceCross);
+        emit PropertiesAsserts.LogUint256("thresholdCross", thresholdCross);
+        emit PropertiesAsserts.LogUint256("buffer", buffer);
+        emit PropertiesAsserts.LogBool(
+            "return",
+            balanceCross >= (thresholdCross * buffer) / 10_000
         );
 
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero

@@ -763,6 +763,7 @@ contract CollateralActions is SFPMActions {
 
         CollateralTrackerWrapper collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxDeposit = type(uint104).max;
+        require(maxDeposit + 1 < type(uint224).max);
         tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint224).max);
 
         if (depositToSelf) {
@@ -811,6 +812,7 @@ contract CollateralActions is SFPMActions {
     ) internal {
         CollateralTrackerWrapper collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxMint = collToken.previewDeposit(type(uint104).max);
+        require(maxMint + 1 < type(uint224).max);
         tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint224).max);
 
         if (mintToSelf) {

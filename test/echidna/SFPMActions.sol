@@ -2589,7 +2589,10 @@ contract SFPMActions is GeneralActions {
         uint256 balBefore1 = IERC20(WETH).balanceOf(minter);
 
         hevm.prank(minter);
-        try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) {
+        try sfpm.mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh) returns (
+            LeftRightUnsigned[4] memory collectedByLeg,
+            LeftRightSigned
+        ) {
             // if amount moved is greater than 2 ** 127 bits
             // bal before - bal after > 2 ** 127 - 4
 
@@ -2597,8 +2600,13 @@ contract SFPMActions is GeneralActions {
             uint256 balAfter0 = IERC20(USDC).balanceOf(minter);
             uint256 balAfter1 = IERC20(WETH).balanceOf(minter);
 
-            uint256 balDelta0 = balBefore0 - balAfter0;
-            uint256 balDelta1 = balBefore1 - balAfter1;
+            int256 balDelta0 = int256(balBefore0) - int256(balAfter0);
+            int256 balDelta1 = int256(balBefore1) - int256(balAfter1);
+
+            for (uint256 i = 0; i < collectedByLeg.length; i++) {
+                balDelta0 += int256(uint256(collectedByLeg[i].rightSlot()));
+                balDelta1 += int256(uint256(collectedByLeg[i].leftSlot()));
+            }
 
             //--
             emit LogUint256("balBefore0", balBefore0);
@@ -2607,14 +2615,13 @@ contract SFPMActions is GeneralActions {
             emit LogUint256("balAfter0", balAfter0);
             emit LogUint256("balAfter1", balAfter1);
             //
-            emit LogUint256("balDelta0", balDelta0);
-            emit LogUint256("balDelta1", balDelta1);
+            emit LogInt256("balDelta0", balDelta0);
+            emit LogInt256("balDelta1", balDelta1);
             //
             emit LogUint256("max", uint128(type(int128).max - 4));
 
             assertWithMsg(
-                !(balDelta0 > uint128(type(int128).max - 4) ||
-                    balDelta1 > uint128(type(int128).max - 4)),
+                !(balDelta0 > type(int128).max - 4 || balDelta1 > type(int128).max - 4),
                 "can't mint a position which exceeds the token limits of 127 bits"
             );
         } catch {}

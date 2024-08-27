@@ -411,27 +411,27 @@ contract PanopticPoolActions is CollateralActions {
             $balance0ExpectedP = Math.mulDiv(
                 uint256(
                     int256(collToken0.balanceOf(msg.sender)) +
-                        ($colDelta0 * int256($totalSupply0)) /
-                        int256($totalAssets0)
+                        ($colDelta0 > 0 ? int8(1) : -1) *
+                        int256(collToken0.convertToShares(uint256(Math.abs($colDelta0))))
                 ),
                 uint256(int256($totalAssets0) + $colDelta0 + $commission0),
                 uint256(
                     int256($totalSupply0) +
-                        ($colDelta0 * int256($totalSupply0)) /
-                        int256($totalAssets0)
+                        ($colDelta0 > 0 ? int8(1) : -1) *
+                        int256(collToken0.convertToShares(uint256(Math.abs($colDelta0))))
                 )
             );
             $balance1ExpectedP = Math.mulDiv(
                 uint256(
                     int256(collToken1.balanceOf(msg.sender)) +
-                        ($colDelta1 * int256($totalSupply1)) /
-                        int256($totalAssets1)
+                        ($colDelta1 > 0 ? int8(1) : -1) *
+                        int256(collToken1.convertToShares(uint256(Math.abs($colDelta1))))
                 ),
                 uint256(int256($totalAssets1) + $colDelta1 + $commission1),
                 uint256(
                     int256($totalSupply1) +
-                        ($colDelta1 * int256($totalSupply1)) /
-                        int256($totalAssets1)
+                        ($colDelta1 > 0 ? int8(1) : -1) *
+                        int256(collToken1.convertToShares(uint256(Math.abs($colDelta1))))
                 )
             );
 
@@ -1868,7 +1868,7 @@ contract PanopticPoolActions is CollateralActions {
 
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(TWAPtick);
-        _calculate_protocol_loss_expected_0(TWAPtick);
+        _calculate_protocol_loss_expected_0(TWAPtick, delegations);
 
         bytes memory settledLiq;
         (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(
@@ -1951,6 +1951,19 @@ contract PanopticPoolActions is CollateralActions {
                 2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
                 "Liquidator did not receive correct bonus"
             );
+
+            emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
+            emit LogInt256(
+                "Expected value",
+                liqResults.protocolLoss0Expected -
+                    Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
+            );
+            assertWithMsg(
+                liqResults.protocolLoss0Actual ==
+                    liqResults.protocolLoss0Expected -
+                        Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+                "Not all premium was haircut during protocol loss"
+            );
         }
 
         emit LogInt256(
@@ -1965,19 +1978,6 @@ contract PanopticPoolActions is CollateralActions {
             int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0) ==
                 Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
             "Incorrect amount of premium was haircut"
-        );
-
-        emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
-        emit LogInt256(
-            "Expected value",
-            liqResults.protocolLoss0Expected -
-                Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
-        );
-        assertWithMsg(
-            liqResults.protocolLoss0Actual ==
-                liqResults.protocolLoss0Expected -
-                    Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
-            "Not all premium was haircut during protocol loss"
         );
 
         log_account_collaterals(liquidator);
