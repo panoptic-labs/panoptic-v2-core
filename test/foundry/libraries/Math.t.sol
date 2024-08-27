@@ -184,6 +184,13 @@ contract MathTest is Test {
         assertEq(expectedResult, returnedResult);
     }
 
+    function test_success_mulDiv192RoundingUp(uint128 a, uint128 b) public {
+        uint256 expectedResult = FullMath.mulDivRoundingUp(a, b, 2 ** 192);
+        uint256 returnedResult = harness.mulDiv192RoundingUp(a, b);
+
+        assertEq(expectedResult, returnedResult);
+    }
+
     function test_Fail_mulDiv192() public {
         uint256 input = type(uint256).max;
 

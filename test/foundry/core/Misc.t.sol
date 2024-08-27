@@ -2360,7 +2360,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
-        ct1.deposit(17_817, Bob);
+        ct1.deposit(17_818, Bob);
 
         // mint succeeds
         pp.mintOptions(

@@ -18,6 +18,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import "forge-std/Test.sol";
 
 import {PropertiesAsserts} from "test/echidna/PropertiesHelper.sol";
 
@@ -1224,15 +1225,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
         );
-
-        emit PropertiesAsserts.LogUint256("balanceCross", balanceCross);
-        emit PropertiesAsserts.LogUint256("thresholdCross", thresholdCross);
-        emit PropertiesAsserts.LogUint256("buffer", buffer);
-        emit PropertiesAsserts.LogBool(
-            "return",
-            balanceCross >= (thresholdCross * buffer) / 10_000
-        );
-
+        console2.log("balanceCross", balanceCross);
+        console2.log("thresholdCross", thresholdCross);
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         unchecked {
             return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);

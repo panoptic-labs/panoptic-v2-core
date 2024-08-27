@@ -521,6 +521,26 @@ library PanopticMath {
         }
     }
 
+    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
+    /// @param amount The amount of token0 to convert into token1
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
+    /// @return The converted `amount` of token0 represented in terms of token1
+    function convert0to1RoundingUp(
+        uint256 amount,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256) {
+        unchecked {
+            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
+            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
+            if (sqrtPriceX96 < type(uint128).max) {
+                return Math.mulDiv192RoundingUp(amount, uint256(sqrtPriceX96) ** 2);
+            } else {
+                return Math.mulDiv128RoundingUp(amount, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
+            }
+        }
+    }
+
     /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
@@ -534,6 +554,31 @@ library PanopticMath {
                 return Math.mulDiv(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
             } else {
                 return Math.mulDiv(amount, 2 ** 128, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
+            }
+        }
+    }
+
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
+    /// @param amount The amount of token1 to convert into token0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
+    /// @return The converted `amount` of token1 represented in terms of token0
+    function convert1to0RoundingUp(
+        uint256 amount,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256) {
+        unchecked {
+            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
+            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
+            if (sqrtPriceX96 < type(uint128).max) {
+                return Math.mulDivRoundingUp(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
+            } else {
+                return
+                    Math.mulDivRoundingUp(
+                        amount,
+                        2 ** 128,
+                        Math.mulDiv64(sqrtPriceX96, sqrtPriceX96)
+                    );
             }
         }
     }
@@ -605,13 +650,14 @@ library PanopticMath {
                 tokenData0.rightSlot() +
                     PanopticMath.convert1to0(tokenData1.rightSlot(), sqrtPriceX96),
                 tokenData0.leftSlot() +
-                    PanopticMath.convert1to0(tokenData1.leftSlot(), sqrtPriceX96)
+                    PanopticMath.convert1to0RoundingUp(tokenData1.leftSlot(), sqrtPriceX96)
             );
         }
 
         return (
             PanopticMath.convert0to1(tokenData0.rightSlot(), sqrtPriceX96) + tokenData1.rightSlot(),
-            PanopticMath.convert0to1(tokenData0.leftSlot(), sqrtPriceX96) + tokenData1.leftSlot()
+            PanopticMath.convert0to1RoundingUp(tokenData0.leftSlot(), sqrtPriceX96) +
+                tokenData1.leftSlot()
         );
     }
 
