@@ -1410,44 +1410,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Get the `tokenId` position data for `user`.
-    /// @param user The account to query
-    /// @param tokenId The tokenId for that account
-    /// @return currentTickAtMint currentTick at mint
-    /// @return fastOracleTickAtMint fast oracle tick at mint
-    /// @return slowOracleTickAtMint slow oracle tick at mint
-    /// @return lastObservedTickAtMint last observed tick at mint
-    /// @return utilization0AtMint utilization of token0 at mint
-    /// @return utilization1AtMint utilization of token1 at mint
-    /// @return positionSize size of the position
-    function positionData(
-        address user,
-        TokenId tokenId
-    )
-        external
-        view
-        returns (
-            int24 currentTickAtMint,
-            int24 fastOracleTickAtMint,
-            int24 slowOracleTickAtMint,
-            int24 lastObservedTickAtMint,
-            int256 utilization0AtMint,
-            int256 utilization1AtMint,
-            uint128 positionSize
-        )
-    {
-        PositionBalance positionBalance = s_positionBalance[user][tokenId];
-
-        (
-            currentTickAtMint,
-            fastOracleTickAtMint,
-            slowOracleTickAtMint,
-            lastObservedTickAtMint
-        ) = positionBalance.unpackTickData();
-
-        utilization0AtMint = positionBalance.utilization0();
-        utilization1AtMint = positionBalance.utilization1();
-
-        positionSize = positionBalance.positionSize();
+    /// @param user The account that owns `tokenId`
+    /// @param tokenId The position to query
+    /// @return The PositionBalance data for `tokenId` owned by `user`
+    function positionData(address user, TokenId tokenId) external view returns (PositionBalance) {
+        return s_positionBalance[user][tokenId];
     }
 
     /// @notice Get the oracle price used to check solvency in liquidations.
