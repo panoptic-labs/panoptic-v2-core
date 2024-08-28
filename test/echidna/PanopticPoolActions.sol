@@ -239,7 +239,7 @@ contract PanopticPoolActions is CollateralActions {
 
         positionSize = uint128(
             distributions[1]
-                ? boundLog(positionSize, 0, 1_000_000_000 * 2 ** 64)
+                ? boundLog(positionSize, 2 ** 64, 2 ** 128)
                 : boundLog(positionSize, 0, 2 * 2 ** 64)
         );
 
