@@ -9,6 +9,7 @@ import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
+import {PositionBalance} from "@types/PositionBalance.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
@@ -1600,16 +1601,16 @@ contract PanopticPoolTest is PositionUtils {
 
         LeftRightSigned poolUtilizationsAtMint;
         {
-            (, , int256 currentPoolUtilization) = ct0.getPoolData();
+            (, , uint256 currentPoolUtilization) = ct0.getPoolData();
             poolUtilizationsAtMint = LeftRightSigned.wrap(0).toRightSlot(
-                int128(currentPoolUtilization)
+                int128(int256(currentPoolUtilization))
             );
         }
 
         {
-            (, , int256 currentPoolUtilization) = ct1.getPoolData();
+            (, , uint256 currentPoolUtilization) = ct1.getPoolData();
             poolUtilizationsAtMint = poolUtilizationsAtMint.toLeftSlot(
-                int128(currentPoolUtilization)
+                int128(int256(currentPoolUtilization))
             );
         }
 
@@ -1684,14 +1685,14 @@ contract PanopticPoolTest is PositionUtils {
                 int256(expectedPremia[1])
             );
             assertEq(posBalanceArray[0][0], TokenId.unwrap(tokenId));
-            assertEq(LeftRightUnsigned.wrap(posBalanceArray[0][1]).rightSlot(), positionSizes[0]);
-            assertEq(LeftRightUnsigned.wrap(posBalanceArray[0][1]).leftSlot(), 0);
+            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).positionSize(), positionSizes[0]);
+            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).utilizations(), 0);
             assertEq(posBalanceArray[1][0], TokenId.unwrap(tokenId2));
             assertEq(LeftRightUnsigned.wrap(posBalanceArray[1][1]).rightSlot(), positionSizes[1]);
             assertEq(
-                LeftRightUnsigned.wrap(posBalanceArray[1][1]).leftSlot(),
-                uint128(poolUtilizationsAtMint.rightSlot()) +
-                    (uint128(poolUtilizationsAtMint.leftSlot()) << 64)
+                PositionBalance.wrap(posBalanceArray[1][1]).utilizations(),
+                uint32(uint128(poolUtilizationsAtMint.rightSlot())) +
+                    (uint32(uint128(poolUtilizationsAtMint.leftSlot())) << 16)
             );
         }
     }
