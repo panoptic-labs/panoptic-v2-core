@@ -67,6 +67,27 @@ contract GeneralActions is FuzzHelpers {
         emit LogUint256("price after swap", currentSqrtPriceX96);
     }
 
+    function perform_swaps(uint256 target_sqrt_price, uint8 N) public canonicalTimeState {
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+
+        emit LogUint256("price before swap", currentSqrtPriceX96);
+
+        hevm.prank(pool_manipulator);
+
+        for (uint8 i; i < N; ++i) {
+            // bound the price anywhere
+            target_sqrt_price = boundLog(
+                target_sqrt_price,
+                Math.getSqrtRatioAtTick(TickMath.MIN_TICK + 2),
+                Math.getSqrtRatioAtTick(TickMath.MAX_TICK - 2)
+            );
+
+            swapperc.swapTo(cyclingPool, uint160(target_sqrt_price));
+        }
+        (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+        emit LogUint256("price after swap", currentSqrtPriceX96);
+    }
+
     function perform_swap_and_align_prices(uint256 target_sqrt_price) public canonicalTimeState {
         (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 

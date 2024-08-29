@@ -186,7 +186,7 @@ contract PanopticPoolActions is CollateralActions {
                 userPositions[msg.sender][userPositions[msg.sender].length - 1].width(i)
             );
             assert($widths[i] < 4096);
-            assertWithMsg(poolTickSpacing == 1, "pts1");
+            assertWithMsg(poolTickSpacing == 200, "pts1");
 
             ($tickLower, $tickUpper) = PanopticMath.getTicks(
                 $strikes[i],
@@ -386,7 +386,7 @@ contract PanopticPoolActions is CollateralActions {
                     TokenId.unwrap($tokenIdActive),
                     LeftRightUnsigned.unwrap(
                         LeftRightUnsigned.wrap(0).toRightSlot($positionSizeActive).toLeftSlot(
-                            uint128($poolUtil0 + uint128($poolUtil1 << 64))
+                            uint128($poolUtil0 + uint128($poolUtil1 << 16))
                         )
                     )
                 ]
