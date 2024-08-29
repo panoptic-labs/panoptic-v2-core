@@ -295,18 +295,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     error UniBurnAndCollectSimulationResults(uint256, uint256, uint128, uint128, bool);
 
-    error SimulationResults(
-        LeftRightUnsigned,
-        LeftRightUnsigned,
-        LeftRightSigned,
-        int256,
-        LeftRightSigned,
-        LeftRightSigned,
-        uint256,
-        int256,
-        LeftRightUnsigned,
-        bytes
-    );
+    error LiqBurnSimResults(BurnSimulationResults);
 
     error SFPMMintResError(LeftRightUnsigned[4], LeftRightSigned, int24[4], bool);
 
@@ -316,7 +305,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     error FeeQuotePostBurnSimResError(LeftRightUnsigned, LeftRightUnsigned, uint256[2][]);
 
-    error PPBurnManySimResError(uint256, uint256, BurnManySimResults, bool, bool);
+    error PPBurnManySimResError(uint256, uint256, BurnManySimResults, bool);
 
     struct SFPMMintResults {
         LeftRightUnsigned[4] collectedByLeg;
@@ -324,8 +313,6 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     struct BurnSimulationResults {
-        uint256 delegated0;
-        uint256 delegated1;
         uint256 totalSupply0;
         uint256 totalSupply1;
         uint256 totalAssets0;
@@ -338,9 +325,9 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 burnDelta0;
         int256 burnDelta1;
         LeftRightSigned netExchanged;
-        uint256[2][4][32] settledTokens;
         uint256 delegateeBalance0;
         uint256 delegateeBalance1;
+        bool sRevert;
     }
 
     struct LiquidationResults {
@@ -630,8 +617,7 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256[2][] $posBalanceArray;
 
     bool $shouldRevert;
-
-    bool $shouldSkip;
+    bool $shouldBurnRevert;
 
     int24 $fastOracleTick;
     int24 $slowOracleTick;
@@ -1434,6 +1420,7 @@ contract FuzzHelpers is PropertiesAsserts {
             insolventTicks += $thresholdCross > $balanceCross ? 1 : 0;
         }
 
+        emit LogBool("revert due to solvency", insolventTicks != $colTicks.length);
         if (insolventTicks != $colTicks.length) $shouldRevert = true;
     }
 
@@ -1750,8 +1737,10 @@ contract FuzzHelpers is PropertiesAsserts {
     ) external {
         require(msg.sender == address(this));
 
-        uint128 delegated0 = delegations.rightSlot();
-        uint128 delegated1 = delegations.leftSlot();
+        delete burnSimResults;
+
+        uint256 delegated0 = delegations.rightSlot();
+        uint256 delegated1 = delegations.leftSlot();
 
         hevm.prank(address(panopticPool));
         collToken0.delegate(liquidator, who, delegated0);
@@ -1764,15 +1753,17 @@ contract FuzzHelpers is PropertiesAsserts {
         ];
 
         LeftRightSigned[4][] memory premiasByLeg;
-        LeftRightSigned netExchanged;
 
+        $shouldBurnRevert = false;
         hevm.prank(who);
         try
             panopticPool.burnAllOptionsFrom(userPositions[who], type(int24).min, type(int24).max)
         returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
             premiasByLeg = _premiasByLeg;
-            netExchanged = _netExchanged;
-        } catch {}
+            burnSimResults.netExchanged = _netExchanged;
+        } catch {
+            $shouldBurnRevert = true;
+        }
 
         currentTickOld = currentTick;
         (, currentTick, , , , , ) = pool.slot0();
@@ -1782,71 +1773,44 @@ contract FuzzHelpers is PropertiesAsserts {
             int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]
         ];
 
-        (uint256 settledTokens0, bytes memory settledTokens) = _calculate_settled_tokens(
+        (burnSimResults.settledTokens0, ) = _calculate_settled_tokens(
             userPositions[who],
             currentTick
         );
 
-        int256 longPremium0;
         for (uint256 i = 0; i < userPositions[who].length; ++i) {
             for (uint256 j = 0; j < userPositions[who][i].countLegs(); ++j) {
-                longPremium0 += premiasByLeg[i][j].rightSlot() < 0
+                burnSimResults.longPremium0 += premiasByLeg[i][j].rightSlot() < 0
                     ? -premiasByLeg[i][j].rightSlot()
                     : int128(0);
-                longPremium0 += PanopticMath.convert1to0(
+                burnSimResults.longPremium0 += PanopticMath.convert1to0(
                     premiasByLeg[i][j].leftSlot() < 0 ? -premiasByLeg[i][j].leftSlot() : int128(0),
                     TickMath.getSqrtRatioAtTick(currentTick)
                 );
             }
         }
 
-        LeftRightUnsigned supply = LeftRightUnsigned
-            .wrap(0)
-            .toLeftSlot(uint128(collToken0.totalSupply()))
-            .toRightSlot(uint128(collToken1.totalSupply()));
-        LeftRightUnsigned assets = LeftRightUnsigned
-            .wrap(0)
-            .toLeftSlot(uint128(collToken0.totalAssets()))
-            .toRightSlot(uint128(collToken1.totalAssets()));
-        LeftRightSigned shareDelta = LeftRightSigned
-            .wrap(0)
-            .toLeftSlot(int128(shareDeltasLiquidatee[0]))
-            .toRightSlot(int128(shareDeltasLiquidatee[1]));
+        burnSimResults.totalSupply0 = collToken0.totalSupply();
+        burnSimResults.totalSupply1 = collToken1.totalSupply();
+        burnSimResults.totalAssets0 = collToken0.totalAssets();
+        burnSimResults.totalAssets1 = collToken1.totalAssets();
+        burnSimResults.shareDelta0 = shareDeltasLiquidatee[0];
+        burnSimResults.shareDelta1 = shareDeltasLiquidatee[1];
 
-        int256 burnDelta0C = convertToAssets(collToken0, shareDeltasLiquidatee[0]) +
+        burnSimResults.burnDelta0C =
+            convertToAssets(collToken0, shareDeltasLiquidatee[0]) +
             PanopticMath.convert1to0(
                 convertToAssets(collToken1, shareDeltasLiquidatee[1]),
                 TickMath.getSqrtRatioAtTick(currentTick)
             );
 
-        address _who = who;
-        LeftRightUnsigned delegateeBalances = LeftRightUnsigned
-            .wrap(0)
-            .toLeftSlot(uint128(collToken1.balanceOf(_who)))
-            .toRightSlot(uint128(collToken0.balanceOf(_who)));
+        burnSimResults.delegateeBalance0 = collToken0.balanceOf(who);
+        burnSimResults.delegateeBalance1 = collToken1.balanceOf(who);
 
-        int256[2] memory _shareDeltasLiquidatee = shareDeltasLiquidatee;
-        LeftRightSigned burnDelta = LeftRightSigned
-            .wrap(0)
-            .toLeftSlot(int128(convertToAssets(collToken0, _shareDeltasLiquidatee[0])))
-            .toRightSlot(int128(convertToAssets(collToken1, _shareDeltasLiquidatee[1])));
+        burnSimResults.burnDelta0 = convertToAssets(collToken0, shareDeltasLiquidatee[0]);
+        burnSimResults.burnDelta1 = convertToAssets(collToken1, shareDeltasLiquidatee[1]);
 
-        LeftRightSigned __netExchanged = netExchanged;
-        uint256 _settledTokens0 = settledTokens0;
-        int256 _longPremium0 = longPremium0;
-        bytes memory _settledTokens = settledTokens;
-        revert SimulationResults(
-            supply,
-            assets,
-            shareDelta,
-            burnDelta0C,
-            burnDelta,
-            __netExchanged,
-            _settledTokens0,
-            _longPremium0,
-            delegateeBalances,
-            _settledTokens
-        );
+        revert LiqBurnSimResults(burnSimResults);
     }
 
     function _execute_burn_simulation(
@@ -1858,50 +1822,14 @@ contract FuzzHelpers is PropertiesAsserts {
             bytes memory results
         ) {
             bytes4 selector = bytes4(results);
-            require(selector == SimulationResults.selector);
+            require(selector == LiqBurnSimResults.selector);
             emit LogBytes("r", results);
 
-            LeftRightUnsigned totalSupply;
-            LeftRightUnsigned totalAssets;
-            LeftRightUnsigned delegated;
-            LeftRightSigned shareDelta;
-            int256 burnDelta0C;
-            LeftRightSigned burnDelta;
-            LeftRightSigned netExchanged;
-            uint256 settledTokens0;
-            int256 longPremium0;
-            LeftRightUnsigned delegateeBalances;
-
             assembly ("memory-safe") {
-                totalSupply := mload(add(results, 0x24))
-                totalAssets := mload(add(results, 0x44))
-                delegated := mload(add(results, 0x64))
-                shareDelta := mload(add(results, 0x64))
-                burnDelta0C := mload(add(results, 0x84))
-                burnDelta := mload(add(results, 0xa4))
-                netExchanged := mload(add(results, 0xc4))
-                settledTokens0 := mload(add(results, 0xe4))
-                longPremium0 := mload(add(results, 0x104))
-                delegateeBalances := mload(add(results, 0x124))
-                results := mload(add(results, 0x144))
+                results := add(results, 0x04)
             }
 
-            burnSimResults.totalSupply0 = totalSupply.leftSlot();
-            burnSimResults.totalSupply1 = totalSupply.rightSlot();
-            burnSimResults.totalAssets0 = totalAssets.leftSlot();
-            burnSimResults.totalAssets1 = totalAssets.rightSlot();
-            burnSimResults.delegated0 = delegated.leftSlot();
-            burnSimResults.delegated1 = delegated.rightSlot();
-            burnSimResults.shareDelta0 = shareDelta.leftSlot();
-            burnSimResults.shareDelta1 = shareDelta.rightSlot();
-            burnSimResults.settledTokens0 = settledTokens0;
-            burnSimResults.longPremium0 = longPremium0;
-            burnSimResults.burnDelta0C = burnDelta0C;
-            burnSimResults.burnDelta0 = burnDelta.leftSlot();
-            burnSimResults.burnDelta1 = burnDelta.rightSlot();
-            burnSimResults.netExchanged = netExchanged;
-            burnSimResults.delegateeBalance0 = delegateeBalances.rightSlot();
-            burnSimResults.delegateeBalance1 = delegateeBalances.leftSlot();
+            burnSimResults = abi.decode(results, (BurnSimulationResults));
         }
     }
 
@@ -1957,23 +1885,53 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function _calculate_bonus(int24 tick) internal {
-        int256 combinedBalance0Premium = int256(
-            (liqResults.margin0.rightSlot()) +
-                PanopticMath.convert1to0(
-                    liqResults.margin1.rightSlot(),
-                    TickMath.getSqrtRatioAtTick(tick)
-                )
+        (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
+            liqResults.margin0,
+            liqResults.margin1,
+            TickMath.getSqrtRatioAtTick(tick)
         );
-        liqResults.bonusCombined0 = Math.min(
-            combinedBalance0Premium / 2,
-            int256(
-                liqResults.margin0.leftSlot() +
-                    PanopticMath.convert1to0(
-                        liqResults.margin1.leftSlot(),
-                        TickMath.getSqrtRatioAtTick(tick)
-                    )
-            ) - combinedBalance0Premium
+
+        uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
+
+        uint256 bonus0;
+        uint256 bonus1;
+        // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
+        if (TickMath.getSqrtRatioAtTick(tick) < Constants.FP96) {
+            // required0 / (required0 + token0(required1))
+            uint256 requiredRatioX128 = Math.mulDiv(
+                liqResults.margin0.leftSlot(),
+                2 ** 128,
+                thresholdCross
+            );
+
+            bonus0 = Math.mulDiv128(bonusCross, requiredRatioX128);
+
+            bonus1 = PanopticMath.convert0to1(
+                Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                TickMath.getSqrtRatioAtTick(tick)
+            );
+        } else {
+            // required1 / (token1(required0) + required1)
+            uint256 requiredRatioX128 = Math.mulDiv(
+                liqResults.margin1.leftSlot(),
+                2 ** 128,
+                thresholdCross
+            );
+
+            bonus1 = Math.mulDiv128(bonusCross, requiredRatioX128);
+
+            bonus0 = PanopticMath.convert1to0(
+                Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                TickMath.getSqrtRatioAtTick(tick)
+            );
+        }
+        emit LogUint256("calc bonus0", bonus0);
+        emit LogUint256("calc bonus1", bonus1);
+
+        liqResults.bonusCombined0 = int256(
+            bonus0 + PanopticMath.convert1to0(bonus1, TickMath.getSqrtRatioAtTick(tick))
         );
+        emit LogInt256("calc bonusCombined0", liqResults.bonusCombined0);
     }
 
     function getContext(
@@ -2390,13 +2348,8 @@ contract FuzzHelpers is PropertiesAsserts {
                 results := add(results, 0x04)
             }
 
-            (
-                $balance0ExpectedP,
-                $balance1ExpectedP,
-                $burnManySimResults,
-                $shouldSkip,
-                $shouldRevert
-            ) = abi.decode(results, (uint256, uint256, BurnManySimResults, bool, bool));
+            ($balance0ExpectedP, $balance1ExpectedP, $burnManySimResults, $shouldRevert) = abi
+                .decode(results, (uint256, uint256, BurnManySimResults, bool));
         }
     }
 
@@ -2484,17 +2437,6 @@ contract FuzzHelpers is PropertiesAsserts {
                 pool
             );
 
-            // if safemode changes mid-burn-simulation due to swaps we cannot compare to a batch burn
-            if ($safeMode != Math.abs($slowOracleTick - currentTick) > 953) {
-                revert PPBurnManySimResError(
-                    collToken0.balanceOf($caller),
-                    collToken1.balanceOf($caller),
-                    $burnManySimResults,
-                    true,
-                    false
-                );
-            }
-
             $tokenIdActive = userPositions[$caller][0];
             userPositions[$caller] = _get_list_without_tokenid(
                 userPositions[$caller],
@@ -2527,7 +2469,6 @@ contract FuzzHelpers is PropertiesAsserts {
                     collToken0.balanceOf($caller),
                     collToken1.balanceOf($caller),
                     $burnManySimResults,
-                    false,
                     true
                 );
             }
@@ -2542,7 +2483,6 @@ contract FuzzHelpers is PropertiesAsserts {
             collToken0.balanceOf($caller),
             collToken1.balanceOf($caller),
             $burnManySimResults,
-            false,
             false
         );
     }
@@ -2774,8 +2714,6 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function log_burn_simulation_results() internal {
         emit LogString("Burn simulation results");
-        emit LogUint256("    delegated0", burnSimResults.delegated0);
-        emit LogUint256("    delegated1", burnSimResults.delegated1);
         emit LogUint256("    totalSupply0", burnSimResults.totalSupply0);
         emit LogUint256("    totalSupply1", burnSimResults.totalSupply1);
         emit LogUint256("    totalAssets0", burnSimResults.totalAssets0);
