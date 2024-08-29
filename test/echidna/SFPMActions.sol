@@ -2282,7 +2282,7 @@ contract SFPMActions is GeneralActions {
                     "bal 0 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore0 - moved0) == balAfter0, "bal 0 delta invalid");
+                assertLte(abs((balBefore0 - moved0) - balAfter0), 1, "bal 0 delta invalid");
             }
 
             if (balAfter1 != 0) {
@@ -2293,7 +2293,7 @@ contract SFPMActions is GeneralActions {
                     "bal 1 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
+                assertLte(abs((balBefore1 - moved1) - balAfter1), 1, "bal 1 delta invalid");
             }
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)

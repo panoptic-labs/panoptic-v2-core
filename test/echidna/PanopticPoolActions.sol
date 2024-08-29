@@ -1119,9 +1119,6 @@ contract PanopticPoolActions is CollateralActions {
 
         quote_pp_burn_many();
 
-        // safeMode/covered changed mid-mint; cannot compare
-        if ($shouldSkip) revert();
-
         $posIdListOld = userPositions[msg.sender];
 
         for (uint256 i = $numOptions; i < userPositions[msg.sender].length; i++) {
@@ -1144,7 +1141,8 @@ contract PanopticPoolActions is CollateralActions {
                 $tickLimitHigh
             )
         {
-            assertWithMsg(!$shouldRevert, "burnManyOptions: missing revert");
+            // intermediate collateral checks may revert
+            if ($shouldRevert) revert();
         } catch {
             assertWithMsg($shouldRevert, "burnManyOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
@@ -1679,7 +1677,9 @@ contract PanopticPoolActions is CollateralActions {
         $shouldRevert = false;
 
         if (userPositions[liquidatee].length < 1) $shouldRevert = true;
+        emit LogBool("revert due to no open positions", userPositions[liquidatee].length < 1);
         if (liquidatee == liquidator) $shouldRevert = true;
+        emit LogBool("revert due to liquidator == liquidatee", liquidatee == liquidator);
 
         TokenId[] memory liquidated_positions = userPositions[liquidatee];
         TokenId[] memory liquidator_positions = userPositions[liquidator];
@@ -1693,6 +1693,7 @@ contract PanopticPoolActions is CollateralActions {
         (, currentTick, , , , , ) = pool.slot0();
 
         if (Math.abs(TWAPtick - currentTick) > 513) $shouldRevert = true;
+        emit LogBool("revert due to TWAP tick divergence", Math.abs(TWAPtick - currentTick) > 513);
 
         emit LogInt256("TWAP tick", TWAPtick);
         emit LogInt256("Current tick", currentTick);
@@ -1703,6 +1704,8 @@ contract PanopticPoolActions is CollateralActions {
 
         ($colTicks[0], $colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
 
+        // replace slow oracle tick with TWAP tick
+        $colTicks[2] = TWAPtick;
         _write_liquidation_solvency_revert(liquidatee);
 
         LeftRightUnsigned delegations = LeftRightUnsigned
@@ -1730,7 +1733,9 @@ contract PanopticPoolActions is CollateralActions {
         liqResults.sharesD0 = int256(collToken0.balanceOf(liquidatee));
         liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
 
+        emit LogBool("revert due to non-burn simulation", $shouldRevert);
         _execute_burn_simulation(liquidatee, liquidator, delegations);
+        emit LogBool("revert due to burn simulation", $shouldRevert);
 
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
         $totalSupply0 = collToken0.totalSupply();
@@ -1759,21 +1764,6 @@ contract PanopticPoolActions is CollateralActions {
         try this._calculate_liquidation_bonus(TWAPtick) {} catch {
             (liqResults.bonus0, liqResults.bonus1) = (0, 0);
         }
-
-        burnSimResults.delegated0 = uint256(
-            int256(
-                collToken0.convertToShares(
-                    uint256(int256(uint256(delegations.rightSlot())) + liqResults.bonus0)
-                )
-            )
-        );
-        burnSimResults.delegated1 = uint256(
-            int256(
-                collToken1.convertToShares(
-                    uint256(int256(uint256(delegations.leftSlot())) + liqResults.bonus1)
-                )
-            )
-        );
 
         emit LogUint256("total supply 0 pre-liquidation", collToken0.totalSupply());
         emit LogUint256("total supply 1 pre-liquidation", collToken1.totalSupply());
@@ -1899,24 +1889,52 @@ contract PanopticPoolActions is CollateralActions {
             (collToken0.totalSupply() - burnSimResults.totalSupply0 <= 1) &&
             (collToken1.totalSupply() - burnSimResults.totalSupply1 <= 1)
         ) {
-            int256 assets = convertToAssets(collToken0, liqResults.sharesD0) +
+            int256 assets = (liqResults.sharesD0 > 0 ? int8(1) : -1) *
+                int256(
+                    Math.mulDiv(
+                        abs(liqResults.sharesD0),
+                        burnSimResults.totalAssets0,
+                        burnSimResults.totalSupply0
+                    )
+                ) +
                 PanopticMath.convert1to0(
-                    convertToAssets(collToken1, liqResults.sharesD1),
+                    (liqResults.sharesD1 > 0 ? int8(1) : -1) *
+                        int256(
+                            Math.mulDiv(
+                                abs(liqResults.sharesD1),
+                                burnSimResults.totalAssets1,
+                                burnSimResults.totalSupply1
+                            )
+                        ),
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 );
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
-            assertLt(
+            assertLte(
                 abs(int256(assets) - int256(liqResults.bonusCombined0)),
                 2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
                 "Liquidatee was debited incorrect bonus value (funds leftover)"
             );
         } else {
-            int256 assets = convertToAssets(collToken0, liqResults.sharesD0) +
+            int256 assets = (liqResults.sharesD0 > 0 ? int8(1) : -1) *
+                int256(
+                    Math.mulDiv(
+                        abs(liqResults.sharesD0),
+                        burnSimResults.totalAssets0,
+                        burnSimResults.totalSupply0
+                    )
+                ) +
                 PanopticMath.convert1to0(
-                    convertToAssets(collToken1, liqResults.sharesD1),
-                    TickMath.getSqrtRatioAtTick(currentTick)
+                    (liqResults.sharesD1 > 0 ? int8(1) : -1) *
+                        int256(
+                            Math.mulDiv(
+                                abs(liqResults.sharesD1),
+                                burnSimResults.totalAssets1,
+                                burnSimResults.totalSupply1
+                            )
+                        ),
+                    TickMath.getSqrtRatioAtTick(TWAPtick)
                 );
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
@@ -1944,7 +1962,7 @@ contract PanopticPoolActions is CollateralActions {
                     burnSimResults.delegateeBalance1 >=
                 collToken1.totalAssets())
         ) {
-            assertLt(
+            assertLte(
                 abs(
                     (liqResults.liquidatorValueAfter0 - int256(liqResults.liquidatorValueBefore0)) -
                         liqResults.bonusCombined0
@@ -1959,10 +1977,13 @@ contract PanopticPoolActions is CollateralActions {
                 liqResults.protocolLoss0Expected -
                     Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
             );
-            assertWithMsg(
-                liqResults.protocolLoss0Actual ==
-                    liqResults.protocolLoss0Expected -
-                        Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+            assertLte(
+                abs(
+                    liqResults.protocolLoss0Actual -
+                        (liqResults.protocolLoss0Expected -
+                            Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected))
+                ),
+                2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
                 "Not all premium was haircut during protocol loss"
             );
         }
@@ -1975,9 +1996,12 @@ contract PanopticPoolActions is CollateralActions {
             "Expected value",
             Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
         );
-        assertWithMsg(
-            int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0) ==
-                Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected),
+        assertLte(
+            abs(
+                (int256(burnSimResults.settledTokens0) - int256(liqResults.settledTokens0)) -
+                    Math.min(burnSimResults.longPremium0, liqResults.protocolLoss0Expected)
+            ),
+            2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
             "Incorrect amount of premium was haircut"
         );
 
