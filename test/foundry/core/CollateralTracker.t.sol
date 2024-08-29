@@ -62,12 +62,12 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return totalAssets();
     }
 
-    function _availableAssets() external view returns (uint256) {
+    function _availableAssets() external view returns (int256) {
         return s_poolAssets;
     }
 
-    function setPoolAssets(uint256 amount) external {
-        s_poolAssets = uint128(amount);
+    function setPoolAssets(int256 amount) external {
+        s_poolAssets = int128(amount);
     }
 
     function setInAMM(int128 amount) external {
@@ -510,8 +510,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // equal deposits for both collateral token pairs for testing purposes
         // deposit to panoptic pool
-        collateralToken0.setPoolAssets(collateralToken0._availableAssets() + initialMockTokens);
-        collateralToken1.setPoolAssets(collateralToken1._availableAssets() + initialMockTokens);
+        collateralToken0.setPoolAssets(
+            collateralToken0._availableAssets() + int256(initialMockTokens)
+        );
+        collateralToken1.setPoolAssets(
+            collateralToken1._availableAssets() + int256(initialMockTokens)
+        );
         deal(
             token0,
             address(panopticPool),
@@ -6051,11 +6055,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // how many funds that can be redeemed currently
         uint256 availableAssets0 = convertToShares(
-            collateralToken0._availableAssets(),
+            uint256(collateralToken0._availableAssets()),
             collateralToken0
         );
         uint256 availableAssets1 = convertToShares(
-            collateralToken1._availableAssets(),
+            uint256(collateralToken1._availableAssets()),
             collateralToken1
         );
 
@@ -6116,7 +6120,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // how many funds that can be redeemed currently
         uint256 availableAssets0 = convertToShares(
-            collateralToken0._availableAssets(),
+            uint256(collateralToken0._availableAssets()),
             collateralToken0
         );
 
@@ -6138,8 +6142,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             assertEq(balance0, actualValue0, "user balance 0");
             assertEq(balance1, actualValue1, "user balance 1");
         } else {
-            uint256 available0 = collateralToken0._availableAssets();
-            uint256 available1 = collateralToken1._availableAssets();
+            uint256 available0 = uint256(collateralToken0._availableAssets());
+            uint256 available1 = uint256(collateralToken1._availableAssets());
 
             assertEq(available0, actualValue0, "available assets 0");
             assertEq(available1, actualValue1, "available assets 1");
@@ -6202,18 +6206,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Success_availableAssets(uint256 x, uint256 balance) public {
         _initWorld(x);
 
-        balance = bound(balance, 0, uint128(type(uint128).max));
+        balance = bound(balance, 0, uint128(type(int128).max));
 
         // set total balance of underlying asset in the Panoptic pool
-        collateralToken0.setPoolAssets(balance);
-        collateralToken1.setPoolAssets(balance);
+        collateralToken0.setPoolAssets(int128(int256(balance)));
+        collateralToken1.setPoolAssets(int128(int256(balance)));
 
         // expected values
         uint256 expectedValue = balance;
 
         // actual values
-        uint256 actualValue0 = collateralToken0._availableAssets();
-        uint256 actualValue1 = collateralToken1._availableAssets();
+        uint256 actualValue0 = uint256(collateralToken0._availableAssets());
+        uint256 actualValue1 = uint256(collateralToken1._availableAssets());
 
         assertEq(expectedValue, actualValue0);
         assertEq(expectedValue, actualValue1);
@@ -6227,8 +6231,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _initWorld(x);
 
         // set total balance of underlying asset in the Panoptic pool
-        collateralToken0.setPoolAssets(balance);
-        collateralToken1.setPoolAssets(balance);
+        collateralToken0.setPoolAssets(int128(balance));
+        collateralToken1.setPoolAssets(int128(balance));
 
         // set how many funds are locked
         collateralToken0.setInAMM(int128(inAMM));
@@ -6265,10 +6269,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // _inAMM() * DECIMALS) / totalAssets()
         uint256 expectedPoolUtilization = (expectedInAMM * 10_000) / expectedTotalBalance;
 
-        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
+        (int256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
             .getPoolData();
 
-        assertEq(expectedBal, poolAssets);
+        assertEq(int256(expectedBal), int256(poolAssets));
         assertEq(expectedInAMM, insideAMM);
         assertEq(expectedPoolUtilization, currentPoolUtilization);
     }

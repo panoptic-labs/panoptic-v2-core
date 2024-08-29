@@ -36,6 +36,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @notice 2) get any gain in capital that results from buying an option that becomes in-the-money.
 contract CollateralTracker is ERC20Minimal, Multicall {
     using Math for uint256;
+    using Math for int256;
 
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
@@ -109,7 +110,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     PanopticPool internal s_panopticPool;
 
     /// @notice Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
-    uint128 internal s_poolAssets;
+    int128 internal s_poolAssets;
 
     /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
@@ -262,7 +263,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function getPoolData()
         external
         view
-        returns (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization)
+        returns (int256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization)
     {
         poolAssets = s_poolAssets;
         insideAMM = s_inAMM;
@@ -354,7 +355,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return totalManagedAssets The total amount of assets managed
     function totalAssets() public view returns (uint256 totalManagedAssets) {
         unchecked {
-            return s_poolAssets + s_inAMM;
+            // poolAssets can only fall below zero to the extent that assets subtracted from it exist in s_inAMM,
+            // so we can assume that s_poolAssets + s_inAMM is always >= 0
+            return uint256(s_poolAssets + int256(uint256(s_inAMM)));
         }
     }
 
@@ -418,7 +421,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // update tracked asset balance
         unchecked {
-            s_poolAssets += uint128(assets);
+            s_poolAssets += int128(uint128(assets));
         }
 
         emit Deposit(msg.sender, receiver, assets, shares);
@@ -476,7 +479,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // update tracked asset balance
         unchecked {
-            s_poolAssets += uint128(assets);
+            s_poolAssets += int128(uint128(assets));
         }
 
         emit Deposit(msg.sender, receiver, assets, shares);
@@ -490,7 +493,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
         // We can only use the standard 4626 withdraw function if the user has no open positions
         // For the sake of simplicity assets can only be withdrawn through the redeem function
-        uint256 available = s_poolAssets;
+        uint256 available = uint256(Math.max(s_poolAssets, 0));
         uint256 balance = convertToAssets(balanceOf[owner]);
         return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
@@ -532,7 +535,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // update tracked asset balance
         unchecked {
-            s_poolAssets -= uint128(assets);
+            s_poolAssets -= int128(uint128(assets));
         }
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
@@ -573,7 +576,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
-        s_poolAssets -= uint128(assets);
+        s_poolAssets -= int128(uint128(assets));
 
         // reverts if account is not solvent/eligible to withdraw
         s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
@@ -594,7 +597,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param owner The redeeming address.
     /// @return maxShares The maximum amount of shares that can be redeemed.
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
-        uint256 available = convertToShares(s_poolAssets);
+        int256 poolAssets = s_poolAssets;
+        uint256 available = poolAssets > 0 ? convertToShares(uint256(poolAssets)) : 0;
         uint256 balance = balanceOf[owner];
         return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
@@ -633,7 +637,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // update tracked asset balance
         unchecked {
-            s_poolAssets -= uint128(assets);
+            s_poolAssets -= int128(uint128(assets));
         }
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
@@ -1015,9 +1019,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 swappedAmount
     ) external onlyPanopticPool returns (uint32 utilization) {
         unchecked {
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
-
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
             int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
 
@@ -1041,7 +1042,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint256(updatedAssets).toUint128();
+
+            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
+            int256 updatedAssets = int256(s_poolAssets) - swappedAmount;
+
+            if (updatedAssets < 0 && swappedAmount > 0) revert Errors.UnderOverFlow(0x11);
+
+            s_poolAssets = updatedAssets.toInt128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
             utilization = uint32(_poolUtilization());
@@ -1065,7 +1072,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external onlyPanopticPool returns (int128) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
+            int256 updatedAssets = int256(s_poolAssets) - swappedAmount;
 
             // add premium and token deltas not covered by swap to be paid/collected on position close
             int256 tokenToPay = swappedAmount - (longAmount - shortAmount) - realizedPremium;
@@ -1087,7 +1094,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // update stored asset balances with net moved amounts
             // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            s_poolAssets = (updatedAssets + realizedPremium).toInt128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
 
             return (int128(tokenToPay));

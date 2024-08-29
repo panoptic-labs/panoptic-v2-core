@@ -4,7 +4,7 @@ pragma solidity >=0.8.24;
 import "forge-std/Test.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {CollateralTrackerHarness} from "./CollateralTracker.t.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -150,8 +150,8 @@ contract Misctest is Test, PositionUtils {
 
     PanopticFactory factory;
     PanopticPool pp;
-    CollateralTracker ct0;
-    CollateralTracker ct1;
+    CollateralTrackerHarness ct0;
+    CollateralTrackerHarness ct1;
     PanopticHelper ph;
 
     int24 currentTick;
@@ -212,9 +212,7 @@ contract Misctest is Test, PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(sfpm));
-        collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
-        );
+        collateralReference = address(new CollateralTrackerHarness());
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
@@ -305,8 +303,8 @@ contract Misctest is Test, PositionUtils {
         token0.mint(Alice, type(uint104).max);
         token1.mint(Alice, type(uint104).max);
 
-        ct0 = pp.collateralToken0();
-        ct1 = pp.collateralToken1();
+        ct0 = CollateralTrackerHarness(address(pp.collateralToken0()));
+        ct1 = CollateralTrackerHarness(address(pp.collateralToken1()));
 
         token0.approve(address(ct0), type(uint104).max);
         token1.approve(address(ct1), type(uint104).max);
@@ -676,7 +674,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_success_ITMspreadfee_0_01bp() public {
-        CollateralTracker(collateralReference).startToken(
+        CollateralTrackerHarness(collateralReference).startToken(
             true,
             address(token0),
             address(token1),
@@ -687,23 +685,28 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
         token0.mint(Bob, type(uint104).max);
         token0.approve(collateralReference, type(uint104).max);
-        CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
+        CollateralTrackerHarness(collateralReference).deposit(type(uint104).max, Bob);
 
         vm.startPrank(Alice);
         token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
         token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        CollateralTracker(collateralReference).deposit(
+        CollateralTrackerHarness(collateralReference).deposit(
             (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
             Alice
         );
 
         vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).takeCommissionAddData(Alice, 0, 0, 1_000_000_000);
+        CollateralTrackerHarness(collateralReference).takeCommissionAddData(
+            Alice,
+            0,
+            0,
+            1_000_000_000
+        );
         assertEq(
             1_000_000_000_000_000 -
                 1 -
-                CollateralTracker(collateralReference).convertToAssets(
-                    CollateralTracker(collateralReference).balanceOf(Alice)
+                CollateralTrackerHarness(collateralReference).convertToAssets(
+                    CollateralTrackerHarness(collateralReference).balanceOf(Alice)
                 ),
             1_000_000_000 + 2000
         );
@@ -1701,6 +1704,9 @@ contract Misctest is Test, PositionUtils {
         assetsBefore0Arr[2] = ct0.convertToAssets(ct0.balanceOf(Buyers[2]));
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
+        // uint256 snap = vm.snapshot();
+
+        // vm.store()
         for (uint256 i = 0; i < Buyers.length; ++i) {
             pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0);
 
