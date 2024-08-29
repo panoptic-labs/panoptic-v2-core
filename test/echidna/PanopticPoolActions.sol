@@ -877,7 +877,9 @@ contract PanopticPoolActions is CollateralActions {
                 $allPositionCount--;
             }
             assertWithMsg(!$shouldRevert, "burnOptions: missing revert");
-        } catch {
+        } catch (bytes memory reason) {
+            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
+
             assertWithMsg($shouldRevert, "burnOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -1143,7 +1145,9 @@ contract PanopticPoolActions is CollateralActions {
         {
             // intermediate collateral checks may revert
             if ($shouldRevert) revert();
-        } catch {
+        } catch (bytes memory reason) {
+            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
+
             assertWithMsg($shouldRevert, "burnManyOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -1305,7 +1309,9 @@ contract PanopticPoolActions is CollateralActions {
             )
         {
             assertWithMsg(!$shouldRevert, "SettleLongPremium: missing revert");
-        } catch {
+        } catch (bytes memory reason) {
+            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
+
             assertWithMsg($shouldRevert, "SettleLongPremium: unexpected revert");
             revert();
         }
@@ -1465,6 +1471,7 @@ contract PanopticPoolActions is CollateralActions {
             assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
+            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
 
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
@@ -1498,7 +1505,9 @@ contract PanopticPoolActions is CollateralActions {
                 {
                     assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
                     revert();
-                } catch {
+                } catch (bytes memory _reason) {
+                    if (bytes4(_reason) == Errors.CastingError.selector) $shouldRevert = true;
+
                     assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
                     revert();
                 }
@@ -1785,6 +1794,8 @@ contract PanopticPoolActions is CollateralActions {
             assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
+            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
+
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
@@ -1807,7 +1818,9 @@ contract PanopticPoolActions is CollateralActions {
                 {
                     assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
                     revert();
-                } catch {
+                } catch (bytes memory _reason) {
+                    if (bytes4(_reason) == Errors.CastingError.selector) $shouldRevert = true;
+
                     assertWithMsg($shouldRevert, "Liquidate: unexpected revert");
                     revert();
                 }
