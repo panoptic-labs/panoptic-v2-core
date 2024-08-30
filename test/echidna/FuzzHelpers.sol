@@ -2521,6 +2521,7 @@ contract FuzzHelpers is PropertiesAsserts {
         $grossPremiaL1Portfolio = new uint256[4][]($numOptions);
         $sfpmBals = new uint256[]($numOptions);
 
+        delete $burnManySimResults;
         for (uint256 i = 0; i < $numOptions; i++) {
             (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
@@ -2544,20 +2545,7 @@ contract FuzzHelpers is PropertiesAsserts {
                     $tickLimitLow,
                     $tickLimitHigh
                 )
-            {
-                $sfpmBals[i] = sfpm.balanceOf(
-                    address(panopticPool),
-                    TokenId.unwrap($tokenIdActive)
-                );
-                for (uint256 j = 0; j < $tokenIdActive.countLegs(); j++) {
-                    (
-                        $settledTokens0Portfolio[i][j],
-                        $settledTokens1Portfolio[i][j],
-                        $grossPremiaL0Portfolio[i][j],
-                        $grossPremiaL1Portfolio[i][j]
-                    ) = panopticPool.premiaSettlementData($tokenIdActive, j);
-                }
-            } catch {
+            {} catch {
                 revert PPBurnManySimResError(
                     collToken0.balanceOf($caller),
                     collToken1.balanceOf($caller),
@@ -2567,6 +2555,17 @@ contract FuzzHelpers is PropertiesAsserts {
             }
         }
 
+        for (uint256 i = 0; i < $numOptions; ++i) {
+            $sfpmBals[i] = sfpm.balanceOf(address(panopticPool), TokenId.unwrap($tokenIdActive));
+            for (uint256 j = 0; j < $tokenIdActive.countLegs(); j++) {
+                (
+                    $settledTokens0Portfolio[i][j],
+                    $settledTokens1Portfolio[i][j],
+                    $grossPremiaL0Portfolio[i][j],
+                    $grossPremiaL1Portfolio[i][j]
+                ) = panopticPool.premiaSettlementData($tokenIdActive, j);
+            }
+        }
         $burnManySimResults.settledTokens0Portfolio = $settledTokens0Portfolio;
         $burnManySimResults.settledTokens1Portfolio = $settledTokens1Portfolio;
         $burnManySimResults.grossPremiaL0Portfolio = $grossPremiaL0Portfolio;
