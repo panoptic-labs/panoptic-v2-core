@@ -1746,20 +1746,8 @@ contract FuzzHelpers is PropertiesAsserts {
         return (settledTokens0, abi.encode(settledTokens));
     }
 
-    function simulate_burnWithSettled(
-        address who,
-        address liquidator,
-        LeftRightUnsigned delegations
-    ) external {
+    function simulate_burnWithSettled(address who) external {
         require(msg.sender == address(this));
-
-        uint256 delegated0 = delegations.rightSlot();
-        uint256 delegated1 = delegations.leftSlot();
-
-        hevm.prank(address(panopticPool));
-        collToken0.delegate(liquidator, who, delegated0);
-        hevm.prank(address(panopticPool));
-        collToken1.delegate(liquidator, who, delegated1);
 
         hevm.prank(who);
         try
@@ -1798,9 +1786,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int256(collToken1.balanceOf(who))
         ];
 
-        try this.simulate_burnWithSettled(who, liquidator, delegations) {} catch (
-            bytes memory results
-        ) {
+        try this.simulate_burnWithSettled(who) {} catch (bytes memory results) {
             emit LogBytes("r", results);
 
             assembly ("memory-safe") {
