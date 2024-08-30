@@ -1831,11 +1831,6 @@ contract FuzzHelpers is PropertiesAsserts {
             int256(collToken1.balanceOf(who)) - shareDeltasLiquidatee[1]
         ];
 
-        (burnSimResults.settledTokens0, ) = _calculate_settled_tokens(
-            userPositions[who],
-            $twapTick
-        );
-
         for (uint256 i = 0; i < userPositions[who].length; ++i) {
             for (uint256 j = 0; j < userPositions[who][i].countLegs(); ++j) {
                 burnSimResults.longPremium0 += premiasByLeg[i][j].rightSlot() < 0
