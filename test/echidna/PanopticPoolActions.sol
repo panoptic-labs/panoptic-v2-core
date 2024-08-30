@@ -3,9 +3,10 @@ pragma solidity ^0.8.12;
 
 import "./FuzzHelpers.sol";
 import {CollateralActions} from "./CollateralActions.sol";
+import {GeneralActions} from "./GeneralActions.sol";
 
 contract PanopticPoolActions is CollateralActions {
-    function mint_option(
+    function mint_option_0(
         uint256[4] memory isLongs,
         uint256[4] memory tokenTypes,
         uint256[4] memory widthSeeds,
@@ -18,15 +19,660 @@ contract PanopticPoolActions is CollateralActions {
         uint256 positionSize,
         uint256 numLegs
     ) public canonicalTimeState {
-        emit LogAddress("actor", msg.sender);
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_1(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_2(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_3(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_4(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_5(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_6(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_7(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_8(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_9(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_10(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_11(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_12(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_13(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_14(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_15(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_16(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_17(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_18(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option_19(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs
+    ) public canonicalTimeState {
+        address actor = msg.sender;
+
+        mint_option(
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            ratioSeeds,
+            riskPartnerSeeds,
+            assets,
+            distributions,
+            tickLimitSeeds,
+            positionSize,
+            numLegs,
+            actor
+        );
+    }
+
+    function mint_option(
+        uint256[4] memory isLongs,
+        uint256[4] memory tokenTypes,
+        uint256[4] memory widthSeeds,
+        int256[4] memory strikeSeeds,
+        uint256[4] memory ratioSeeds,
+        uint256[4] memory riskPartnerSeeds,
+        uint256[4] memory assets,
+        bool[5] memory distributions,
+        int24[2] memory tickLimitSeeds,
+        uint256 positionSize,
+        uint256 numLegs,
+        address actor
+    ) internal canonicalTimeState {
+        //address actor = msg.sender;
+
+        emit LogAddress("actor", actor);
+
+        {
+            uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(actor));
+            uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(actor));
+
+            if ((userCollateral0 == 0) || (userCollateral1 == 0)) {
+                deposit_agnostic(false, ratioSeeds[0]);
+                deposit_agnostic(true, ratioSeeds[1]);
+            }
+        }
 
         ($tickLimitLow, $tickLimitHigh) = (tickLimitSeeds[0], tickLimitSeeds[1]);
 
         $numLegs = bound(numLegs, 1, 4);
 
-        $posIdListOld = userPositions[msg.sender];
+        emit LogUint256("number of legs", $numLegs);
+        $posIdListOld = userPositions[actor];
 
-        userPositions[msg.sender].push(TokenId.wrap(poolId));
+        if ($posIdListOld.length > 0) {
+            panopticPool.validateCollateralWithdrawable(actor, $posIdListOld);
+            ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+                .calculateAccumulatedFeesBatch(actor, true, $posIdListOld);
+
+            GeneralActions.perform_swaps(ratioSeeds[2], 4);
+
+            ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+                .calculateAccumulatedFeesBatch(actor, true, $posIdListOld);
+        }
+
+        userPositions[actor].push(TokenId.wrap(poolId));
 
         (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
 
@@ -53,8 +699,9 @@ contract PanopticPoolActions is CollateralActions {
         $found = false;
         for (uint256 i = 0; i < $numLegs; ++i) {
             $tokenTypes[i] = bound(tokenTypes[i], 0, 1);
-            $isLongs[i] = bound(isLongs[i], 0, 4);
-            $isLongs[i] = $isLongs[i] > 1 ? 0 : $isLongs[i];
+            //$isLongs[i] = bound(isLongs[i], 0, 4);
+            //$isLongs[i] = $isLongs[i] > 1 ? 0 : 1;
+            $isLongs[i] = isLongs[i] % 2;
             $assets[i] = bound(assets[i], 0, 1);
             $ratios[i] = distributions[4] ? 1 : bound(ratioSeeds[i], 1, 127);
             $riskPartners[i] = distributions[2] ? i : bound(riskPartnerSeeds[i], 0, $numLegs - 1);
@@ -150,9 +797,9 @@ contract PanopticPoolActions is CollateralActions {
                 }
             }
 
-            userPositions[msg.sender][userPositions[msg.sender].length - 1] = userPositions[
-                msg.sender
-            ][userPositions[msg.sender].length - 1].addLeg(
+            userPositions[actor][userPositions[actor].length - 1] = userPositions[actor][
+                userPositions[actor].length - 1
+            ].addLeg(
                     i,
                     $ratios[i],
                     $assets[i],
@@ -170,7 +817,7 @@ contract PanopticPoolActions is CollateralActions {
                 $grossPremiaLast0,
                 $grossPremiaLast1
             ) = panopticPool.premiaSettlementData(
-                userPositions[msg.sender][userPositions[msg.sender].length - 1],
+                userPositions[actor][userPositions[actor].length - 1],
                 i
             );
 
@@ -178,12 +825,12 @@ contract PanopticPoolActions is CollateralActions {
             emit LogInt256("$widths[i]", $widths[i]);
             emit LogInt256("$poolTickSpacing", poolTickSpacing);
             emit LogInt256(
-                "userPositions[msg.sender][userPositions[msg.sender].length - 1].strike(i)",
-                userPositions[msg.sender][userPositions[msg.sender].length - 1].strike(i)
+                "userPositions[actor][userPositions[actor].length - 1].strike(i)",
+                userPositions[actor][userPositions[actor].length - 1].strike(i)
             );
             emit LogInt256(
-                "userPositions[msg.sender][userPositions[msg.sender].length - 1].width(i)",
-                userPositions[msg.sender][userPositions[msg.sender].length - 1].width(i)
+                "userPositions[actor][userPositions[actor].length - 1].width(i)",
+                userPositions[actor][userPositions[actor].length - 1].width(i)
             );
             assert($widths[i] < 4096);
             assertWithMsg(poolTickSpacing == 200, "pts1");
@@ -227,15 +874,14 @@ contract PanopticPoolActions is CollateralActions {
         (, currentTick, , , , , ) = pool.slot0();
 
         // optimize the risk partners for the new TokenId
-        userPositions[msg.sender][userPositions[msg.sender].length - 1] = panopticHelper
-            .optimizeRiskPartners(
-                panopticPool,
-                currentTick,
-                userPositions[msg.sender][userPositions[msg.sender].length - 1]
-            );
+        userPositions[actor][userPositions[actor].length - 1] = panopticHelper.optimizeRiskPartners(
+            panopticPool,
+            currentTick,
+            userPositions[actor][userPositions[actor].length - 1]
+        );
 
-        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
-        uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(msg.sender));
+        uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(actor));
+        uint256 userCollateral1 = collToken1.convertToAssets(collToken1.balanceOf(actor));
 
         positionSize = uint128(
             distributions[1]
@@ -255,7 +901,7 @@ contract PanopticPoolActions is CollateralActions {
 
         $positionSizeActive = uint128(positionSize);
 
-        $tokenIdActive = userPositions[msg.sender][userPositions[msg.sender].length - 1];
+        $tokenIdActive = userPositions[actor][userPositions[actor].length - 1];
 
         $sfpmBal = sfpm.balanceOf(address(panopticPool), TokenId.unwrap($tokenIdActive));
 
@@ -267,7 +913,7 @@ contract PanopticPoolActions is CollateralActions {
 
         $shouldRevert = false;
 
-        $shouldRevert = userPositions[msg.sender].length > 32 ? true : $shouldRevert;
+        $shouldRevert = userPositions[actor].length > 32 ? true : $shouldRevert;
 
         // spread limit checks
         $isBurn = false;
@@ -280,10 +926,10 @@ contract PanopticPoolActions is CollateralActions {
         emit LogBool("should revert due to insufficient pool tokens", $shouldRevert);
 
         // position has already been minted
-        for (uint256 i = 0; i < userPositions[msg.sender].length - 1; ++i) {
+        for (uint256 i = 0; i < userPositions[actor].length - 1; ++i) {
             $shouldRevert = $shouldRevert
                 ? $shouldRevert
-                : TokenId.unwrap($tokenIdActive) == TokenId.unwrap(userPositions[msg.sender][i]);
+                : TokenId.unwrap($tokenIdActive) == TokenId.unwrap(userPositions[actor][i]);
             emit LogBool("should revert due to position already minted", $shouldRevert);
         }
 
@@ -342,7 +988,7 @@ contract PanopticPoolActions is CollateralActions {
         $colDelta1 -= $commission1;
 
         ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-            .calculateAccumulatedFeesBatch(msg.sender, false, $posIdListOld);
+            .calculateAccumulatedFeesBatch(actor, false, $posIdListOld);
 
         ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
         ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
@@ -407,7 +1053,7 @@ contract PanopticPoolActions is CollateralActions {
                         $totalAssets0
                     )
                 )) >
-                int256(collToken0.balanceOf(msg.sender)) ||
+                int256(collToken0.balanceOf(actor)) ||
                 -(($colDelta1 > 0 ? int8(1) : -1) *
                     int256(
                         Math.mulDivRoundingUp(
@@ -416,11 +1062,11 @@ contract PanopticPoolActions is CollateralActions {
                             $totalAssets1
                         )
                     )) >
-                int256(collToken1.balanceOf(msg.sender)))
+                int256(collToken1.balanceOf(actor)))
         ) {
             $balance0ExpectedP = Math.mulDiv(
                 uint256(
-                    int256(collToken0.balanceOf(msg.sender)) +
+                    int256(collToken0.balanceOf(actor)) +
                         ($colDelta0 > 0 ? int8(1) : -1) *
                         int256(collToken0.convertToShares(uint256(Math.abs($colDelta0))))
                 ),
@@ -433,7 +1079,7 @@ contract PanopticPoolActions is CollateralActions {
             );
             $balance1ExpectedP = Math.mulDiv(
                 uint256(
-                    int256(collToken1.balanceOf(msg.sender)) +
+                    int256(collToken1.balanceOf(actor)) +
                         ($colDelta1 > 0 ? int8(1) : -1) *
                         int256(collToken1.convertToShares(uint256(Math.abs($colDelta1))))
                 ),
@@ -446,7 +1092,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             if (!$shouldRevert) {
-                _write_revert_due_solvency(msg.sender, 13_333);
+                _write_revert_due_solvency(actor, 13_333);
             }
 
             emit LogInt256("colDelta0", $colDelta0);
@@ -467,13 +1113,13 @@ contract PanopticPoolActions is CollateralActions {
             emit LogBool("revert due to insufficient collateral to cover delta", $shouldRevert);
         }
 
-        $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(msg.sender)));
-        $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf(msg.sender)));
+        $balance0Origin = int256(collToken0.convertToAssets(collToken0.balanceOf(actor)));
+        $balance1Origin = int256(collToken1.convertToAssets(collToken1.balanceOf(actor)));
 
-        hevm.prank(msg.sender);
+        hevm.prank(actor);
         try
             panopticPool.mintOptions(
-                userPositions[msg.sender],
+                userPositions[actor],
                 uint128($positionSizeActive),
                 type(uint64).max,
                 $tickLimitLow,
@@ -499,10 +1145,10 @@ contract PanopticPoolActions is CollateralActions {
         );
 
         $balance0Final = int256(
-            Math.mulDiv(collToken0.balanceOf(msg.sender), $totalAssets0, $totalSupply0)
+            Math.mulDiv(collToken0.balanceOf(actor), $totalAssets0, $totalSupply0)
         );
         $balance1Final = int256(
-            Math.mulDiv(collToken1.balanceOf(msg.sender), $totalAssets1, $totalSupply1)
+            Math.mulDiv(collToken1.balanceOf(actor), $totalAssets1, $totalSupply1)
         );
 
         emit LogInt256("Balance 0 expected", $balance0Origin + $colDelta0);
