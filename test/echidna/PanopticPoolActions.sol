@@ -331,8 +331,12 @@ contract PanopticPoolActions is CollateralActions {
         $colDelta0 -= $commission0;
         $colDelta1 -= $commission1;
 
-        ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-            .calculateAccumulatedFeesBatch(msg.sender, false, $posIdListOld);
+        quote_ppfees_includecollectedbyleg(
+            msg.sender,
+            $collectedByLeg,
+            $tokenIdActive,
+            $posIdListOld
+        );
 
         ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
         ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
@@ -1699,6 +1703,7 @@ contract PanopticPoolActions is CollateralActions {
         emit LogAddress("liquidated", liquidatee);
 
         int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+        $twapTick = TWAPtick;
         (, currentTick, , , , , ) = pool.slot0();
 
         if (Math.abs(TWAPtick - currentTick) > 513) $shouldRevert = true;

@@ -176,6 +176,10 @@ contract PanopticPoolWrapper is PanopticPool {
         return s_settledTokens[chunk];
     }
 
+    function setSettledTokens(bytes32 chunk, LeftRightUnsigned settled) external {
+        s_settledTokens[chunk] = settled;
+    }
+
     function calculateAccumulatedPremia(
         address user,
         bool computeAllPremia,
@@ -286,6 +290,10 @@ contract CollateralTrackerWrapper is CollateralTracker {
 contract FuzzHelpers is PropertiesAsserts {
     using Math for uint256;
     using Math for int256;
+
+    error BurnSimSettledRes(uint256);
+
+    error PpfeesCollectedSimRes(LeftRightUnsigned, LeftRightUnsigned, uint256[2][]);
 
     error SwapSimulationResults(int256, int256, int24);
 
@@ -1730,6 +1738,36 @@ contract FuzzHelpers is PropertiesAsserts {
         return (settledTokens0, abi.encode(settledTokens));
     }
 
+    function simulate_burnWithSettled(
+        address who,
+        address liquidator,
+        LeftRightUnsigned delegations
+    ) external {
+        require(msg.sender == address(this));
+
+        uint256 delegated0 = delegations.rightSlot();
+        uint256 delegated1 = delegations.leftSlot();
+
+        hevm.prank(address(panopticPool));
+        collToken0.delegate(liquidator, who, delegated0);
+        hevm.prank(address(panopticPool));
+        collToken1.delegate(liquidator, who, delegated1);
+
+        hevm.prank(who);
+        try
+            panopticPool.burnOptions(
+                userPositions[who],
+                new TokenId[](0),
+                type(int24).min,
+                type(int24).max
+            )
+        {
+            (uint256 settledT0, ) = _calculate_settled_tokens(userPositions[who], $twapTick);
+            revert BurnSimSettledRes(settledT0);
+        } catch {
+            revert BurnSimSettledRes(0);
+        }
+    }
     function simulate_burning(
         address who,
         address liquidator,
@@ -1751,6 +1789,18 @@ contract FuzzHelpers is PropertiesAsserts {
             int256(collToken0.balanceOf(who)),
             int256(collToken1.balanceOf(who))
         ];
+
+        try this.simulate_burnWithSettled(who, liquidator, delegations) {} catch (
+            bytes memory results
+        ) {
+            emit LogBytes("r", results);
+
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+
+            burnSimResults.settledTokens0 = abi.decode(results, (uint256));
+        }
 
         LeftRightSigned[4][] memory premiasByLeg;
 
@@ -1775,7 +1825,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
         (burnSimResults.settledTokens0, ) = _calculate_settled_tokens(
             userPositions[who],
-            currentTick
+            $twapTick
         );
 
         for (uint256 i = 0; i < userPositions[who].length; ++i) {
@@ -2294,6 +2344,50 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function quote_ppfees_includecollectedbyleg(
+        address acc,
+        LeftRightUnsigned[4] memory collectedByLeg,
+        TokenId tokenIdAct,
+        TokenId[] memory posList
+    ) internal {
+        require(msg.sender == address(this));
+
+        try this.ppfees_includecollected_sim(acc, collectedByLeg, tokenIdAct, posList) {} catch (
+            bytes memory results
+        ) {
+            emit LogBytes("r", results);
+            assembly ("memory-safe") {
+                results := add(results, 0x04)
+            }
+            ($shortPremium, $longPremium, $posBalanceArray) = abi.decode(
+                results,
+                (LeftRightUnsigned, LeftRightUnsigned, uint256[2][])
+            );
+        }
+    }
+
+    function ppfees_includecollected_sim(
+        address acc,
+        LeftRightUnsigned[4] memory collectedByLeg,
+        TokenId tokenIdAct,
+        TokenId[] memory posList
+    ) external {
+        require(msg.sender == address(this));
+
+        for (uint256 i = 0; i < tokenIdAct.countLegs(); ++i) {
+            bytes32 chunkKey = keccak256(
+                abi.encodePacked(tokenIdAct.strike(i), tokenIdAct.width(i), tokenIdAct.tokenType(i))
+            );
+
+            panopticPool.setSettledTokens(chunkKey, collectedByLeg[i]);
+        }
+
+        ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+            .calculateAccumulatedFeesBatch(acc, false, posList);
+
+        revert PpfeesCollectedSimRes($shortPremium, $longPremium, $posBalanceArray);
+    }
+
     function quote_sfpm_mint() internal {
         try this.sfpm_mint_sim() {} catch (bytes memory results) {
             emit LogBytes("r", results);
@@ -2309,7 +2403,6 @@ contract FuzzHelpers is PropertiesAsserts {
             $shouldRevert = $shouldRevert || sRevert;
         }
     }
-
     function quote_sfpm_burn() internal {
         try this.sfpm_burn_sim() {} catch (bytes memory results) {
             emit LogBytes("r", results);
