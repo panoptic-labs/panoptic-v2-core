@@ -1152,9 +1152,9 @@ contract PanopticPoolActions is CollateralActions {
 
         panopticPool.pokeMedian();
 
-        quote_pp_burn_many();
-
         $posIdListOld = userPositions[msg.sender];
+
+        quote_pp_burn_many();
 
         for (uint256 i = $numOptions; i < userPositions[msg.sender].length; i++) {
             $posIdListOld.pop();

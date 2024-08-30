@@ -220,6 +220,14 @@ contract PanopticPoolWrapper is PanopticPool {
         return (premiasByLeg, netExchanged);
     }
 
+    function burnOptionsAndSkipCollateralCheck(
+        TokenId tokenId,
+        int24 tickLimitLow,
+        int24 tickLimitHigh
+    ) external {
+        _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
+    }
+
     function premiaSettlementData(
         TokenId tokenId,
         uint256 leg
@@ -2480,17 +2488,16 @@ contract FuzzHelpers is PropertiesAsserts {
         } catch (bytes memory reason) {
             if (keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11))) {
                 hevm.prank(address(panopticPool));
-                collToken0.delegate($exercisee, (2 ** 104 - 1) * 10_000);
+                collToken0.delegate($exercisee, 2 ** 128);
                 hevm.prank(address(panopticPool));
-                collToken1.delegate($exercisee, (2 ** 104 - 1) * 10_000);
+                collToken1.delegate($exercisee, 2 ** 128);
                 int256 balExerciseeOrig0 = int256(collToken0.balanceOf($exercisee));
                 int256 balExerciseeOrig1 = int256(collToken1.balanceOf($exercisee));
 
                 hevm.prank($exercisee);
                 try
-                    panopticPool.burnOptions(
+                    panopticPool.burnOptionsAndSkipCollateralCheck(
                         $tokenIdActive,
-                        $positionListExercisee,
                         TickMath.MIN_TICK,
                         TickMath.MAX_TICK
                     )
@@ -2555,13 +2562,14 @@ contract FuzzHelpers is PropertiesAsserts {
 
         for (uint256 i = 0; i < $numOptions; ++i) {
             $sfpmBals[i] = sfpm.balanceOf(address(panopticPool), TokenId.unwrap($tokenIdActive));
-            for (uint256 j = 0; j < $tokenIdActive.countLegs(); j++) {
+
+            for (uint256 j = 0; j < $posIdListOld[i].countLegs(); ++j) {
                 (
                     $settledTokens0Portfolio[i][j],
                     $settledTokens1Portfolio[i][j],
                     $grossPremiaL0Portfolio[i][j],
                     $grossPremiaL1Portfolio[i][j]
-                ) = panopticPool.premiaSettlementData($tokenIdActive, j);
+                ) = panopticPool.premiaSettlementData($posIdListOld[i], j);
             }
         }
         $burnManySimResults.settledTokens0Portfolio = $settledTokens0Portfolio;
@@ -2583,15 +2591,14 @@ contract FuzzHelpers is PropertiesAsserts {
 
         // ensures they have sufficient collateral - if it fails with another type of error it can be caught elsewhere
         hevm.prank(address(panopticPool));
-        collToken0.delegate($caller, (2 ** 104 - 1) * 10_000);
+        collToken0.delegate($caller, 2 ** 128);
         hevm.prank(address(panopticPool));
-        collToken1.delegate($caller, (2 ** 104 - 1) * 10_000);
+        collToken1.delegate($caller, 2 ** 128);
 
         hevm.prank($caller);
         try
-            panopticPool.burnOptions(
+            panopticPool.burnOptionsAndSkipCollateralCheck(
                 $tokenIdActive,
-                userPositions[$caller],
                 $tickLimitLow,
                 $tickLimitHigh
             )
