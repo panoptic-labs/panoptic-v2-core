@@ -580,7 +580,7 @@ contract PanopticPoolActions is CollateralActions {
                     0 &&
                     int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) -
                         int256($grossPremiaTotal0[i]) <=
-                    2 + $shortLiquidity / 2 ** 64,
+                    2 + int256($shortLiquidity / 2 ** 64),
                 "mintOptions: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
             );
 
@@ -590,7 +590,7 @@ contract PanopticPoolActions is CollateralActions {
                     0 &&
                     int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
                         int256($grossPremiaTotal1[i]) <=
-                    2 + $shortLiquidity / 2 ** 64,
+                    2 + int256($shortLiquidity / 2 ** 64),
                 "mintOptions: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
             );
         }
@@ -1011,7 +1011,7 @@ contract PanopticPoolActions is CollateralActions {
                 int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) -
                     (int256($grossPremiaTotal0[i]) -
                         int256($tokenIdActive.isLong(i) == 0 ? $idealPremium0[i] : 0)) <=
-                2 + $shortLiquidity / 2 ** 64;
+                2 + int256($shortLiquidity / 2 ** 64);
 
             $gross1Correct =
                 int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
@@ -1021,7 +1021,7 @@ contract PanopticPoolActions is CollateralActions {
                 int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
                     (int256($grossPremiaTotal1[i]) -
                         int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0)) <=
-                2 + $shortLiquidity / 2 ** 64;
+                2 + int256($shortLiquidity / 2 ** 64);
 
             // total gross can round down relative to the amount held by the previous gPL if grossPremiumLast hits 0 threshold due to rectification,
             // *but* cannot go below the *true* gross premium threshold (not inclusive of accumulated (upward) rounding errors in grossPremiumLast)
