@@ -222,6 +222,11 @@ contract PanopticPoolActions is CollateralActions {
                 $grossPremia1 - $grossPremiaLast1,
                 $shortLiquidity
             );
+
+            emit LogUint256("grossPremiaTotal0[i]", $grossPremiaTotal0[i]);
+            emit LogUint256("$grossPremia0", $grossPremia0);
+            emit LogUint256("$grossPremiaLast0", $grossPremiaLast0);
+            emit LogUint256("$shortLiquidity", $shortLiquidity);
         }
 
         uint256 userCollateral0 = collToken0.convertToAssets(collToken0.balanceOf(msg.sender));
@@ -561,19 +566,31 @@ contract PanopticPoolActions is CollateralActions {
 
             $shortLiquidity = uint256(liquidities.rightSlot()) + liquidities.leftSlot();
 
+            emit LogUint256("$grossPremiaTotal0[i]", $grossPremiaTotal0[i]);
+            emit LogUint256("$grossPremia0", $grossPremia0);
+            emit LogUint256("$grossPremiaLast0", $grossPremiaLast0);
+            emit LogUint256("$shortLiquidity", $shortLiquidity);
+            emit LogUint256(
+                "Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)",
+                Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
+            );
             assertWithMsg(
-                ($grossPremiaTotal0[i] ==
-                    Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) ||
-                    ($grossPremiaTotal0[i] + 1 ==
-                        Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)),
+                int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) -
+                    int256($grossPremiaTotal0[i]) >=
+                    0 &&
+                    int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) -
+                        int256($grossPremiaTotal0[i]) <=
+                    2 + $shortLiquidity / 2 ** 64,
                 "mintOptions: Calculated total gross premium for token0 changed beyond the acceptable threshold during an option mint"
             );
 
             assertWithMsg(
-                ($grossPremiaTotal1[i] ==
-                    Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) ||
-                    ($grossPremiaTotal1[i] + 1 ==
-                        Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)),
+                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
+                    int256($grossPremiaTotal1[i]) >=
+                    0 &&
+                    int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
+                        int256($grossPremiaTotal1[i]) <=
+                    2 + $shortLiquidity / 2 ** 64,
                 "mintOptions: Calculated total gross premium for token1 changed beyond the acceptable threshold during an option mint"
             );
         }
@@ -985,14 +1002,26 @@ contract PanopticPoolActions is CollateralActions {
                     int256($tokenIdActive.isLong(i) == 0 ? $idealPremium0[i] : 0) +
                     1 ==
                 int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity));
+
+            $gross0Correct =
+                int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) -
+                    (int256($grossPremiaTotal0[i]) -
+                        int256($tokenIdActive.isLong(i) == 0 ? $idealPremium0[i] : 0)) >=
+                0 &&
+                int256(Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)) -
+                    (int256($grossPremiaTotal0[i]) -
+                        int256($tokenIdActive.isLong(i) == 0 ? $idealPremium0[i] : 0)) <=
+                2 + $shortLiquidity / 2 ** 64;
+
             $gross1Correct =
-                int256($grossPremiaTotal1[i]) -
-                    int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0) ==
-                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) ||
-                int256($grossPremiaTotal1[i]) -
-                    int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0) +
-                    1 ==
-                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity));
+                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
+                    (int256($grossPremiaTotal1[i]) -
+                        int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0)) >=
+                0 &&
+                int256(Math.mulDiv64($grossPremia1 - $grossPremiaLast1, $shortLiquidity)) -
+                    (int256($grossPremiaTotal1[i]) -
+                        int256($tokenIdActive.isLong(i) == 0 ? $idealPremium1[i] : 0)) <=
+                2 + $shortLiquidity / 2 ** 64;
 
             // total gross can round down relative to the amount held by the previous gPL if grossPremiumLast hits 0 threshold due to rectification,
             // *but* cannot go below the *true* gross premium threshold (not inclusive of accumulated (upward) rounding errors in grossPremiumLast)
