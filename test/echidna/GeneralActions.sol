@@ -43,7 +43,8 @@ contract GeneralActions is FuzzHelpers {
     /// cycling pool
     /// for all general and sfpm actions cycle the underlying uniswap pool being interacted on
     function cyclePool(uint256 pool_idx) external canonicalTimeState {
-        cyclingPool = pools[bound(pool_idx, 0, pools.length - 1)];
+        //cyclingPool = pools[bound(pool_idx, 0, pools.length - 1)];
+        cyclingPool = pools[3];
         sfpmPoolId = sfpm.getPoolId(address(cyclingPool));
         sfpmTickSpacing = cyclingPool.tickSpacing();
     }

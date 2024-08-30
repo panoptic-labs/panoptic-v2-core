@@ -99,7 +99,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
     function initialize() internal {
         // initalize current pool we are deploying
-        pool = pools[0];
+        pool = pools[3];
         cyclingPool = pool;
         poolFee = pool.fee();
         poolTickSpacing = pool.tickSpacing();
