@@ -2350,8 +2350,6 @@ contract FuzzHelpers is PropertiesAsserts {
         TokenId tokenIdAct,
         TokenId[] memory posList
     ) internal {
-        require(msg.sender == address(this));
-
         try this.ppfees_includecollected_sim(acc, collectedByLeg, tokenIdAct, posList) {} catch (
             bytes memory results
         ) {
