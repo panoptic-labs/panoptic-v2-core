@@ -356,10 +356,6 @@ contract FuzzHelpers is PropertiesAsserts {
     mapping(address => TokenId[]) userPositionsSFPMLong;
     mapping(address => TokenId[]) userPositionsSFPMix; // combo of short and long pos
 
-    // transfer storage
-    // tokenId -> owner -> position size
-    mapping(TokenId tokenId => mapping(address owner => uint256 positionSize)) tokenBalances;
-
     address $activeUser;
 
     TokenId $activeTokenId;
@@ -375,6 +371,10 @@ contract FuzzHelpers is PropertiesAsserts {
     int24 $tickLowerActive;
     int24 $tickUpperActive;
     uint128 $LiqAmountActive;
+
+    uint128 $positionSize;
+
+    uint256 $prevSPFMTokenBal;
 
     int24[4] $sTickLower;
     int24[4] $sTickUpper;
@@ -1493,30 +1493,28 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function _increment_tokenBalance(uint256 positionSize) internal {
-        // uint256 tokenId => mapping(address owner => uint256 positionSize
-        tokenBalances[$activeTokenId][$activeUser] += positionSize;
-
-        emit LogUint256("incrementing position size", positionSize);
-    }
-
-    function _decrement_tokenBalance(uint256 positionSize) internal {
-        tokenBalances[$activeTokenId][$activeUser] -= positionSize;
-
-        emit LogUint256("decrementing position size", positionSize);
-    }
-
     // verifies the token balance of a user tracked externally matches internal accounting
-    function _check_tokenBalance() internal {
-        uint256 currBalanceReal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
-
-        uint256 currBalanceExternal = tokenBalances[$activeTokenId][$activeUser];
+    function _check_tokenBalance(bool mint) internal {
+        //
+        uint256 currBalance = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
 
         emit LogAddress("query address ", $activeUser);
-        emit LogUint256("currBalanceReal", currBalanceReal);
-        emit LogUint256("currBalanceExternal", currBalanceExternal);
+        emit LogUint256("positionSize ", $positionSize);
+        emit LogUint256("prevSPFMTokenBal", $prevSPFMTokenBal);
+        emit LogUint256("currBalanceReal", currBalance);
+        //
 
-        assertWithMsg(currBalanceReal == currBalanceExternal, "SFPM token balance invalid");
+        if (mint) {
+            assertWithMsg(
+                $prevSPFMTokenBal + $positionSize == currBalance,
+                "SFPM token balance invalid"
+            );
+        } else {
+            assertWithMsg(
+                $prevSPFMTokenBal - $positionSize == currBalance,
+                "SFPM token balance invalid"
+            );
+        }
     }
 
     function _get_effective_liq_factor(
