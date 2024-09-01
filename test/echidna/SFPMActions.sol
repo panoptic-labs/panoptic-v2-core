@@ -26,6 +26,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $shouldRevertSFPM = false;
 
+        $positionSize = positionSize;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -43,6 +45,8 @@ contract SFPMActions is GeneralActions {
             strike_in
         );
 
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
             $activeLegIndex = i;
@@ -54,7 +58,7 @@ contract SFPMActions is GeneralActions {
                 $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
                     $activeTokenId,
                     $activeLegIndex,
-                    positionSize
+                    $positionSize
                 );
 
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
@@ -252,20 +256,13 @@ contract SFPMActions is GeneralActions {
 
         hevm.prank($activeUser);
         try
-            sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
+            sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
-
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
 
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs; i++) {
@@ -500,8 +497,7 @@ contract SFPMActions is GeneralActions {
                         );
 
                         if (
-                            $amountToCollect0[$activeLegIndex] != 0 ||
-                            $amountToCollect1[$activeLegIndex] != 0
+                            $collected0[$activeLegIndex] != 0 || $collected1[$activeLegIndex] != 0
                         ) {
                             LeftRightUnsigned deltaPremiumOwed;
                             LeftRightUnsigned deltaPremiumGross;
@@ -626,6 +622,8 @@ contract SFPMActions is GeneralActions {
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
 
+            _check_tokenBalance(true);
+
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
 
@@ -648,6 +646,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $shouldRevertSFPM = false;
 
+        $positionSize = positionSize;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -663,6 +663,8 @@ contract SFPMActions is GeneralActions {
             // grab the tokenId in reverse order
             $activeTokenId = userPositionsSFPMShort[$activeUser][totalPosLen - 1];
 
+            $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
             // flip the isLong bit
             $activeTokenId = $activeTokenId.flipToBurnToken();
 
@@ -674,8 +676,8 @@ contract SFPMActions is GeneralActions {
 
             // bound the positionSize
             uint256 currPosSize = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
-            if (currPosSize < positionSize) {
-                positionSize = uint128(currPosSize);
+            if (currPosSize < $positionSize) {
+                $positionSize = uint128(currPosSize);
             }
         }
 
@@ -694,7 +696,7 @@ contract SFPMActions is GeneralActions {
                 $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
                     $activeTokenId,
                     $activeLegIndex,
-                    positionSize
+                    $positionSize
                 );
 
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
@@ -885,20 +887,13 @@ contract SFPMActions is GeneralActions {
 
         hevm.prank($activeUser);
         try
-            sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
+            sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
-
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
 
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs; i++) {
@@ -1163,8 +1158,7 @@ contract SFPMActions is GeneralActions {
                         );
 
                         if (
-                            $amountToCollect0[$activeLegIndex] != 0 ||
-                            $amountToCollect1[$activeLegIndex] != 0
+                            $collected0[$activeLegIndex] != 0 || $collected1[$activeLegIndex] != 0
                         ) {
                             LeftRightUnsigned deltaPremiumOwed;
                             LeftRightUnsigned deltaPremiumGross;
@@ -1289,6 +1283,8 @@ contract SFPMActions is GeneralActions {
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMLong[msg.sender].push($activeTokenId);
 
+            _check_tokenBalance(true);
+
             // reset the activeTokenId for next iteration
             $activeTokenId = TokenId.wrap(uint256(0));
 
@@ -1328,6 +1324,8 @@ contract SFPMActions is GeneralActions {
 
         $shouldRevertSFPM = false;
 
+        $positionSize = positionSize;
+
         // store the current actor
         $activeUser = msg.sender;
 
@@ -1346,6 +1344,8 @@ contract SFPMActions is GeneralActions {
             width_in,
             strike_in
         );
+
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
 
         emit LogString("after token gen");
 
@@ -1371,6 +1371,8 @@ contract SFPMActions is GeneralActions {
             $activeNumLegs++;
         }
 
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
         // pre-mint calculations/actions for storage
         for (uint i; i < $activeNumLegs; i++) {
             $activeLegIndex = i;
@@ -1382,7 +1384,7 @@ contract SFPMActions is GeneralActions {
                 $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
                     $activeTokenId,
                     $activeLegIndex,
-                    positionSize
+                    $positionSize
                 );
 
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
@@ -1580,20 +1582,13 @@ contract SFPMActions is GeneralActions {
 
         hevm.prank($activeUser);
         try
-            sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
+            sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("mint was successful");
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
-
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
 
             // preform post-mint invariant checks per leg
             for (uint i; i < $activeNumLegs; i++) {
@@ -1873,8 +1868,7 @@ contract SFPMActions is GeneralActions {
                         );
 
                         if (
-                            $amountToCollect0[$activeLegIndex] != 0 ||
-                            $amountToCollect1[$activeLegIndex] != 0
+                            $collected0[$activeLegIndex] != 0 || $collected1[$activeLegIndex] != 0
                         ) {
                             LeftRightUnsigned deltaPremiumOwed;
                             LeftRightUnsigned deltaPremiumGross;
@@ -1996,6 +1990,8 @@ contract SFPMActions is GeneralActions {
                 }
             }
 
+            _check_tokenBalance(true);
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMix[msg.sender].push($activeTokenId);
 
@@ -2025,6 +2021,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $activeUser = msg.sender;
 
+        $positionSize = positionSize;
+
         // must be
         $activeTokenId = _generate_single_leg_tokenid(
             asset,
@@ -2036,6 +2034,8 @@ contract SFPMActions is GeneralActions {
             strike
         );
 
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
         int256 totalMoved0;
         int256 totalMoved1;
 
@@ -2046,7 +2046,10 @@ contract SFPMActions is GeneralActions {
             // get moved amounts
             // moved amounts is faulty function
             // reverts for some reason
-            (int256 moved0, int256 moved1) = _calculate_moved_amounts($activeTokenId, positionSize);
+            (int256 moved0, int256 moved1) = _calculate_moved_amounts(
+                $activeTokenId,
+                $positionSize
+            );
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2089,14 +2092,7 @@ contract SFPMActions is GeneralActions {
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         hevm.prank($activeUser);
-        try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
-
+        try sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
@@ -2118,6 +2114,8 @@ contract SFPMActions is GeneralActions {
                 "bal 1 delta invalid"
             );
 
+            _check_tokenBalance(true);
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
@@ -2133,6 +2131,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $activeUser = msg.sender;
 
+        $positionSize = positionSize;
+
         // must be
         $activeTokenId = _generate_single_leg_tokenid(
             asset,
@@ -2143,6 +2143,8 @@ contract SFPMActions is GeneralActions {
             width,
             strike
         );
+
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
 
         (, currentTick, , , , , ) = cyclingPool.slot0();
 
@@ -2158,7 +2160,7 @@ contract SFPMActions is GeneralActions {
             // get moved amounts
             // moved amounts is faulty function
             // reverts for some reason
-            (moved0, moved1) = _calculate_moved_amounts($activeTokenId, positionSize);
+            (moved0, moved1) = _calculate_moved_amounts($activeTokenId, $positionSize);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2173,14 +2175,7 @@ contract SFPMActions is GeneralActions {
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         hevm.prank($activeUser);
-        try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
-
+        try sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
@@ -2210,6 +2205,8 @@ contract SFPMActions is GeneralActions {
                 assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
             }
 
+            _check_tokenBalance(true);
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
@@ -2225,6 +2222,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $activeUser = msg.sender;
 
+        $positionSize = positionSize;
+
         $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
@@ -2234,6 +2233,8 @@ contract SFPMActions is GeneralActions {
             width,
             strike
         );
+
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
 
         int256 moved0;
         int256 moved1;
@@ -2258,14 +2259,7 @@ contract SFPMActions is GeneralActions {
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         hevm.prank($activeUser);
-        try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
-
+        try sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
@@ -2295,6 +2289,8 @@ contract SFPMActions is GeneralActions {
                 assertLte(abs((balBefore1 - moved1) - balAfter1), 1, "bal 1 delta invalid");
             }
 
+            _check_tokenBalance(true);
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
@@ -2310,6 +2306,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $activeUser = msg.sender;
 
+        $positionSize = positionSize;
+
         $activeTokenId = _generate_single_leg_tokenid(
             asset,
             is_call,
@@ -2320,6 +2318,8 @@ contract SFPMActions is GeneralActions {
             strike
         );
 
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
         int256 moved0;
         int256 moved1;
 
@@ -2328,7 +2328,7 @@ contract SFPMActions is GeneralActions {
 
         {
             // get moved amounts
-            (moved0, moved1) = _calculate_moved_amounts($activeTokenId, positionSize);
+            (moved0, moved1) = _calculate_moved_amounts($activeTokenId, $positionSize);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2343,14 +2343,7 @@ contract SFPMActions is GeneralActions {
 
         // then try to purchase an amount larger than this amount (startingLiquidity < chunkLiquidity)
         hevm.prank($activeUser);
-        try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh) {
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
-
+        try sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
@@ -2380,6 +2373,8 @@ contract SFPMActions is GeneralActions {
                 assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
             }
 
+            _check_tokenBalance(true);
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
         } catch {}
@@ -2399,6 +2394,8 @@ contract SFPMActions is GeneralActions {
     ) public canonicalTimeState {
         $activeUser = msg.sender;
 
+        $positionSize = positionSize;
+
         // generate double leg shorts
         // dynamic numeraire and token type
         $activeTokenId = _generate_multiple_leg_tokenid(
@@ -2412,6 +2409,8 @@ contract SFPMActions is GeneralActions {
             [strike0, strike1, 0, 0]
         );
 
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
         int256 totalMoved0;
         int256 totalMoved1;
 
@@ -2424,7 +2423,7 @@ contract SFPMActions is GeneralActions {
                 int256 moved1,
                 int256 itm0,
                 int256 itm1
-            ) = _calculate_moved_and_ITM_amounts($activeTokenId, positionSize);
+            ) = _calculate_moved_and_ITM_amounts($activeTokenId, $positionSize);
 
             emit LogInt256("moved0", moved0);
             emit LogInt256("moved1", moved1);
@@ -2464,14 +2463,7 @@ contract SFPMActions is GeneralActions {
         (currentSqrtPriceX96, , , , , , ) = cyclingPool.slot0();
 
         hevm.prank($activeUser);
-        try sfpm.mintTokenizedPosition($activeTokenId, positionSize, tickLimitHigh, tickLimitLow) {
-            // check the balance of their ERC1155 id increased by position size
-            {
-                // adjust balances and verify
-                _increment_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
-
+        try sfpm.mintTokenizedPosition($activeTokenId, $positionSize, tickLimitHigh, tickLimitLow) {
             // check final balances
             int256 balAfter0 = int256(IERC20(USDC).balanceOf($activeUser));
             int256 balAfter1 = int256(IERC20(WETH).balanceOf($activeUser));
@@ -2507,6 +2499,8 @@ contract SFPMActions is GeneralActions {
             // disabled as on low liq pools the swap won't occur at a single price (tick liquidity will roll over)
             // ensure that only token 0 was moved as this was a netting swap
             // assertWithMsg(totalMoved0 == convertedMoved1to0, "invalid conversion");
+
+            _check_tokenBalance(true);
 
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMShort[$activeUser].push($activeTokenId);
@@ -2804,7 +2798,6 @@ contract SFPMActions is GeneralActions {
     }
 
     /// burn
-
     function burn_option_SFPM_general(
         uint128 positionSize,
         bool swapAtMint,
@@ -2813,6 +2806,8 @@ contract SFPMActions is GeneralActions {
         uint256 randSeed
     ) public canonicalTimeState {
         $shouldRevertSFPM = false;
+
+        $positionSize = positionSize;
 
         // store the current actor
         $activeUser = msg.sender;
@@ -2845,6 +2840,8 @@ contract SFPMActions is GeneralActions {
             userPositionsSFPMShort[$activeUser][randIndex] = TokenId.wrap(0);
         }
 
+        $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
+
         // As pulled from the tokenId
         IUniswapV3Pool originalPool = cyclingPool;
         cyclingPool = sfpm.getUniswapV3PoolFromId($activeTokenId.poolId());
@@ -2852,8 +2849,7 @@ contract SFPMActions is GeneralActions {
         $activeNumLegs = uint8($activeTokenId.countLegs());
 
         // bound the position size to the amount owned by the user for that tokenId
-        uint256 currBalance = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
-        if (positionSize > currBalance || TokenId.unwrap($activeTokenId) == uint256(0)) {
+        if ($positionSize > $prevSPFMTokenBal || TokenId.unwrap($activeTokenId) == uint256(0)) {
             revert();
         }
 
@@ -2868,7 +2864,7 @@ contract SFPMActions is GeneralActions {
                 $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
                     $activeTokenId,
                     $activeLegIndex,
-                    positionSize
+                    $positionSize
                 );
 
                 $sTickLower[$activeLegIndex] = $liquidityChunk[$activeLegIndex].tickLower();
@@ -3067,19 +3063,13 @@ contract SFPMActions is GeneralActions {
 
         hevm.prank($activeUser);
         try
-            sfpm.burnTokenizedPosition($activeTokenId, positionSize, tickLimitLow, tickLimitHigh)
+            sfpm.burnTokenizedPosition($activeTokenId, $positionSize, tickLimitLow, tickLimitHigh)
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             emit LogString("burn was successful");
 
             // copy return into storage
             $sCollectedByLeg = collectedByLeg;
             $sTotalSwapped = totalSwapped;
-
-            {
-                // adjust balances and verify
-                _decrement_tokenBalance(positionSize);
-                _check_tokenBalance();
-            }
 
             // preform post-mint invariant checks per leg
             for (uint i = 0; i < $activeNumLegs; i++) {
@@ -3374,8 +3364,7 @@ contract SFPMActions is GeneralActions {
                         );
 
                         if (
-                            $amountToCollect0[$activeLegIndex] != 0 ||
-                            $amountToCollect1[$activeLegIndex] != 0
+                            $collected0[$activeLegIndex] != 0 || $collected1[$activeLegIndex] != 0
                         ) {
                             LeftRightUnsigned deltaPremiumOwed;
                             LeftRightUnsigned deltaPremiumGross;
@@ -3497,6 +3486,8 @@ contract SFPMActions is GeneralActions {
                 }
             }
 
+            _check_tokenBalance(false);
+
             // add minted option to mapping of minted SFPM positions (to grab for burn)
             userPositionsSFPMix[msg.sender].push($activeTokenId);
 
@@ -3526,7 +3517,7 @@ contract SFPMActions is GeneralActions {
     // transfer
 
     function transfer_tokenId(
-        uint256 positionSize,
+        uint128 positionSize,
         address randUser,
         bool transferToPP, // transfer to panoptic pool flag
         bool isLong,
@@ -3536,6 +3527,8 @@ contract SFPMActions is GeneralActions {
         bytes calldata data
     ) public canonicalTimeState {
         $shouldRevertSFPM = false;
+
+        $positionSize = positionSize;
 
         $activeUser = msg.sender;
 
@@ -3584,7 +3577,7 @@ contract SFPMActions is GeneralActions {
 
         // bound the transfer within a reasonable range
         if (boundTransfer) {
-            positionSize = uint128(bound(positionSize, 0, tokenBalanceSenderBefore));
+            $positionSize = uint128(bound($positionSize, 0, tokenBalanceSenderBefore));
         }
 
         $activeNumLegs = uint8($activeTokenId.countLegs());
@@ -3595,7 +3588,7 @@ contract SFPMActions is GeneralActions {
             $liquidityChunk[$activeLegIndex] = PanopticMath.getLiquidityChunk(
                 $activeTokenId,
                 $activeLegIndex,
-                uint128(positionSize)
+                uint128($positionSize)
             );
 
             {
@@ -3681,28 +3674,10 @@ contract SFPMActions is GeneralActions {
                 $activeUser,
                 randUser,
                 TokenId.unwrap($activeTokenId),
-                positionSize,
+                $positionSize,
                 data
             )
         {
-            {
-                // delete and update record of token ownership
-                tokenBalances[$activeTokenId][randUser] += positionSize;
-                tokenBalances[$activeTokenId][$activeUser] -= positionSize;
-
-                // check accounting of final balances
-                assertWithMsg(
-                    tokenBalances[$activeTokenId][randUser] ==
-                        tokenBalances[$activeTokenId][randUser],
-                    "invalid tracked erc1155 balance recipient"
-                );
-                assertWithMsg(
-                    tokenBalances[$activeTokenId][$activeUser] ==
-                        tokenBalances[$activeTokenId][$activeUser],
-                    "invalid tracked erc1155 balance sender"
-                );
-            }
-
             for (uint256 i = 0; i < $activeNumLegs; i++) {
                 $activeLegIndex = i;
 
@@ -3796,11 +3771,7 @@ contract SFPMActions is GeneralActions {
                 }
             }
 
-            // inverse
-            assertWithMsg(!$shouldRevertSFPM, "should have reverted");
-
             // transfer should fail if trying to transfer bal > before bal
-
             assertWithMsg(!$shouldRevertSFPM, "sfpm burn general: missing revert");
 
             // reset the pool
