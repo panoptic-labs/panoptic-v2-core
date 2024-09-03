@@ -158,7 +158,7 @@ Panoptic can be deployed on any chain with a Uniswap V3 instance. To go through 
 To deploy Panoptic, run:
 
 ```bash
-forge script deploy/DeployProtocol.s.sol:DeployProtocol --rpc-url sepolia -vvvv --broadcast
+forge script script/DeployProtocol.s.sol:DeployProtocol --rpc-url sepolia -vvvv --broadcast
 ```
 
 The preconfigured RPC URL aliases are: `sepolia`. To deploy on another chain a custom RPC URL can be passed.
