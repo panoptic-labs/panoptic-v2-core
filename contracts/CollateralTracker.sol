@@ -966,7 +966,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // ZY = NX
             // N = ZY / X
             // subtract delegatee balance from N since it was already transferred to the delegator
-            _mint(delegator, Math.mulDiv(assets, totalSupply, totalAssets()) - delegateeBalance);
+            _mint(delegator, shares - delegateeBalance);
         }
         // if requested amount < delegatee balance, then just transfer shares back
         else {
