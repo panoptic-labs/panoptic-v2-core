@@ -960,12 +960,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // Z: desired value (assets) of shares to be minted
             // N: total shares corresponding to Z
             // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
-            // Z = N * X / (Y + N - T)
-            // Z * (Y + N - T) = N * X
-            // ZY + ZN - ZT = NX
-            // ZY - ZT = N(X - Z)
-            // N = (ZY - ZT) / (X - Z)
-            // N = Z(Y - T) / (X - Z)
+            // Z = N * (X + Z) / (Y + N)
+            // Z * (Y + N) = N * X + N * Z
+            // ZY + ZN  = NX + NZ
+            // ZY = NX
+            // N = ZY / X
             // subtract delegatee balance from N since it was already transferred to the delegator
             _mint(delegator, Math.mulDiv(assets, totalSupply, totalAssets()) - delegateeBalance);
         }
