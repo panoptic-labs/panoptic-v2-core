@@ -1865,23 +1865,36 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // equal deposits for both collateral token pairs for testing purposes
         collateralToken0.deposit(uint128(assetsToken0), Alice);
 
-        uint256 assetsBefore0 = collateralToken0.convertToAssets(
-            collateralToken0.balanceOf(Alice)
-        ) +
+        uint256 aliceAssets = collateralToken0.convertToAssets(collateralToken0.balanceOf(Alice));
+
+        uint256 extraRevoked = 1000 *
             bound(
                 mintSeed,
                 0,
                 collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
             );
-        vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
+
+        uint256 assetsBefore0 = aliceAssets + extraRevoked;
+
+        uint256 sharesRequested = Math.mulDiv(
+            assetsBefore0,
+            collateralToken0.totalSupply(),
+            collateralToken0.totalAssets()
+        );
+
+        uint256 expectedAssetsAfter = (assetsBefore0 * collateralToken0.totalSupply()) /
+            (collateralToken0.totalSupply() + sharesRequested - collateralToken0.balanceOf(Alice));
+
         // invoke delegate transactions from the Panoptic pool
         // attempt to request an amount greater than the delegatee's balance
         panopticPool.revoke(Bob, Alice, assetsBefore0, collateralToken0);
 
         // check delegatee balance after
         uint256 assetsAfter0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        assertApproxEqAbs(expectedAssetsAfter, assetsAfter0, 5);
 
-        assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
+        // make sure the amount of assets is less than the ideal case
+        assertGe(assetsBefore0, assetsAfter0, "less");
     }
 
     function test_Success_revoke_virtual(uint256 x, uint104 shares) public {
