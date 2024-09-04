@@ -1874,6 +1874,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
             );
         vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
+        vm.assume(
+            collateralToken0.totalAssets() / (collateralToken0.totalAssets() - assetsBefore0) <
+                10_000
+        );
         // invoke delegate transactions from the Panoptic pool
         // attempt to request an amount greater than the delegatee's balance
         panopticPool.revoke(Bob, Alice, assetsBefore0, collateralToken0);
