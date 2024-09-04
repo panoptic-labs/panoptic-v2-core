@@ -710,7 +710,7 @@ library PanopticMath {
     /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot
     /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
-    /// @param netExchanged The net exchanged value of the closed portfolio
+    /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
     /// @return bonus0 Bonus amount for token0
     /// @return bonus1 Bonus amount for token1
@@ -719,7 +719,7 @@ library PanopticMath {
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
         uint160 atSqrtPriceX96,
-        LeftRightSigned netExchanged,
+        LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium
     ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
         unchecked {
@@ -759,8 +759,8 @@ library PanopticMath {
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
                 int256(uint256(shortPremium.leftSlot()));
 
-            int256 paid0 = bonus0 + int256(netExchanged.rightSlot());
-            int256 paid1 = bonus1 + int256(netExchanged.leftSlot());
+            int256 paid0 = bonus0 + int256(netPaid.rightSlot());
+            int256 paid1 = bonus1 + int256(netPaid.leftSlot());
 
             // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
             // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
@@ -805,8 +805,8 @@ library PanopticMath {
                 }
             }
 
-            paid0 = bonus0 + int256(netExchanged.rightSlot());
-            paid1 = bonus1 + int256(netExchanged.leftSlot());
+            paid0 = bonus0 + int256(netPaid.rightSlot());
+            paid1 = bonus1 + int256(netPaid.leftSlot());
             return (
                 bonus0,
                 bonus1,
@@ -973,36 +973,24 @@ library PanopticMath {
     }
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
-    /// @param exercisee Address of the force exercisee
-    /// @param delegated0 The amount of virtual token0 shares delegated to the exercisor that must be returned to the protocol
-    /// @param delegated1 The amount of virtual token1 shares delegated to the exercisor that must be returned to the protocol
     /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
-    /// @param collateral0 CollateralTracker for token0
-    /// @param collateral1 CollateralTracker for token1
+    /// @param netPaid The net amount of tokens paid/received by the exercisee to close the exercised position
+    /// @param collateralBalances The collateral assets held by the exercisee pre-exercise
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
-        address exercisee,
-        uint256 delegated0,
-        uint256 delegated1,
         LeftRightSigned exerciseFees,
         int24 atTick,
-        CollateralTracker collateral0,
-        CollateralTracker collateral1
-    ) external view returns (LeftRightSigned) {
+        LeftRightSigned netPaid,
+        LeftRightUnsigned collateralBalances
+    ) external pure returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
-            int256 balanceShortage = int256(
-                Math.mulDivRoundingUp(
-                    delegated0,
-                    collateral0.totalAssets(),
-                    collateral0.totalSupply()
-                )
-            ) -
-                int256(collateral0.convertToAssets(collateral0.balanceOf(exercisee))) +
-                exerciseFees.rightSlot();
 
+            int256 balanceShortage = netPaid.rightSlot() +
+                exerciseFees.rightSlot() -
+                int256(uint256(collateralBalances.rightSlot()));
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -1018,16 +1006,9 @@ library PanopticMath {
             }
 
             balanceShortage =
-                int256(
-                    Math.mulDivRoundingUp(
-                        delegated1,
-                        collateral1.totalAssets(),
-                        collateral1.totalSupply()
-                    )
-                ) -
-                int256(collateral1.convertToAssets(collateral1.balanceOf(exercisee))) +
-                exerciseFees.leftSlot();
-
+                netPaid.leftSlot() +
+                exerciseFees.leftSlot() -
+                int256(uint256(collateralBalances.leftSlot()));
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned

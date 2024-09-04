@@ -18,7 +18,7 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
-
+import "forge-std/Test.sol";
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
 //
@@ -868,117 +868,93 @@ contract CollateralTracker is ERC20Minimal, Multicall {
           LIFECYCLE OF A COLLATERAL TOKEN AND DELEGATE/REVOKE LOGIC
     ////////////////////////////////////////////////////////////////////*/
 
-    /// @notice Delegate and transfer shares corresponding to the incoming assets 'from' delegator 'to' delegatee.
-    /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @param delegator The delegator to send shares from - the sender of the shares
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares
-    /// @param assets The assets to which the shares delegated correspond
-    function delegate(
-        address delegator,
-        address delegatee,
-        uint256 assets
-    ) external onlyPanopticPool {
-        /*
-                ┌────────┐
-                │Panoptic│
-                │Pool    │
-                └────┬───┘
-                     │(1) convert 'assets' to shares (this ERC20 contract)
-        ┌─────────┐  │  ┌─────────┐
-        │delegator├──▼──►delegatee│
-        └─────────┘(2)  └─────────┘
-                move shares
-                from delegator
-                to delegatee
-        */
-
-        uint256 shares = convertToShares(assets);
-
-        // transfer shares from the delegator to the delegatee
-        _transferFrom(delegator, delegatee, shares);
-    }
-
-    /// @notice Increase the share balance of a user by shares worth `assets` without updating the total supply.
+    /// @notice Increase the share balance of a user by 2^248 - 1 without updating the total supply.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
     /// @param delegatee The account to increase the balance of
-    /// @param assets The amount of assets worth of shares to mint to `delegatee`
-    /// @return shares The amount of shares minted to `delegatee`
-    function delegate(
-        address delegatee,
-        uint256 assets
-    ) external onlyPanopticPool returns (uint256 shares) {
-        shares = convertToShares(assets);
-        balanceOf[delegatee] += shares;
+    function delegate(address delegatee) external onlyPanopticPool {
+        balanceOf[delegatee] += type(uint248).max;
     }
 
-    /// @notice Decrease the share balance of a user without updating the total supply.
-    /// @dev Assumes that `delegatee` has enough money to pay for the refund, will revert otherwise.
+    /// @notice Decrease the share balance of a user by 2^248 - 1 without updating the total supply.
+    /// @dev Assumes that `delegatee` has >=(2**248 - 1) tokens, will revert otherwise.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
     /// @param delegatee The account to decrease the balance of
-    /// @param shares The amount of shares to burn from `delegatee`
-    function revoke(address delegatee, uint256 shares) external onlyPanopticPool {
-        balanceOf[delegatee] -= shares;
+    function revoke(address delegatee) external onlyPanopticPool {
+        console2.log("balanceOf[delegatee]: ", balanceOf[delegatee]);
+        console2.log("type(uint248).max: ", type(uint248).max);
+        balanceOf[delegatee] -= type(uint248).max;
     }
 
-    /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
-    /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate)
-    /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate)
-    /// @param assets The assets to which the shares revoked correspond
-    function revoke(
-        address delegator,
-        address delegatee,
-        uint256 assets
+    /// @notice Settles liquidation bonus and returns remaining virtual shares to the protocol.
+    /// @dev This function is where protocol loss is realized, if it exists.
+    /// @param liquidator The account performing the liquidation of `liquidatee`
+    /// @param liquidatee The liquidated account to settle
+    /// @param bonus The liquidation bonus, in assets, to be paid to `liquidator`. May be negative
+    function settleLiquidation(
+        address liquidator,
+        address liquidatee,
+        int256 bonus
     ) external onlyPanopticPool {
-        /**
-                ┌────────┐
-                │Panoptic│
-                │Pool    │
-                └────┬───┘
-                     │(1) convert 'assets' to shares (this ERC20 contract)
-        ┌─────────┐  │ ┌─────────┐
-        │delegator◄──▼─┤delegatee│
-        └─────────┘(2) └─────────┘
-            moves shares
-            from delegatee
-            back to delegator
-        */
+        if (bonus < 0) {
+            uint256 bonusAbs = uint256(-bonus);
 
-        uint256 shares = convertToShares(assets);
+            SafeTransferLib.safeTransferFrom(s_underlyingToken, liquidator, msg.sender, bonusAbs);
 
-        // get the delegateeBalance and compare later against requestedAmount
-        uint256 delegateeBalance = balanceOf[delegatee];
+            _mint(liquidatee, convertToShares(bonusAbs));
 
-        // if requested amount is larger than user balance, transfer shares back,
-        // then issue new shares
-        if (shares > delegateeBalance) {
-            // transfer delegatee balance to delegator
-            _transferFrom(delegatee, delegator, delegateeBalance);
+            uint256 liquidateeBalance = balanceOf[liquidatee];
 
-            // this is paying out protocol loss, so correct for that in the amount of shares to be minted
-            // X: total assets in vault
-            // Y: total supply of shares
-            // Z: desired value (assets) of shares to be minted
-            // N: total shares corresponding to Z
-            // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
-            // Z = N * X / (Y + N - T)
-            // Z * (Y + N - T) = N * X
-            // ZY + ZN - ZT = NX
-            // ZY - ZT = N(X - Z)
-            // N = (ZY - ZT) / (X - Z)
-            // N = Z(Y - T) / (X - Z)
-            // subtract delegatee balance from N since it was already transferred to the delegator
-            _mint(
-                delegator,
-                Math.mulDiv(
-                    assets,
-                    totalSupply - delegateeBalance,
-                    uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
-                ) - delegateeBalance
-            );
-        }
-        // if requested amount < delegatee balance, then just transfer shares back
-        else {
-            _transferFrom(delegatee, delegator, shares);
+            if (type(uint248).max > liquidateeBalance) {
+                balanceOf[liquidatee] = 0;
+                totalSupply += type(uint248).max - liquidateeBalance;
+            } else {
+                balanceOf[liquidatee] -= type(uint248).max;
+            }
+        } else {
+            uint256 liquidateeBalance = balanceOf[liquidatee];
+
+            if (type(uint248).max > liquidateeBalance) {
+                totalSupply += type(uint248).max - liquidateeBalance;
+                balanceOf[liquidatee] = liquidateeBalance = 0;
+            } else {
+                balanceOf[liquidatee] = liquidateeBalance -= type(uint248).max;
+            }
+
+            // transfer the bonus to the liquidator
+            uint256 shares = convertToShares(uint256(bonus));
+
+            // if requested amount is larger than user balance, transfer shares back,
+            // then issue new shares
+            if (shares > liquidateeBalance) {
+                // transfer delegatee balance to delegator
+                _transferFrom(liquidatee, liquidator, liquidateeBalance);
+
+                // this is paying out protocol loss, so correct for that in the amount of shares to be minted
+                // X: total assets in vault
+                // Y: total supply of shares
+                // Z: desired value (assets) of shares to be minted
+                // N: total shares corresponding to Z
+                // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
+                // Z = N * X / (Y + N - T)
+                // Z * (Y + N - T) = N * X
+                // ZY + ZN - ZT = NX
+                // ZY - ZT = N(X - Z)
+                // N = (ZY - ZT) / (X - Z)
+                // N = Z(Y - T) / (X - Z)
+                // subtract delegatee balance from N since it was already transferred to the delegator
+                _mint(
+                    liquidator,
+                    Math.mulDiv(
+                        uint256(bonus),
+                        totalSupply - liquidateeBalance,
+                        uint256(Math.max(1, int256(totalAssets()) - bonus))
+                    ) - liquidateeBalance
+                );
+            }
+            // if requested amount < delegatee balance, then just transfer shares back
+            else {
+                _transferFrom(liquidatee, liquidator, shares);
+            }
         }
     }
 

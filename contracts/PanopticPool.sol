@@ -920,16 +920,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
-    /// @param positionIdListLiquidator List of positions owned by the liquidator
     /// @param liquidatee Address of the distressed account
-    /// @param delegations LeftRight amounts of token0 and token1 (token0:token1 right:left) delegated to the liquidatee by the liquidator so the option can be smoothly exercised
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...]
-    function liquidate(
-        TokenId[] calldata positionIdListLiquidator,
-        address liquidatee,
-        LeftRightUnsigned delegations,
-        TokenId[] calldata positionIdList
-    ) external {
+    function liquidate(address liquidatee, TokenId[] calldata positionIdList) external {
         _validatePositionList(liquidatee, positionIdList, 0);
 
         // Assert the account we are liquidating is actually insolvent
@@ -993,23 +986,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        // Perform the specified delegation from `msg.sender` to `liquidatee`
-        // Works like a transfer, so the liquidator must possess all the tokens they are delegating, resulting in no net supply change
-        // If not enough tokens are delegated for the positions of `liquidatee` to be closed, the liquidation will fail
-        s_collateralToken0.delegate(msg.sender, liquidatee, delegations.rightSlot());
-        s_collateralToken1.delegate(msg.sender, liquidatee, delegations.leftSlot());
+        // The protocol delegates some virtual shares to ensure the burn can be settled.
+        s_collateralToken0.delegate(liquidatee);
+        s_collateralToken1.delegate(liquidatee);
 
         int256 liquidationBonus0;
         int256 liquidationBonus1;
         {
-            LeftRightSigned netExchanged;
+            LeftRightSigned netPaid;
             LeftRightSigned[4][] memory premiasByLeg;
             // burn all options from the liquidatee
 
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
             // NOTE: tick limits are not applied here since it is not the liquidator's position being liquidated
-            (netExchanged, premiasByLeg) = _burnAllOptionsFrom(
+            (netPaid, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
                 MIN_SWAP_TICK,
                 MAX_SWAP_TICK,
@@ -1024,7 +1015,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenData0,
                     tokenData1,
                     Math.getSqrtRatioAtTick(twapTick),
-                    netExchanged,
+                    netPaid,
                     shortPremium
                 );
 
@@ -1059,21 +1050,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             }
         }
 
-        LeftRightUnsigned _delegations = delegations;
         // revoke the delegated amount plus the bonus amount.
-        s_collateralToken0.revoke(
-            msg.sender,
-            liquidatee,
-            uint256(int256(uint256(_delegations.rightSlot())) + liquidationBonus0)
-        );
-        s_collateralToken1.revoke(
-            msg.sender,
-            liquidatee,
-            uint256(int256(uint256(_delegations.leftSlot())) + liquidationBonus1)
-        );
-
-        // ensure the liquidator is still solvent after the liquidation
-        _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
+        s_collateralToken0.settleLiquidation(msg.sender, liquidatee, liquidationBonus0);
+        s_collateralToken1.settleLiquidation(msg.sender, liquidatee, liquidationBonus1);
 
         LeftRightSigned bonusAmounts = LeftRightSigned
             .wrap(0)
@@ -1101,8 +1080,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        uint128 positionBalance = s_positionBalance[account][touchedId[0]].positionSize();
-
         int24 twapTick = getUniV3TWAP();
 
         // on forced exercise, the price *must* be outside the position's range for at least 1 leg
@@ -1111,6 +1088,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightSigned exerciseFees;
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+
+            uint128 positionBalance = s_positionBalance[account][touchedId[0]].positionSize();
 
             // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
             // and the long legs (from which the exercise cost is computed)
@@ -1130,29 +1109,34 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
+        LeftRightUnsigned collateralBalances = LeftRightUnsigned
+            .wrap(
+                uint128(s_collateralToken0.convertToAssets(s_collateralToken0.balanceOf(account)))
+            )
+            .toLeftSlot(
+                uint128(s_collateralToken1.convertToAssets(s_collateralToken1.balanceOf(account)))
+            );
+
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        uint256 delegated0 = s_collateralToken0.delegate(
-            account,
-            uint256(type(uint104).max) * 10_000
-        );
-        uint256 delegated1 = s_collateralToken1.delegate(
-            account,
-            uint256(type(uint104).max) * 10_000
-        );
+        s_collateralToken0.delegate(account);
+        s_collateralToken1.delegate(account);
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
-        _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
+        (LeftRightSigned netPaid, ) = _burnAllOptionsFrom(
+            account,
+            MIN_SWAP_TICK,
+            MAX_SWAP_TICK,
+            COMMIT_LONG_SETTLED,
+            touchedId
+        );
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-            account,
-            delegated0,
-            delegated1,
             exerciseFees,
             twapTick,
-            s_collateralToken0,
-            s_collateralToken1
+            netPaid,
+            collateralBalances
         );
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
@@ -1160,8 +1144,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
         // revoke the virual shares that were delegated after settling the difference with the exercisor
-        s_collateralToken0.revoke(account, delegated0);
-        s_collateralToken1.revoke(account, delegated1);
+        s_collateralToken0.revoke(account);
+        s_collateralToken1.revoke(account);
 
         _validateSolvency(account, positionIdListExercisee, NO_BUFFER);
 

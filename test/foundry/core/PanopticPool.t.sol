@@ -5414,6 +5414,8 @@ contract PanopticPoolTest is PositionUtils {
         uint256 balance1,
         int256 refund0,
         int256 refund1,
+        int256 netPaid0,
+        int256 netPaid1,
         int256 atTickSeed
     ) public {
         unchecked {
@@ -5431,6 +5433,16 @@ contract PanopticPoolTest is PositionUtils {
                 -int256(uint256(type(uint104).max)),
                 int256(uint256(type(uint104).max))
             );
+            netPaid0 = bound(
+                netPaid0,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
+            );
+            netPaid1 = bound(
+                netPaid1,
+                -int256(uint256(type(uint104).max)),
+                int256(uint256(type(uint104).max))
+            );
             // possible for the amounts used here to overflow beyond these ticks
             // convert0To1 is tested on the full tickrange elsewhere
             atTick = int24(bound(atTickSeed, -159_000, 159_000));
@@ -5440,30 +5452,21 @@ contract PanopticPoolTest is PositionUtils {
             vm.startPrank(Charlie);
             ct0.deposit(balance0, Charlie);
             ct1.deposit(balance1, Charlie);
+            LeftRightUnsigned collateralBalances = LeftRightUnsigned
+                .wrap(0)
+                .toRightSlot(uint128(ct0.convertToAssets(ct0.balanceOf(Charlie))))
+                .toLeftSlot(uint128(ct1.convertToAssets(ct1.balanceOf(Charlie))));
 
-            int256 shortage = int256(
-                Math.mulDivRoundingUp(
-                    ct0.convertToShares(type(uint104).max),
-                    ct0.totalAssets(),
-                    ct0.totalSupply()
-                )
-            ) +
-                refund0 -
-                int(ct0.convertToAssets(ct0.balanceOf(Charlie)));
+            int256 shortage = netPaid0 - int256(uint256(collateralBalances.rightSlot())) + refund0;
+
+            LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+                LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
+                int24(atTick),
+                LeftRightSigned.wrap(0).toRightSlot(int128(netPaid0)).toLeftSlot(int128(netPaid1)),
+                collateralBalances
+            );
 
             if (shortage > 0) {
-                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-                    Charlie,
-                    ct0.convertToShares(type(uint104).max),
-                    ct1.convertToShares(type(uint104).max),
-                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
-                        int128(refund1)
-                    ),
-                    int24(atTick),
-                    ct0,
-                    ct1
-                );
-
                 refund0 = int128(refund0) - int128(shortage);
                 refund1 =
                     int128(PanopticMath.convert0to1(shortage, sqrtPriceX96)) +
@@ -5478,30 +5481,8 @@ contract PanopticPoolTest is PositionUtils {
                 return;
             }
 
-            shortage =
-                int256(
-                    Math.mulDivRoundingUp(
-                        ct1.convertToShares(type(uint104).max),
-                        ct1.totalAssets(),
-                        ct1.totalSupply()
-                    )
-                ) +
-                refund1 -
-                int(ct1.convertToAssets(ct1.balanceOf(Charlie)));
-
+            shortage = netPaid1 - int256(uint256(collateralBalances.leftSlot())) + refund1;
             if (shortage > 0) {
-                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-                    Charlie,
-                    ct0.convertToShares(type(uint104).max),
-                    ct1.convertToShares(type(uint104).max),
-                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
-                        int128(refund1)
-                    ),
-                    int24(atTick),
-                    ct0,
-                    ct1
-                );
-
                 refund1 = int128(refund1) - shortage;
                 refund0 =
                     int128(PanopticMath.convert1to0(shortage, sqrtPriceX96)) +
@@ -5512,22 +5493,9 @@ contract PanopticPoolTest is PositionUtils {
 
                 return;
             }
-            {
-                LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
-                    Charlie,
-                    ct0.convertToShares(type(uint104).max),
-                    ct1.convertToShares(type(uint104).max),
-                    LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(
-                        int128(refund1)
-                    ),
-                    int24(atTick),
-                    ct0,
-                    ct1
-                );
 
-                assertEq(refundAmounts.rightSlot(), int128(refund0));
-                assertEq(refundAmounts.leftSlot(), int128(refund1));
-            }
+            assertEq(refundAmounts.rightSlot(), int128(refund0));
+            assertEq(refundAmounts.leftSlot(), int128(refund1));
         }
     }
 
@@ -6407,9 +6375,6 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(address(pp));
 
-        ct0.delegate(Bob, Alice, type(uint96).max);
-        ct1.delegate(Bob, Alice, type(uint96).max);
-
         int256[2] memory shareDeltasLiquidatee = [
             int256(ct0.balanceOf(Alice)),
             int256(ct1.balanceOf(Alice))
@@ -6575,12 +6540,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
 
-        pp.liquidate(
-            new TokenId[](0),
-            Alice,
-            LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-            $posIdLists[1]
-        );
+        pp.liquidate(Alice, $posIdLists[1]);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
@@ -6974,9 +6934,6 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(address(pp));
 
-        ct0.delegate(Bob, Alice, type(uint96).max);
-        ct1.delegate(Bob, Alice, type(uint96).max);
-
         int256[2] memory shareDeltasLiquidatee = [
             int256(ct0.balanceOf(Alice)),
             int256(ct1.balanceOf(Alice))
@@ -7142,12 +7099,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
 
-        pp.liquidate(
-            new TokenId[](0),
-            Alice,
-            LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-            $posIdLists[1]
-        );
+        pp.liquidate(Alice, $posIdLists[1]);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
@@ -7435,7 +7387,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId2;
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), posIdList);
+        pp.liquidate(Alice, posIdList);
     }
 
     function test_Fail_liquidate_validatePositionIdListLiquidator(
@@ -7493,7 +7445,7 @@ contract PanopticPoolTest is PositionUtils {
         editCollateral(ct1, Alice, 2);
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), posIdList);
+        pp.liquidate(Alice, posIdList);
     }
 
     function test_Fail_liquidate_StaleTWAP(uint256 x, int256 tickDeltaSeed) public {
@@ -7517,7 +7469,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.expectRevert(Errors.StaleTWAP.selector);
-        pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), new TokenId[](0));
+        pp.liquidate(Alice, new TokenId[](0));
     }
 
     function test_Fail_liquidate_NotMarginCalled(
@@ -7742,6 +7694,6 @@ contract PanopticPoolTest is PositionUtils {
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
         vm.expectRevert(Errors.NotMarginCalled.selector);
-        pp.liquidate(new TokenId[](0), Alice, LeftRightUnsigned.wrap(0), $posIdLists[1]);
+        pp.liquidate(Alice, $posIdLists[1]);
     }
 }
