@@ -245,6 +245,69 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
 
+        _createPanopticPool();
+
+        vm.startPrank(Alice);
+
+        token0.mint(Alice, type(uint104).max);
+        token1.mint(Alice, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max, Alice);
+        ct1.deposit(type(uint104).max, Alice);
+
+        vm.startPrank(Charlie);
+
+        token0.mint(Charlie, type(uint104).max);
+        token1.mint(Charlie, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max, Charlie);
+        ct1.deposit(type(uint104).max, Charlie);
+
+        vm.startPrank(Seller);
+
+        token0.mint(Seller, type(uint104).max / 1_000_000);
+        token1.mint(Seller, type(uint104).max / 1_000_000);
+
+        token0.approve(address(ct0), type(uint104).max / 1_000_000);
+        token1.approve(address(ct1), type(uint104).max / 1_000_000);
+
+        ct0.deposit(type(uint104).max / 1_000_000, Seller);
+        ct1.deposit(type(uint104).max / 1_000_000, Seller);
+
+        for (uint256 i = 0; i < 3; i++) {
+            Buyers.push(address(uint160(uint256(keccak256(abi.encodePacked(i + 1337))))));
+
+            vm.startPrank(Buyers[i]);
+
+            token0.mint(Buyers[i], type(uint104).max / 1_000_000);
+            token1.mint(Buyers[i], type(uint104).max / 1_000_000);
+
+            token0.approve(address(ct0), type(uint104).max / 1_000_000);
+            token1.approve(address(ct1), type(uint104).max / 1_000_000);
+
+            ct0.deposit(type(uint104).max / 1_000_000, Buyers[i]);
+            ct1.deposit(type(uint104).max / 1_000_000, Buyers[i]);
+        }
+
+        // // setup mini-median price array
+        // for (uint256 i = 0; i < 8; ++i) {
+        //     vm.warp(block.timestamp + 120);
+        //     vm.roll(block.number + 1);
+        //     pp.pokeMedian();
+        // }
+
+        for (uint256 i = 0; i < 20; ++i) {
+            $posIdLists.push(new TokenId[](0));
+        }
+    }
+
+    function _createPanopticPool() internal {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
@@ -300,78 +363,8 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 120);
         vm.roll(block.number + 10);
 
-        vm.startPrank(Alice);
-
-        token0.mint(Alice, type(uint104).max);
-        token1.mint(Alice, type(uint104).max);
-
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();
-
-        token0.approve(address(ct0), type(uint104).max);
-        token1.approve(address(ct1), type(uint104).max);
-
-        ct0.deposit(type(uint104).max, Alice);
-        ct1.deposit(type(uint104).max, Alice);
-
-        vm.startPrank(Bob);
-
-        token0.mint(Bob, type(uint104).max);
-        token1.mint(Bob, type(uint104).max);
-
-        token0.approve(address(ct0), type(uint104).max);
-        token1.approve(address(ct1), type(uint104).max);
-
-        ct0.deposit(type(uint104).max, Bob);
-        ct1.deposit(type(uint104).max, Bob);
-
-        vm.startPrank(Charlie);
-
-        token0.mint(Charlie, type(uint104).max);
-        token1.mint(Charlie, type(uint104).max);
-
-        token0.approve(address(ct0), type(uint104).max);
-        token1.approve(address(ct1), type(uint104).max);
-
-        ct0.deposit(type(uint104).max, Charlie);
-        ct1.deposit(type(uint104).max, Charlie);
-
-        vm.startPrank(Seller);
-
-        token0.mint(Seller, type(uint104).max / 1_000_000);
-        token1.mint(Seller, type(uint104).max / 1_000_000);
-
-        token0.approve(address(ct0), type(uint104).max / 1_000_000);
-        token1.approve(address(ct1), type(uint104).max / 1_000_000);
-
-        ct0.deposit(type(uint104).max / 1_000_000, Seller);
-        ct1.deposit(type(uint104).max / 1_000_000, Seller);
-
-        for (uint256 i = 0; i < 3; i++) {
-            Buyers.push(address(uint160(uint256(keccak256(abi.encodePacked(i + 1337))))));
-
-            vm.startPrank(Buyers[i]);
-
-            token0.mint(Buyers[i], type(uint104).max / 1_000_000);
-            token1.mint(Buyers[i], type(uint104).max / 1_000_000);
-
-            token0.approve(address(ct0), type(uint104).max / 1_000_000);
-            token1.approve(address(ct1), type(uint104).max / 1_000_000);
-
-            ct0.deposit(type(uint104).max / 1_000_000, Buyers[i]);
-            ct1.deposit(type(uint104).max / 1_000_000, Buyers[i]);
-        }
-
-        // // setup mini-median price array
-        // for (uint256 i = 0; i < 8; ++i) {
-        //     vm.warp(block.timestamp + 120);
-        //     vm.roll(block.number + 1);
-        //     pp.pokeMedian();
-        // }
-
-        for (uint256 i = 0; i < 20; ++i) {
-            $posIdLists.push(new TokenId[](0));
-        }
     }
 
     // Test that risk-partnered positions can be minted/burned succesfully
@@ -3723,6 +3716,80 @@ contract Misctest is Test, PositionUtils {
             );
             vm.revertTo(snap);
         }
+    }
+
+    function test_success_liquidate_100p_protocolLoss() public {
+        _createPanopticPool();
+        vm.startPrank(Alice);
+
+        token1.mint(Alice, 1_000_000);
+
+        token1.approve(address(ct1), 1_000_000);
+
+        ct1.deposit(1_000_000, Alice);
+
+        vm.startPrank(Bob);
+
+        token0.mint(Bob, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+
+        ct0.deposit(1_500_000, Bob);
+
+        token1.mint(Bob, 1_005);
+        token1.approve(address(ct1), 1_005);
+        ct1.deposit(1_005, Bob);
+
+        vm.startPrank(Charlie);
+        token1.mint(Charlie, 1_003_003);
+        token1.approve(address(ct1), 1_003_003);
+
+        ct1.deposit(1_003_003, Charlie);
+
+        vm.startPrank(Bob);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(PanopticMath.getPoolId(address(uniPool))).addLeg(
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                -15,
+                1
+            )
+        );
+
+        uint256 totalSupplyBefore = ct1.totalSupply() - ct1.convertToShares(1_003_003);
+
+        pp.mintOptions(
+            $posIdList,
+            1_003_003,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.startPrank(Swapper);
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-800_000));
+
+        for (uint256 j = 0; j < 100; ++j) {
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 10);
+            swapperc.mint(uniPool, -887200, 887200, 10 ** 10);
+            swapperc.burn(uniPool, -887200, 887200, 10 ** 10);
+        }
+
+        vm.startPrank(Charlie);
+        pp.liquidate(
+            new TokenId[](0),
+            Bob,
+            LeftRightUnsigned.wrap(0).toLeftSlot(1_003_003),
+            $posIdList
+        );
+
+        assertLe(ct1.totalSupply() / totalSupplyBefore, 10_000, "protocol loss failed to cap");
     }
 
     function test_success_liquidation_fuzzedSwapITM(uint256[4] memory prices) public {
