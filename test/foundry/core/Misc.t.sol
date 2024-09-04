@@ -258,6 +258,17 @@ contract Misctest is Test, PositionUtils {
         ct0.deposit(type(uint104).max, Alice);
         ct1.deposit(type(uint104).max, Alice);
 
+        vm.startPrank(Bob);
+
+        token0.mint(Bob, type(uint104).max);
+        token1.mint(Bob, type(uint104).max);
+
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct0.deposit(type(uint104).max, Bob);
+        ct1.deposit(type(uint104).max, Bob);
+
         vm.startPrank(Charlie);
 
         token0.mint(Charlie, type(uint104).max);

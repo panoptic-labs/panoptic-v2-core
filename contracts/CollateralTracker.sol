@@ -977,7 +977,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         _totalSupply - delegateeBalance,
                         uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
                     ) - delegateeBalance,
-                    totalSupply * DECIMALS
+                    _totalSupply * DECIMALS
                 )
             );
         }
