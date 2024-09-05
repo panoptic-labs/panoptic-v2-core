@@ -973,52 +973,83 @@ library PanopticMath {
     }
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
+    /// @param account The address of the user being exercised
     /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
-    /// @param netPaid The net amount of tokens paid/received by the exercisee to close the exercised position
-    /// @param collateralBalances The collateral assets held by the exercisee pre-exercise
+    /// @param ct0 The collateral tracker for token0
+    /// @param ct1 The collateral tracker for token1
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
+        address account,
         LeftRightSigned exerciseFees,
         int24 atTick,
-        LeftRightSigned netPaid,
-        LeftRightUnsigned collateralBalances
-    ) external pure returns (LeftRightSigned) {
+        CollateralTracker ct0,
+        CollateralTracker ct1
+    ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
 
-            int256 balanceShortage = netPaid.rightSlot() +
-                exerciseFees.rightSlot() -
-                int256(uint256(collateralBalances.rightSlot()));
+            int256 balanceShortage = int256(uint256(type(uint248).max)) -
+                int256(ct0.balanceOf(account)) -
+                int256(ct0.convertToShares(uint128(-exerciseFees.rightSlot())));
+
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(int128(exerciseFees.rightSlot() - balanceShortage))
+                        .toRightSlot(
+                            int128(
+                                exerciseFees.rightSlot() -
+                                    int256(
+                                        Math.mulDivRoundingUp(
+                                            uint256(balanceShortage),
+                                            ct0.totalAssets(),
+                                            ct0.totalSupply()
+                                        )
+                                    )
+                            )
+                        )
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    PanopticMath.convert0to1(uint256(balanceShortage), sqrtPriceX96)
+                                    PanopticMath.convert0to1(
+                                        ct0.convertToAssets(uint256(balanceShortage)),
+                                        sqrtPriceX96
+                                    )
                                 ) + exerciseFees.leftSlot()
                             )
                         );
             }
 
             balanceShortage =
-                netPaid.leftSlot() +
-                exerciseFees.leftSlot() -
-                int256(uint256(collateralBalances.leftSlot()));
+                int256(uint256(type(uint248).max)) -
+                int256(ct1.balanceOf(account)) -
+                int256(ct1.convertToShares(uint128(-exerciseFees.leftSlot())));
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
                         .wrap(0)
-                        .toLeftSlot(int128(exerciseFees.leftSlot() - balanceShortage))
                         .toRightSlot(
                             int128(
                                 int256(
-                                    PanopticMath.convert1to0(uint256(balanceShortage), sqrtPriceX96)
+                                    PanopticMath.convert1to0(
+                                        ct1.convertToAssets(uint256(balanceShortage)),
+                                        sqrtPriceX96
+                                    )
                                 ) + exerciseFees.rightSlot()
+                            )
+                        )
+                        .toLeftSlot(
+                            int128(
+                                exerciseFees.leftSlot() -
+                                    int256(
+                                        Math.mulDivRoundingUp(
+                                            uint256(balanceShortage),
+                                            ct1.totalAssets(),
+                                            ct1.totalSupply()
+                                        )
+                                    )
                             )
                         );
             }

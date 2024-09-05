@@ -1109,34 +1109,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
             );
         }
 
-        LeftRightUnsigned collateralBalances = LeftRightUnsigned
-            .wrap(
-                uint128(s_collateralToken0.convertToAssets(s_collateralToken0.balanceOf(account)))
-            )
-            .toLeftSlot(
-                uint128(s_collateralToken1.convertToAssets(s_collateralToken1.balanceOf(account)))
-            );
-
         // The protocol delegates some virtual shares to ensure the burn can be settled.
         s_collateralToken0.delegate(account);
         s_collateralToken1.delegate(account);
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
-        (LeftRightSigned netPaid, ) = _burnAllOptionsFrom(
-            account,
-            MIN_SWAP_TICK,
-            MAX_SWAP_TICK,
-            COMMIT_LONG_SETTLED,
-            touchedId
-        );
+        _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+            account,
             exerciseFees,
             twapTick,
-            netPaid,
-            collateralBalances
+            s_collateralToken0,
+            s_collateralToken1
         );
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens

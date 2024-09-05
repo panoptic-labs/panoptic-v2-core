@@ -902,6 +902,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             _mint(liquidatee, convertToShares(bonusAbs));
 
+            s_poolAssets += uint128(bonusAbs);
+
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
