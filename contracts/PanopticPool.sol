@@ -657,7 +657,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint32 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         if (safeMode) {
-            return uint32(10_000) + uint32(10_000 << 16);
+            unchecked {
+                return uint32(10_000) + uint32(10_000 << 16);
+            }
         } else {
             return poolUtilizations;
         }
