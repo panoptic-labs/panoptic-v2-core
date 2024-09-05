@@ -504,49 +504,6 @@ library PanopticMath {
         }
     }
 
-    /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
-    /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
-    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
-    /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
-    /// @param sqrtPriceX96 The sqrt price at which to convert between token0/token1
-    /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
-    /// @return The combined collateral requirement for a user in terms of tokenType
-    function convertCollateralData(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint256 tokenType,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint256, uint256) {
-        if (tokenType == 0) {
-            return (
-                tokenData0.rightSlot() + convert1to0(tokenData1.rightSlot(), sqrtPriceX96),
-                tokenData0.leftSlot() + convert1to0(tokenData1.leftSlot(), sqrtPriceX96)
-            );
-        } else {
-            return (
-                tokenData1.rightSlot() + convert0to1(tokenData0.rightSlot(), sqrtPriceX96),
-                tokenData1.leftSlot() + convert0to1(tokenData0.leftSlot(), sqrtPriceX96)
-            );
-        }
-    }
-
-    /// @notice Adds required collateral and collateral balance from collateralTracker0 and collateralTracker1 and converts to single values in terms of `tokenType`.
-    /// @param tokenData0 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker0 (expressed in terms of token0)
-    /// @param tokenData1 LeftRight type container holding the collateralBalance (right slot) and requiredCollateral (left slot) for a user in CollateralTracker1 (expressed in terms of token1)
-    /// @param tokenType The type of token (token0 or token1) to express collateralBalance and requiredCollateral in
-    /// @param tick The tick at which to convert between token0/token1
-    /// @return The total combined balance of token0 and token1 for a user in terms of tokenType
-    /// @return The combined collateral requirement for a user in terms of tokenType
-    function convertCollateralData(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint256 tokenType,
-        int24 tick
-    ) internal pure returns (uint256, uint256) {
-        return
-            convertCollateralData(tokenData0, tokenData1, tokenType, Math.getSqrtRatioAtTick(tick));
-    }
-
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
@@ -564,6 +521,26 @@ library PanopticMath {
         }
     }
 
+    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
+    /// @param amount The amount of token0 to convert into token1
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
+    /// @return The converted `amount` of token0 represented in terms of token1
+    function convert0to1RoundingUp(
+        uint256 amount,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256) {
+        unchecked {
+            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
+            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
+            if (sqrtPriceX96 < type(uint128).max) {
+                return Math.mulDiv192RoundingUp(amount, uint256(sqrtPriceX96) ** 2);
+            } else {
+                return Math.mulDiv128RoundingUp(amount, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
+            }
+        }
+    }
+
     /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
@@ -577,6 +554,31 @@ library PanopticMath {
                 return Math.mulDiv(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
             } else {
                 return Math.mulDiv(amount, 2 ** 128, Math.mulDiv64(sqrtPriceX96, sqrtPriceX96));
+            }
+        }
+    }
+
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
+    /// @param amount The amount of token1 to convert into token0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
+    /// @return The converted `amount` of token1 represented in terms of token0
+    function convert1to0RoundingUp(
+        uint256 amount,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256) {
+        unchecked {
+            // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
+            // above that tick, we are forced to reduce the amount of decimals in the final price by 2**64 to 2**128
+            if (sqrtPriceX96 < type(uint128).max) {
+                return Math.mulDivRoundingUp(amount, 2 ** 192, uint256(sqrtPriceX96) ** 2);
+            } else {
+                return
+                    Math.mulDivRoundingUp(
+                        amount,
+                        2 ** 128,
+                        Math.mulDiv64(sqrtPriceX96, sqrtPriceX96)
+                    );
             }
         }
     }
@@ -631,6 +633,34 @@ library PanopticMath {
         }
     }
 
+    /// @notice Get a single collateral balance and requirement in terms of the lowest-priced token for a given set of (token0/token1) collateral balances and requirements.
+    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
+    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
+    /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
+    /// @return The combined collateral balance of `tokenData0` and `tokenData1` in terms of (token0 if price(token1/token0) < 1 and vice versa)
+    /// @return The combined required collateral threshold of `tokenData0` and `tokenData1` in terms of (token0 if price(token1/token0) < 1 and vice versa)
+    function getCrossBalances(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256, uint256) {
+        // convert values to the highest precision (lowest price) of the two tokens (token0 if price token1/token0 < 1 and vice versa)
+        if (sqrtPriceX96 < Constants.FP96) {
+            return (
+                tokenData0.rightSlot() +
+                    PanopticMath.convert1to0(tokenData1.rightSlot(), sqrtPriceX96),
+                tokenData0.leftSlot() +
+                    PanopticMath.convert1to0RoundingUp(tokenData1.leftSlot(), sqrtPriceX96)
+            );
+        }
+
+        return (
+            PanopticMath.convert0to1(tokenData0.rightSlot(), sqrtPriceX96) + tokenData1.rightSlot(),
+            PanopticMath.convert0to1RoundingUp(tokenData0.leftSlot(), sqrtPriceX96) +
+                tokenData1.leftSlot()
+        );
+    }
+
     /// @notice Compute the amount of token0 and token1 moved. Given an option position `tokenId`, leg index `legIndex`, and how many contracts are in the leg `positionSize`.
     /// @param tokenId The option position identifier
     /// @param positionSize The number of option contracts held in this position (each contract can control multiple tokens)
@@ -663,7 +693,7 @@ library PanopticMath {
             amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
         }
 
-        return LeftRightUnsigned.wrap(0).toRightSlot(amount0).toLeftSlot(amount1);
+        return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);
     }
 
     /// @notice Compute the amount of funds that are moved to and removed from the Panoptic Pool.
@@ -726,30 +756,49 @@ library PanopticMath {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
                 // compute the ratio of token0 to total collateral requirements
-                // evaluate at TWAP price to keep consistentcy with solvency calculations
-                uint256 required0 = PanopticMath.convert0to1(tokenData0.leftSlot(), atSqrtPriceX96);
-                uint256 required1 = tokenData1.leftSlot();
-
-                uint256 requiredRatioX128 = Math.mulDiv(required0, 2 ** 128, required0 + required1);
-
-                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.convertCollateralData(
+                // evaluate at TWAP price to maintain consistency with solvency calculations
+                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
                     tokenData0,
                     tokenData1,
-                    0,
                     atSqrtPriceX96
                 );
 
                 uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
 
-                // convert that bonus to tokens 0 and 1
-                bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
+                // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
+                if (atSqrtPriceX96 < Constants.FP96) {
+                    // required0 / (required0 + token0(required1))
+                    uint256 requiredRatioX128 = Math.mulDiv(
+                        tokenData0.leftSlot(),
+                        2 ** 128,
+                        thresholdCross
+                    );
 
-                bonus1 = int256(
-                    PanopticMath.convert0to1(
-                        Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
-                        atSqrtPriceX96
-                    )
-                );
+                    bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
+
+                    bonus1 = int256(
+                        PanopticMath.convert0to1(
+                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                            atSqrtPriceX96
+                        )
+                    );
+                } else {
+                    // required1 / (token1(required0) + required1)
+                    uint256 requiredRatioX128 = Math.mulDiv(
+                        tokenData1.leftSlot(),
+                        2 ** 128,
+                        thresholdCross
+                    );
+
+                    bonus1 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
+
+                    bonus0 = int256(
+                        PanopticMath.convert1to0(
+                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                            atSqrtPriceX96
+                        )
+                    );
+                }
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
@@ -960,9 +1009,7 @@ library PanopticMath {
                         );
 
                         _settledTokens[chunkKey] = _settledTokens[chunkKey].add(
-                            LeftRightUnsigned.wrap(0).toRightSlot(uint128(settled0)).toLeftSlot(
-                                uint128(settled1)
-                            )
+                            LeftRightUnsigned.wrap(uint128(settled0)).toLeftSlot(uint128(settled1))
                         );
                     }
                 }

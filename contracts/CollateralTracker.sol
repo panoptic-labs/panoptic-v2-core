@@ -1159,8 +1159,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             return
                 LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
+                    .wrap((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
                     .toLeftSlot(
                         positionBalanceArray.length > 0
                             ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +

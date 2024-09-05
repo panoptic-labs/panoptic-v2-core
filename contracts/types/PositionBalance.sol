@@ -201,4 +201,41 @@ library PositionBalanceLibrary {
             return uint128(PositionBalance.unwrap(self));
         }
     }
+
+    /// @notice Unpack all data from `self`.
+    /// @param self The PositionBalance to get all data from
+    /// @return currentTickAtMint currentTick at mint
+    /// @return fastOracleTickAtMint fast oracle tick at mint
+    /// @return slowOracleTickAtMint slow oracle tick at mint
+    /// @return lastObservedTickAtMint last observed tick at mint
+    /// @return utilization0AtMint utilization of token0 at mint
+    /// @return utilization1AtMint utilization of token1 at mint
+    /// @return positionSize size of the position
+    function unpackAll(
+        PositionBalance self
+    )
+        external
+        pure
+        returns (
+            int24 currentTickAtMint,
+            int24 fastOracleTickAtMint,
+            int24 slowOracleTickAtMint,
+            int24 lastObservedTickAtMint,
+            int256 utilization0AtMint,
+            int256 utilization1AtMint,
+            uint128 positionSize
+        )
+    {
+        (
+            currentTickAtMint,
+            fastOracleTickAtMint,
+            slowOracleTickAtMint,
+            lastObservedTickAtMint
+        ) = self.unpackTickData();
+
+        utilization0AtMint = self.utilization0();
+        utilization1AtMint = self.utilization1();
+
+        positionSize = self.positionSize();
+    }
 }
