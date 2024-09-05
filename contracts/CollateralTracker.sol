@@ -876,7 +876,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Decrease the share balance of a user by 2^248 - 1 without updating the total supply.
-    /// @dev Assumes that `delegatee` has >=(2**248 - 1) tokens, will revert otherwise.
+    /// @dev Assumes that `delegatee` has >=(2^248 - 1) tokens, will revert otherwise.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
     /// @param delegatee The account to decrease the balance of
     function revoke(address delegatee) external onlyPanopticPool {
