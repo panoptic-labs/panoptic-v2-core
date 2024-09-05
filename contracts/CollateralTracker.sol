@@ -894,7 +894,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int256 bonus
     ) external onlyPanopticPool {
         if (bonus < 0) {
-            uint256 bonusAbs = uint256(-bonus);
+            uint256 bonusAbs;
+
+            unchecked {
+                bonusAbs = uint256(-bonus);
+            }
 
             SafeTransferLib.safeTransferFrom(s_underlyingToken, liquidator, msg.sender, bonusAbs);
 
@@ -906,18 +910,26 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             if (type(uint248).max > liquidateeBalance) {
                 balanceOf[liquidatee] = 0;
-                totalSupply += type(uint248).max - liquidateeBalance;
+                unchecked {
+                    totalSupply += type(uint248).max - liquidateeBalance;
+                }
             } else {
-                balanceOf[liquidatee] -= type(uint248).max;
+                unchecked {
+                    balanceOf[liquidatee] = liquidateeBalance - type(uint248).max;
+                }
             }
         } else {
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
-                totalSupply += type(uint248).max - liquidateeBalance;
+                unchecked {
+                    totalSupply += type(uint248).max - liquidateeBalance;
+                }
                 balanceOf[liquidatee] = liquidateeBalance = 0;
             } else {
-                balanceOf[liquidatee] = liquidateeBalance -= type(uint248).max;
+                unchecked {
+                    balanceOf[liquidatee] = liquidateeBalance -= type(uint248).max;
+                }
             }
 
             // transfer the bonus to the liquidator
@@ -942,14 +954,16 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // N = (ZY - ZT) / (X - Z)
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
-                _mint(
-                    liquidator,
-                    Math.mulDiv(
-                        uint256(bonus),
-                        totalSupply - liquidateeBalance,
-                        uint256(Math.max(1, int256(totalAssets()) - bonus))
-                    ) - liquidateeBalance
-                );
+                unchecked {
+                    _mint(
+                        liquidator,
+                        Math.mulDiv(
+                            uint256(bonus),
+                            totalSupply - liquidateeBalance,
+                            uint256(Math.max(1, int256(totalAssets()) - bonus))
+                        ) - liquidateeBalance
+                    );
+                }
             }
             // if requested amount < delegatee balance, then just transfer shares back
             else {
