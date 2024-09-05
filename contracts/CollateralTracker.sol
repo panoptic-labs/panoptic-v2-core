@@ -18,7 +18,6 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
-import "forge-std/Test.sol";
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
 //
@@ -880,8 +879,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev This is controlled by the Panoptic Pool - not individual users.
     /// @param delegatee The account to decrease the balance of
     function revoke(address delegatee) external onlyPanopticPool {
-        console2.log("balanceOf[delegatee]: ", balanceOf[delegatee]);
-        console2.log("type(uint248).max: ", type(uint248).max);
         balanceOf[delegatee] -= type(uint248).max;
     }
 
