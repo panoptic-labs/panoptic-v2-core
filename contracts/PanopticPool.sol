@@ -657,9 +657,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint32 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         if (safeMode) {
-            unchecked {
-                return uint32(10_000) + uint32(10_000 << 16);
-            }
+            return uint32(10_000 + (10_000 << 16));
         } else {
             return poolUtilizations;
         }
@@ -1077,10 +1075,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
 
-        LeftRightSigned bonusAmounts = LeftRightSigned
-            .wrap(0)
-            .toRightSlot(int128(liquidationBonus0))
-            .toLeftSlot(int128(liquidationBonus1));
+        LeftRightSigned bonusAmounts = LeftRightSigned.wrap(int128(liquidationBonus0)).toLeftSlot(
+            int128(liquidationBonus1)
+        );
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
@@ -1598,10 +1595,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick,
                 1
             );
-            accumulatedPremium = LeftRightUnsigned
-                .wrap(0)
-                .toRightSlot(premiumAccumulator0)
-                .toLeftSlot(premiumAccumulator1);
+            accumulatedPremium = LeftRightUnsigned.wrap(premiumAccumulator0).toLeftSlot(
+                premiumAccumulator1
+            );
 
             // update the premium accumulator for the long position to the latest value
             // (the entire premia delta will be settled)
@@ -1692,8 +1688,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
 
                 s_options[msg.sender][tokenId][leg] = LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot(uint128(grossCurrent0))
+                    .wrap(uint128(grossCurrent0))
                     .toLeftSlot(uint128(grossCurrent1));
             }
 
@@ -1733,8 +1728,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // Ln = (CR + TL)/(T+R)
 
                     s_grossPremiumLast[chunkKey] = LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(
+                        .wrap(
                             uint128(
                                 (grossCurrent0 *
                                     positionLiquidity +
@@ -1782,8 +1776,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             return (
                 LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot(
+                    .wrap(
                         uint128(
                             Math.min(
                                 (uint256(premiumOwed.rightSlot()) * settledTokens.rightSlot()) /
@@ -1950,8 +1943,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // otherwise, we just reset grossPremiumLast to the current grossPremium
                     s_grossPremiumLast[chunkKey] = totalLiquidity != 0
                         ? LeftRightUnsigned
-                            .wrap(0)
-                            .toRightSlot(
+                            .wrap(
                                 uint128(
                                     uint256(
                                         Math.max(
@@ -1984,8 +1976,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 )
                             )
                         : LeftRightUnsigned
-                            .wrap(0)
-                            .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
+                            .wrap(uint128(premiumAccumulatorsByLeg[_leg][0]))
                             .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                 }
             }

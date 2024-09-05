@@ -889,10 +889,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             }
 
             // update the starting liquidity for this position for next time around
-            s_accountLiquidity[positionKey] = LeftRightUnsigned
-                .wrap(0)
-                .toLeftSlot(removedLiquidity)
-                .toRightSlot(updatedLiquidity);
+            s_accountLiquidity[positionKey] = LeftRightUnsigned.wrap(updatedLiquidity).toLeftSlot(
+                removedLiquidity
+            );
         }
 
         // track how much liquidity we need to collect from uniswap
@@ -1140,9 +1139,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             // CollectedOut is the amount of fees accumulated+collected (received - burnt)
             // That's because receivedAmount contains the burnt tokens and whatever amount of fees collected
-            collectedChunk = LeftRightUnsigned.wrap(0).toRightSlot(collected0).toLeftSlot(
-                collected1
-            );
+            collectedChunk = LeftRightUnsigned.wrap(collected0).toLeftSlot(collected1);
 
             // record the collected amounts in the s_accountPremiumOwed and s_accountPremiumGross accumulators
             _updateStoredPremia(positionKey, currentLiquidity, collectedChunk);
@@ -1210,10 +1207,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         .mulDiv(premium1X64_base, numerator, totalLiquidity)
                         .toUint128Capped();
 
-                    deltaPremiumOwed = LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(premium0X64_owed)
-                        .toLeftSlot(premium1X64_owed);
+                    deltaPremiumOwed = LeftRightUnsigned.wrap(premium0X64_owed).toLeftSlot(
+                        premium1X64_owed
+                    );
                 }
             }
 
@@ -1234,10 +1230,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
                         .toUint128Capped();
 
-                    deltaPremiumGross = LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(premium0X64_gross)
-                        .toLeftSlot(premium1X64_gross);
+                    deltaPremiumGross = LeftRightUnsigned.wrap(premium0X64_gross).toLeftSlot(
+                        premium1X64_gross
+                    );
                 }
             }
         }
