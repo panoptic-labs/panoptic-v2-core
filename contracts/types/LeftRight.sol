@@ -290,10 +290,10 @@ library LeftRightLibrary {
         bool l_Enabled = !(z_xL == type(uint128).max || z_yL == type(uint128).max);
 
         return (
-            LeftRightUnsigned.wrap(0).toRightSlot(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
+            LeftRightUnsigned.wrap(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
                 l_Enabled ? z_xL : x.leftSlot()
             ),
-            LeftRightUnsigned.wrap(0).toRightSlot(r_Enabled ? z_yR : y.rightSlot()).toLeftSlot(
+            LeftRightUnsigned.wrap(r_Enabled ? z_yR : y.rightSlot()).toLeftSlot(
                 l_Enabled ? z_yL : y.leftSlot()
             )
         );

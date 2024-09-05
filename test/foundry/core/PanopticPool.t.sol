@@ -4801,9 +4801,14 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             fastOracleTick,
-            0,
             $posIdLists[2]
         );
+
+        if (fastOracleTick > 0)
+            totalCollateralRequired0 = PanopticMath.convert1to0(
+                totalCollateralRequired0,
+                Math.getSqrtRatioAtTick(fastOracleTick)
+            );
 
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
@@ -5308,8 +5313,8 @@ contract PanopticPoolTest is PositionUtils {
 
             // compensate user for loss in value if chunk has lost money between current and median tick
             // note: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
-            exerciseFeeAmounts[0] += int256(medianValue0) - int256(currentValue0);
-            exerciseFeeAmounts[1] += int256(medianValue1) - int256(currentValue1);
+            exerciseFeeAmounts[0] += int256(currentValue0) - int256(medianValue0);
+            exerciseFeeAmounts[1] += int256(currentValue1) - int256(medianValue1);
         }
 
         // since the position is sufficiently OTM, the spread between value at current tick and median tick is 0
@@ -5681,9 +5686,14 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Bob,
             pp.getUniV3TWAP_(),
-            0,
             $posIdLists[0]
         );
+
+        if (pp.getUniV3TWAP_() > 0)
+            totalCollateralRequired0 = PanopticMath.convert1to0(
+                totalCollateralRequired0,
+                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+            );
 
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
@@ -5887,9 +5897,14 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             pp.getUniV3TWAP_(),
-            0,
             $posIdLists[3]
         );
+
+        if (pp.getUniV3TWAP_() > 0)
+            totalCollateralRequired0 = PanopticMath.convert1to0(
+                totalCollateralRequired0,
+                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+            );
 
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
@@ -6332,9 +6347,14 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             pp.getUniV3TWAP_(),
-            0,
             $posIdLists[1]
         );
+
+        if (pp.getUniV3TWAP_() > 0)
+            totalCollateralRequired0 = PanopticMath.convert1to0(
+                totalCollateralRequired0,
+                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+            );
 
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
@@ -6538,7 +6558,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 pp.getUniV3TWAP_(),
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -6549,7 +6568,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 currentTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -6559,7 +6577,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 fastOracleTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -6569,7 +6586,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 lastObservedTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -6919,9 +6935,14 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             pp.getUniV3TWAP_(),
-            0,
             $posIdLists[1]
         );
+
+        if (pp.getUniV3TWAP_() > 0)
+            totalCollateralRequired0 = PanopticMath.convert1to0(
+                totalCollateralRequired0,
+                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+            );
 
         uint256 totalCollateralB0 = bound(
             collateralBalanceSeed,
@@ -7109,7 +7130,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 pp.getUniV3TWAP_(),
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -7120,7 +7140,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 currentTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -7130,7 +7149,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 fastOracleTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -7140,7 +7158,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 lastObservedTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -7603,17 +7620,27 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             pp.getUniV3TWAP_(),
-            0,
             $posIdLists[1]
         );
+
+        if (pp.getUniV3TWAP_() > 0)
+            twapCollateralRequired0 = PanopticMath.convert1to0(
+                twapCollateralRequired0,
+                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+            );
 
         (, uint256 currentCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
             currentTick,
-            0,
             $posIdLists[1]
         );
+
+        if (currentTick > 0)
+            currentCollateralRequired0 = PanopticMath.convert1to0(
+                currentCollateralRequired0,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
 
         console2.log(
             "twapCollateralRequired0, currentCollateralRequired0",
@@ -7661,7 +7688,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 pp.getUniV3TWAP_(),
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 > newRequired0);
@@ -7672,7 +7698,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 currentTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 > newRequired0);
@@ -7682,7 +7707,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 fastOracleTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 > newRequired0);
@@ -7692,7 +7716,6 @@ contract PanopticPoolTest is PositionUtils {
                 pp,
                 Alice,
                 lastObservedTick,
-                0,
                 $posIdLists[1]
             );
             vm.assume(newBalance0 > newRequired0);
@@ -7701,7 +7724,13 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
-        vm.expectRevert(Errors.NotMarginCalled.selector);
-        pp.liquidate(Alice, $posIdLists[1]);
+        try pp.liquidate(Alice, $posIdLists[1]) {
+            assertFalse(true, "liquidation should have failed");
+        } catch (bytes memory reason) {
+            assertTrue(
+                bytes4(reason) == Errors.NotMarginCalled.selector ||
+                    bytes4(reason) == Errors.DivergentSolvencyCheck.selector
+            );
+        }
     }
 }

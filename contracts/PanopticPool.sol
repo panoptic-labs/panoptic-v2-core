@@ -657,7 +657,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint32 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
 
         if (safeMode) {
-            return uint32(10_000) + uint32(10_000 << 16);
+            return uint32(10_000 + (10_000 << 16));
         } else {
             return poolUtilizations;
         }
@@ -1054,10 +1054,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.settleLiquidation(msg.sender, liquidatee, liquidationBonus0);
         s_collateralToken1.settleLiquidation(msg.sender, liquidatee, liquidationBonus1);
 
-        LeftRightSigned bonusAmounts = LeftRightSigned
-            .wrap(0)
-            .toRightSlot(int128(liquidationBonus0))
-            .toLeftSlot(int128(liquidationBonus1));
+        LeftRightSigned bonusAmounts = LeftRightSigned.wrap(int128(liquidationBonus0)).toLeftSlot(
+            int128(liquidationBonus1)
+        );
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
@@ -1184,7 +1183,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 i; i < numberOfTicks; ) {
             unchecked {
                 solvent += (
-                    _checkCrossBalances(
+                    _isAccountSolvent(
                         account,
                         atTicks[i],
                         positionBalanceArray,
@@ -1208,7 +1207,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
     }
 
-    /// @notice Check whether a the balances of an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
+    /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer`/10_000 multiplied by the requirement of `positionBalanceArray`.
     /// @param account The account to check solvency for
     /// @param atTick The tick to check solvency at
     /// @param positionBalanceArray A list of balances and pool utilization for each position, of the form [[tokenId0, balances0], [tokenId1, balances1], ...]
@@ -1216,7 +1215,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param longPremium The total amount of premium owed by the long legs of `account`
     /// @param buffer The buffer to apply to the collateral requirement
     /// @return Whether the account is solvent at the given tick
-    function _checkCrossBalances(
+    function _isAccountSolvent(
         address account,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
@@ -1239,7 +1238,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             longPremium.leftSlot()
         );
 
-        (uint256 balanceCross, uint256 thresholdCross) = _getSolvencyBalances(
+        (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
             tokenData0,
             tokenData1,
             Math.getSqrtRatioAtTick(atTick)
@@ -1247,32 +1246,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         unchecked {
-            return balanceCross >= Math.unsafeDivRoundingUp(thresholdCross * buffer, 10_000);
-        }
-    }
-
-    /// @notice Get a cross-collateral balance and required threshold for a given set of token balances and collateral requirements.
-    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
-    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
-    /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
-    /// @return balanceCross The current cross-collateral balance of the option positions
-    /// @return thresholdCross The cross-collateral threshold balance under which the account is insolvent
-    function _getSolvencyBalances(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint160 sqrtPriceX96
-    ) internal pure returns (uint256 balanceCross, uint256 thresholdCross) {
-        unchecked {
-            // the cross-collateral balance, computed in terms of liquidity X*√P + Y/√P
-            // We use mulDiv to compute Y/√P + X*√P while correctly handling overflows, round down
-            balanceCross =
-                Math.mulDiv(uint256(tokenData1.rightSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96(tokenData0.rightSlot(), sqrtPriceX96);
-            // the amount of cross-collateral balance needed for the account to be solvent, computed in terms of liquidity
-            // overestimate by rounding up
-            thresholdCross =
-                Math.mulDivRoundingUp(uint256(tokenData1.leftSlot()), 2 ** 96, sqrtPriceX96) +
-                Math.mulDiv96RoundingUp(tokenData0.leftSlot(), sqrtPriceX96);
+            return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
         }
     }
 
@@ -1404,8 +1378,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Get the `tokenId` position data for `user`.
-    /// @param user The account to query
-    /// @param tokenId The tokenId for that account
+    /// @param user The account that owns `tokenId`
+    /// @param tokenId The position to query
     /// @return currentTickAtMint currentTick at mint
     /// @return fastOracleTickAtMint fast oracle tick at mint
     /// @return slowOracleTickAtMint slow oracle tick at mint
@@ -1429,19 +1403,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint128 positionSize
         )
     {
-        PositionBalance positionBalance = s_positionBalance[user][tokenId];
-
-        (
-            currentTickAtMint,
-            fastOracleTickAtMint,
-            slowOracleTickAtMint,
-            lastObservedTickAtMint
-        ) = positionBalance.unpackTickData();
-
-        utilization0AtMint = positionBalance.utilization0();
-        utilization1AtMint = positionBalance.utilization1();
-
-        positionSize = positionBalance.positionSize();
+        return s_positionBalance[user][tokenId].unpackAll();
     }
 
     /// @notice Get the oracle price used to check solvency in liquidations.
@@ -1604,10 +1566,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick,
                 1
             );
-            accumulatedPremium = LeftRightUnsigned
-                .wrap(0)
-                .toRightSlot(premiumAccumulator0)
-                .toLeftSlot(premiumAccumulator1);
+            accumulatedPremium = LeftRightUnsigned.wrap(premiumAccumulator0).toLeftSlot(
+                premiumAccumulator1
+            );
 
             // update the premium accumulator for the long position to the latest value
             // (the entire premia delta will be settled)
@@ -1698,8 +1659,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
 
                 s_options[msg.sender][tokenId][leg] = LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot(uint128(grossCurrent0))
+                    .wrap(uint128(grossCurrent0))
                     .toLeftSlot(uint128(grossCurrent1));
             }
 
@@ -1739,8 +1699,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // Ln = (CR + TL)/(T+R)
 
                     s_grossPremiumLast[chunkKey] = LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(
+                        .wrap(
                             uint128(
                                 (grossCurrent0 *
                                     positionLiquidity +
@@ -1788,8 +1747,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             return (
                 LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot(
+                    .wrap(
                         uint128(
                             Math.min(
                                 (uint256(premiumOwed.rightSlot()) * settledTokens.rightSlot()) /
@@ -1956,8 +1914,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     // otherwise, we just reset grossPremiumLast to the current grossPremium
                     s_grossPremiumLast[chunkKey] = totalLiquidity != 0
                         ? LeftRightUnsigned
-                            .wrap(0)
-                            .toRightSlot(
+                            .wrap(
                                 uint128(
                                     uint256(
                                         Math.max(
@@ -1990,8 +1947,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 )
                             )
                         : LeftRightUnsigned
-                            .wrap(0)
-                            .toRightSlot(uint128(premiumAccumulatorsByLeg[_leg][0]))
+                            .wrap(uint128(premiumAccumulatorsByLeg[_leg][0]))
                             .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                 }
             }

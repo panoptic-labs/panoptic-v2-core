@@ -723,13 +723,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     );
                 }
 
-                // compensate user for loss in value if chunk has lost money between current and median tick
-                // NOTE: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
+                // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
+                // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
+                // if the current price is moved downward such that some part of the chunk is between the current and market prices,
+                // the chunk composition will swap token1 for token0 at a price (token0/token1) more favorable than market (token1/token0),
+                // forcing the exercisee to provide more value in token0 than they would have provided in token1 at market, and vice versa.
+                // (the excess value provided by the exercisee could then be captured in a return swap across their newly added liquidity)
                 exerciseFees = exerciseFees.sub(
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(int128(uint128(oracleValue0)) - int128(uint128(currentValue0)))
-                        .toLeftSlot(int128(uint128(oracleValue1)) - int128(uint128(currentValue1)))
+                        .toRightSlot(int128(uint128(currentValue0)) - int128(uint128(oracleValue0)))
+                        .toLeftSlot(int128(uint128(currentValue1)) - int128(uint128(oracleValue1)))
                 );
             }
 
@@ -1145,8 +1149,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             return
                 LeftRightUnsigned
-                    .wrap(0)
-                    .toRightSlot((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
+                    .wrap((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
                     .toLeftSlot(
                         positionBalanceArray.length > 0
                             ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +

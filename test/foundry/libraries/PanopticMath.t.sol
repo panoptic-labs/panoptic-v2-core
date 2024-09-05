@@ -667,88 +667,6 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(twapTick, harness.twapFilter(selectedPool, twapWindow));
     }
 
-    function test_Success_convertCollateralData_Tick_tokenType0(
-        int256 atTickSeed,
-        uint128 balance0,
-        uint128 required0,
-        uint128 balance1,
-        uint128 required1
-    ) public {
-        int24 atTick = int24(bound(atTickSeed, TickMath.MIN_TICK, TickMath.MAX_TICK));
-        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(atTick);
-
-        (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
-            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
-            0,
-            sqrtPriceX96
-        );
-        assertEq(collateralBalance, balance0 + PanopticMath.convert1to0(balance1, sqrtPriceX96));
-        assertEq(requiredCollateral, required0 + PanopticMath.convert1to0(required1, sqrtPriceX96));
-    }
-
-    function test_Success_convertCollateralData_Tick_tokenType1(
-        int256 atTickSeed,
-        uint128 balance0,
-        uint128 required0,
-        uint128 balance1,
-        uint128 required1
-    ) public {
-        int24 atTick = int24(bound(atTickSeed, TickMath.MIN_TICK, TickMath.MAX_TICK));
-        uint160 sqrtPriceX96 = TickMath.getSqrtRatioAtTick(atTick);
-
-        (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
-            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
-            1,
-            sqrtPriceX96
-        );
-        assertEq(collateralBalance, balance1 + PanopticMath.convert0to1(balance0, sqrtPriceX96));
-        assertEq(requiredCollateral, required1 + PanopticMath.convert0to1(required0, sqrtPriceX96));
-    }
-
-    function test_Success_convertCollateralData_sqrtPrice_tokenType0(
-        uint256 sqrtPriceSeed,
-        uint128 balance0,
-        uint128 required0,
-        uint128 balance1,
-        uint128 required1
-    ) public {
-        uint160 sqrtPriceX96 = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO)
-        );
-
-        (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
-            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
-            0,
-            sqrtPriceX96
-        );
-        assertEq(collateralBalance, balance0 + PanopticMath.convert1to0(balance1, sqrtPriceX96));
-        assertEq(requiredCollateral, required0 + PanopticMath.convert1to0(required1, sqrtPriceX96));
-    }
-
-    function test_Success_convertCollateralData_sqrtPrice_tokenType1(
-        uint256 sqrtPriceSeed,
-        uint128 balance0,
-        uint128 required0,
-        uint128 balance1,
-        uint128 required1
-    ) public {
-        uint160 sqrtPriceX96 = uint160(
-            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO)
-        );
-
-        (uint256 collateralBalance, uint256 requiredCollateral) = harness.convertCollateralData(
-            LeftRightUnsigned.wrap(0).toRightSlot(balance0).toLeftSlot(required0),
-            LeftRightUnsigned.wrap(0).toRightSlot(balance1).toLeftSlot(required1),
-            1,
-            sqrtPriceX96
-        );
-        assertEq(collateralBalance, balance1 + PanopticMath.convert0to1(balance0, sqrtPriceX96));
-        assertEq(requiredCollateral, required1 + PanopticMath.convert0to1(required0, sqrtPriceX96));
-    }
-
     function test_Success_convert0to1_PriceX192_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
@@ -790,6 +708,54 @@ contract PanopticMathTest is Test, PositionUtils {
 
         vm.expectRevert();
         harness.convert0to1(amount, sqrtPrice);
+    }
+
+    function test_Success_convert0to1RoundingUp_PriceX192_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does not overflow
+        unchecked {
+            uint256 mm = mulmod(priceX192, amount, type(uint256).max);
+            uint256 prod0 = priceX192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < 2 ** 192);
+            uint256 nr_res = FullMath.mulDiv(amount, priceX192, 2 ** 192);
+            vm.assume(nr_res < type(uint256).max || mulmod(amount, priceX192, 2 ** 192) == 0);
+        }
+
+        assertEq(
+            harness.convert0to1RoundingUp(amount, sqrtPrice),
+            FullMath.mulDivRoundingUp(amount, priceX192, 2 ** 192)
+        );
+    }
+
+    function test_Fail_convert0to1RoundingUp_PriceX192_Uint_overflow(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does overflow
+        unchecked {
+            uint256 mm = mulmod(priceX192, amount, type(uint256).max);
+            uint256 prod0 = priceX192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) >= 2 ** 192);
+        }
+
+        vm.expectRevert();
+        harness.convert0to1RoundingUp(amount, sqrtPrice);
     }
 
     function test_Success_convert0to1_PriceX192_Int(int256 amount, uint256 sqrtPriceSeed) public {
@@ -905,6 +871,54 @@ contract PanopticMathTest is Test, PositionUtils {
 
         vm.expectRevert();
         harness.convert1to0(amount, sqrtPrice);
+    }
+
+    function test_Success_convert1to0RoundingUp_PriceX192_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does not overflow
+        unchecked {
+            uint256 mm = mulmod(amount, 2 ** 192, type(uint256).max);
+            uint256 prod0 = 2 ** 192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) < priceX192);
+            uint256 nr_res = FullMath.mulDiv(amount, 2 ** 192, priceX192);
+            vm.assume(nr_res < type(uint256).max || mulmod(amount, 2 ** 192, priceX192) == 0);
+        }
+
+        assertEq(
+            harness.convert1to0RoundingUp(amount, sqrtPrice),
+            FullMath.mulDivRoundingUp(amount, 2 ** 192, priceX192)
+        );
+    }
+
+    function test_Fail_convert1to0RoundingUp_PriceX192_Uint_overflow(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public {
+        // above this tick we use 128-bit precision because of overflow issues
+        uint160 sqrtPrice = uint160(
+            bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
+        );
+
+        uint256 priceX192 = uint256(sqrtPrice) ** 2;
+
+        // make sure the final result does overflow
+        unchecked {
+            uint256 mm = mulmod(amount, 2 ** 192, type(uint256).max);
+            uint256 prod0 = 2 ** 192 * amount;
+            vm.assume((mm - prod0) - (mm < prod0 ? 1 : 0) >= priceX192);
+        }
+
+        vm.expectRevert();
+        harness.convert1to0RoundingUp(amount, sqrtPrice);
     }
 
     function test_Success_convert1to0_PriceX192_Int(int256 amount, uint256 sqrtPriceSeed) public {

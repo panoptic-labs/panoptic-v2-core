@@ -99,28 +99,6 @@ contract PanopticMathHarness is Test {
         return lastMedianObservation;
     }
 
-    function convertCollateralData(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint256 tokenType,
-        int24 tick
-    ) public pure returns (uint256, uint256) {
-        (uint256 collateralBalance, uint256 requiredCollateral) = PanopticMath
-            .convertCollateralData(tokenData0, tokenData1, tokenType, tick);
-        return (collateralBalance, requiredCollateral);
-    }
-
-    function convertCollateralData(
-        LeftRightUnsigned tokenData0,
-        LeftRightUnsigned tokenData1,
-        uint256 tokenType,
-        uint160 sqrtPriceX96
-    ) public pure returns (uint256, uint256) {
-        (uint256 collateralBalance, uint256 requiredCollateral) = PanopticMath
-            .convertCollateralData(tokenData0, tokenData1, tokenType, sqrtPriceX96);
-        return (collateralBalance, requiredCollateral);
-    }
-
     function _getAmountsMoved(
         TokenId tokenId,
         uint128 positionSize,
@@ -184,6 +162,14 @@ contract PanopticMathHarness is Test {
         return result;
     }
 
+    function convert0to1RoundingUp(
+        uint256 amount,
+        uint160 sqrtPriceX96
+    ) public pure returns (uint256) {
+        uint256 result = PanopticMath.convert0to1RoundingUp(amount, sqrtPriceX96);
+        return result;
+    }
+
     function convert0to1(int256 amount, uint160 sqrtPriceX96) public pure returns (int256) {
         int256 result = PanopticMath.convert0to1(amount, sqrtPriceX96);
         return result;
@@ -191,6 +177,14 @@ contract PanopticMathHarness is Test {
 
     function convert1to0(uint256 amount, uint160 sqrtPriceX96) public pure returns (uint256) {
         uint256 result = PanopticMath.convert1to0(amount, sqrtPriceX96);
+        return result;
+    }
+
+    function convert1to0RoundingUp(
+        uint256 amount,
+        uint160 sqrtPriceX96
+    ) public pure returns (uint256) {
+        uint256 result = PanopticMath.convert1to0RoundingUp(amount, sqrtPriceX96);
         return result;
     }
 
