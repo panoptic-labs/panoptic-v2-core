@@ -3773,8 +3773,9 @@ contract Misctest is Test, PositionUtils {
 
             // amount of other token when deep ITM
             // uint256 amountITM;
-            (, , util) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
+            (, , uint256 _utilization) = tokenType == 0 ? ct0.getPoolData() : ct1.getPoolData();
 
+            util = int256(_utilization);
             amountsMoved = PanopticMath.getAmountsMoved(tokenId, 3000, 0);
             (amountBorrowed, amountITM) = tokenType == 0
                 ? (amountsMoved.rightSlot(), amountsMoved.leftSlot())
@@ -3861,8 +3862,6 @@ contract Misctest is Test, PositionUtils {
 
         // L = 1
         uniPool.liquidity();
-
-        /// @dev single leg, wide atm call, liquidation through price move making options ITM, no-cross collateral
 
         uint256 asset = 0;
         uint256 tokenType = 0;

@@ -13,6 +13,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId, TokenIdLibrary} from "@types/TokenId.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 
 /// @title Utility contract for token ID construction and advanced queries.
 /// @author Axicon Labs Limited
@@ -147,7 +148,7 @@ contract PanopticHelper {
         PanopticPool pool,
         address account,
         TokenId tokenId
-    ) external view returns (uint128, uint64, uint64) {
+    ) external view returns (uint128, uint16, uint16) {
         TokenId[] memory tokenIdList = new TokenId[](1);
         tokenIdList[0] = tokenId;
 
@@ -157,14 +158,12 @@ contract PanopticHelper {
             tokenIdList
         );
 
-        LeftRightUnsigned balanceAndUtilization = LeftRightUnsigned.wrap(
-            positionBalanceArray[0][1]
-        );
+        PositionBalance balanceAndUtilization = PositionBalance.wrap(positionBalanceArray[0][1]);
 
         return (
-            balanceAndUtilization.rightSlot(),
-            uint64(balanceAndUtilization.leftSlot()),
-            uint64(balanceAndUtilization.leftSlot() >> 64)
+            balanceAndUtilization.positionSize(),
+            uint16(balanceAndUtilization.utilizations()),
+            uint16(balanceAndUtilization.utilizations() >> 16)
         );
     }
 

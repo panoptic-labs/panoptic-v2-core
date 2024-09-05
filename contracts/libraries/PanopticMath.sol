@@ -693,7 +693,7 @@ library PanopticMath {
             amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
         }
 
-        return LeftRightUnsigned.wrap(0).toRightSlot(amount0).toLeftSlot(amount1);
+        return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);
     }
 
     /// @notice Compute the amount of funds that are moved to and removed from the Panoptic Pool.
@@ -1009,9 +1009,7 @@ library PanopticMath {
                         );
 
                         _settledTokens[chunkKey] = _settledTokens[chunkKey].add(
-                            LeftRightUnsigned.wrap(0).toRightSlot(uint128(settled0)).toLeftSlot(
-                                uint128(settled1)
-                            )
+                            LeftRightUnsigned.wrap(uint128(settled0)).toLeftSlot(uint128(settled1))
                         );
                     }
                 }
