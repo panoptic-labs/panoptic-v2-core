@@ -249,11 +249,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        token0.mint(Alice, type(uint104).max);
-        token1.mint(Alice, type(uint104).max);
+        token0.mint(Alice, uint256(type(uint104).max) * 2);
+        token1.mint(Alice, uint256(type(uint104).max) * 2);
 
-        token0.approve(address(ct0), type(uint104).max);
-        token1.approve(address(ct1), type(uint104).max);
+        ct0 = pp.collateralToken0();
+        ct1 = pp.collateralToken1();
+
+        token0.approve(address(ct0), type(uint256).max);
+        token1.approve(address(ct1), type(uint256).max);
 
         ct0.deposit(type(uint104).max, Alice);
         ct1.deposit(type(uint104).max, Alice);
@@ -2412,16 +2415,13 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        // deal alice a bunch of collateral tokens without touching the supply
-        editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
-        editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+        deal(ct0.asset(), Alice, 1_000_000);
+        deal(ct1.asset(), Alice, 1_000_000);
 
-        pp.liquidate(
-            new TokenId[](0),
-            Bob,
-            LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
-            $posIdList
-        );
+        IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
+
+        pp.liquidate(Bob, $posIdList);
 
         (uint256 after0, uint256 after1) = (
             ct0.convertToAssets(ct0.balanceOf(Bob)),
@@ -2582,16 +2582,13 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        // deal alice a bunch of collateral tokens without touching the supply
-        editCollateral(ct0, Alice, ct0.convertToShares(type(uint120).max));
-        editCollateral(ct1, Alice, ct1.convertToShares(type(uint120).max));
+        deal(ct0.asset(), Alice, 1_000_000);
+        deal(ct1.asset(), Alice, 1_000_000);
 
-        pp.liquidate(
-            new TokenId[](0),
-            Bob,
-            LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
-            $posIdList
-        );
+        IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
+        IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
+
+        pp.liquidate(Bob, $posIdList);
 
         (uint256 after0, uint256 after1) = (
             ct0.convertToAssets(ct0.balanceOf(Bob)),
@@ -3922,12 +3919,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint120).max - 1).toLeftSlot(type(uint120).max - 1),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4208,12 +4200,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
-        pp.liquidate(
-            new TokenId[](0),
-            Bob,
-            LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-            posIdList
-        );
+        pp.liquidate(Bob, posIdList);
     }
 
     function test_success_liquidation_currentTick_bonusOptimization_scenarios() public {
@@ -4317,12 +4304,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) + t));
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             unchecked {
                 if (
@@ -4428,12 +4410,7 @@ contract Misctest is Test, PositionUtils {
             vm.startPrank(Alice);
             console2.log("");
             console2.log("no-cross collateral", i);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4514,12 +4491,7 @@ contract Misctest is Test, PositionUtils {
             vm.startPrank(Alice);
             console2.log("");
             console2.log("cross collateral", i);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4615,12 +4587,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4713,12 +4680,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4812,12 +4774,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Alice);
 
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4904,12 +4861,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("no cross collateral", i);
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4992,12 +4944,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("");
             console2.log("cross collateral", i);
 
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5090,12 +5037,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5184,12 +5126,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5278,12 +5215,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
             vm.revertTo(snapshot);
         }
 
@@ -5400,12 +5332,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5522,12 +5449,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5644,12 +5566,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(
-                new TokenId[](0),
-                Bob,
-                LeftRightUnsigned.wrap(type(uint96).max).toLeftSlot(type(uint96).max),
-                posIdList
-            );
+            pp.liquidate(Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
