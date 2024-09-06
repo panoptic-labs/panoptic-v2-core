@@ -922,15 +922,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
     /// @param liquidatee Address of the distressed account
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...]
-    function liquidate(address liquidatee, TokenId[] calldata positionIdList) external {
+    function liquidate(
+        address liquidatee,
+        TokenId[] calldata positionIdList,
+        TokenId[] calldata positionIdListLiquidator
+    ) external {
         _validatePositionList(liquidatee, positionIdList, 0);
 
-        // Assert the account we are liquidating is actually insolvent
-        int24 twapTick = getUniV3TWAP();
+        int24[] memory atTicks = new int24[](4);
 
-        int24 currentTick;
+        // Assert the account we are liquidating is actually insolvent
         {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            int24 twapTick = getUniV3TWAP();
+            int24 currentTick;
             int24 fastOracleTick;
             int24 lastObservedTick;
             (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
@@ -945,7 +950,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // Ensure the account is insolvent at twapTick, currentTick, and fastOracleTick
             // do not check slowOracleTick because slow oracle is covered by twapTick
-            int24[] memory atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
             atTicks[1] = twapTick;
             atTicks[2] = lastObservedTick;
@@ -959,6 +963,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned shortPremium;
 
         {
+            int24 _twapTick = atTicks[1];
+            int24 _currentTick = atTicks[3];
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             LeftRightUnsigned longPremium;
             (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
@@ -966,12 +972,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList,
                 COMPUTE_ALL_PREMIA,
                 ONLY_AVAILABLE_PREMIUM,
-                currentTick
+                _currentTick
             );
 
             tokenData0 = s_collateralToken0.getAccountMarginDetails(
                 liquidatee,
-                twapTick,
+                _twapTick,
                 positionBalanceArray,
                 shortPremium.rightSlot(),
                 longPremium.rightSlot()
@@ -979,7 +985,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             tokenData1 = s_collateralToken1.getAccountMarginDetails(
                 liquidatee,
-                twapTick,
+                _twapTick,
                 positionBalanceArray,
                 shortPremium.leftSlot(),
                 longPremium.leftSlot()
@@ -990,8 +996,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.delegate(liquidatee);
         s_collateralToken1.delegate(liquidatee);
 
-        int256 liquidationBonus0;
-        int256 liquidationBonus1;
+        LeftRightSigned bonusAmounts;
+        //int256 liquidationBonus0;
+        //int256 liquidationBonus1;
         {
             LeftRightSigned netPaid;
             LeftRightSigned[4][] memory premiasByLeg;
@@ -1008,16 +1015,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList
             );
 
+            int24 _twapTick = atTicks[1];
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
-            (liquidationBonus0, liquidationBonus1, collateralRemaining) = PanopticMath
-                .getLiquidationBonus(
-                    tokenData0,
-                    tokenData1,
-                    Math.getSqrtRatioAtTick(twapTick),
-                    netPaid,
-                    shortPremium
-                );
+            (bonusAmounts, collateralRemaining) = PanopticMath.getLiquidationBonus(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(_twapTick),
+                netPaid,
+                shortPremium
+            );
 
             // premia cannot be paid if there is protocol loss associated with the liquidatee
             // otherwise, an economic exploit could occur if the liquidator and liquidatee collude to
@@ -1027,13 +1034,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
 
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
-            // reusing variables to save stack space; netExchanged = deltaBonus0, premia = deltaBonus1
+            // reusing variables to save stack space; netExchanged = bonusDelta0, premia = bonusDelta1
             address _liquidatee = liquidatee;
-            int24 _twapTick = twapTick;
             TokenId[] memory _positionIdList = positionIdList;
-            int256 deltaBonus0;
-            int256 deltaBonus1;
-            (deltaBonus0, deltaBonus1) = PanopticMath.haircutPremia(
+            LeftRightSigned bonusDeltas;
+            bonusDeltas = PanopticMath.haircutPremia(
                 _liquidatee,
                 _positionIdList,
                 premiasByLeg,
@@ -1044,19 +1049,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 s_settledTokens
             );
 
-            unchecked {
-                liquidationBonus0 += deltaBonus0;
-                liquidationBonus1 += deltaBonus1;
-            }
+            bonusAmounts = bonusAmounts.add(bonusDeltas);
         }
 
         // revoke the delegated amount plus the bonus amount.
-        s_collateralToken0.settleLiquidation(msg.sender, liquidatee, liquidationBonus0);
-        s_collateralToken1.settleLiquidation(msg.sender, liquidatee, liquidationBonus1);
+        s_collateralToken0.settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
+        s_collateralToken1.settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
-        LeftRightSigned bonusAmounts = LeftRightSigned.wrap(int128(liquidationBonus0)).toLeftSlot(
-            int128(liquidationBonus1)
-        );
+        // ensure the liquidator is still solvent after the liquidation
+        _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
+
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 

@@ -742,8 +742,7 @@ library PanopticMath {
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
-    /// @return bonus0 Bonus amount for token0
-    /// @return bonus1 Bonus amount for token1
+    /// @return The LeftRight-packed protocol loss for both bonuses
     /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's balance and expended tokens
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
@@ -751,7 +750,9 @@ library PanopticMath {
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium
-    ) external pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
+    ) external pure returns (LeftRightSigned, LeftRightSigned) {
+        int256 bonus0;
+        int256 bonus1;
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
@@ -857,8 +858,7 @@ library PanopticMath {
             paid0 = bonus0 + int256(netPaid.rightSlot());
             paid1 = bonus1 + int256(netPaid.leftSlot());
             return (
-                bonus0,
-                bonus1,
+                LeftRightSigned.wrap(0).toRightSlot(int128(bonus0)).toLeftSlot(int128(bonus1)),
                 LeftRightSigned.wrap(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(
                     int128(balance1 - paid1)
                 )
@@ -876,8 +876,7 @@ library PanopticMath {
     /// @param collateral0 The collateral tracker for token0
     /// @param collateral1 The collateral tracker for token1
     /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
-    /// @return The delta in bonus0 for the liquidator post-haircut
-    /// @return The delta in bonus1 for the liquidator post-haircut
+    /// @return The delta in bonus0 and bonus1 for the liquidator post-haircut
     function haircutPremia(
         address liquidatee,
         TokenId[] memory positionIdList,
@@ -887,7 +886,7 @@ library PanopticMath {
         CollateralTracker collateral1,
         uint160 atSqrtPriceX96,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
-    ) external returns (int256, int256) {
+    ) external returns (LeftRightSigned) {
         unchecked {
             // get the amount of premium paid by the liquidatee
             LeftRightSigned longPremium;
@@ -1015,7 +1014,10 @@ library PanopticMath {
                 }
             }
 
-            return (collateralDelta0, collateralDelta1);
+            return
+                LeftRightSigned.wrap(0).toRightSlot(int128(collateralDelta0)).toLeftSlot(
+                    int128(collateralDelta1)
+                );
         }
     }
 
