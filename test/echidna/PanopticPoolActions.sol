@@ -1520,9 +1520,9 @@ contract PanopticPoolActions is CollateralActions {
                 }
 
                 hevm.prank(address(panopticPool));
-                collToken0.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+                collToken0.increaseBalanceByAssets(msg.sender, (2 ** 104 - 1) * 10_000);
                 hevm.prank(address(panopticPool));
-                collToken1.delegate(msg.sender, (2 ** 104 - 1) * 10_000);
+                collToken1.increaseBalanceByAssets(msg.sender, (2 ** 104 - 1) * 10_000);
 
                 $balance0Origin = int256(collToken0.balanceOf(msg.sender));
                 $balance1Origin = int256(collToken1.balanceOf(msg.sender));
@@ -1707,11 +1707,7 @@ contract PanopticPoolActions is CollateralActions {
     /// @custom:property PANO-LIQ-001 The position to liquidate must have a balance below the threshold
     /// @custom:property PANO-LIQ-002 After liquidation, user must have zero open positions
     /// @custom:precondition The liquidatee has a liquidatable position open
-    function try_liquidate_option(
-        uint256 i_liquidated,
-        uint256 delegated0,
-        uint256 delegated1
-    ) public canonicalTimeState {
+    function try_liquidate_option(uint256 i_liquidated) public canonicalTimeState {
         i_liquidated = bound(i_liquidated, 0, actors.length - 1);
         address liquidatee = actors[i_liquidated];
         address liquidator = msg.sender;
@@ -1751,45 +1747,24 @@ contract PanopticPoolActions is CollateralActions {
         $colTicks[2] = TWAPtick;
         _write_liquidation_solvency_revert(liquidatee);
 
-        LeftRightUnsigned delegations = LeftRightUnsigned
-            .wrap(
-                uint128(
-                    bound(
-                        delegated0,
-                        0,
-                        collToken0.convertToAssets(collToken0.balanceOf(liquidator))
-                    )
-                )
-            )
-            .toLeftSlot(
-                uint128(
-                    bound(
-                        delegated1,
-                        0,
-                        collToken1.convertToAssets(collToken1.balanceOf(liquidator))
-                    )
-                )
-            );
-
         _calculate_margins_and_premia(liquidatee, TWAPtick);
 
         liqResults.sharesD0 = int256(collToken0.balanceOf(liquidatee));
         liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
 
         emit LogBool("revert due to non-burn simulation", $shouldRevert);
-        _execute_burn_simulation(liquidatee, liquidator, delegations);
+        _execute_burn_simulation(liquidatee);
         emit LogBool("revert due to burn simulation", $shouldRevert);
 
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
         $totalSupply0 = collToken0.totalSupply();
         $totalSupply1 = collToken1.totalSupply();
 
-        $undelegatedShares0 =
-            collToken0.balanceOf(liquidator) -
-            collToken0.convertToShares(delegations.rightSlot());
-        $undelegatedShares1 =
-            collToken1.balanceOf(liquidator) -
-            collToken1.convertToShares(delegations.leftSlot());
+        $TSSubliquidateeBalancePre0 = $totalSupply0 - collToken0.balanceOf(liquidatee);
+        $TSSubliquidateeBalancePre1 = $totalSupply1 - collToken1.balanceOf(liquidatee);
+
+        $undelegatedShares0 = collToken0.balanceOf(liquidator);
+        $undelegatedShares1 = collToken1.balanceOf(liquidator);
 
         $undelegatedValue0T =
             collToken0.convertToAssets($undelegatedShares0) +
@@ -1817,39 +1792,24 @@ contract PanopticPoolActions is CollateralActions {
         emit LogUint256("liquidator balance pre-liq 1", collToken1.balanceOf(liquidator));
 
         hevm.prank(liquidator);
-        try
-            panopticPool.liquidate(
-                liquidator_positions,
-                liquidatee,
-                delegations,
-                liquidated_positions
-            )
-        {
+        try panopticPool.liquidate(liquidatee, liquidated_positions) {
             assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
             if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
 
-            // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
-            if (
-                keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
-                bytes4(reason) == Errors.AccountInsolvent.selector ||
-                bytes4(reason) == Errors.DivergentSolvencyCheck.selector
-            ) {
-                collToken0.credit(msg.sender, (2 ** 104 - 1) * 10_000);
-                collToken1.credit(msg.sender, (2 ** 104 - 1) * 10_000);
+            // check if the revert is due to an insufficient amount of underlying from the liquidator
+            if (bytes4(reason) == Errors.TransferFailed.selector) {
+                deal_USDC(liquidator, (2 ** 104 - 1) * 10_000);
+                deal_WETH(liquidator, (2 ** 104 - 1) * 10_000);
+
+                hevm.prank(liquidator);
+                IERC20(token0).approve(address(collToken0), (2 ** 104 - 1) * 10_000);
+                hevm.prank(liquidator);
+                IERC20(token1).approve(address(collToken1), (2 ** 104 - 1) * 10_000);
 
                 hevm.prank(msg.sender);
-                try
-                    panopticPool.liquidate(
-                        liquidator_positions,
-                        liquidatee,
-                        LeftRightUnsigned.wrap((2 ** 104 - 1) * 10_000).toLeftSlot(
-                            (2 ** 104 - 1) * 10_000
-                        ),
-                        liquidated_positions
-                    )
-                {
+                try panopticPool.liquidate(liquidatee, liquidated_positions) {
                     assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
                     revert();
                 } catch (bytes memory _reason) {
@@ -1906,7 +1866,7 @@ contract PanopticPoolActions is CollateralActions {
 
         _calculate_bonus(TWAPtick);
         _calculate_protocol_loss_0(TWAPtick);
-        _calculate_protocol_loss_expected_0(TWAPtick, delegations);
+        _calculate_protocol_loss_expected_0(TWAPtick);
 
         bytes memory settledLiq;
         (liqResults.settledTokens0, settledLiq) = _calculate_settled_tokens(
@@ -1998,16 +1958,30 @@ contract PanopticPoolActions is CollateralActions {
         );
         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
+        uint256 ts0PostCorrection = burnSimResults.totalSupply0 +
+            uint256(Math.max(0, int256(2 ** 248 - 1) - int256(burnSimResults.delegateeBalance0)));
+        uint256 ts1PostCorrection = burnSimResults.totalSupply1 +
+            uint256(Math.max(0, int256(2 ** 248 - 1) - int256(burnSimResults.delegateeBalance1)));
+        burnSimResults.delegateeBalance0 = uint256(
+            Math.max(0, int256(burnSimResults.delegateeBalance0) - int256(2 ** 248 - 1))
+        );
+        burnSimResults.delegateeBalance1 = uint256(
+            Math.max(0, int256(burnSimResults.delegateeBalance1) - int256(2 ** 248 - 1))
+        );
         // if protocol loss exceeds total assets the full bonus cannot be distributed to the liquidator and they can be left at a loss
         if (
             !(collToken0.totalSupply() /
-                (burnSimResults.totalSupply0 - burnSimResults.delegateeBalance0) +
+                (ts0PostCorrection - burnSimResults.delegateeBalance0) +
                 burnSimResults.delegateeBalance0 >=
                 collToken0.totalAssets() ||
+                int256(collToken0.totalSupply()) - int256(ts0PostCorrection) ==
+                int256(ts0PostCorrection * 10_000) ||
                 collToken1.totalSupply() /
-                    (burnSimResults.totalSupply1 - burnSimResults.delegateeBalance1) +
+                    (ts1PostCorrection - burnSimResults.delegateeBalance1) +
                     burnSimResults.delegateeBalance1 >=
-                collToken1.totalAssets())
+                collToken1.totalAssets() ||
+                int256(collToken1.totalSupply()) - int256(ts1PostCorrection) ==
+                int256(ts1PostCorrection * 10_000))
         ) {
             assertLte(
                 abs(

@@ -105,6 +105,9 @@ contract EchidnaWrapper is PanopticPoolActions {
         poolTickSpacing = pool.tickSpacing();
         sfpmTickSpacing = poolTickSpacing;
 
+        token0 = pool.token0();
+        token1 = pool.token1();
+
         assert(pool.token0() == address(USDC));
         assert(pool.token1() == address(WETH));
 

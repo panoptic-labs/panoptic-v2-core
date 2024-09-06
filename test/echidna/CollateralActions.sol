@@ -727,13 +727,13 @@ contract CollateralActions is SFPMActions {
         public
         canonicalTimeState
     {
-        (, , int256 collToken0PU) = collToken0.getPoolData();
+        (, , uint256 collToken0PU) = collToken0.getPoolData();
         assertWithMsg(
             collToken0PU <= 10000,
             "collToken0 pool utilisation exceeded 10k bps <=> 100%"
         );
 
-        (, , int256 collToken1PU) = collToken1.getPoolData();
+        (, , uint256 collToken1PU) = collToken1.getPoolData();
         assertWithMsg(
             collToken1PU <= 10000,
             "collToken1 pool utilisation exceeded 10k bps <=> 100%"
@@ -948,7 +948,7 @@ contract CollateralActions is SFPMActions {
             }
         } catch {
             hevm.prank(address(panopticPool));
-            collToken.revoke(owner, expectedSharesBurnt);
+            collToken.decreaseBalance(owner, expectedSharesBurnt);
 
             try panopticPool.validateCollateralWithdrawable(owner, ownersOpenPositions) {
                 assertWithMsg(

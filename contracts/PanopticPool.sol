@@ -778,7 +778,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256) {
+    ) internal returns (uint256) {
         (
             int24 currentTick,
             int24 fastOracleTick,
@@ -809,7 +809,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint96 tickData,
         uint256 buffer
-    ) internal view {
+    ) internal {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -1165,7 +1165,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 currentTick,
         int24[] memory atTicks,
         uint256 buffer
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -1224,7 +1224,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned longPremium,
         uint256 buffer
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         LeftRightUnsigned tokenData0 = s_collateralToken0.getAccountMarginDetails(
             account,
             atTick,

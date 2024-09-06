@@ -643,7 +643,6 @@ contract SFPMActions is GeneralActions {
     }
 
     function mint_option_SFPM_multiLong(
-        uint8 numLegs,
         uint128 positionSize,
         bool swapAtMint
     ) public canonicalTimeState {
@@ -2629,7 +2628,6 @@ contract SFPMActions is GeneralActions {
 
     // attempt to purchase more liquidity than exists at the chunk
     function assertion_invariant_mint_option_SFPM_NotEnoughLiquidity(
-        uint256 minter_index,
         bool asset,
         bool is_call,
         bool is_otm,
@@ -3939,7 +3937,7 @@ contract SFPMActions is GeneralActions {
         uint256 ts_,
         int24 _currentTick,
         int24 _width
-    ) internal returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
+    ) internal pure returns (int24 strikeOffset, int24 minTick, int24 maxTick) {
         int256 ts = int256(ts_);
 
         strikeOffset = int24(_width % 2 == 0 ? int256(0) : ts / 2);
@@ -4084,7 +4082,7 @@ contract SFPMActions is GeneralActions {
         int256 _strikeSeed,
         uint256 ts_,
         int24 _currentTick
-    ) internal returns (int24 width, int24 strike) {
+    ) internal pure returns (int24 width, int24 strike) {
         int256 ts = int256(ts_);
 
         width = ts == 1
