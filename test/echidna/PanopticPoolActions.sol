@@ -385,7 +385,7 @@ contract PanopticPoolActions is CollateralActions {
                     TokenId.unwrap($tokenIdActive),
                     LeftRightUnsigned.unwrap(
                         LeftRightUnsigned.wrap(0).toRightSlot($positionSizeActive).toLeftSlot(
-                            uint128($poolUtil0 + uint128($poolUtil1 << 64))
+                            uint128(uint32($poolUtil0) + uint32($poolUtil1 << 16))
                         )
                     )
                 ]

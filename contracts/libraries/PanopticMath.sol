@@ -1032,7 +1032,7 @@ library PanopticMath {
         int24 atTick,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) external view returns (LeftRightSigned) {
+    ) internal view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)

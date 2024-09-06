@@ -214,7 +214,7 @@ library PositionBalanceLibrary {
     function unpackAll(
         PositionBalance self
     )
-        external
+        internal
         pure
         returns (
             int24 currentTickAtMint,

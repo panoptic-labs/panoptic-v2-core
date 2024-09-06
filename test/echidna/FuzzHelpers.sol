@@ -200,8 +200,7 @@ contract PanopticPoolWrapper is PanopticPool {
             );
     }
 
-    // return premiaByLeg
-    function burnAllOptionsFrom(
+    function burnAllOptionsFrom_noCommit(
         TokenId[] calldata positionIdList,
         int24 tickLimitLow,
         int24 tickLimitHigh
@@ -214,6 +213,25 @@ contract PanopticPoolWrapper is PanopticPool {
                 tickLimitLow,
                 tickLimitHigh,
                 DONOT_COMMIT_LONG_SETTLED,
+                positionIdList
+            );
+
+        return (premiasByLeg, netExchanged);
+    }
+
+    function burnAllOptionsFrom_commit(
+        TokenId[] calldata positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh
+    ) external returns (LeftRightSigned[4][] memory, LeftRightSigned) {
+        (
+            LeftRightSigned netExchanged,
+            LeftRightSigned[4][] memory premiasByLeg
+        ) = _burnAllOptionsFrom(
+                msg.sender,
+                tickLimitLow,
+                tickLimitHigh,
+                COMMIT_LONG_SETTLED,
                 positionIdList
             );
 
@@ -1738,9 +1756,8 @@ contract FuzzHelpers is PropertiesAsserts {
 
         hevm.prank(who);
         try
-            panopticPool.burnOptions(
+            panopticPool.burnAllOptionsFrom_commit(
                 userPositions[who],
-                new TokenId[](0),
                 type(int24).min,
                 type(int24).max
             )
@@ -1782,7 +1799,11 @@ contract FuzzHelpers is PropertiesAsserts {
         $shouldBurnRevert = false;
         hevm.prank(who);
         try
-            panopticPool.burnAllOptionsFrom(userPositions[who], type(int24).min, type(int24).max)
+            panopticPool.burnAllOptionsFrom_noCommit(
+                userPositions[who],
+                type(int24).min,
+                type(int24).max
+            )
         returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
             premiasByLeg = _premiasByLeg;
             burnSimResults.netExchanged = _netExchanged;
@@ -2082,14 +2103,8 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
                 ) *
                     13_333 *
                     $ratios[i]) / 10_000);
@@ -2173,14 +2188,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
+                            ? PanopticMath.convert0to1(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                     ) *
                         13_333 *
                         $ratios[i]) / 10_000);
