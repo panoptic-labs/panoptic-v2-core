@@ -920,23 +920,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
+    /// @param positionIdListLiquidator List of positions owned by the liquidator
     /// @param liquidatee Address of the distressed account
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...]
-    /// @param positionIdListLiquidator List of positions owned by the liquidator
     function liquidate(
+        TokenId[] calldata positionIdListLiquidator,
         address liquidatee,
-        TokenId[] calldata positionIdList,
-        TokenId[] calldata positionIdListLiquidator
+        TokenId[] calldata positionIdList
     ) external {
         _validatePositionList(liquidatee, positionIdList, 0);
 
-        int24[] memory atTicks = new int24[](4);
-
         // Assert the account we are liquidating is actually insolvent
+        int24 twapTick = getUniV3TWAP();
+
+        int24 currentTick;
         {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            int24 twapTick = getUniV3TWAP();
-            int24 currentTick;
             int24 fastOracleTick;
             int24 lastObservedTick;
             (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
@@ -951,6 +950,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // Ensure the account is insolvent at twapTick, currentTick, and fastOracleTick
             // do not check slowOracleTick because slow oracle is covered by twapTick
+            int24[] memory atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
             atTicks[1] = twapTick;
             atTicks[2] = lastObservedTick;
@@ -964,8 +964,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned shortPremium;
 
         {
-            int24 _twapTick = atTicks[1];
-            int24 _currentTick = atTicks[3];
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             LeftRightUnsigned longPremium;
             (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
@@ -973,12 +971,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList,
                 COMPUTE_ALL_PREMIA,
                 ONLY_AVAILABLE_PREMIUM,
-                _currentTick
+                currentTick
             );
 
             tokenData0 = s_collateralToken0.getAccountMarginDetails(
                 liquidatee,
-                _twapTick,
+                twapTick,
                 positionBalanceArray,
                 shortPremium.rightSlot(),
                 longPremium.rightSlot()
@@ -986,7 +984,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             tokenData1 = s_collateralToken1.getAccountMarginDetails(
                 liquidatee,
-                _twapTick,
+                twapTick,
                 positionBalanceArray,
                 shortPremium.leftSlot(),
                 longPremium.leftSlot()
@@ -998,8 +996,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.delegate(liquidatee);
 
         LeftRightSigned bonusAmounts;
-        //int256 liquidationBonus0;
-        //int256 liquidationBonus1;
         {
             LeftRightSigned netPaid;
             LeftRightSigned[4][] memory premiasByLeg;
@@ -1016,13 +1012,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionIdList
             );
 
-            int24 _twapTick = atTicks[1];
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
             (bonusAmounts, collateralRemaining) = PanopticMath.getLiquidationBonus(
                 tokenData0,
                 tokenData1,
-                Math.getSqrtRatioAtTick(_twapTick),
+                Math.getSqrtRatioAtTick(twapTick),
                 netPaid,
                 shortPremium
             );
@@ -1035,11 +1030,11 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
 
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
-
             address _liquidatee = liquidatee;
+            int24 _twapTick = twapTick;
             TokenId[] memory _positionIdList = positionIdList;
-            LeftRightSigned bonusDeltas;
-            bonusDeltas = PanopticMath.haircutPremia(
+
+            LeftRightSigned bonusDeltas = PanopticMath.haircutPremia(
                 _liquidatee,
                 _positionIdList,
                 premiasByLeg,
@@ -1053,12 +1048,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             bonusAmounts = bonusAmounts.add(bonusDeltas);
         }
 
-        // revoke the delegated amount plus the bonus amount.
+        // revoke delegated virtual shares and settle any bonus deltas with the liquidator
         s_collateralToken0.settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
         s_collateralToken1.settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         // ensure the liquidator is still solvent after the liquidation
-        _validateSolvency(msg.sender, positionIdListLiquidator, BP_DECREASE_BUFFER);
+        _validateSolvency(msg.sender, positionIdListLiquidator, NO_BUFFER);
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
@@ -1132,7 +1127,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
         s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
 
-        // revoke the virual shares that were delegated after settling the difference with the exercisor
+        // revoke the virtual shares that were delegated after settling the difference with the exercisor
         s_collateralToken0.revoke(account);
         s_collateralToken1.revoke(account);
 

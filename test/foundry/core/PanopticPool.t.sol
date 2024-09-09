@@ -5424,8 +5424,6 @@ contract PanopticPoolTest is PositionUtils {
         uint256 balance1,
         int256 refund0,
         int256 refund1,
-        int256 netPaid0,
-        int256 netPaid1,
         int256 atTickSeed
     ) public {
         unchecked {
@@ -6596,7 +6594,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
 
-        pp.liquidate(Alice, $posIdLists[1], new TokenId[](0));
+        pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
@@ -7171,7 +7169,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
 
-        pp.liquidate(Alice, $posIdLists[1], new TokenId[](0));
+        pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
@@ -7478,7 +7476,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId2;
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList, new TokenId[](0));
+        pp.liquidate(new TokenId[](0), Alice, posIdList);
     }
 
     function test_Fail_liquidate_validatePositionIdListLiquidator(
@@ -7536,7 +7534,7 @@ contract PanopticPoolTest is PositionUtils {
         editCollateral(ct1, Alice, 2);
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList, new TokenId[](0));
+        pp.liquidate(new TokenId[](0), Alice, posIdList);
     }
 
     function test_Fail_liquidate_liquidatorIsInsolvent(
@@ -7597,7 +7595,7 @@ contract PanopticPoolTest is PositionUtils {
         editCollateral(ct1, Bob, 2);
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.liquidate(Alice, posIdList, posIdList);
+        pp.liquidate(posIdList, Alice, posIdList);
     }
 
     function test_Fail_liquidate_StaleTWAP(uint256 x, int256 tickDeltaSeed) public {
@@ -7621,7 +7619,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.expectRevert(Errors.StaleTWAP.selector);
-        pp.liquidate(Alice, $posIdList, new TokenId[](0));
+        pp.liquidate(new TokenId[](0), Alice, $posIdList);
     }
 
     function test_Fail_liquidate_NotMarginCalled(
@@ -7851,7 +7849,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
-        try pp.liquidate(Alice, $posIdLists[1], new TokenId[](0)) {
+        try pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]) {
             assertFalse(true, "liquidation should have failed");
         } catch (bytes memory reason) {
             assertTrue(
