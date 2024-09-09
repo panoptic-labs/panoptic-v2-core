@@ -957,14 +957,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // N = (ZY - ZT) / (X - Z)
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
+
+                uint256 _totalSupply = totalSupply;
                 unchecked {
                     _mint(
                         liquidator,
-                        Math.mulDiv(
-                            uint256(bonus),
-                            totalSupply - liquidateeBalance,
-                            uint256(Math.max(1, int256(totalAssets()) - bonus))
-                        ) - liquidateeBalance
+                        Math.min(
+                            Math.mulDiv(
+                                uint256(bonus),
+                                _totalSupply - liquidateeBalance,
+                                uint256(Math.max(1, int256(totalAssets()) - bonus))
+                            ) - liquidateeBalance,
+                            _totalSupply * DECIMALS
+                        )
                     );
                 }
             } else {
