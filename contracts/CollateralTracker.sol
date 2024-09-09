@@ -1181,8 +1181,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // read the position size and the pool utilization at mint
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
+            bool underlyingIsToken0 = s_underlyingIsToken0;
+
             // read the pool utilization at mint
-            int16 poolUtilization = s_underlyingIsToken0
+            int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
                 : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
 
@@ -1191,7 +1193,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 tokenId,
                 positionSize,
                 atTick,
-                poolUtilization
+                poolUtilization,
+                underlyingIsToken0
             );
 
             // add to the tokenRequired accumulator
@@ -1210,14 +1213,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionSize The size of the option position
     /// @param atTick The tick at which to evaluate the account's positions
     /// @param poolUtilization The utilization of the collateral vault (balance of buying and selling)
+    /// @param underlyingIsToken0 Cached `s_underlyingIsToken0` value for this CollateralTracker instance
     /// @return tokenRequired Total required tokens for all legs of the specified tokenId.
     function _getRequiredCollateralAtTickSinglePosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 atTick,
-        int16 poolUtilization
+        int16 poolUtilization,
+        bool underlyingIsToken0
     ) internal view returns (uint256 tokenRequired) {
-        bool underlyingIsToken0 = s_underlyingIsToken0;
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
