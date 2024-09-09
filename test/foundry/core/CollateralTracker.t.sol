@@ -162,32 +162,8 @@ contract PanopticPoolHarness is PanopticPool {
         s_collateralToken1.startToken(false, token0, token1, uniswapPool.fee(), this);
     }
 
-    // mimics an internal Panoptic pool _delegate call onto the collateral tracker
-    function delegate(
-        address delegator,
-        address delegatee,
-        uint128 assets,
-        CollateralTracker collateralToken
-    ) external {
-        collateralToken.delegate(delegator, delegatee, assets);
-    }
-
-    function delegate(
-        address delegatee,
-        uint128 assets,
-        CollateralTracker collateralToken
-    ) external {
-        collateralToken.delegate(delegatee, assets);
-    }
-
-    // mimics an internal Panoptic pool  revoke call onto the collateral tracker
-    function revoke(
-        address delegator,
-        address delegatee,
-        uint256 requestedAmount,
-        CollateralTracker collateralToken
-    ) external {
-        collateralToken.revoke(delegator, delegatee, requestedAmount);
+    function delegate(address delegatee, CollateralTracker collateralToken) external {
+        collateralToken.delegate(delegatee);
     }
 
     function refund(
@@ -199,12 +175,8 @@ contract PanopticPoolHarness is PanopticPool {
         collateralToken.refund(delegator, delegatee, requestedAmount);
     }
 
-    function revoke(
-        address delegatee,
-        uint256 requestedAmount,
-        CollateralTracker collateralToken
-    ) external {
-        collateralToken.revoke(delegatee, requestedAmount);
+    function revoke(address delegatee, CollateralTracker collateralToken) external {
+        collateralToken.revoke(delegatee);
     }
 
     function getTWAP() external view returns (int24 twapTick) {
@@ -1699,246 +1671,27 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         DELEGATE/REVOKE TESTS
     //////////////////////////////////////////////////////////////*/
 
-    // transfer from delegator to delgatee
-    function test_Success_delegate(uint256 x, uint104 assets) public {
-        // fuzz
+    function test_success_delegate_virtual(uint256 x) public {
         _initWorld(x);
 
-        // Invoke all interactions with the Collateral Tracker from user Bob
-        vm.startPrank(Bob);
+        panopticPool.delegate(Alice, collateralToken0);
+        panopticPool.delegate(Alice, collateralToken1);
 
-        // give Bob the max amount of tokens
-        _grantTokens(Bob);
-
-        // approve collateral tracker to move tokens on Bob's behalf
-        IERC20Partial(token0).approve(address(collateralToken0), assets);
-        IERC20Partial(token1).approve(address(collateralToken1), assets);
-
-        // deposit a number of assets determined via fuzzing
-        // equal deposits for both collateral token pairs for testing purposes
-        collateralToken0.deposit(assets, Bob);
-        collateralToken1.deposit(assets, Bob);
-
-        // check delegatee balance before
-        uint256 assetsBefore0 = convertToAssets(collateralToken0.balanceOf(Bob), collateralToken0);
-        uint256 assetsBefore1 = convertToAssets(collateralToken1.balanceOf(Bob), collateralToken1);
-
-        // invoke delegate transactions from the Panoptic pool
-        panopticPool.delegate(Bob, Alice, uint128(assetsBefore0), collateralToken0);
-
-        panopticPool.delegate(Bob, Alice, uint128(assetsBefore1), collateralToken1);
-
-        // check delegatee balance after
-        uint256 assetsAfter0 = convertToAssets(collateralToken0.balanceOf(Alice), collateralToken0);
-        uint256 assetsAfter1 = convertToAssets(collateralToken1.balanceOf(Alice), collateralToken1);
-
-        assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
-        assertApproxEqAbs(assetsBefore1, assetsAfter1, 5);
+        assertEq(type(uint248).max, collateralToken0.balanceOf(Alice));
+        assertEq(type(uint248).max, collateralToken1.balanceOf(Alice));
     }
 
-    function test_Success_delegate_virtual(uint256 x, uint104 assets) public {
-        // fuzz
+    function test_success_revoke_virtual(uint256 x) public {
         _initWorld(x);
 
-        // Invoke all interactions with the Collateral Tracker from user Bob
-        vm.startPrank(Bob);
+        panopticPool.delegate(Alice, collateralToken0);
+        panopticPool.delegate(Alice, collateralToken1);
 
-        // give Bob the max amount of tokens
-        _grantTokens(Bob);
+        panopticPool.revoke(Alice, collateralToken0);
+        panopticPool.revoke(Alice, collateralToken1);
 
-        uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
-
-        // invoke delegate transactions from the Panoptic pool
-        panopticPool.delegate(Alice, assets, collateralToken0);
-
-        panopticPool.delegate(Alice, assets, collateralToken1);
-
-        // check delegatee balance after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
-
-        // make sure share price stays the same
-        assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
-
-        assertEq(convertToShares(assets, collateralToken0), sharesAfter0);
-        assertEq(convertToShares(assets, collateralToken0), sharesAfter1);
-    }
-
-    // transfer from delegatee to delegator
-    function test_Success_revoke(uint256 x, uint104 shares) public {
-        {
-            // fuzz
-            _initWorld(x);
-
-            // Invoke all interactions with the Collateral Tracker from user Alice
-            vm.startPrank(Alice);
-
-            // give Bob the max amount of tokens
-            _grantTokens(Alice);
-
-            uint256 assetsToken0 = bound(
-                convertToAssets(shares, collateralToken0),
-                1,
-                type(uint104).max
-            );
-            uint256 assetsToken1 = bound(
-                convertToAssets(shares, collateralToken1),
-                1,
-                type(uint104).max
-            );
-
-            // approve collateral tracker to move tokens on Alice's behalf
-            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
-
-            // deposit a number of assets determined via fuzzing
-            // equal deposits for both collateral token pairs for testing purposes
-            collateralToken0.deposit(uint128(assetsToken0), Alice);
-            collateralToken1.deposit(uint128(assetsToken1), Alice);
-        }
-
-        // check delegator balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Bob);
-
-        // invoke delegate transactions from the Panoptic pool
-        panopticPool.revoke(
-            Bob,
-            Alice,
-            convertToShares(collateralToken0.balanceOf(Alice), collateralToken0),
-            collateralToken0
-        );
-        panopticPool.revoke(
-            Bob,
-            Alice,
-            convertToShares(collateralToken1.balanceOf(Alice), collateralToken1),
-            collateralToken1
-        );
-
-        // check delegatee balance after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
-
-        assertApproxEqAbs(sharesBefore0, sharesAfter0, 5);
-        assertApproxEqAbs(sharesBefore1, sharesAfter1, 5);
-    }
-
-    function test_Success_revoke_mint(
-        uint256 x,
-        uint128 shares,
-        uint256 existingShares,
-        uint256 mintSeed
-    ) public {
-        vm.assume(shares < type(uint104).max - 100);
-        // fuzz
-        _initWorld(x);
-
-        vm.startPrank(Charlie);
-
-        _grantTokens(Charlie);
-
-        // approve collateral tracker to move tokens on Bob's behalf
-        IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
-
-        // deposit a number of assets determined via fuzzing
-        collateralToken0.mint(
-            bound(existingShares, 0, (uint256(type(uint104).max) * 10_000) / 10_010),
-            Charlie
-        );
-
-        // Invoke all interactions with the Collateral Tracker from user Alice
-        vm.startPrank(Alice);
-
-        // give Bob the max amount of tokens
-        _grantTokens(Alice);
-
-        uint256 assetsToken0 = bound(
-            convertToAssets(shares, collateralToken0),
-            1,
-            type(uint104).max
-        );
-
-        // approve collateral tracker to move tokens on Bob's behalf
-        IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-
-        // deposit a number of assets determined via fuzzing
-        // equal deposits for both collateral token pairs for testing purposes
-        collateralToken0.deposit(uint128(assetsToken0), Alice);
-
-        uint256 assetsBefore0 = collateralToken0.convertToAssets(
-            collateralToken0.balanceOf(Alice)
-        ) +
-            bound(
-                mintSeed,
-                0,
-                collateralToken0.convertToAssets(collateralToken0.balanceOf(Charlie))
-            );
-        vm.assume(collateralToken0.totalAssets() - assetsBefore0 > 0);
-        vm.assume(
-            collateralToken0.totalAssets() / (collateralToken0.totalAssets() - assetsBefore0) <
-                10_000
-        );
-        // invoke delegate transactions from the Panoptic pool
-        // attempt to request an amount greater than the delegatee's balance
-        panopticPool.revoke(Bob, Alice, assetsBefore0, collateralToken0);
-
-        // check delegatee balance after
-        uint256 assetsAfter0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
-
-        assertApproxEqAbs(assetsBefore0, assetsAfter0, 5);
-    }
-
-    function test_Success_revoke_virtual(uint256 x, uint104 shares) public {
-        {
-            // fuzz
-            _initWorld(x);
-
-            // Invoke all interactions with the Collateral Tracker from user Alice
-            vm.startPrank(Alice);
-
-            // give Alice the max amount of tokens
-            _grantTokens(Alice);
-
-            uint256 assetsToken0 = bound(
-                convertToAssets(shares, collateralToken0),
-                1,
-                type(uint104).max
-            );
-            uint256 assetsToken1 = bound(
-                convertToAssets(shares, collateralToken1),
-                1,
-                type(uint104).max
-            );
-
-            // approve collateral tracker to move tokens on Alice's behalf
-            IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
-            IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
-
-            // deposit a number of assets determined via fuzzing
-            // equal deposits for both collateral token pairs for testing purposes
-            collateralToken0.deposit(uint128(assetsToken0), Alice);
-            collateralToken1.deposit(uint128(assetsToken1), Alice);
-        }
-
-        // check delegator balance before
-        uint256 sharesBefore0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesBefore1 = collateralToken1.balanceOf(Alice);
-
-        uint256 convertedShares = convertToShares(1_000_000_000, collateralToken0);
-
-        // invoke delegate transactions from the Panoptic pool
-        panopticPool.revoke(Alice, sharesBefore0, collateralToken0);
-        panopticPool.revoke(Alice, sharesBefore1, collateralToken1);
-
-        // make sure share price stays the same
-        assertEq(convertedShares, convertToShares(1_000_000_000, collateralToken0));
-
-        // check delegatee balance after
-        uint256 sharesAfter0 = collateralToken0.balanceOf(Alice);
-        uint256 sharesAfter1 = collateralToken1.balanceOf(Alice);
-
-        assertEq(0, sharesAfter0);
-        assertEq(0, sharesAfter1);
+        assertEq(0, collateralToken0.balanceOf(Alice));
+        assertEq(0, collateralToken1.balanceOf(Alice));
     }
 
     function test_success_refund_positive(uint256 x, uint104 shares) public {
@@ -2048,16 +1801,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.prank(caller);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.delegate(address(0), address(0), 0);
+        collateralToken0.delegate(address(0));
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.delegate(address(0), 0);
+        collateralToken0.revoke(address(0));
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.revoke(address(0), 0);
-
-        vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.revoke(address(0), address(0), 0);
+        collateralToken0.settleLiquidation(address(0), address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
         collateralToken0.refund(address(0), address(0), 0);
