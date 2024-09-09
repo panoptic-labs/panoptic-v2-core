@@ -666,14 +666,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param currentTick The current price tick
     /// @param oracleTick The price oracle tick
     /// @param positionId The position to be exercised
-    /// @param positionBalance The balance in `account` of the position to be exercised
+    /// @param positionSize The size of the position to be exercised
     /// @param longAmounts The amount of longs in the position
     /// @return exerciseFees The fees for exercising the option position
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
         TokenId positionId,
-        uint128 positionBalance,
+        uint128 positionSize,
         LeftRightSigned longAmounts
     ) external view returns (LeftRightSigned exerciseFees) {
         // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
@@ -709,7 +709,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                         positionId,
                         leg,
-                        positionBalance
+                        positionSize
                     );
 
                     (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
@@ -929,20 +929,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 unchecked {
                     totalSupply += type(uint248).max - liquidateeBalance;
                 }
-                balanceOf[liquidatee] = liquidateeBalance = 0;
+                liquidateeBalance = 0;
             } else {
                 unchecked {
-                    balanceOf[liquidatee] = liquidateeBalance -= type(uint248).max;
+                    liquidateeBalance -= type(uint248).max;
                 }
             }
 
-            // transfer the bonus to the liquidator
-            uint256 shares = convertToShares(uint256(bonus));
+            balanceOf[liquidatee] = liquidateeBalance;
 
-            // if requested amount is larger than user balance, transfer shares back,
-            // then issue new shares
-            if (shares > liquidateeBalance) {
-                // transfer delegatee balance to delegator
+            uint256 bonusShares = convertToShares(uint256(bonus));
+
+            // if requested amount is larger than user balance, transfer their balance and mint the remaining shares
+            if (bonusShares > liquidateeBalance) {
                 _transferFrom(liquidatee, liquidator, liquidateeBalance);
 
                 // this is paying out protocol loss, so correct for that in the amount of shares to be minted
@@ -968,10 +967,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         ) - liquidateeBalance
                     );
                 }
-            }
-            // if requested amount < delegatee balance, then just transfer shares back
-            else {
-                _transferFrom(liquidatee, liquidator, shares);
+            } else {
+                _transferFrom(liquidatee, liquidator, bonusShares);
             }
         }
     }

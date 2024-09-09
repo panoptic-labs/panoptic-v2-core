@@ -803,7 +803,7 @@ library PanopticMath {
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
-            // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
+            // this is already present in the netPaid amount, so to avoid double-counting we remove it from the balance
             int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
                 int256(uint256(shortPremium.rightSlot()));
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
@@ -1022,14 +1022,14 @@ library PanopticMath {
     }
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
-    /// @param account The address of the user being exercised
+    /// @param exercisee The address of the user being exercised
     /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param ct0 The collateral tracker for token0
     /// @param ct1 The collateral tracker for token1
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
-        address account,
+        address exercisee,
         LeftRightSigned exerciseFees,
         int24 atTick,
         CollateralTracker ct0,
@@ -1040,7 +1040,7 @@ library PanopticMath {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
 
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(account)) -
+                int256(ct0.balanceOf(exercisee)) -
                 int256(ct0.convertToShares(uint128(-exerciseFees.rightSlot())));
 
             if (balanceShortage > 0) {
@@ -1073,7 +1073,7 @@ library PanopticMath {
 
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(account)) -
+                int256(ct1.balanceOf(exercisee)) -
                 int256(ct1.convertToShares(uint128(-exerciseFees.leftSlot())));
             if (balanceShortage > 0) {
                 return

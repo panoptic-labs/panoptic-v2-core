@@ -922,6 +922,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
     /// @param liquidatee Address of the distressed account
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...]
+    /// @param positionIdListLiquidator List of positions owned by the liquidator
     function liquidate(
         address liquidatee,
         TokenId[] calldata positionIdList,
@@ -1034,7 +1035,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // note that the haircutPremia function also commits the settled amounts (adjusted for the haircut) to storage, so it will be called even if there is no haircut
 
             // if premium is haircut from a token that is not in protocol loss, some of the liquidation bonus will be converted into that token
-            // reusing variables to save stack space; netExchanged = bonusDelta0, premia = bonusDelta1
+
             address _liquidatee = liquidatee;
             TokenId[] memory _positionIdList = positionIdList;
             LeftRightSigned bonusDeltas;
@@ -1090,13 +1091,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         {
             (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
 
-            uint128 positionBalance = s_positionBalance[account][touchedId[0]].positionSize();
+            uint128 positionSize = s_positionBalance[account][touchedId[0]].positionSize();
 
             // compute the notional value of the short legs (the maximum amount of tokens required to exercise - premia)
             // and the long legs (from which the exercise cost is computed)
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 touchedId[0],
-                positionBalance
+                positionSize
             );
 
             // Compute the exerciseFee, this will decrease the further away the price is from the forcedExercised position
@@ -1105,7 +1106,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick,
                 twapTick,
                 touchedId[0],
-                positionBalance,
+                positionSize,
                 longAmounts
             );
         }
