@@ -1716,8 +1716,6 @@ contract PanopticPoolActions is CollateralActions {
 
         if (userPositions[liquidatee].length < 1) $shouldRevert = true;
         emit LogBool("revert due to no open positions", userPositions[liquidatee].length < 1);
-        if (liquidatee == liquidator) $shouldRevert = true;
-        emit LogBool("revert due to liquidator == liquidatee", liquidatee == liquidator);
 
         TokenId[] memory liquidated_positions = userPositions[liquidatee];
         TokenId[] memory liquidator_positions = userPositions[liquidator];
@@ -1887,9 +1885,21 @@ contract PanopticPoolActions is CollateralActions {
         }
 
         emit LogUint256("Number of positions", panopticPool.numberOfPositions(liquidatee));
+
         assertWithMsg(
             panopticPool.numberOfPositions(liquidatee) == 0,
             "Liquidation did not close all positions"
+        );
+
+        uint256 ts0PostCorrection = burnSimResults.totalSupply0 +
+            uint256(Math.max(0, int256(2 ** 248 - 1) - int256(burnSimResults.delegateeBalance0)));
+        uint256 ts1PostCorrection = burnSimResults.totalSupply1 +
+            uint256(Math.max(0, int256(2 ** 248 - 1) - int256(burnSimResults.delegateeBalance1)));
+        burnSimResults.delegateeBalance0 = uint256(
+            Math.max(0, int256(burnSimResults.delegateeBalance0) - int256(2 ** 248 - 1))
+        );
+        burnSimResults.delegateeBalance1 = uint256(
+            Math.max(0, int256(burnSimResults.delegateeBalance1) - int256(2 ** 248 - 1))
         );
 
         if (
@@ -1919,7 +1929,9 @@ contract PanopticPoolActions is CollateralActions {
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
             assertLte(
-                abs(int256(assets) - int256(liqResults.bonusCombined0)),
+                liquidatee == liquidator
+                    ? abs(assets)
+                    : abs(int256(assets) - int256(liqResults.bonusCombined0)),
                 2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
                 "Liquidatee was debited incorrect bonus value (funds leftover)"
             );
@@ -1946,10 +1958,24 @@ contract PanopticPoolActions is CollateralActions {
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
-            assertWithMsg(
-                assets <= liqResults.bonusCombined0,
-                "Liquidatee was debited incorrectly high bonus value (no funds leftover)"
-            );
+            if (liquidatee != liquidator)
+                assertWithMsg(
+                    assets <= liqResults.bonusCombined0,
+                    "Liquidatee was debited incorrectly high bonus value (no funds leftover)"
+                );
+
+            if (liquidatee == liquidator) {
+                assertLte(
+                    int256(collToken0.totalSupply()) - int256(ts0PostCorrection),
+                    int256(collToken0.balanceOf(liquidatee)),
+                    "liquidator == liquidatee balance delta 0"
+                );
+                assertLte(
+                    int256(collToken1.totalSupply()) - int256(ts1PostCorrection),
+                    int256(collToken1.balanceOf(liquidatee)),
+                    "liquidator == liquidatee balance delta 0"
+                );
+            }
         }
 
         emit LogInt256(
@@ -1958,16 +1984,6 @@ contract PanopticPoolActions is CollateralActions {
         );
         emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
-        uint256 ts0PostCorrection = burnSimResults.totalSupply0 +
-            uint256(Math.max(0, int256(2 ** 248 - 1) - int256(burnSimResults.delegateeBalance0)));
-        uint256 ts1PostCorrection = burnSimResults.totalSupply1 +
-            uint256(Math.max(0, int256(2 ** 248 - 1) - int256(burnSimResults.delegateeBalance1)));
-        burnSimResults.delegateeBalance0 = uint256(
-            Math.max(0, int256(burnSimResults.delegateeBalance0) - int256(2 ** 248 - 1))
-        );
-        burnSimResults.delegateeBalance1 = uint256(
-            Math.max(0, int256(burnSimResults.delegateeBalance1) - int256(2 ** 248 - 1))
-        );
         // if protocol loss exceeds total assets the full bonus cannot be distributed to the liquidator and they can be left at a loss
         if (
             !(collToken0.totalSupply() /
@@ -1983,14 +1999,15 @@ contract PanopticPoolActions is CollateralActions {
                 int256(collToken1.totalSupply()) - int256(ts1PostCorrection) ==
                 int256(ts1PostCorrection * 10_000))
         ) {
-            assertLte(
-                abs(
-                    (liqResults.liquidatorValueAfter0 - int256(liqResults.liquidatorValueBefore0)) -
-                        liqResults.bonusCombined0
-                ),
-                2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
-                "Liquidator did not receive correct bonus"
-            );
+            if (liquidatee != liquidator)
+                assertLte(
+                    abs(
+                        (liqResults.liquidatorValueAfter0 -
+                            int256(liqResults.liquidatorValueBefore0)) - liqResults.bonusCombined0
+                    ),
+                    2 + PanopticMath.convert1to0(uint256(2), TickMath.getSqrtRatioAtTick(TWAPtick)),
+                    "Liquidator did not receive correct bonus"
+                );
 
             emit LogInt256("Protocol loss actual", liqResults.protocolLoss0Actual);
             emit LogInt256(

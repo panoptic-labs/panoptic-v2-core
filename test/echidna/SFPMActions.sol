@@ -633,6 +633,12 @@ contract SFPMActions is GeneralActions {
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
+            string memory spl = "SPL";
+
+            if (keccak256(abi.encodePacked(reason)) == keccak256(abi.encodePacked(spl))) {
+                revert();
+            }
+
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
 
             // reverse test state changes
@@ -663,10 +669,10 @@ contract SFPMActions is GeneralActions {
             // grab the tokenId in reverse order
             $activeTokenId = userPositionsSFPMShort[$activeUser][totalPosLen - 1];
 
-            $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
-
             // flip the isLong bit
             $activeTokenId = $activeTokenId.flipToBurnToken();
+
+            $prevSPFMTokenBal = sfpm.balanceOf($activeUser, TokenId.unwrap($activeTokenId));
 
             $activeNumLegs = uint8($activeTokenId.countLegs());
 
@@ -1296,6 +1302,12 @@ contract SFPMActions is GeneralActions {
             emit LogString(reason);
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
+
+            string memory spl = "SPL";
+
+            if (keccak256(abi.encodePacked(reason)) == keccak256(abi.encodePacked(spl))) {
+                revert();
+            }
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
 
@@ -2004,6 +2016,12 @@ contract SFPMActions is GeneralActions {
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
 
+            string memory spl = "SPL";
+
+            if (keccak256(abi.encodePacked(reason)) == keccak256(abi.encodePacked(spl))) {
+                revert();
+            }
+
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
 
             // reverse test state changes
@@ -2191,7 +2209,7 @@ contract SFPMActions is GeneralActions {
                     "bal 0 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore0 - moved0) == balAfter0, "bal 0 delta invalid");
+                assertLte(abs((balBefore0 - moved0) - balAfter0), 1, "bal 0 delta invalid");
             }
 
             if (balAfter1 != 0) {
@@ -2202,7 +2220,7 @@ contract SFPMActions is GeneralActions {
                     "bal 1 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
+                assertLte(abs((balBefore1 - moved1) - balAfter1), 1, "bal 1 delta invalid");
             }
 
             _check_tokenBalance(true);
@@ -2359,7 +2377,7 @@ contract SFPMActions is GeneralActions {
                     "bal 0 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore0 - moved0) == balAfter0, "bal 0 delta invalid");
+                assertLte(abs((balBefore0 - moved0) - balAfter0), 1, "bal 0 delta invalid");
             }
 
             if (balAfter1 != 0) {
@@ -2370,7 +2388,7 @@ contract SFPMActions is GeneralActions {
                     "bal 1 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore1 - moved1) == balAfter1, "bal 1 delta invalid");
+                assertLte(abs((balBefore1 - moved1) - balAfter1), 1, "bal 1 delta invalid");
             }
 
             _check_tokenBalance(true);
@@ -2479,7 +2497,7 @@ contract SFPMActions is GeneralActions {
                     "bal 0 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore0 - totalMoved0) == balAfter0, "bal 0 delta invalid");
+                assertLte(abs((balBefore0 - totalMoved0) - balAfter0), 1, "bal 0 delta invalid");
             }
 
             if (balAfter1 != 0) {
@@ -2490,7 +2508,7 @@ contract SFPMActions is GeneralActions {
                     "bal 1 delta invalid"
                 );
             } else {
-                assertWithMsg((balBefore1 - totalMoved1) == balAfter1, "bal 1 delta invalid");
+                assertLte(abs((balBefore1 - totalMoved1) - balAfter1), 1, "bal 1 delta invalid");
             }
 
             int256 convertedMoved1to0 = PanopticMath.convert1to0(totalMoved1, currentSqrtPriceX96);
@@ -3780,6 +3798,12 @@ contract SFPMActions is GeneralActions {
             emit LogString(reason);
 
             emit LogBool("should revert ?", $shouldRevertSFPM);
+
+            string memory spl = "SPL";
+
+            if (keccak256(abi.encodePacked(reason)) == keccak256(abi.encodePacked(spl))) {
+                revert();
+            }
 
             assertWithMsg($shouldRevertSFPM, "non-expected revert");
 

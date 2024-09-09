@@ -2454,8 +2454,8 @@ contract FuzzHelpers is PropertiesAsserts {
             panopticPool.burnOptions(
                 $tokenIdActive,
                 $positionListExercisee,
-                TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MIN_TICK - 1,
+                TickMath.MAX_TICK + 1
             )
         {
             revert PPBurnSimResError(
@@ -2476,8 +2476,8 @@ contract FuzzHelpers is PropertiesAsserts {
                 try
                     panopticPool.burnOptionsAndSkipCollateralCheck(
                         $tokenIdActive,
-                        TickMath.MIN_TICK,
-                        TickMath.MAX_TICK
+                        TickMath.MIN_TICK - 1,
+                        TickMath.MAX_TICK + 1
                     )
                 {
                     revert PPBurnSimResError(
@@ -2539,7 +2539,7 @@ contract FuzzHelpers is PropertiesAsserts {
         }
 
         for (uint256 i = 0; i < $numOptions; ++i) {
-            $sfpmBals[i] = sfpm.balanceOf(address(panopticPool), TokenId.unwrap($tokenIdActive));
+            $sfpmBals[i] = sfpm.balanceOf(address(panopticPool), TokenId.unwrap($posIdListOld[i]));
 
             for (uint256 j = 0; j < $posIdListOld[i].countLegs(); ++j) {
                 (

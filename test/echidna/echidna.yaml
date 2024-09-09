@@ -12,10 +12,10 @@ cryticArgs: [
 
 sender: ["0xa11ce", "0xb0b", "0xcafe", "0xda210", "0xedda"]
 testMode: assertion
-seqLen: 500
+seqLen: 1000
 testLimit: 3000000
 shrinkLimit: 0
-workers: 32
+workers: 16
 propMaxGas: 125000000
 testMaxGas: 125000000
 corpusDir: test/echidna/corpus

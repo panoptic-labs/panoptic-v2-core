@@ -1,11 +1,11 @@
 {
   "fuzzing": {
-    "workers": 32,
+    "workers": 128,
     "workerResetLimit": 50,
     "timeout": 0,
-    "testLimit": 3000000,
+    "testLimit": 0,
     "shrinkLimit": 0,
-    "callSequenceLength": 1000,
+    "callSequenceLength": 2500,
     "corpusDirectory": "test/echidna/medusa_corpus",
     "coverageEnabled": true,
     "targetContracts": ["EchidnaWrapper"],
@@ -19,7 +19,7 @@
     "blockGasLimit": 1250000000,
     "transactionGasLimit": 125000000,
     "testing": {
-      "stopOnFailedTest": true,
+      "stopOnFailedTest": false,
       "stopOnFailedContractMatching": false,
       "stopOnNoTests": true,
       "testAllContracts": false,
