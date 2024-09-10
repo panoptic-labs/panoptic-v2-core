@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 import {MathHarness} from "./harnesses/MathHarness.sol";
 import {Errors} from "@libraries/Errors.sol";

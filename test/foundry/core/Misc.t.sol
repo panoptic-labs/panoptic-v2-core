@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -3978,7 +3978,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
     }
 
@@ -4062,7 +4062,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         // burn second option
-        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.burnOptions(
             posIdList2[1],
             posIdList,
@@ -4194,7 +4194,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
         pp.liquidate(new TokenId[](0), Bob, posIdList);
     }
 

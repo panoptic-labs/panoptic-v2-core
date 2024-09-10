@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -7852,10 +7852,7 @@ contract PanopticPoolTest is PositionUtils {
         try pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]) {
             assertFalse(true, "liquidation should have failed");
         } catch (bytes memory reason) {
-            assertTrue(
-                bytes4(reason) == Errors.NotMarginCalled.selector ||
-                    bytes4(reason) == Errors.DivergentSolvencyCheck.selector
-            );
+            assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
         }
     }
 }
