@@ -15,6 +15,8 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @author Axicon Labs Limited
@@ -44,14 +46,12 @@ library PanopticMath {
     //        --------------------------------------------
     //        poolId      = 0x003c8ad599c3A0ff
     //
-    /// @param univ3pool The address of the Uniswap v3 pool to get the ID of
     /// @return A uint64 representing a fingerprint of the uniswap v3 pool address
-    function getPoolId(address univ3pool) internal view returns (uint64) {
+    function getPoolId(PoolKey memory key, PoolId idV4) internal pure returns (uint64) {
         unchecked {
-            int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
-            uint64 poolId = uint64(uint160(univ3pool) >> 112);
-            poolId += uint64(uint24(tickSpacing)) << 48;
-            return poolId;
+            return
+                uint64(uint160(uint256(PoolId.unwrap(idV4))) >> 112) +
+                (uint64(uint24(key.tickSpacing)) << 48);
         }
     }
 

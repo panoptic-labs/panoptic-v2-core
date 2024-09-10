@@ -18,6 +18,8 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {Currency} from "v4-core/types/Currency.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -160,6 +162,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee.
     uint256 immutable ITM_SPREAD_MULTIPLIER;
 
+    /// @notice The canonical Uniswap V4 Pool Manager address.
+    IPoolManager internal immutable POOL_MANAGER_V4;
+
     /*//////////////////////////////////////////////////////////////
                             ACCESS CONTROL
     //////////////////////////////////////////////////////////////*/
@@ -182,6 +187,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
     /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
     /// @param _ITMSpreadMultiplier Multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions.
+    /// @param _manager The canonical Uniswap V4 pool manager
     constructor(
         uint256 _commissionFee,
         uint256 _sellerCollateralRatio,
@@ -189,7 +195,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization,
-        uint256 _ITMSpreadMultiplier
+        uint256 _ITMSpreadMultiplier,
+        IPoolManager _manager
     ) {
         COMMISSION_FEE = _commissionFee;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
@@ -198,6 +205,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
         ITM_SPREAD_MULTIPLIER = _ITMSpreadMultiplier;
+        POOL_MANAGER_V4 = _manager;
     }
 
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.

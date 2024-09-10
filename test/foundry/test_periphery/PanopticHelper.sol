@@ -262,28 +262,28 @@ contract PanopticHelper {
         return int256(balanceCross) - int256(requiredCross);
     }
 
-    /// @notice Unwraps the contents of the tokenId into its legs.
-    /// @param tokenId the input tokenId
-    /// @return legs an array of leg structs
-    function unwrapTokenId(TokenId tokenId) public view returns (Leg[] memory) {
-        uint256 numLegs = tokenId.countLegs();
-        Leg[] memory legs = new Leg[](numLegs);
+    // /// @notice Unwraps the contents of the tokenId into its legs.
+    // /// @param tokenId the input tokenId
+    // /// @return legs an array of leg structs
+    // function unwrapTokenId(TokenId tokenId) public view returns (Leg[] memory) {
+    //     uint256 numLegs = tokenId.countLegs();
+    //     Leg[] memory legs = new Leg[](numLegs);
 
-        uint64 poolId = tokenId.poolId();
-        address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.poolId()));
-        for (uint256 i = 0; i < numLegs; ++i) {
-            legs[i].poolId = poolId;
-            legs[i].UniswapV3Pool = UniswapV3Pool;
-            legs[i].asset = tokenId.asset(i);
-            legs[i].optionRatio = tokenId.optionRatio(i);
-            legs[i].tokenType = tokenId.tokenType(i);
-            legs[i].isLong = tokenId.isLong(i);
-            legs[i].riskPartner = tokenId.riskPartner(i);
-            legs[i].strike = tokenId.strike(i);
-            legs[i].width = tokenId.width(i);
-        }
-        return legs;
-    }
+    //     uint64 poolId = tokenId.poolId();
+    //     address UniswapV3Pool = address(SFPM.getUniswapV3PoolFromId(tokenId.poolId()));
+    //     for (uint256 i = 0; i < numLegs; ++i) {
+    //         legs[i].poolId = poolId;
+    //         legs[i].UniswapV3Pool = UniswapV3Pool;
+    //         legs[i].asset = tokenId.asset(i);
+    //         legs[i].optionRatio = tokenId.optionRatio(i);
+    //         legs[i].tokenType = tokenId.tokenType(i);
+    //         legs[i].isLong = tokenId.isLong(i);
+    //         legs[i].riskPartner = tokenId.riskPartner(i);
+    //         legs[i].strike = tokenId.strike(i);
+    //         legs[i].width = tokenId.width(i);
+    //     }
+    //     return legs;
+    // }
 
     /// @notice Returns an estimate of the downside liquidation price for a given account on a given pool.
     /// @dev returns MIN_TICK if the LP is more than 100000 ticks below the current tick.

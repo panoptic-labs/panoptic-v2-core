@@ -21,6 +21,13 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+
+import {V4StateReader} from "@libraries/V4StateReader.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
@@ -32,14 +39,16 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
-    /// @param uniswapPool Address of the underlying Uniswap V3 pool
+    /// @param oraclePool Address of the Uniswap V3 pool used as an oracle
+    /// @param poolKey The Uniswap V4 pool key
     /// @param collateralTracker0 Address of the collateral tracker contract for token0
     /// @param collateralTracker1 Address of the collateral tracker contract for token1
     /// @param amount0 The amount of token0 deployed at full range
     /// @param amount1 The amount of token1 deployed at full range
     event PoolDeployed(
         PanopticPool indexed poolAddress,
-        IUniswapV3Pool indexed uniswapPool,
+        IUniswapV3Pool indexed oraclePool,
+        PoolKey poolKey,
         CollateralTracker collateralTracker0,
         CollateralTracker collateralTracker1,
         uint256 amount0,
@@ -56,8 +65,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
                          CONSTANTS & IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The Uniswap V3 factory contract to use.
-    IUniswapV3Factory internal immutable UNIV3_FACTORY;
+    /// @notice The canonical Uniswap V4 Pool Manager address.
+    IPoolManager internal immutable POOL_MANAGER_V4;
 
     /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools.
     SemiFungiblePositionManager internal immutable SFPM;
@@ -86,8 +95,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
-    mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
+    /// @notice Mapping from keccak256(Uniswap V4 pool id, oracle pool address) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
+    mapping(bytes32 panopticPoolKey => PanopticPool panopticPool) internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
@@ -96,7 +105,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Set immutable variables and store metadata pointers.
     /// @param _WETH9 Address of the Wrapped Ether (or other numeraire token) contract
     /// @param _SFPM The canonical `SemiFungiblePositionManager` deployment
-    /// @param _univ3Factory The canonical Uniswap V3 Factory deployment
+    /// @param manager The canonical Uniswap V4 pool manager
     /// @param _poolReference The reference implementation of the `PanopticPool` to clone
     /// @param _collateralReference The reference implementation of the `CollateralTracker` to clone
     /// @param properties An array of identifiers for different categories of metadata
@@ -105,7 +114,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
-        IUniswapV3Factory _univ3Factory,
+        IPoolManager manager,
         address _poolReference,
         address _collateralReference,
         bytes32[] memory properties,
@@ -114,43 +123,66 @@ contract PanopticFactory is FactoryNFT, Multicall {
     ) FactoryNFT(properties, indices, pointers) {
         WETH = _WETH9;
         SFPM = _SFPM;
-        UNIV3_FACTORY = _univ3Factory;
+        POOL_MANAGER_V4 = manager;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
     }
 
     /*//////////////////////////////////////////////////////////////
-                           CALLBACK HANDLERS
+                        UNISWAP V4 LOCK CALLBACK
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Called after minting liquidity to a position.
-    /// @dev Pays the pool tokens owed for the minted liquidity from the payer (always the caller).
-    /// @param amount0Owed The amount of token0 due to the pool for the minted liquidity
-    /// @param amount1Owed The amount of token1 due to the pool for the minted liquidity
-    /// @param data Contains the payer address and the pool features required to validate the callback
-    function uniswapV3MintCallback(
-        uint256 amount0Owed,
-        uint256 amount1Owed,
-        bytes calldata data
-    ) external {
-        CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
 
-        CallbackLib.validateCallback(msg.sender, UNIV3_FACTORY, decoded.poolFeatures);
+        (
+            PoolKey memory key,
+            int24 tickLower,
+            int24 tickUpper,
+            uint128 liquidity,
+            address payer
+        ) = abi.decode(data, (PoolKey, int24, int24, uint128, address));
+        (BalanceDelta liquidityDelta, BalanceDelta feeDelta) = POOL_MANAGER_V4.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams(
+                tickLower,
+                tickUpper,
+                int256(uint256(liquidity)),
+                bytes32(0)
+            ),
+            ""
+        );
 
-        if (amount0Owed > 0)
+        int256 delta0 = int256(liquidityDelta.amount0()) + feeDelta.amount0();
+
+        if (delta0 < 0) {
+            POOL_MANAGER_V4.sync(key.currency0);
             SafeTransferLib.safeTransferFrom(
-                decoded.poolFeatures.token0,
-                decoded.payer,
-                msg.sender,
-                amount0Owed
+                Currency.unwrap(key.currency0),
+                payer,
+                address(POOL_MANAGER_V4),
+                uint256(-delta0)
             );
-        if (amount1Owed > 0)
+            POOL_MANAGER_V4.settle();
+        } else if (delta0 > 0) {
+            POOL_MANAGER_V4.clear(key.currency0, uint256(delta0));
+        }
+
+        int256 delta1 = int256(liquidityDelta.amount1()) + feeDelta.amount1();
+        if (delta1 < 0) {
+            POOL_MANAGER_V4.sync(key.currency1);
             SafeTransferLib.safeTransferFrom(
-                decoded.poolFeatures.token1,
-                decoded.payer,
-                msg.sender,
-                amount1Owed
+                Currency.unwrap(key.currency1),
+                payer,
+                address(POOL_MANAGER_V4),
+                uint256(-delta1)
             );
+            POOL_MANAGER_V4.settle();
+        } else if (delta1 > 0) {
+            POOL_MANAGER_V4.clear(key.currency1, uint256(delta1));
+        }
+
+        return abi.encode(liquidityDelta.amount0(), liquidityDelta.amount1());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -161,39 +193,35 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
     /// @dev Salt used in PanopticPool CREATE2 is [leading 20 msg.sender chars][leading 20 pool address chars][salt].
-    /// @param token0 Address of token0 for the underlying Uniswap v3 pool
-    /// @param token1 Address of token1 for the underlying Uniswap v3 pool
-    /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
-    /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
     /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment, which serves as a slippage check
     /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment, which serves as a slippage check
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
-        address token0,
-        address token1,
-        uint24 fee,
+        IUniswapV3Pool oraclePool,
+        PoolKey calldata key,
         uint96 salt,
         uint256 amount0Max,
         uint256 amount1Max
     ) external returns (PanopticPool newPoolContract) {
-        // sort the tokens, if necessary:
-        (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
+        PoolId idV4 = key.toId();
+        bytes32 panopticPoolKey = keccak256(abi.encode(key, oraclePool));
 
-        IUniswapV3Pool v3Pool = IUniswapV3Pool(UNIV3_FACTORY.getPool(token0, token1, fee));
-        if (address(v3Pool) == address(0)) revert Errors.UniswapPoolNotInitialized();
+        // reverts if the Uni v3 pool has not been initialized
+        if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4) == 0)
+            revert Errors.UniswapPoolNotInitialized();
 
-        if (address(s_getPanopticPool[v3Pool]) != address(0))
+        if (address(s_getPanopticPool[panopticPoolKey]) != address(0))
             revert Errors.PoolAlreadyInitialized();
 
         // initialize pool in SFPM if it has not already been initialized
-        SFPM.initializeAMMPool(token0, token1, fee);
+        SFPM.initializeAMMPool(key);
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
         // salt format: (first 20 characters of deployer address) + (first 20 characters of UniswapV3Pool) + (uint96 user supplied salt)
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
-                uint80(uint160(address(v3Pool)) >> 80),
+                uint80(uint256(panopticPoolKey) >> 80),
                 salt
             )
         );
@@ -210,21 +238,33 @@ contract PanopticFactory is FactoryNFT, Multicall {
         );
 
         // Run state initialization sequence for pool and collateral tokens
-        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract);
-        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract);
+        collateralTracker0.startToken(
+            true,
+            Currency.unwrap(key.currency0),
+            Currency.unwrap(key.currency1),
+            key.fee,
+            newPoolContract
+        );
+        collateralTracker1.startToken(
+            false,
+            Currency.unwrap(key.currency0),
+            Currency.unwrap(key.currency1),
+            key.fee,
+            newPoolContract
+        );
 
-        newPoolContract.startPool(v3Pool, token0, token1, collateralTracker0, collateralTracker1);
+        newPoolContract.startPool(key, oraclePool, collateralTracker0, collateralTracker1);
 
-        s_getPanopticPool[v3Pool] = newPoolContract;
+        s_getPanopticPool[panopticPoolKey] = newPoolContract;
 
         // The Panoptic pool won't be safe to use until the observation cardinality is at least CARDINALITY_INCREASE
         // If this is not the case, we increase the next cardinality during deployment so the cardinality can catch up over time
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
-        v3Pool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
+        oraclePool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
-        (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
+        (uint256 amount0, uint256 amount1) = _mintFullRange(key, idV4);
 
         if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();
 
@@ -234,7 +274,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         emit PoolDeployed(
             newPoolContract,
-            v3Pool,
+            oraclePool,
+            key,
             collateralTracker0,
             collateralTracker1,
             amount0,
@@ -305,19 +346,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
     }
 
     /// @notice Seeds Uniswap V3 pool with a full-tick-range liquidity deployment using funds from caller.
-    /// @param v3Pool The address of the Uniswap V3 pool to deploy liquidity in
-    /// @param token0 The address of the first token in the Uniswap V3 pool
-    /// @param token1 The address of the second token in the Uniswap V3 pool
-    /// @param fee The fee level of the of the underlying Uniswap v3 pool, denominated in hundredths of bips
     /// @return The amount of token0 deployed at full range
     /// @return The amount of token1 deployed at full range
-    function _mintFullRange(
-        IUniswapV3Pool v3Pool,
-        address token0,
-        address token1,
-        uint24 fee
-    ) internal returns (uint256, uint256) {
-        (uint160 currentSqrtPriceX96, , , , , , ) = v3Pool.slot0();
+    function _mintFullRange(PoolKey memory key, PoolId idV4) internal returns (uint256, uint256) {
+        uint160 currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4);
 
         // For full range: L = Δx * sqrt(P) = Δy / sqrt(P)
         // We start with fixed token amounts and apply this equation to calculate the liquidity
@@ -327,11 +359,11 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint128 fullRangeLiquidity;
         unchecked {
             // Since we know one of the tokens is WETH, we simply add 0.1 ETH + worth in tokens
-            if (token0 == WETH) {
+            if (Currency.unwrap(key.currency0) == WETH) {
                 fullRangeLiquidity = uint128(
                     Math.mulDiv96RoundingUp(FULL_RANGE_LIQUIDITY_AMOUNT_WETH, currentSqrtPriceX96)
                 );
-            } else if (token1 == WETH) {
+            } else if (Currency.unwrap(key.currency1) == WETH) {
                 fullRangeLiquidity = uint128(
                     Math.mulDivRoundingUp(
                         FULL_RANGE_LIQUIDITY_AMOUNT_WETH,
@@ -367,25 +399,17 @@ contract PanopticFactory is FactoryNFT, Multicall {
         int24 tickLower;
         int24 tickUpper;
         unchecked {
-            int24 tickSpacing = v3Pool.tickSpacing();
+            int24 tickSpacing = key.tickSpacing;
             tickLower = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
             tickUpper = -tickLower;
         }
 
-        bytes memory mintCallback = abi.encode(
-            CallbackLib.CallbackData({
-                poolFeatures: CallbackLib.PoolFeatures({token0: token0, token1: token1, fee: fee}),
-                payer: msg.sender
-            })
-        );
-
         return
-            IUniswapV3Pool(v3Pool).mint(
-                address(this),
-                tickLower,
-                tickUpper,
-                fullRangeLiquidity,
-                mintCallback
+            abi.decode(
+                POOL_MANAGER_V4.unlock(
+                    abi.encode(key, tickLower, tickUpper, fullRangeLiquidity, msg.sender)
+                ),
+                (uint256, uint256)
             );
     }
 
@@ -394,9 +418,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the address of the Panoptic Pool associated with 'univ3pool'.
-    /// @param univ3pool The Uniswap V3 pool address to query
+    /// @param panopticPoolKey The keccak256 hash of the Uniswap V4 pool key and the oracle pool address
     /// @return Address of the Panoptic Pool associated with 'univ3pool'
-    function getPanopticPool(IUniswapV3Pool univ3pool) external view returns (PanopticPool) {
-        return s_getPanopticPool[univ3pool];
+    function getPanopticPool(bytes32 panopticPoolKey) external view returns (PanopticPool) {
+        return s_getPanopticPool[panopticPoolKey];
     }
 }
