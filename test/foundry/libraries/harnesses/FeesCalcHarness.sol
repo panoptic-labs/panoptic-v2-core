@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {FeesCalc} from "@libraries/FeesCalc.sol";
@@ -13,18 +13,6 @@ import {TokenId} from "@types/TokenId.sol";
 contract FeesCalcHarness {
     // used to pass into libraries
     mapping(TokenId tokenId => LeftRightUnsigned balance) public userBalance;
-
-    function getPortfolioValue(
-        int24 atTick,
-        TokenId[] calldata positionIdList
-    ) public view returns (int256, int256) {
-        (int256 value0, int256 value1) = FeesCalc.getPortfolioValue(
-            atTick,
-            userBalance,
-            positionIdList
-        );
-        return (value0, value1);
-    }
 
     function calculateAMMSwapFees(
         IUniswapV3Pool univ3pool,

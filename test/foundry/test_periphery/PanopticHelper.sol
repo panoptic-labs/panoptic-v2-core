@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -7,10 +7,13 @@ import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
+import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Custom types
 import {LeftRightUnsigned} from "@types/LeftRight.sol";
 import {TokenId, TokenIdLibrary} from "@types/TokenId.sol";
+import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 
 /// @title Utility contract for token ID construction and advanced queries.
 /// @author Axicon Labs Limited
@@ -40,7 +43,6 @@ contract PanopticHelper {
     /// @param pool The PanopticPool instance to check collateral on
     /// @param account Address of the user that owns the positions
     /// @param atTick At what price is the collateral requirement evaluated at
-    /// @param tokenType whether to return the values in term of token0 or token1
     /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
     /// @return collateralBalance the total combined balance of token0 and token1 for a user in terms of tokenType
     /// @return requiredCollateral The combined collateral requirement for a user in terms of tokenType
@@ -48,29 +50,121 @@ contract PanopticHelper {
         PanopticPool pool,
         address account,
         int24 atTick,
-        uint256 tokenType,
         TokenId[] calldata positionIdList
     ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
-        (int128 premium0, int128 premium1, uint256[2][] memory positionBalanceArray) = pool
-            .calculateAccumulatedFeesBatch(account, false, positionIdList);
+        (
+            LeftRightUnsigned shortPremium,
+            LeftRightUnsigned longPremium,
+            uint256[2][] memory positionBalanceArray
+        ) = pool.calculateAccumulatedFeesBatch(account, false, positionIdList);
 
         // Query the current and required collateral amounts for the two tokens
         LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
-            premium0
+            shortPremium.rightSlot(),
+            longPremium.rightSlot()
         );
         LeftRightUnsigned tokenData1 = pool.collateralToken1().getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
-            premium1
+            shortPremium.leftSlot(),
+            longPremium.leftSlot()
         );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType
-        return PanopticMath.convertCollateralData(tokenData0, tokenData1, tokenType, atTick);
+        return
+            PanopticMath.getCrossBalances(tokenData0, tokenData1, Math.getSqrtRatioAtTick(atTick));
+    }
+
+    /// @notice Calculate NAV of user's option portfolio at a given tick.
+    /// @param pool The PanopticPool instance to check collateral on
+    /// @param account Address of the user that owns the positions
+    /// @param atTick The tick to calculate the value at
+    /// @param positionIdList A list of all positions the user holds on that pool
+    /// @return value0 The amount of token0 owned by portfolio
+    /// @return value1 The amount of token1 owned by portfolio
+    function getPortfolioValue(
+        PanopticPool pool,
+        address account,
+        int24 atTick,
+        TokenId[] calldata positionIdList
+    ) external view returns (int256 value0, int256 value1) {
+        // Compute premia for all options (includes short+long premium)
+        (, , uint256[2][] memory positionBalanceArray) = pool.calculateAccumulatedFeesBatch(
+            account,
+            false,
+            positionIdList
+        );
+
+        for (uint256 k = 0; k < positionIdList.length; ) {
+            TokenId tokenId = positionIdList[k];
+            uint128 positionSize = LeftRightUnsigned.wrap(positionBalanceArray[k][1]).rightSlot();
+            uint256 numLegs = tokenId.countLegs();
+            for (uint256 leg = 0; leg < numLegs; ) {
+                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize
+                );
+
+                (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
+                    atTick,
+                    liquidityChunk
+                );
+
+                if (tokenId.isLong(leg) == 0) {
+                    unchecked {
+                        value0 += int256(amount0);
+                        value1 += int256(amount1);
+                    }
+                } else {
+                    unchecked {
+                        value0 -= int256(amount0);
+                        value1 -= int256(amount1);
+                    }
+                }
+
+                unchecked {
+                    ++leg;
+                }
+            }
+            unchecked {
+                ++k;
+            }
+        }
+    }
+
+    /// @notice Returns the total number of contracts owned by `account` and the pool utilization at mint for a specified `tokenId.
+    /// @param pool The PanopticPool instance corresponding to the pool specified in `TokenId`
+    /// @param account The address of the account on which to retrieve `balance` and `poolUtilization`
+    /// @return balance Number of contracts of `tokenId` owned by the user
+    /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
+    /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
+    function optionPositionInfo(
+        PanopticPool pool,
+        address account,
+        TokenId tokenId
+    ) external view returns (uint128, uint16, uint16) {
+        TokenId[] memory tokenIdList = new TokenId[](1);
+        tokenIdList[0] = tokenId;
+
+        (, , uint256[2][] memory positionBalanceArray) = pool.calculateAccumulatedFeesBatch(
+            account,
+            false,
+            tokenIdList
+        );
+
+        PositionBalance balanceAndUtilization = PositionBalance.wrap(positionBalanceArray[0][1]);
+
+        return (
+            balanceAndUtilization.positionSize(),
+            uint16(balanceAndUtilization.utilizations()),
+            uint16(balanceAndUtilization.utilizations() >> 16)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -95,14 +189,14 @@ contract PanopticHelper {
     ) external view returns (int24) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
 
-        return
-            PanopticMath.computeMedianObservedPrice(
-                univ3pool,
-                observationIndex,
-                observationCardinality,
-                cardinality,
-                period
-            );
+        (int24 medianTick, ) = PanopticMath.computeMedianObservedPrice(
+            univ3pool,
+            observationIndex,
+            observationCardinality,
+            cardinality,
+            period
+        );
+        return medianTick;
     }
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
@@ -119,14 +213,14 @@ contract PanopticHelper {
     ) external view returns (int24, uint256) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
 
-        return
-            PanopticMath.computeInternalMedian(
-                observationIndex,
-                observationCardinality,
-                period,
-                medianData,
-                univ3pool
-            );
+        (int24 _medianTick, uint256 _medianData) = PanopticMath.computeInternalMedian(
+            observationIndex,
+            observationCardinality,
+            period,
+            medianData,
+            univ3pool
+        );
+        return (_medianTick, _medianData);
     }
 
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
@@ -156,9 +250,14 @@ contract PanopticHelper {
             PanopticPool(pool),
             account,
             tick,
-            0,
             positionIdList
         );
+
+        // convert to token0 to ensure consistent units
+        if (tick > 0) {
+            balanceCross = PanopticMath.convert1to0(balanceCross, Math.getSqrtRatioAtTick(tick));
+            requiredCross = PanopticMath.convert1to0(requiredCross, Math.getSqrtRatioAtTick(tick));
+        }
 
         return int256(balanceCross) - int256(requiredCross);
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 /// @title Partial definition of the ERC20 interface as defined in the EIP
 /// @dev Does not include return values as certain tokens such as USDT fail to implement them.

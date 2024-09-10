@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 import {MathHarness} from "./harnesses/MathHarness.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -180,6 +180,13 @@ contract MathTest is Test {
     function test_Success_mulDiv192(uint128 a, uint128 b) public {
         uint256 expectedResult = FullMath.mulDiv(a, b, 2 ** 192);
         uint256 returnedResult = harness.mulDiv192(a, b);
+
+        assertEq(expectedResult, returnedResult);
+    }
+
+    function test_success_mulDiv192RoundingUp(uint128 a, uint128 b) public {
+        uint256 expectedResult = FullMath.mulDivRoundingUp(a, b, 2 ** 192);
+        uint256 returnedResult = harness.mulDiv192RoundingUp(a, b);
 
         assertEq(expectedResult, returnedResult);
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 import {Math} from "@libraries/Math.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
@@ -112,6 +112,11 @@ contract MathHarness {
 
     function mulDiv192(uint256 a, uint256 b) public pure returns (uint256) {
         uint256 result = Math.mulDiv192(a, b);
+        return result;
+    }
+
+    function mulDiv192RoundingUp(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 result = Math.mulDiv192RoundingUp(a, b);
         return result;
     }
 

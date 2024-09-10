@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
@@ -243,7 +243,7 @@ library LeftRightLibrary {
     }
 
     /// @notice Subtract two LeftRight-encoded words; revert on overflow or underflow.
-    /// @notice FOr each slot, rectify difference `x - y` to 0 if negative.
+    /// @notice For each slot, rectify difference `x - y` to 0 if negative.
     /// @param x The minuend
     /// @param y The subtrahend
     /// @return z The difference `x - y`
@@ -290,10 +290,10 @@ library LeftRightLibrary {
         bool l_Enabled = !(z_xL == type(uint128).max || z_yL == type(uint128).max);
 
         return (
-            LeftRightUnsigned.wrap(0).toRightSlot(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
+            LeftRightUnsigned.wrap(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
                 l_Enabled ? z_xL : x.leftSlot()
             ),
-            LeftRightUnsigned.wrap(0).toRightSlot(r_Enabled ? z_yR : y.rightSlot()).toLeftSlot(
+            LeftRightUnsigned.wrap(r_Enabled ? z_yR : y.rightSlot()).toLeftSlot(
                 l_Enabled ? z_yL : y.leftSlot()
             )
         );

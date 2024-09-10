@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 contract UniPoolPriceMock {
     // ensure storage conflicts don't occur with etched contract

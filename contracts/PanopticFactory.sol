@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -80,7 +80,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     uint256 internal constant FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN = 1e6;
 
     /// @notice The `observationCardinalityNext` to set on the Uniswap pool when a new PanopticPool is deployed.
-    uint16 internal constant CARDINALITY_INCREASE = 100;
+    uint16 internal constant CARDINALITY_INCREASE = 51;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE
@@ -224,7 +224,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
-        // The SFPM will `safeTransferFrom` tokens from the donor during the mint callback
         (uint256 amount0, uint256 amount1) = _mintFullRange(v3Pool, token0, token1, fee);
 
         if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();

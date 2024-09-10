@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Test.sol";
@@ -26,6 +26,8 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {CallbackValidation} from "v3-periphery/libraries/CallbackValidation.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
+import {Base64} from "solady/utils/Base64.sol";
+import {JSONParserLib} from "solady/utils/JSONParserLib.sol";
 
 contract PanopticFactoryHarness is PanopticFactory {
     constructor(
@@ -383,6 +385,35 @@ contract PanopticFactoryTest is Test {
                 type(uint256).max
             );
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          NFT TOKEN URI TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Success_tokenURI_decodes() public {
+        _initalizeWorldState(pools[1]);
+        uint96 salt = uint96(block.timestamp);
+        PanopticPool deployedPool = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
+        uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
+        bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
+        uint256 prefixLength = bytes("data:application/json;base64,").length;
+        bytes memory encodedPartBytes = new bytes(uri.length - prefixLength);
+        for (uint256 i = 0; i < encodedPartBytes.length; i++) {
+            encodedPartBytes[i] = uri[i + prefixLength];
+        }
+
+        bytes memory tokenURIDecoded = Base64.decode(string(encodedPartBytes));
+
+        // ensure the output URI is valid JSON
+        JSONParserLib.parse(string(tokenURIDecoded));
     }
 
     /*//////////////////////////////////////////////////////////////

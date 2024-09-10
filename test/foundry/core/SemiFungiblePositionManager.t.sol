@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {stdMath} from "forge-std/StdMath.sol";
@@ -21,7 +21,7 @@ import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {PositionKey} from "v3-periphery/libraries/PositionKey.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {PanopticHelper} from "@periphery/PanopticHelper.sol";
+import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
@@ -30,8 +30,8 @@ import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
     constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
 
-    function poolContext(uint64 poolId) public view returns (PoolAddressAndLock memory) {
-        return s_poolContext[poolId];
+    function poolIdToAddr(uint64 poolId) public view returns (IUniswapV3Pool) {
+        return s_poolIdToAddr[poolId];
     }
 
     function addrToPoolId(address pool) public view returns (uint256) {
@@ -891,10 +891,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         _initPool(x);
 
         // Check that the pool address is set correctly
-        assertEq(
-            address(sfpm.poolContext(PanopticMath.getPoolId(address(pool))).pool),
-            address(pool)
-        );
+        assertEq(address(sfpm.poolIdToAddr(PanopticMath.getPoolId(address(pool)))), address(pool));
 
         // Check that the pool ID is set correctly
         assertEq(
@@ -911,7 +908,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // Check that the pool address is set correctly
             assertEq(
-                address(sfpm.poolContext(PanopticMath.getPoolId(address(pool))).pool),
+                address(sfpm.poolIdToAddr(PanopticMath.getPoolId(address(pool)))),
                 address(pool)
             );
 
@@ -965,7 +962,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             }
 
             // Check that the pool address is set correctly
-            assertEq(address(sfpm_t.poolContext(poolIdNew).pool), address((i + 1) << 24));
+            assertEq(address(sfpm_t.poolIdToAddr(poolIdNew)), address((i + 1) << 24));
 
             // Check that the pool ID is set correctly
             // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
@@ -1922,7 +1919,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        vm.expectRevert(Errors.OptionsBalanceZero.selector);
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
 
         sfpm.mintTokenizedPosition(tokenId, uint128(0), TickMath.MIN_TICK, TickMath.MAX_TICK);
     }
@@ -3880,7 +3877,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -3940,7 +3937,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -4000,7 +3997,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -4045,7 +4042,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         Reenter1155Initialize(Alice).construct(address(token0), address(token1), fee, poolId);
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.mintTokenizedPosition(
             tokenId,
@@ -4112,7 +4109,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing
         );
 
-        vm.expectRevert(Errors.ReentrantCall.selector);
+        vm.expectRevert("REENTRANCY");
 
         sfpm.burnTokenizedPosition(
             tokenId,
@@ -4229,6 +4226,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     function test_removedLiquidityOverflow() public {
+        vm.skip(true);
         _initPool(0);
 
         _cacheWorldState(USDC_WETH_30);

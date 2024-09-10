@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -7,6 +7,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
+import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -69,7 +70,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall {
+contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -107,14 +108,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     using Math for uint256;
     using Math for int256;
 
-    /// @notice Packs the Uniswap pool address and reentrancy lock into a single slot.
-    /// @dev `locked` can be initialized to false with no gas consequences because the pool address makes the slot nonzero.
-    /// @dev false = unlocked, true = locked
-    struct PoolAddressAndLock {
-        IUniswapV3Pool pool;
-        bool locked;
-    }
-
     /*//////////////////////////////////////////////////////////////
                             IMMUTABLES 
     //////////////////////////////////////////////////////////////*/
@@ -146,9 +139,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     mapping(address univ3pool => uint256 poolIdData) internal s_AddrToPoolIdData;
 
     /// @notice Retrieve the Uniswap V3 pool address corresponding to a given poolId.
-    // pool ids are used instead of addresses to save bits in the token id
-    // (there will never be a collision because it's infeasible to mine an address with 8 consecutive bytes)
-    mapping(uint64 poolId => PoolAddressAndLock contextData) internal s_poolContext;
+    mapping(uint64 poolId => IUniswapV3Pool pool) internal s_poolIdToAddr;
 
     /*
         We're tracking the amount of net and removed liquidity for the specific region:
@@ -297,44 +288,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     mapping(bytes32 positionKey => LeftRightSigned baseFees0And1) internal s_accountFeesBase;
 
     /*//////////////////////////////////////////////////////////////
-                           REENTRANCY LOCK
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Modifier that prohibits reentrant calls for a specific pool.
-    /// @dev We piggyback the reentrancy lock on the (pool id => pool) mapping to save gas.
-    /// @dev (there's an extra 96 bits of storage available in the mapping slot and it's almost always warm).
-    /// @param poolId The poolId of the pool to activate the reentrancy lock on
-    modifier ReentrancyLock(uint64 poolId) {
-        // check if the pool is already locked
-        // init lock if not
-        beginReentrancyLock(poolId);
-
-        // execute function
-        _;
-
-        // remove lock
-        endReentrancyLock(poolId);
-    }
-
-    /// @notice Add reentrancy lock on pool.
-    /// @dev reverts if the pool is already locked.
-    /// @param poolId The poolId of the pool to add the reentrancy lock to
-    function beginReentrancyLock(uint64 poolId) internal {
-        // check if the pool is already locked, if so, revert
-        if (s_poolContext[poolId].locked) revert Errors.ReentrantCall();
-
-        // activate lock
-        s_poolContext[poolId].locked = true;
-    }
-
-    /// @notice Remove reentrancy lock on pool.
-    /// @param poolId The poolId of the pool to remove the reentrancy lock from
-    function endReentrancyLock(uint64 poolId) internal {
-        // gas refund is triggered here by returning the slot to its original value
-        s_poolContext[poolId].locked = false;
-    }
-
-    /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -368,21 +321,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint64 poolId = PanopticMath.getPoolId(univ3pool);
 
         // There are 281,474,976,710,655 possible pool patterns.
-        // A modern GPU can generate a collision such a space relatively quickly,
+        // A modern GPU can generate a collision in such a space relatively quickly,
         // so if a collision is detected increment the pool pattern until a unique poolId is found
-        while (address(s_poolContext[poolId].pool) != address(0)) {
+        while (address(s_poolIdToAddr[poolId]) != address(0)) {
             poolId = PanopticMath.incrementPoolPattern(poolId);
         }
 
-        // store the poolId => UniswapV3Pool information in a mapping
-        // `locked` being initialized to false is gas-efficient because the pool address makes the slot nonzero
-        // NOTE: we preserve the state of `locked` to prevent reentering a pool by initializing it during the reentrant call
-        s_poolContext[poolId] = PoolAddressAndLock({
-            pool: IUniswapV3Pool(univ3pool),
-            locked: s_poolContext[poolId].locked
-        });
+        s_poolIdToAddr[poolId] = IUniswapV3Pool(univ3pool);
 
-        // store the UniswapV3Pool => poolId information in a mapping
         // add a bit on the end to indicate that the pool is initialized
         // (this is for the case that poolId == 0, so we can make a distinction between zero and uninitialized)
         unchecked {
@@ -468,18 +414,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return totalSwapped A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
+    /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
+    /// @return A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
     function burnTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    )
-        external
-        ReentrancyLock(tokenId.poolId())
-        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
-    {
+    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
         // burn this ERC1155 token id
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -487,13 +429,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         emit TokenizedPositionBurnt(msg.sender, tokenId, positionSize);
 
         // Call a function that contains other functions to mint/burn position, collect amounts, swap if necessary
-        (collectedByLeg, totalSwapped) = _validateAndForwardToAMM(
-            tokenId,
-            positionSize,
-            slippageTickLimitLow,
-            slippageTickLimitHigh,
-            BURN
-        );
+        return
+            _createPositionInAMM(
+                slippageTickLimitLow,
+                slippageTickLimitHigh,
+                positionSize,
+                tokenId.flipToBurnToken(),
+                BURN
+            );
     }
 
     /// @notice Create a new position `tokenId` containing up to 4 legs.
@@ -501,31 +444,31 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return totalSwapped A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
+    /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
+    /// @return A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
     function mintTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    )
-        external
-        ReentrancyLock(tokenId.poolId())
-        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
-    {
+    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
         // create the option position via its ID in this erc1155
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
         emit TokenizedPositionMinted(msg.sender, tokenId, positionSize);
 
+        // verify that the tokenId is correctly formatted and conforms to all enforced constraints
+        tokenId.validate();
+
         // validate the incoming option position, then forward to the AMM for minting/burning required liquidity chunks
-        (collectedByLeg, totalSwapped) = _validateAndForwardToAMM(
-            tokenId,
-            positionSize,
-            slippageTickLimitLow,
-            slippageTickLimitHigh,
-            MINT
-        );
+        return
+            _createPositionInAMM(
+                slippageTickLimitLow,
+                slippageTickLimitHigh,
+                positionSize,
+                tokenId,
+                MINT
+            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -545,15 +488,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 id,
         uint256 amount,
         bytes calldata data
-    ) public override {
-        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
-        // so just check if there is an active reentrancy lock for the relevant pool on the token we're transferring
-        if (s_poolContext[TokenId.wrap(id).poolId()].locked) revert Errors.ReentrantCall();
-
-        // update the position data
+    ) public override nonReentrant {
         registerTokenTransfer(from, to, TokenId.wrap(id), amount);
 
-        // transfer the token (note that all state updates are completed before reentrancy is possible through onReceived callbacks)
         super.safeTransferFrom(from, to, id, amount, data);
     }
 
@@ -571,32 +508,27 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256[] calldata ids,
         uint256[] calldata amounts,
         bytes calldata data
-    ) public override {
-        // we don't need to reentrancy lock on transfers, but we can't allow transfers for a pool during mint/burn with a reentrant call
-        // so just check if there is an active reentrancy lock for the relevant pool on each token
+    ) public override nonReentrant {
         for (uint256 i = 0; i < ids.length; ) {
-            if (s_poolContext[TokenId.wrap(ids[i]).poolId()].locked) revert Errors.ReentrantCall();
             registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
             unchecked {
                 ++i;
             }
         }
 
-        // transfer the token (note that all state updates are completed before reentrancy is possible)
         super.safeBatchTransferFrom(from, to, ids, amounts, data);
     }
 
     /// @notice Update user position data following a token transfer.
-    /// @dev Token transfers are only allowed if you transfer your entire liquidity of a given chunk and the recipient has none.
+    /// @dev All liquidity for `from` in the chunk for each leg of `id` must be transferred.
+    /// @dev `from` must not have long liquidity in any of the chunks being transferred.
+    /// @dev `to` must not have (long or short) liquidity in any of the chunks being transferred.
     /// @param from The address of the sender
     /// @param to The address of the recipient
     /// @param id The tokenId being transferred
     /// @param amount The amount of the token being transferred
     function registerTokenTransfer(address from, address to, TokenId id, uint256 amount) internal {
-        id.validate();
-
-        // Extract univ3pool from the poolId map to Uniswap Pool
-        IUniswapV3Pool univ3pool = s_poolContext[id.poolId()].pool;
+        IUniswapV3Pool univ3pool = s_poolIdToAddr[id.poolId()];
 
         uint256 numLegs = id.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
@@ -606,7 +538,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 uint128(amount)
             );
 
-            // construct the positionKey for the from and to addresses
             bytes32 positionKey_from = keccak256(
                 abi.encodePacked(
                     address(univ3pool),
@@ -626,24 +557,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                 )
             );
 
-            // Revert if recipient already has that position
+            // Revert if recipient already has liquidity in `liquidityChunk`
+            // Revert if sender has long liquidity in `liquidityChunk` or they are attempting to transfer less than their `netLiquidity`
+            LeftRightUnsigned fromLiq = s_accountLiquidity[positionKey_from];
             if (
-                (LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0) ||
-                (LeftRightSigned.unwrap(s_accountFeesBase[positionKey_to]) != 0)
+                LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0 ||
+                LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity()
             ) revert Errors.TransferFailed();
 
-            // Revert if sender has long positions in that chunk or the entire liquidity is not being transferred
-            LeftRightUnsigned fromLiq = s_accountLiquidity[positionKey_from];
-            if (LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity())
-                revert Errors.TransferFailed();
-
-            LeftRightSigned fromBase = s_accountFeesBase[positionKey_from];
-
-            // update+store liquidity and fee values between accounts
             s_accountLiquidity[positionKey_to] = fromLiq;
             s_accountLiquidity[positionKey_from] = LeftRightUnsigned.wrap(0);
 
-            s_accountFeesBase[positionKey_to] = fromBase;
+            s_accountFeesBase[positionKey_to] = s_accountFeesBase[positionKey_from];
             s_accountFeesBase[positionKey_from] = LeftRightSigned.wrap(0);
 
             unchecked {
@@ -655,77 +580,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /*//////////////////////////////////////////////////////////////
               AMM INTERACTION AND POSITION UPDATE HELPERS
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Helper that checks the proposed option position and size and forwards the minting and potential swapping tasks.
-    /// @notice This helper function checks:
-    /// @notice  - that the `tokenId` is valid
-    /// @notice  - confirms that the Uniswap pool exists
-    /// @notice  - retrieves Uniswap pool info
-    /// @notice Then, forwards the minting/burning/swapping to another internal helper function that performs the AMM pool actions.
-    //   ┌───────────────────────┐
-    //   │mintTokenizedPosition()├───┐
-    //   └───────────────────────┘   │
-    //                               │
-    //   ┌───────────────────────┐   │   ┌───────────────────────────────┐
-    //   │burnTokenizedPosition()├───────► _validateAndForwardToAMM(...) ├─ (...) --> (mint/burn in AMM)
-    //   └───────────────────────┘       └───────────────────────────────┘
-    /// @param tokenId The option position
-    /// @param positionSize The size of the position to create
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @param isBurn Whether a position is being minted (true) or burned (false)
-    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return totalMoved The net amount of funds moved to/from Uniswap
-    function _validateAndForwardToAMM(
-        TokenId tokenId,
-        uint128 positionSize,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool isBurn
-    ) internal returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved) {
-        // Reverts if positionSize is 0 and user did not own the position before minting/burning
-        if (positionSize == 0) revert Errors.OptionsBalanceZero();
-
-        // Validate tokenId
-        tokenId.validate();
-
-        /// @dev the flipToBurnToken() function flips the isLong bits
-        if (isBurn) {
-            tokenId = tokenId.flipToBurnToken();
-        }
-
-        // Extract univ3pool from the poolId map to Uniswap Pool
-        IUniswapV3Pool univ3pool = s_poolContext[tokenId.poolId()].pool;
-
-        // Revert if the pool not been previously initialized
-        if (univ3pool == IUniswapV3Pool(address(0))) revert Errors.UniswapPoolNotInitialized();
-
-        // initialize some variables returned by the _createPositionInAMM function
-        LeftRightSigned itmAmounts;
-
-        // calls a function that loops through each leg of tokenId and mints/burns liquidity in Uni v3 pool
-        (totalMoved, collectedByLeg, itmAmounts) = _createPositionInAMM(
-            univ3pool,
-            tokenId,
-            positionSize,
-            isBurn
-        );
-
-        if (tickLimitLow > tickLimitHigh) {
-            // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
-            if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
-                totalMoved = swapInAMM(univ3pool, itmAmounts).add(totalMoved);
-            }
-
-            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-        }
-
-        // Get the current tick of the Uniswap pool, check slippage
-        (, int24 currentTick, , , , , ) = univ3pool.slot0();
-
-        if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
-            revert Errors.PriceBoundFail();
-    }
 
     /// @notice Called to perform an ITM swap in the Uniswap pool to resolve any non-tokenType token deltas.
     /// @dev When a position is minted or burnt in-the-money (ITM) we are *not* 100% token0 or 100% token1: we have a mix of both tokens.
@@ -852,78 +706,66 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
     /// @notice Create the position in the AMM given in the tokenId.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
-    /// @param univ3pool The Uniswap pool
-    /// @param tokenId The option position
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @param positionSize The size of the option position
+    /// @param tokenId The option position
     /// @param isBurn Whether a position is being minted (true) or burned (false)
-    /// @return totalMoved The net amount of funds moved to/from Uniswap
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return itmAmounts The amount of tokens swapped due to legs being in-the-money
+    /// @return totalMoved The net amount of funds moved to/from Uniswap
     function _createPositionInAMM(
-        IUniswapV3Pool univ3pool,
-        TokenId tokenId,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
         uint128 positionSize,
+        TokenId tokenId,
         bool isBurn
-    )
-        internal
-        returns (
-            LeftRightSigned totalMoved,
-            LeftRightUnsigned[4] memory collectedByLeg,
-            LeftRightSigned itmAmounts
-        )
-    {
+    ) internal returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalMoved) {
+        // Extract univ3pool from the poolId map to Uniswap Pool
+        IUniswapV3Pool univ3pool = s_poolIdToAddr[tokenId.poolId()];
+
+        // Revert if the pool not been previously initialized
+        if (univ3pool == IUniswapV3Pool(address(0))) revert Errors.UniswapPoolNotInitialized();
+
         // upper bound on amount of tokens contained across all legs of the position at any given tick
         uint256 amount0;
         uint256 amount1;
 
+        LeftRightSigned itmAmounts;
         uint256 numLegs = tokenId.countLegs();
-        // loop through up to the 4 potential legs in the tokenId
+
         for (uint256 leg = 0; leg < numLegs; ) {
-            LeftRightSigned _moved;
-            LeftRightSigned _itmAmounts;
-            LeftRightUnsigned _collectedSingleLeg;
+            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                tokenId,
+                leg,
+                positionSize
+            );
 
-            {
-                // cache the univ3pool, tokenId, isBurn, and _positionSize variables to get rid of stack too deep error
-                IUniswapV3Pool _univ3pool = univ3pool;
-                TokenId _tokenId = tokenId;
-                bool _isBurn = isBurn;
-                uint128 _positionSize = positionSize;
-                uint256 _leg;
+            unchecked {
+                // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
+                amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
 
-                unchecked {
-                    // Reverse the order of the legs if this call is burning a position (LIFO)
-                    // We loop in reverse order if burning a position so that any dependent long liquidity is returned to the pool first,
-                    // allowing the corresponding short liquidity to be removed
-                    _leg = _isBurn ? numLegs - leg - 1 : leg;
-                }
-
-                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                    _tokenId,
-                    _leg,
-                    _positionSize
-                );
-
-                (_moved, _itmAmounts, _collectedSingleLeg) = _createLegInAMM(
-                    _univ3pool,
-                    _tokenId,
-                    _leg,
-                    liquidityChunk,
-                    _isBurn
-                );
-
-                collectedByLeg[_leg] = _collectedSingleLeg;
-
-                unchecked {
-                    // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
-                    amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
-
-                    amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
-                }
+                amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
             }
 
-            totalMoved = totalMoved.add(_moved);
-            itmAmounts = itmAmounts.add(_itmAmounts);
+            LeftRightSigned movedLeg;
+
+            (movedLeg, collectedByLeg[leg]) = _createLegInAMM(
+                univ3pool,
+                tokenId,
+                leg,
+                liquidityChunk,
+                isBurn
+            );
+
+            totalMoved = totalMoved.add(movedLeg);
+
+            // if tokenType is 1, and we transacted some token0: then this leg is ITM
+            // if tokenType is 0, and we transacted some token1: then this leg is ITM
+            itmAmounts = itmAmounts.add(
+                tokenId.tokenType(leg) == 0
+                    ? LeftRightSigned.wrap(0).toLeftSlot(movedLeg.leftSlot())
+                    : LeftRightSigned.wrap(0).toRightSlot(movedLeg.rightSlot())
+            );
 
             unchecked {
                 ++leg;
@@ -933,8 +775,23 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         // Ensure upper bound on amount of tokens contained across all legs of the position on any given tick does not exceed a maximum of (2**127-1).
         // This is the maximum value of the `int128` type we frequently use to hold token amounts, so a given position's size should be guaranteed to
         // fit within that limit at all times.
-        if (amount0 > uint128(type(int128).max) || amount1 > uint128(type(int128).max))
+        if (amount0 > uint128(type(int128).max - 4) || amount1 > uint128(type(int128).max - 4))
             revert Errors.PositionTooLarge();
+
+        if (tickLimitLow > tickLimitHigh) {
+            // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
+            if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
+                totalMoved = swapInAMM(univ3pool, itmAmounts).add(totalMoved);
+            }
+
+            (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+        }
+
+        // Get the current tick of the Uniswap pool, check slippage
+        (, int24 currentTick, , , , , ) = univ3pool.slot0();
+
+        if ((currentTick >= tickLimitHigh) || (currentTick <= tickLimitLow))
+            revert Errors.PriceBoundFail();
     }
 
     /// @notice Create the position in the AMM for a specific leg in the tokenId.
@@ -950,7 +807,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
     /// @param liquidityChunk The liquidity chunk in Uniswap represented by the leg
     /// @param isBurn Whether a position is being minted (true) or burned (false)
     /// @return moved The net amount of funds moved to/from Uniswap
-    /// @return itmAmounts The amount of tokens to swap due to legs being in-the-money
     /// @return collectedSingleLeg LeftRight encoded words containing the amount of token0 and token1 collected as fees
     function _createLegInAMM(
         IUniswapV3Pool univ3pool,
@@ -958,21 +814,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 leg,
         LiquidityChunk liquidityChunk,
         bool isBurn
-    )
-        internal
-        returns (
-            LeftRightSigned moved,
-            LeftRightSigned itmAmounts,
-            LeftRightUnsigned collectedSingleLeg
-        )
-    {
-        uint256 tokenType = tokenId.tokenType(leg);
+    ) internal returns (LeftRightSigned moved, LeftRightUnsigned collectedSingleLeg) {
         // unique key to identify the liquidity chunk in this uniswap pool
         bytes32 positionKey = keccak256(
             abi.encodePacked(
                 address(univ3pool),
                 msg.sender,
-                tokenType,
+                tokenId.tokenType(leg),
                 liquidityChunk.tickLower(),
                 liquidityChunk.tickUpper()
             )
@@ -988,10 +836,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
             // the left slot represents the amount of liquidity currently bought (removed) that has been removed from the AMM - the user owes it to a seller
-            // the reason why it is called "removedLiquidity" is because long options are created by removing -ie.short selling LP positions
+            // the reason why it is called "removedLiquidity" is because long options are created by removing - ie. short selling LP positions
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
             uint128 chunkLiquidity = liquidityChunk.liquidity();
+
+            // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
+            // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
+            if (chunkLiquidity == 0) revert Errors.ZeroLiquidity();
 
             if (isLong == 0) {
                 // selling/short: so move from msg.sender *to* uniswap
@@ -1029,51 +881,36 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
             }
 
             // update the starting liquidity for this position for next time around
-            s_accountLiquidity[positionKey] = LeftRightUnsigned
-                .wrap(0)
-                .toLeftSlot(removedLiquidity)
-                .toRightSlot(updatedLiquidity);
+            s_accountLiquidity[positionKey] = LeftRightUnsigned.wrap(updatedLiquidity).toLeftSlot(
+                removedLiquidity
+            );
         }
 
         // track how much liquidity we need to collect from uniswap
         // add the fees that accumulated in uniswap within the liquidityChunk:
-        {
-            /* if the position is NOT long (selling a put or a call), then _mintLiquidity to move liquidity
-                from the msg.sender to the uniswap v3 pool:
-                Selling(isLong=0): Mint chunk of liquidity in Uniswap (defined by upper tick, lower tick, and amount)
-                       ┌─────────────────────────────────┐
-                ▲     ┌▼┐ liquidityChunk                 │
-                │  ┌──┴─┴──┐                         ┌───┴──┐
-                │  │       │                         │      │
-                └──┴───────┴──►                      └──────┘
-                   Uniswap v3                      msg.sender
-            
-             else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
-                Buying(isLong=1): Burn in Uniswap
-                       ┌─────────────────┐
-                ▲     ┌┼┐                │
-                │  ┌──┴─┴──┐         ┌───▼──┐
-                │  │       │         │      │
-                └──┴───────┴──►      └──────┘
-                    Uniswap v3      msg.sender 
-            */
-            moved = isLong == 0
-                ? _mintLiquidity(liquidityChunk, univ3pool)
-                : _burnLiquidity(liquidityChunk, univ3pool); // from msg.sender to Uniswap
-            // add the moved liquidity chunk to amount we need to collect from uniswap:
 
-            // Is this _leg ITM?
-            // if tokenType is 1, and we transacted some token0: then this leg is ITM!
-            if (tokenType == 1) {
-                // extract amount moved out of UniswapV3 pool
-                itmAmounts = itmAmounts.toRightSlot(moved.rightSlot());
-            }
-            // if tokenType is 0, and we transacted some token1: then this leg is ITM
-            if (tokenType == 0) {
-                // Add this in-the-money amount transacted.
-                itmAmounts = itmAmounts.toLeftSlot(moved.leftSlot());
-            }
-        }
+        /* if the position is NOT long (selling a put or a call), then _mintLiquidity to move liquidity
+            from the msg.sender to the uniswap v3 pool:
+            Selling(isLong=0): Mint chunk of liquidity in Uniswap (defined by upper tick, lower tick, and amount)
+                   ┌─────────────────────────────────┐
+            ▲     ┌▼┐ liquidityChunk                 │
+            │  ┌──┴─┴──┐                         ┌───┴──┐
+            │  │       │                         │      │
+            └──┴───────┴──►                      └──────┘
+                Uniswap v3                      msg.sender
+        
+            else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
+            Buying(isLong=1): Burn in Uniswap
+                   ┌─────────────────┐
+            ▲     ┌┼┐                │
+            │  ┌──┴─┴──┐         ┌───▼──┐
+            │  │       │         │      │
+            └──┴───────┴──►      └──────┘
+                Uniswap v3      msg.sender 
+        */
+        moved = isLong == 0
+            ? _mintLiquidity(liquidityChunk, univ3pool)
+            : _burnLiquidity(liquidityChunk, univ3pool); // from msg.sender to Uniswap
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
@@ -1294,9 +1131,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
             // CollectedOut is the amount of fees accumulated+collected (received - burnt)
             // That's because receivedAmount contains the burnt tokens and whatever amount of fees collected
-            collectedChunk = LeftRightUnsigned.wrap(0).toRightSlot(collected0).toLeftSlot(
-                collected1
-            );
+            collectedChunk = LeftRightUnsigned.wrap(collected0).toLeftSlot(collected1);
 
             // record the collected amounts in the s_accountPremiumOwed and s_accountPremiumGross accumulators
             _updateStoredPremia(positionKey, currentLiquidity, collectedChunk);
@@ -1364,10 +1199,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         .mulDiv(premium1X64_base, numerator, totalLiquidity)
                         .toUint128Capped();
 
-                    deltaPremiumOwed = LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(premium0X64_owed)
-                        .toLeftSlot(premium1X64_owed);
+                    deltaPremiumOwed = LeftRightUnsigned.wrap(premium0X64_owed).toLeftSlot(
+                        premium1X64_owed
+                    );
                 }
             }
 
@@ -1388,10 +1222,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
                         .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
                         .toUint128Capped();
 
-                    deltaPremiumGross = LeftRightUnsigned
-                        .wrap(0)
-                        .toRightSlot(premium0X64_gross)
-                        .toLeftSlot(premium1X64_gross);
+                    deltaPremiumGross = LeftRightUnsigned.wrap(premium0X64_gross).toLeftSlot(
+                        premium1X64_gross
+                    );
                 }
             }
         }
@@ -1452,58 +1285,57 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
         LeftRightUnsigned acctPremia;
 
+        LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
+        uint128 netLiquidity = accountLiquidities.rightSlot();
+
         // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
-        if (atTick < type(int24).max) {
+        if (atTick < type(int24).max && netLiquidity != 0) {
             // unique key to identify the liquidity chunk in this uniswap pool
-            LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
-            uint128 netLiquidity = accountLiquidities.rightSlot();
-            if (netLiquidity != 0) {
-                LeftRightUnsigned amountToCollect;
-                {
-                    IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
-                    int24 _tickLower = tickLower;
-                    int24 _tickUpper = tickUpper;
+            LeftRightUnsigned amountToCollect;
+            {
+                IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
+                int24 _tickLower = tickLower;
+                int24 _tickUpper = tickUpper;
 
-                    // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
-                    // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
-                    // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())
-                    // oldFeesGrowth is the last stored update of fee growth within the position range in the past (feeGrowthRange*liquidityChunk.liquidity()) (s_accountFeesBase[positionKey])
-                    LeftRightSigned feesBase = FeesCalc.calculateAMMSwapFees(
-                        _univ3pool,
-                        atTick,
-                        _tickLower,
-                        _tickUpper,
-                        netLiquidity
-                    );
-
-                    // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
-                    // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
-                    // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-                    // Guaranteed to be positive, so swap to unsigned type
-                    amountToCollect = LeftRightUnsigned.wrap(
-                        uint256(
-                            LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
-                        )
-                    );
-                }
-
-                (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
-                    accountLiquidities,
-                    amountToCollect
+                // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
+                // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
+                // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())
+                // oldFeesGrowth is the last stored update of fee growth within the position range in the past (feeGrowthRange*liquidityChunk.liquidity()) (s_accountFeesBase[positionKey])
+                LeftRightSigned feesBase = FeesCalc.calculateAMMSwapFees(
+                    _univ3pool,
+                    atTick,
+                    _tickLower,
+                    _tickUpper,
+                    netLiquidity
                 );
 
-                // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
-                // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
-                // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
-                (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
-                    s_accountPremiumOwed[positionKey],
-                    premiumOwed,
-                    s_accountPremiumGross[positionKey],
-                    premiumGross
+                // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+                // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+                // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+                // Guaranteed to be positive, so swap to unsigned type
+                amountToCollect = LeftRightUnsigned.wrap(
+                    uint256(
+                        LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
+                    )
                 );
-
-                acctPremia = isLong == 1 ? premiumOwed : premiumGross;
             }
+
+            (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
+                accountLiquidities,
+                amountToCollect
+            );
+
+            // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
+            // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
+            // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
+            (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
+                s_accountPremiumOwed[positionKey],
+                premiumOwed,
+                s_accountPremiumGross[positionKey],
+                premiumGross
+            );
+
+            acctPremia = isLong == 1 ? premiumOwed : premiumGross;
         } else {
             // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
             acctPremia = isLong == 1
@@ -1537,18 +1369,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         feesBase1 = feesBase.leftSlot();
     }
 
-    /// @notice Returns the Uniswap v3 pool for a given poolId.
-    /// @param poolId The poolId for a Uni v3 pool
-    /// @return UniswapV3Pool The unique poolId for that Uni v3 pool
+    /// @notice Returns the Uniswap pool for a given `poolId`.
+    /// @param poolId The unique pool identifier for a Uni v3 pool
+    /// @return uniswapV3Pool The Uniswap pool corresponding to `poolId`
     function getUniswapV3PoolFromId(
         uint64 poolId
-    ) external view returns (IUniswapV3Pool UniswapV3Pool) {
-        return s_poolContext[poolId].pool;
+    ) external view returns (IUniswapV3Pool uniswapV3Pool) {
+        return s_poolIdToAddr[poolId];
     }
 
-    /// @notice Returns the poolId for a given Uniswap v3 pool.
-    /// @param univ3pool The address of the Uniswap v3 Pool
-    /// @return poolId The unique poolId for that Uni v3 pool
+    /// @notice Returns the `poolId` for a given Uniswap pool.
+    /// @param univ3pool The address of the Uniswap Pool
+    /// @return poolId The unique pool identifier corresponding to `univ3pool`
     function getPoolId(address univ3pool) external view returns (uint64 poolId) {
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
     }

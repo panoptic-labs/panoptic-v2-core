@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
@@ -1438,7 +1438,7 @@ contract PositionUtils is Test {
                     LeftRightSigned.unwrap(
                         LeftRightSigned
                             .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
-                            .add(LeftRightSigned.wrap(assetDelta))
+                            .add(LeftRightSigned.wrap(int256(uint256(uint128(int128(assetDelta))))))
                     )
                 )
             )

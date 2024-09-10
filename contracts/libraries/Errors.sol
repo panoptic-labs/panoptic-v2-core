@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 /// @title Custom Errors library.
 /// @author Axicon Labs Limited
 /// @notice Contains all custom error messages used in Panoptic.
 library Errors {
+    /// @notice PanopticPool: the account is not solvent enough to perform the desired action
+    error AccountInsolvent();
+
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();
@@ -22,14 +25,8 @@ library Errors {
     /// @notice CollateralTracker: attempted to withdraw/redeem more than available liquidity, owned shares, or open positions would allow for
     error ExceedsMaximumRedemption();
 
-    /// @notice PanopticPool: force exercisee is insolvent - liquidatable accounts are not permitted to open or close positions outside of a liquidation
-    error ExerciseeNotSolvent();
-
     /// @notice PanopticPool: the provided list of option positions is incorrect or invalid
     error InputListFail();
-
-    /// @notice PanopticFactory: first 20 bytes of provided salt does not match caller address
-    error InvalidSalt();
 
     /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
     error InvalidTick();
@@ -50,12 +47,6 @@ library Errors {
     /// @notice PanopticPool: one of the legs in a position are force-exercisable (they are all either short or ITM long)
     error NoLegsExercisable();
 
-    /// @notice PanopticPool: the account is not solvent enough to perform the desired action
-    error NotEnoughCollateral();
-
-    /// @notice SFPM: maximum token amounts for a position exceed 128 bits
-    error PositionTooLarge();
-
     /// @notice PanopticPool: the leg is not long, so the premium cannot be settled through `settleLongPremium`
     error NotALongLeg();
 
@@ -68,9 +59,6 @@ library Errors {
     /// @notice CollateralTracker: the caller for a permissioned function is not the Panoptic Pool
     error NotPanopticPool();
 
-    /// @notice Minting and burning in the SFPM must operate on >0 contracts
-    error OptionsBalanceZero();
-
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();
 
@@ -80,11 +68,11 @@ library Errors {
     /// @notice CollateralTracker: The user has open/active option positions, so they cannot transfer collateral shares
     error PositionCountNotZero();
 
+    /// @notice SFPM: maximum token amounts for a position exceed 128 bits
+    error PositionTooLarge();
+
     /// @notice The current tick in the pool falls outside a user-defined open interval slippage range
     error PriceBoundFail();
-
-    /// @notice SFPM: function has been called while reentrancy lock is active
-    error ReentrantCall();
 
     /// @notice An oracle price is too far away from another oracle price or the current tick
     /// This is a safeguard against price manipulation during option mints, burns, and liquidations
@@ -105,4 +93,7 @@ library Errors {
 
     /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or factory
     error UniswapPoolNotInitialized();
+
+    /// @notice SFPM: Mints/burns of 0-liquidity chunks in Uniswap are not supported
+    error ZeroLiquidity();
 }

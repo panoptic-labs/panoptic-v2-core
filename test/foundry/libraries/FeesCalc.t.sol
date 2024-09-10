@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 // Foundry
 import "forge-std/Test.sol";
@@ -48,89 +48,6 @@ contract FeesCalcTest is Test, PositionUtils {
 
     function setUp() public {
         harness = new FeesCalcHarness();
-    }
-
-    function test_Success_getPortfolioValue(
-        uint256 poolIdSeed,
-        uint256 optionRatioSeed,
-        uint256 assetSeed,
-        uint256 isLongSeed,
-        uint256 tokenTypeSeed,
-        int256 strikeSeed,
-        int256 widthSeed,
-        uint64 positionSize
-    ) public {
-        vm.assume(positionSize != 0);
-        TokenId tokenId;
-        selectedPool = pools[bound(poolIdSeed, 0, 2)];
-
-        {
-            // construct one leg token
-            tokenId = fuzzedPosition(
-                1, // total amount of legs
-                poolIdSeed,
-                optionRatioSeed,
-                assetSeed,
-                isLongSeed,
-                tokenTypeSeed,
-                strikeSeed,
-                widthSeed
-            );
-        }
-
-        // position size
-        addBalance(tokenId, positionSize);
-
-        // liquidity chunk
-        LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-            tokenId,
-            0,
-            harness.userBalance(tokenId).rightSlot()
-        );
-
-        (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
-            sqrtPriceAt,
-            TickMath.getSqrtRatioAtTick(liquidityChunk.tickLower()),
-            TickMath.getSqrtRatioAtTick(liquidityChunk.tickUpper()),
-            liquidityChunk.liquidity()
-        );
-
-        LeftRightSigned positionAmounts = LeftRightSigned
-            .wrap(0)
-            .toRightSlot(int128(int256(amount0)))
-            .toLeftSlot(int128(int256(amount1)));
-        LeftRightSigned portfolioAmounts;
-        {
-            // portfolio amounts
-            unchecked {
-                portfolioAmounts = tokenId.isLong(0) == 0
-                    ? portfolioAmounts = portfolioAmounts.add(positionAmounts)
-                    : portfolioAmounts = portfolioAmounts.sub(positionAmounts);
-            }
-
-            /// expected values
-            int256 expectedValue0;
-            int256 expectedValue1;
-            unchecked {
-                {
-                    expectedValue0 = portfolioAmounts.rightSlot();
-                }
-                {
-                    expectedValue1 = portfolioAmounts.leftSlot();
-                }
-            }
-
-            /// actual values
-            TokenId[] memory posIdList = new TokenId[](1);
-            posIdList[0] = tokenId;
-            (int256 returnedValue0, int256 returnedValue1) = harness.getPortfolioValue(
-                currentTick,
-                posIdList
-            );
-
-            assertEq(expectedValue0, returnedValue0, "value0");
-            assertEq(expectedValue1, returnedValue1, "value1");
-        }
     }
 
     // above/below/in-range branches

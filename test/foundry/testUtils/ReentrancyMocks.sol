@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.24;
 
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TokenId} from "@types/TokenId.sol";

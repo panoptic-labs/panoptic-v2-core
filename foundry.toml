@@ -4,11 +4,13 @@ test = 'test/foundry'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"
-solc_version = '0.8.25'
+evm_version = 'cancun'
 optimizer = true
 optimizer_runs = 1
 viaIR = false
+gas_limit = 9223372036854775807
 eth_rpc_url = "YOUR_RPC_URL"
+fs_permissions = [{ access = "read", path = "./"}]
 
 [profile.ci_test]
 fork_block_number = 18963715

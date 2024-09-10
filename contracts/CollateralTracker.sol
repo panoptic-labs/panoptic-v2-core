@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
@@ -16,6 +16,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -261,7 +262,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function getPoolData()
         external
         view
-        returns (uint256 poolAssets, uint256 insideAMM, int256 currentPoolUtilization)
+        returns (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization)
     {
         poolAssets = s_poolAssets;
         insideAMM = s_inAMM;
@@ -350,10 +351,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev This returns the total tracked assets in the AMM and PanopticPool,
     /// @dev - EXCLUDING the amount of collected fees (because they are reserved for short options)
     /// @dev - EXCLUDING any donations that have been made to the pool
-    /// @return totalManagedAssets The total amount of assets managed
-    function totalAssets() public view returns (uint256 totalManagedAssets) {
+    /// @return The total amount of assets managed by the CollateralTracker vault
+    function totalAssets() public view returns (uint256) {
         unchecked {
-            return s_poolAssets + s_inAMM;
+            return uint256(s_poolAssets) + s_inAMM;
         }
     }
 
@@ -416,9 +417,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets += uint128(assets);
-        }
+        s_poolAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -450,7 +449,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
-    /// There is a maximum asset deposit limit of (2 ** 104) - 1.
+    /// @dev There is a maximum asset deposit limit of (2 ** 104) - 1.
     /// An MEV tax is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP ('receiver').
     /// @param shares Amount of shares to be minted.
@@ -474,9 +473,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets += uint128(assets);
-        }
+        s_poolAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -543,8 +540,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return shares;
     }
 
     /// @notice Redeem the amount of shares required to withdraw the specified amount of assets.
@@ -574,9 +569,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _burn(owner, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets -= uint128(assets);
-        }
+        s_poolAssets -= uint128(assets);
 
         // reverts if account is not solvent/eligible to withdraw
         s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
@@ -590,8 +583,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return shares;
     }
 
     /// @notice Returns the maximum amount of shares that can be redeemed for a given user.
@@ -650,8 +641,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
-
-        return assets;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -673,14 +662,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param currentTick The current price tick
     /// @param oracleTick The price oracle tick
     /// @param positionId The position to be exercised
-    /// @param positionBalance The balance in `account` of the position to be exercised
+    /// @param positionSize The size of the position to be exercised
     /// @param longAmounts The amount of longs in the position
     /// @return exerciseFees The fees for exercising the option position
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
         TokenId positionId,
-        uint128 positionBalance,
+        uint128 positionSize,
         LeftRightSigned longAmounts
     ) external view returns (LeftRightSigned exerciseFees) {
         // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
@@ -716,7 +705,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                         positionId,
                         leg,
-                        positionBalance
+                        positionSize
                     );
 
                     (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
@@ -730,13 +719,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     );
                 }
 
-                // compensate user for loss in value if chunk has lost money between current and median tick
-                // NOTE: the delta for one token will be positive and the other will be negative. This cancels out any moves in their positions
+                // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
+                // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
+                // if the current price is moved downward such that some part of the chunk is between the current and market prices,
+                // the chunk composition will swap token1 for token0 at a price (token0/token1) more favorable than market (token1/token0),
+                // forcing the exercisee to provide more value in token0 than they would have provided in token1 at market, and vice versa.
+                // (the excess value provided by the exercisee could then be captured in a return swap across their newly added liquidity)
                 exerciseFees = exerciseFees.sub(
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(int128(uint128(oracleValue0)) - int128(uint128(currentValue0)))
-                        .toLeftSlot(int128(uint128(oracleValue1)) - int128(uint128(currentValue1)))
+                        .toRightSlot(int128(uint128(currentValue0)) - int128(uint128(oracleValue0)))
+                        .toLeftSlot(int128(uint128(currentValue1)) - int128(uint128(oracleValue1)))
                 );
             }
 
@@ -757,9 +750,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     // With total assets being the current Panoptic pool balance + the amount in the AMM.
     /// @dev compute: inAMM/totalAssets().
     /// @return poolUtilization The pool utilization in basis points
-    function _poolUtilization() internal view returns (int256 poolUtilization) {
+    function _poolUtilization() internal view returns (uint256 poolUtilization) {
         unchecked {
-            return int256((s_inAMM * DECIMALS) / totalAssets());
+            return (s_inAMM * DECIMALS) / totalAssets();
         }
     }
 
@@ -823,7 +816,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param utilization The fraction of totalBalance() that belongs to the Uniswap Pool
     /// @return buyCollateralRatio The buy collateral ratio at `utilization`
     function _buyCollateralRatio(
-        uint256 utilization
+        uint16 utilization
     ) internal view returns (uint256 buyCollateralRatio) {
         // linear from BUY to BUY/2 between 50% and 90%
         // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
@@ -875,113 +868,108 @@ contract CollateralTracker is ERC20Minimal, Multicall {
           LIFECYCLE OF A COLLATERAL TOKEN AND DELEGATE/REVOKE LOGIC
     ////////////////////////////////////////////////////////////////////*/
 
-    /// @notice Delegate and transfer shares corresponding to the incoming assets 'from' delegator 'to' delegatee.
+    /// @notice Increase the share balance of a user by 2^248 - 1 without updating the total supply.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @param delegator The delegator to send shares from - the sender of the shares
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares
-    /// @param assets The assets to which the shares delegated correspond
-    function delegate(
-        address delegator,
-        address delegatee,
-        uint256 assets
-    ) external onlyPanopticPool {
-        /*
-                ┌────────┐
-                │Panoptic│
-                │Pool    │
-                └────┬───┘
-                     │(1) convert 'assets' to shares (this ERC20 contract)
-        ┌─────────┐  │  ┌─────────┐
-        │delegator├──▼──►delegatee│
-        └─────────┘(2)  └─────────┘
-                move shares
-                from delegator
-                to delegatee
-        */
-
-        uint256 shares = convertToShares(assets);
-
-        // transfer shares from the delegator to the delegatee
-        _transferFrom(delegator, delegatee, shares);
+    /// @param delegatee The account to increase the balance of
+    function delegate(address delegatee) external onlyPanopticPool {
+        balanceOf[delegatee] += type(uint248).max;
     }
 
-    /// @notice Delegate and transfer shares corresponding to the incoming assets from the protocol to `delegatee`.
+    /// @notice Decrease the share balance of a user by 2^248 - 1 without updating the total supply.
+    /// @dev Assumes that `delegatee` has >=(2^248 - 1) tokens, will revert otherwise.
     /// @dev This is controlled by the Panoptic Pool - not individual users.
-    /// @dev Mints ghost shares so a position can be settled - the total supply is not affected.
-    /// @param delegatee The delegatee to send shares to - the recipient of the shares
-    /// @param assets The assets to which the shares delegated correspond
-    function delegate(address delegatee, uint256 assets) external onlyPanopticPool {
-        balanceOf[delegatee] += convertToShares(assets);
+    /// @param delegatee The account to decrease the balance of
+    function revoke(address delegatee) external onlyPanopticPool {
+        balanceOf[delegatee] -= type(uint248).max;
     }
 
-    /// @notice Refunds delegated tokens back to the protocol.
-    /// @dev Assumes that `delegatee` has enough money to pay for the refund.
-    /// @dev Burns ghost shares after a position has been settled - the total supply is not affected.
-    /// @param delegatee The account refunding tokens to 'delegatee'
-    /// @param assets The amount of assets to which the shares to refund to the protocol correspond
-    function refund(address delegatee, uint256 assets) external onlyPanopticPool {
-        balanceOf[delegatee] -= convertToShares(assets);
-    }
-
-    /// @notice Revoke previously delegated shares. The opposite of 'delegate'.
-    /// @param delegator The delegator to send shares *to* (because we are revoking - opposite when we delegate)
-    /// @param delegatee The delegatee to send shares *from* (because we are revoking - opposite when we delegate)
-    /// @param assets The assets to which the shares revoked correspond
-    function revoke(
-        address delegator,
-        address delegatee,
-        uint256 assets
+    /// @notice Settles liquidation bonus and returns remaining virtual shares to the protocol.
+    /// @dev This function is where protocol loss is realized, if it exists.
+    /// @param liquidator The account performing the liquidation of `liquidatee`
+    /// @param liquidatee The liquidated account to settle
+    /// @param bonus The liquidation bonus, in assets, to be paid to `liquidator`. May be negative
+    function settleLiquidation(
+        address liquidator,
+        address liquidatee,
+        int256 bonus
     ) external onlyPanopticPool {
-        /**
-                ┌────────┐
-                │Panoptic│
-                │Pool    │
-                └────┬───┘
-                     │(1) convert 'assets' to shares (this ERC20 contract)
-        ┌─────────┐  │ ┌─────────┐
-        │delegator◄──▼─┤delegatee│
-        └─────────┘(2) └─────────┘
-            moves shares
-            from delegatee
-            back to delegator
-        */
+        if (bonus < 0) {
+            uint256 bonusAbs;
 
-        uint256 shares = convertToShares(assets);
+            unchecked {
+                bonusAbs = uint256(-bonus);
+            }
 
-        // get the delegateeBalance and compare later against requestedAmount
-        uint256 delegateeBalance = balanceOf[delegatee];
+            SafeTransferLib.safeTransferFrom(s_underlyingToken, liquidator, msg.sender, bonusAbs);
 
-        // if requested amount is larger than user balance, transfer shares back,
-        // then issue new shares
-        if (shares > delegateeBalance) {
-            // transfer delegatee balance to delegator
-            _transferFrom(delegatee, delegator, delegateeBalance);
+            _mint(liquidatee, convertToShares(bonusAbs));
 
-            // this is paying out protocol loss, so correct for that in the amount of shares to be minted
-            // X: total assets in vault
-            // Y: total supply of shares
-            // Z: desired value (assets) of shares to be minted
-            // N: total shares corresponding to Z
-            // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
-            // Z = N * X / (Y + N - T)
-            // Z * (Y + N - T) = N * X
-            // ZY + ZN - ZT = NX
-            // ZY - ZT = N(X - Z)
-            // N = (ZY - ZT) / (X - Z)
-            // N = Z(Y - T) / (X - Z)
-            // subtract delegatee balance from N since it was already transferred to the delegator
-            _mint(
-                delegator,
-                Math.mulDiv(
-                    assets,
-                    totalSupply - delegateeBalance,
-                    uint256(Math.max(1, int256(totalAssets()) - int256(assets)))
-                ) - delegateeBalance
-            );
-        }
-        // if requested amount < delegatee balance, then just transfer shares back
-        else {
-            _transferFrom(delegatee, delegator, shares);
+            s_poolAssets += uint128(bonusAbs);
+
+            uint256 liquidateeBalance = balanceOf[liquidatee];
+
+            if (type(uint248).max > liquidateeBalance) {
+                balanceOf[liquidatee] = 0;
+                unchecked {
+                    totalSupply += type(uint248).max - liquidateeBalance;
+                }
+            } else {
+                unchecked {
+                    balanceOf[liquidatee] = liquidateeBalance - type(uint248).max;
+                }
+            }
+        } else {
+            uint256 liquidateeBalance = balanceOf[liquidatee];
+
+            if (type(uint248).max > liquidateeBalance) {
+                unchecked {
+                    totalSupply += type(uint248).max - liquidateeBalance;
+                }
+                liquidateeBalance = 0;
+            } else {
+                unchecked {
+                    liquidateeBalance -= type(uint248).max;
+                }
+            }
+
+            balanceOf[liquidatee] = liquidateeBalance;
+
+            uint256 bonusShares = convertToShares(uint256(bonus));
+
+            // if requested amount is larger than user balance, transfer their balance and mint the remaining shares
+            if (bonusShares > liquidateeBalance) {
+                _transferFrom(liquidatee, liquidator, liquidateeBalance);
+
+                // this is paying out protocol loss, so correct for that in the amount of shares to be minted
+                // X: total assets in vault
+                // Y: total supply of shares
+                // Z: desired value (assets) of shares to be minted
+                // N: total shares corresponding to Z
+                // T: transferred shares from liquidatee which are a component of N but do not contribute toward protocol loss
+                // Z = N * X / (Y + N - T)
+                // Z * (Y + N - T) = N * X
+                // ZY + ZN - ZT = NX
+                // ZY - ZT = N(X - Z)
+                // N = (ZY - ZT) / (X - Z)
+                // N = Z(Y - T) / (X - Z)
+                // subtract delegatee balance from N since it was already transferred to the delegator
+                uint256 _totalSupply = totalSupply;
+                unchecked {
+                    _mint(
+                        liquidator,
+                        Math.min(
+                            Math.mulDivCapped(
+                                uint256(bonus),
+                                _totalSupply - liquidateeBalance,
+                                uint256(Math.max(1, int256(totalAssets()) - bonus))
+                            ) - liquidateeBalance,
+                            _totalSupply * DECIMALS
+                        )
+                    );
+                }
+            } else {
+                _transferFrom(liquidatee, liquidator, bonusShares);
+            }
         }
     }
 
@@ -1016,7 +1004,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount
-    ) external onlyPanopticPool returns (int256 utilization) {
+    ) external onlyPanopticPool returns (uint32 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1044,10 +1032,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint128(uint256(updatedAssets));
-            s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)));
+            s_poolAssets = uint256(updatedAssets).toUint128();
+            s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
-            utilization = _poolUtilization();
+            utilization = uint32(_poolUtilization());
         }
     }
 
@@ -1090,8 +1078,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // update stored asset balances with net moved amounts
             // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint128(uint256(updatedAssets + realizedPremium));
-            s_inAMM = uint128(uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)));
+            s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
 
             return (int128(tokenToPay));
         }
@@ -1142,63 +1130,30 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
     /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
     /// @param user The account to check collateral/margin health for
-    /// @param currentTick The tick at which to evaluate the account's positions
+    /// @param atTick The tick at which to evaluate the account's positions
     /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
-    /// @param premiumAllPositions The premium collected thus far across all positions
-    /// @return tokenData Information collected for the tokens about the health of the account
+    /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
+    /// @param longPremium The total amount of premium owed by the long legs of `user`
+    /// @return Information collected for the tokens about the health of the account
     /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getAccountMarginDetails(
         address user,
-        int24 currentTick,
-        uint256[2][] memory positionBalanceArray,
-        int128 premiumAllPositions
-    ) public view returns (LeftRightUnsigned tokenData) {
-        tokenData = _getAccountMargin(user, currentTick, positionBalanceArray, premiumAllPositions);
-    }
-
-    /// @notice Get the collateral status/margin details of an account/user.
-    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
-    /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user The account to check collateral/margin health for.
-    /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all historical positions held by the 'optionOwner', stored as [[tokenId, balance/poolUtilizationAtMint], ...]
-    /// @param premiumAllPositions The premium collected thus far across all positions
-    /// @return tokenData Information collected for the tokens about the health of the account;
-    /// the collateral balance of the user is in the right slot and the threshold for margin call is in the left slot
-    function _getAccountMargin(
-        address user,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
-        int128 premiumAllPositions
-    ) internal view returns (LeftRightUnsigned tokenData) {
-        uint256 tokenRequired;
-
-        // if the account has active options, compute the required collateral to keep account in good health
-        if (positionBalanceArray.length > 0) {
-            // get all collateral required for the incoming list of positions
-            tokenRequired = _getTotalRequiredCollateral(atTick, positionBalanceArray);
-
-            // If premium is negative (ie. user has to pay for their purchased options), add this long premium to the token requirement
-            if (premiumAllPositions < 0) {
-                unchecked {
-                    tokenRequired += uint128(-premiumAllPositions);
-                }
-            }
+        uint128 shortPremium,
+        uint128 longPremium
+    ) public view returns (LeftRightUnsigned) {
+        unchecked {
+            return
+                LeftRightUnsigned
+                    .wrap((convertToAssets(balanceOf[user]) + shortPremium).toUint128())
+                    .toLeftSlot(
+                        positionBalanceArray.length > 0
+                            ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +
+                                longPremium).toUint128()
+                            : 0
+                    );
         }
-
-        // if premium is positive (ie. user will receive funds due to selling options), add this premum to the user's balance
-        uint256 netBalance = convertToAssets(balanceOf[user]);
-        if (premiumAllPositions > 0) {
-            unchecked {
-                netBalance += uint256(uint128(premiumAllPositions));
-            }
-        }
-
-        // store assetBalance and tokens required in tokenData variable
-        tokenData = tokenData.toRightSlot(netBalance.toUint128()).toLeftSlot(
-            tokenRequired.toUint128()
-        );
-        return tokenData;
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.
@@ -1219,17 +1174,22 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             TokenId tokenId = TokenId.wrap(positionBalanceArray[i][0]);
 
             // read the position size and the pool utilization at mint
-            uint128 positionSize = LeftRightUnsigned.wrap(positionBalanceArray[i][1]).rightSlot();
+            uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
+
+            bool underlyingIsToken0 = s_underlyingIsToken0;
 
             // read the pool utilization at mint
-            uint128 poolUtilization = LeftRightUnsigned.wrap(positionBalanceArray[i][1]).leftSlot();
+            int16 poolUtilization = underlyingIsToken0
+                ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
+                : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
 
             // Get tokens required for the current tokenId (a single active position)
             uint256 _tokenRequired = _getRequiredCollateralAtTickSinglePosition(
                 tokenId,
                 positionSize,
                 atTick,
-                poolUtilization
+                poolUtilization,
+                underlyingIsToken0
             );
 
             // add to the tokenRequired accumulator
@@ -1240,8 +1200,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 ++i;
             }
         }
-
-        return tokenRequired;
     }
 
     /// @notice Get the required amount of collateral tokens corresponding to a specific single position 'tokenId' at a price 'tick'.
@@ -1250,14 +1208,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionSize The size of the option position
     /// @param atTick The tick at which to evaluate the account's positions
     /// @param poolUtilization The utilization of the collateral vault (balance of buying and selling)
+    /// @param underlyingIsToken0 Cached `s_underlyingIsToken0` value for this CollateralTracker instance
     /// @return tokenRequired Total required tokens for all legs of the specified tokenId.
     function _getRequiredCollateralAtTickSinglePosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 atTick,
-        uint128 poolUtilization
+        int16 poolUtilization,
+        bool underlyingIsToken0
     ) internal view returns (uint256 tokenRequired) {
-        bool underlyingIsToken0 = s_underlyingIsToken0;
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
@@ -1288,7 +1247,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint128 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 required) {
         return
             tokenId.riskPartner(index) == index // does this leg have a risk partner? Affects required collateral
@@ -1320,7 +1279,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint128 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 required) {
         // extract the tokenType (token0 or token1)
         uint256 tokenType = tokenId.tokenType(index);
@@ -1331,15 +1290,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
-        // match tokenType with the correct pool utilization
-        int64 utilization = tokenType == 0
-            ? int64(uint64(poolUtilization))
-            : int64(uint64(poolUtilization >> 64));
-
         uint256 isLong = tokenId.isLong(index);
 
         // start with base requirement, which is based on isLong value
-        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, utilization);
+        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
 
         // if the position is long, required tokens does not depend on price
         unchecked {
@@ -1447,7 +1401,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint128 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 required) {
         // extract partner index (associated with another liquidity chunk)
         uint256 partnerIndex = tokenId.riskPartner(index);
@@ -1479,7 +1433,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _getRequiredCollateralAtUtilization(
         uint128 amount,
         uint256 isLong,
-        int256 utilization
+        int16 utilization
     ) internal view returns (uint256 required) {
         // if position is short, use sell collateral ratio
         if (isLong == 0) {
@@ -1494,7 +1448,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         } else if (isLong == 1) {
             // if options is long, use buy collateral ratio
             // compute the buy collateral ratio, which depends on the pool utilization
-            uint256 buyCollateral = _buyCollateralRatio(uint256(utilization));
+            uint256 buyCollateral = _buyCollateralRatio(uint16(utilization));
 
             // compute required as amount*collateralRatio
             // can use unsafe because denominator is always nonzero
@@ -1518,7 +1472,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 positionSize,
         uint256 index,
         uint256 partnerIndex,
-        uint128 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
         // compute the total amount of funds moved for the position's current leg
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
@@ -1587,9 +1541,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             _getRequiredCollateralAtUtilization(
                 tokenType == 0 ? movedRight : movedLeft,
                 1,
-                tokenType == 0
-                    ? int64(uint64(poolUtilization))
-                    : int64(uint64(poolUtilization >> 64))
+                poolUtilization
             )
         );
     }
@@ -1608,7 +1560,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 index,
         uint128 positionSize,
         int24 atTick,
-        uint128 poolUtilization
+        int16 poolUtilization
     ) internal view returns (uint256 strangleRequired) {
         // If both tokenTypes are the same, then this is a long or short strangle.
         // A strangle is an options strategy in which the investor holds a position
@@ -1634,14 +1586,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // A negative pool utilization is used to denote a position which is a strangle
             // at low pool utilization's strangle legs are evaluated at 2x capital efficiency
 
-            uint64 poolUtilization0 = uint64(poolUtilization);
-            uint64 poolUtilization1 = uint64(poolUtilization >> 64);
-
             // add 1 to handle poolUtilization = 0
-
-            poolUtilization =
-                uint128(uint64(-int64(poolUtilization0 == 0 ? 1 : poolUtilization0))) +
-                (uint128(uint64(-int64(poolUtilization1 == 0 ? 1 : poolUtilization1))) << 64);
+            poolUtilization = -(poolUtilization == 0 ? int16(1) : poolUtilization);
 
             return
                 strangleRequired = _getRequiredCollateralSingleLegNoPartner(
