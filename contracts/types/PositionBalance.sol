@@ -11,7 +11,7 @@ using PositionBalanceLibrary for PositionBalance global;
 // PACKING RULES FOR A POSITIONBALANCE:
 // =================================================================================================
 //  From the LSB to the MSB:
-// (1) positionSize     128bits : the size of that position  (uint128).
+// (1) positionSize     128bits : The size of this position (uint128).
 // (2) poolUtilization0 16bits  : The pool utilization of token0, stored as (10000 * inAMM0)/totalAssets0 (uint16).
 // (3) poolUtilization1 16bits  : The pool utilization of token1, stored as (10000 * inAMM1)/totalAssets1 (uint16).
 // (4) currentTick      24bits  : The currentTick at mint (int24).
