@@ -1873,8 +1873,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 );
 
                 // We need to adjust the grossPremiumLast value such that the result of
-                // (grossPremium - adjustedGrossPremiumLast)*updatedTotalLiquidityPostBurn/2**64 is equal to
-                // (grossPremium - grossPremiumLast)*totalLiquidityBeforeBurn/2**64 - premiumOwedToPosition
+                // (grossPremium - adjustedGrossPremiumLast) * updatedTotalLiquidityPostBurn / 2**64 is equal to
+                // (grossPremium - grossPremiumLast) * totalLiquidityBeforeBurn / 2**64 - premiumOwedToPosition
                 // G: total gross premium (- premiumOwedToPosition)
                 // T: totalLiquidityBeforeMint
                 // R: positionLiquidity
