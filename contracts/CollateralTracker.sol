@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
@@ -351,10 +351,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev This returns the total tracked assets in the AMM and PanopticPool,
     /// @dev - EXCLUDING the amount of collected fees (because they are reserved for short options)
     /// @dev - EXCLUDING any donations that have been made to the pool
-    /// @return totalManagedAssets The total amount of assets managed
-    function totalAssets() public view returns (uint256 totalManagedAssets) {
+    /// @return The total amount of assets managed by the CollateralTracker vault
+    function totalAssets() public view returns (uint256) {
         unchecked {
-            return s_poolAssets + s_inAMM;
+            return uint256(s_poolAssets) + s_inAMM;
         }
     }
 
@@ -417,9 +417,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets += uint128(assets);
-        }
+        s_poolAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -475,9 +473,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets += uint128(assets);
-        }
+        s_poolAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -957,13 +953,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 // N = (ZY - ZT) / (X - Z)
                 // N = Z(Y - T) / (X - Z)
                 // subtract delegatee balance from N since it was already transferred to the delegator
-
                 uint256 _totalSupply = totalSupply;
                 unchecked {
                     _mint(
                         liquidator,
                         Math.min(
-                            Math.mulDiv(
+                            Math.mulDivCapped(
                                 uint256(bonus),
                                 _totalSupply - liquidateeBalance,
                                 uint256(Math.max(1, int256(totalAssets()) - bonus))
@@ -1181,8 +1176,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // read the position size and the pool utilization at mint
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
+            bool underlyingIsToken0 = s_underlyingIsToken0;
+
             // read the pool utilization at mint
-            int16 poolUtilization = s_underlyingIsToken0
+            int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
                 : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
 
@@ -1191,7 +1188,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 tokenId,
                 positionSize,
                 atTick,
-                poolUtilization
+                poolUtilization,
+                underlyingIsToken0
             );
 
             // add to the tokenRequired accumulator
@@ -1210,14 +1208,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionSize The size of the option position
     /// @param atTick The tick at which to evaluate the account's positions
     /// @param poolUtilization The utilization of the collateral vault (balance of buying and selling)
+    /// @param underlyingIsToken0 Cached `s_underlyingIsToken0` value for this CollateralTracker instance
     /// @return tokenRequired Total required tokens for all legs of the specified tokenId.
     function _getRequiredCollateralAtTickSinglePosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 atTick,
-        int16 poolUtilization
+        int16 poolUtilization,
+        bool underlyingIsToken0
     ) internal view returns (uint256 tokenRequired) {
-        bool underlyingIsToken0 = s_underlyingIsToken0;
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {

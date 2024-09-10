@@ -414,18 +414,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return totalSwapped A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
+    /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
+    /// @return A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
     function burnTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    )
-        external
-        nonReentrant
-        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
-    {
+    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
         // burn this ERC1155 token id
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -448,18 +444,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return totalSwapped A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
+    /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
+    /// @return A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
     function mintTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    )
-        external
-        nonReentrant
-        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
-    {
+    ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
         // create the option position via its ID in this erc1155
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -900,7 +892,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         /* if the position is NOT long (selling a put or a call), then _mintLiquidity to move liquidity
             from the msg.sender to the uniswap v3 pool:
             Selling(isLong=0): Mint chunk of liquidity in Uniswap (defined by upper tick, lower tick, and amount)
-                    ┌─────────────────────────────────┐
+                   ┌─────────────────────────────────┐
             ▲     ┌▼┐ liquidityChunk                 │
             │  ┌──┴─┴──┐                         ┌───┴──┐
             │  │       │                         │      │
@@ -909,7 +901,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         
             else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
             Buying(isLong=1): Burn in Uniswap
-                    ┌─────────────────┐
+                   ┌─────────────────┐
             ▲     ┌┼┐                │
             │  ┌──┴─┴──┐         ┌───▼──┐
             │  │       │         │      │
