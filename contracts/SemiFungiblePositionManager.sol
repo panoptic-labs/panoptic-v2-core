@@ -7,7 +7,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
-import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
+import {TransientReentrancyGuard} from "solmate/src/utils/TransientReentrancyGuard.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -27,6 +27,7 @@ import {V4StateReader} from "@libraries/V4StateReader.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
+import "forge-std/Test.sol";
 
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
@@ -341,7 +342,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
+        // require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
+        require(msg.sender == address(POOL_MANAGER_V4));
 
         (
             address account,
@@ -654,13 +656,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 zeroForOne = net0 < 0;
 
                 //compute the swap amount, set as positive (exact input)
-                swapAmount = -net0;
+                swapAmount = net0;
             } else if (itm0 != 0) {
                 zeroForOne = itm0 < 0;
-                swapAmount = -itm0;
+                swapAmount = itm0;
             } else {
                 zeroForOne = itm1 > 0;
-                swapAmount = -itm1;
+                swapAmount = itm1;
             }
 
             // NOTE: can occur if itm0 and itm1 have the same value
@@ -682,8 +684,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
 
             // Add amounts swapped to totalSwapped variable
-            totalSwapped = LeftRightSigned.wrap(0).toRightSlot(swapDelta.amount0()).toLeftSlot(
-                swapDelta.amount1()
+            totalSwapped = LeftRightSigned.wrap(0).toRightSlot(-swapDelta.amount0()).toLeftSlot(
+                -swapDelta.amount1()
             );
         }
     }
@@ -765,17 +767,25 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // fit within that limit at all times.
         if (amount0 > uint128(type(int128).max - 4) || amount1 > uint128(type(int128).max - 4))
             revert Errors.PositionTooLarge();
+        console2.log("totalMoved.rs", totalMoved.rightSlot());
+        console2.log("totalMoved.ls", totalMoved.leftSlot());
 
         if (tickLimitLow > tickLimitHigh) {
             // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
             if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
-                totalMoved = swapInAMM(key, itmAmounts).add(totalMoved);
+                LeftRightSigned swpin = swapInAMM(key, itmAmounts);
+                console2.log("swpin.rs", swpin.rightSlot());
+                console2.log("swpin.ls", swpin.leftSlot());
+                totalMoved = swpin.add(totalMoved);
             }
 
             (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
         }
-
-        LeftRightSigned cumulativeDelta = totalCollected.add(totalMoved);
+        console2.log("totalMoved.rs", totalMoved.rightSlot());
+        console2.log("totalMoved.ls", totalMoved.leftSlot());
+        console2.log("totalCollected.rs", totalCollected.rightSlot());
+        console2.log("totalCollected.ls", totalCollected.leftSlot());
+        LeftRightSigned cumulativeDelta = totalMoved.sub(totalCollected);
 
         if (cumulativeDelta.rightSlot() > 0) {
             POOL_MANAGER_V4.burn(
@@ -929,13 +939,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 Uniswap v3      account 
         */
 
-        address _account = account;
-
         LiquidityChunk _liquidityChunk = liquidityChunk;
 
         PoolKey memory _key = key;
 
-        (BalanceDelta liquidityDelta, BalanceDelta feeDelta) = POOL_MANAGER_V4.modifyLiquidity(
+        (BalanceDelta delta, BalanceDelta feesAccrued) = POOL_MANAGER_V4.modifyLiquidity(
             _key,
             IPoolManager.ModifyLiquidityParams(
                 _liquidityChunk.tickLower(),
@@ -943,21 +951,24 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 isLong == 0
                     ? int256(uint256(_liquidityChunk.liquidity()))
                     : -int256(uint256(_liquidityChunk.liquidity())),
-                bytes32(uint256(uint160(_account)))
+                positionKey
             ),
             ""
         );
 
-        moved = LeftRightSigned.wrap(0).toRightSlot(liquidityDelta.amount0()).toLeftSlot(
-            liquidityDelta.amount1()
-        );
+        unchecked {
+            moved = LeftRightSigned
+                .wrap(0)
+                .toRightSlot(feesAccrued.amount0() - delta.amount0())
+                .toLeftSlot(feesAccrued.amount1() - delta.amount1());
+        }
 
         // (premium can only be collected if liquidity existed in the chunk prior to this mint)
         if (currentLiquidity.rightSlot() > 0) {
             collectedSingleLeg = LeftRightUnsigned
                 .wrap(0)
-                .toRightSlot(uint128(feeDelta.amount0()))
-                .toLeftSlot(uint128(feeDelta.amount1()));
+                .toRightSlot(uint128(feesAccrued.amount0()))
+                .toLeftSlot(uint128(feesAccrued.amount1()));
             _updateStoredPremia(positionKey, currentLiquidity, collectedSingleLeg);
         }
     }
@@ -1142,10 +1153,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             LeftRightUnsigned amountToCollect;
             {
                 PoolId _idV4 = idV4;
-                address _owner = owner;
                 int24 _tickLower = tickLower;
                 int24 _tickUpper = tickUpper;
                 int24 _atTick = atTick;
+                bytes32 _positionKey = positionKey;
 
                 (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = V4StateReader
                     .getFeeGrowthInside(POOL_MANAGER_V4, _idV4, _atTick, _tickLower, _tickUpper);
@@ -1155,12 +1166,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         POOL_MANAGER_V4,
                         _idV4,
                         keccak256(
-                            abi.encodePacked(
-                                address(this),
-                                _tickLower,
-                                _tickUpper,
-                                bytes32(uint256(uint160(_owner)))
-                            )
+                            abi.encodePacked(address(this), _tickLower, _tickUpper, _positionKey)
                         )
                     );
 

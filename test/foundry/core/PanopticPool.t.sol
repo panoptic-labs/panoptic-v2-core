@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {FeesCalc} from "@libraries/FeesCalc.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
@@ -28,13 +27,20 @@ import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
+// V4 types
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
-
-    function addrToPoolId(address pool) public view returns (uint256) {
-        return s_AddrToPoolIdData[pool];
-    }
+    constructor(IPoolManager _manager) SemiFungiblePositionManager(_manager) {}
 }
 
 contract PanopticPoolHarness is PanopticPool {
@@ -81,7 +87,10 @@ contract PanopticPoolHarness is PanopticPool {
         return (premiasByLeg, netExchanged);
     }
 
-    constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
+    constructor(
+        SemiFungiblePositionManager _sfpm,
+        IPoolManager _manager
+    ) PanopticPool(_sfpm, _manager) {}
 }
 
 contract PanopticPoolTest is PositionUtils {
@@ -167,6 +176,12 @@ contract PanopticPoolTest is PositionUtils {
     address Swapper = address(0x123456789);
     address Charlie = address(0x1234567891);
     address Seller = address(0x12345678912);
+
+    IPoolManager manager;
+
+    V4RouterSimple routerV4;
+
+    PoolKey poolKey;
 
     /*//////////////////////////////////////////////////////////////
                                TEST DATA
@@ -342,7 +357,6 @@ contract PanopticPoolTest is PositionUtils {
 
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool));
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -353,15 +367,46 @@ contract PanopticPoolTest is PositionUtils {
         feeGrowthGlobal1X128 = _pool.feeGrowthGlobal1X128();
         poolBalance0 = IERC20Partial(token0).balanceOf(address(_pool));
         poolBalance1 = IERC20Partial(token1).balanceOf(address(_pool));
+
+        poolKey = PoolKey(
+            Currency.wrap(token0),
+            Currency.wrap(token1),
+            fee,
+            tickSpacing,
+            IHooks(address(0))
+        );
+        poolId = PanopticMath.getPoolId(poolKey, poolKey.toId());
     }
 
     function _deployPanopticPool() internal {
+        vm.startPrank(Swapper);
+
+        deal(token0, Swapper, type(uint248).max);
+        deal(token1, Swapper, type(uint248).max);
+
+        IERC20Partial(token0).approve(address(router), type(uint256).max);
+        IERC20Partial(token1).approve(address(router), type(uint256).max);
+
+        IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
+        IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
+
+        manager.initialize(poolKey, currentSqrtPriceX96, "");
+
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (TickMath.MIN_TICK / tickSpacing) * tickSpacing,
+            (TickMath.MAX_TICK / tickSpacing) * tickSpacing,
+            1_000_000 ether
+        );
+
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
             WETH,
             sfpm,
             V3FACTORY,
+            manager,
             poolReference,
             collateralReference,
             new bytes32[](0),
@@ -377,9 +422,8 @@ contract PanopticPoolTest is PositionUtils {
         pp = PanopticPoolHarness(
             address(
                 factory.deployNewPool(
-                    token0,
-                    token1,
-                    fee,
+                    pool,
+                    poolKey,
                     uint96(block.timestamp),
                     type(uint256).max,
                     type(uint256).max
@@ -392,14 +436,6 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function _initAccounts() internal {
-        vm.startPrank(Swapper);
-
-        IERC20Partial(token0).approve(address(router), type(uint256).max);
-        IERC20Partial(token1).approve(address(router), type(uint256).max);
-
-        deal(token0, Swapper, type(uint104).max);
-        deal(token1, Swapper, type(uint104).max);
-
         vm.startPrank(Charlie);
 
         deal(token0, Charlie, type(uint104).max);
@@ -471,14 +507,16 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function setUp() public {
-        sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
+        manager = new PoolManager();
+        routerV4 = new V4RouterSimple(manager);
+        sfpm = new SemiFungiblePositionManagerHarness(manager);
 
         ph = new PanopticHelper(sfpm);
 
         // deploy reference pool and collateral token
-        poolReference = address(new PanopticPoolHarness(sfpm));
+        poolReference = address(new PanopticPoolHarness(sfpm, manager));
         collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, manager)
         );
     }
 
@@ -1351,6 +1389,10 @@ contract PanopticPoolTest is PositionUtils {
                 )
             );
 
+            (uint160 swappedSqrtPriceX96, , , , , , ) = pool.slot0();
+
+            routerV4.swapTo(address(0), poolKey, swappedSqrtPriceX96);
+
             router.exactOutputSingle(
                 ISwapRouter.ExactOutputSingleParams(
                     isWETH == 1 ? token0 : token1,
@@ -1363,6 +1405,10 @@ contract PanopticPoolTest is PositionUtils {
                     0
                 )
             );
+
+            (swappedSqrtPriceX96, , , , , , ) = pool.slot0();
+
+            routerV4.swapTo(address(0), poolKey, swappedSqrtPriceX96);
         }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
@@ -1384,6 +1430,9 @@ contract PanopticPoolTest is PositionUtils {
                     0
                 )
             );
+
+            (uint160 swappedSqrtPriceX96, , , , , , ) = pool.slot0();
+            routerV4.swapTo(address(0), poolKey, swappedSqrtPriceX96);
         } else {
             router.exactOutputSingle(
                 ISwapRouter.ExactOutputSingleParams(
@@ -1397,7 +1446,45 @@ contract PanopticPoolTest is PositionUtils {
                     0
                 )
             );
+
+            (uint160 swappedSqrtPriceX96, , , , , , ) = pool.slot0();
+            routerV4.swapTo(address(0), poolKey, swappedSqrtPriceX96);
         }
+    }
+
+    function getTokensOwed(
+        int24 _tickLower,
+        int24 _tickUpper,
+        uint256 _tokenType
+    ) internal returns (uint128 _tokensOwed0, uint128 _tokensOwed1) {
+        vm.startPrank(address(sfpm));
+
+        (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = StateLibrary
+            .getFeeGrowthInside(manager, poolKey.toId(), _tickLower, _tickUpper);
+
+        bytes32 positionKey = keccak256(
+            abi.encodePacked(poolKey.toId(), address(sfpm), _tokenType, _tickLower, _tickUpper)
+        );
+
+        (
+            uint128 _liquidity,
+            uint256 feeGrowthInside0LastX128,
+            uint256 feeGrowthInside1LastX128
+        ) = StateLibrary.getPositionInfo(
+                manager,
+                poolKey.toId(),
+                address(sfpm),
+                _tickLower,
+                _tickUpper,
+                positionKey
+            );
+
+        _tokensOwed0 = uint128(
+            Math.mulDiv128(feeGrowthInside0X128 - feeGrowthInside0LastX128, _liquidity)
+        );
+        _tokensOwed1 = uint128(
+            Math.mulDiv128(feeGrowthInside1X128 - feeGrowthInside1LastX128, _liquidity)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1409,7 +1496,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, token0, token1, ct0, ct1);
+        pp.startPool(poolKey, pool, ct0, ct1);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1638,7 +1725,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256[2] memory expectedPremia;
         {
             (uint256 premiumToken0, uint256 premiumToken1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(pp),
                 0,
                 tickLowers[0],
@@ -1654,7 +1741,7 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (uint256 premiumToken0, uint256 premiumToken1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(pp),
                 0,
                 tickLowers[1],
@@ -1747,10 +1834,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList
         );
 
-        accruePoolFeesInRange(address(pool), expectedLiq, premiaSeed[0], premiaSeed[1]);
-
-        vm.startPrank(address(sfpm));
-        pool.burn(tickLower, tickUpper, 0);
+        accruePoolFeesInRange(manager, poolKey, expectedLiq, premiaSeed[0], premiaSeed[1]);
 
         ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
 
@@ -3859,15 +3943,8 @@ contract PanopticPoolTest is PositionUtils {
             );
         }
 
-        // poke uniswap pool to update tokens owed - needed because swap happens after mint
-        vm.startPrank(address(sfpm));
-        pool.burn(tickLower, tickUpper, 0);
+        (uint128 tokensOwed0, ) = getTokensOwed(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
-
-        // calculate additional fees owed to position
-        (, , , uint128 tokensOwed0, ) = pool.positions(
-            PositionKey.compute(address(sfpm), tickLower, tickUpper)
-        );
 
         // price changes afters swap at mint so we need to update the price
         (currentSqrtPriceX96, , , , , , ) = pool.slot0();
@@ -4030,15 +4107,8 @@ contract PanopticPoolTest is PositionUtils {
 
         twoWaySwap(swapSizeSeed);
 
-        // poke uniswap pool to update tokens owed - needed because swap happens after mint
-        vm.startPrank(address(sfpm));
-        pool.burn(tickLower, tickUpper, 0);
+        (uint128 tokensOwed0, uint128 tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
-
-        // calculate additional fees owed to position
-        (, , , uint128 tokensOwed0, uint128 tokensOwed1) = pool.positions(
-            PositionKey.compute(address(sfpm), tickLower, tickUpper)
-        );
 
         // price changes afters swap at mint so we need to update the price
         (currentSqrtPriceX96, , , , , , ) = pool.slot0();
@@ -4203,14 +4273,7 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
-            vm.startPrank(address(sfpm));
-            pool.burn(tickLower, tickUpper, 0);
-
-            // calculate additional fees owed to position
-            (, , , tokensOwed0, tokensOwed1) = pool.positions(
-                PositionKey.compute(address(sfpm), tickLower, tickUpper)
-            );
+            (tokensOwed0, tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
 
             tokensOwedTemp[0] = tokensOwed0;
             tokensOwedTemp[1] = tokensOwed1;
@@ -4230,14 +4293,7 @@ contract PanopticPoolTest is PositionUtils {
 
             twoWaySwap(swapSizeSeed);
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
-            vm.startPrank(address(sfpm));
-            pool.burn(tickLower, tickUpper, 0);
-
-            // calculate additional fees owed to position
-            (, , , tokensOwed0, tokensOwed1) = pool.positions(
-                PositionKey.compute(address(sfpm), tickLower, tickUpper)
-            );
+            (tokensOwed0, tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
 
             tokensOwedTemp[0] += tokensOwed0;
             tokensOwedTemp[1] += tokensOwed1;
@@ -4255,14 +4311,8 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
-            vm.startPrank(address(sfpm));
-            pool.burn(tickLower, tickUpper, 0);
-
-            // calculate additional fees owed to position
-            (, , , tokensOwed0, tokensOwed1) = pool.positions(
-                PositionKey.compute(address(sfpm), tickLower, tickUpper)
-            );
+            (tokensOwed0, tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
+            vm.startPrank(Seller);
 
             tokensOwed0 += tokensOwedTemp[0];
             tokensOwed1 += tokensOwedTemp[1];
@@ -4412,14 +4462,7 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MAX_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
-            vm.startPrank(address(sfpm));
-            pool.burn(tickLower, tickUpper, 0);
-
-            // calculate additional fees owed to position
-            (, , , tokensOwed0, tokensOwed1) = pool.positions(
-                PositionKey.compute(address(sfpm), tickLower, tickUpper)
-            );
+            (tokensOwed0, tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
 
             tokensOwedTemp[0] = tokensOwed0;
             tokensOwedTemp[1] = tokensOwed1;
@@ -4439,14 +4482,7 @@ contract PanopticPoolTest is PositionUtils {
 
             twoWaySwap(swapSizeSeed);
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
-            vm.startPrank(address(sfpm));
-            pool.burn(tickLower, tickUpper, 0);
-
-            // calculate additional fees owed to position
-            (, , , tokensOwed0, tokensOwed1) = pool.positions(
-                PositionKey.compute(address(sfpm), tickLower, tickUpper)
-            );
+            (tokensOwed0, tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
 
             tokensOwedTemp[0] += tokensOwed0;
             tokensOwedTemp[1] += tokensOwed1;
@@ -4464,14 +4500,8 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MAX_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
-            vm.startPrank(address(sfpm));
-            pool.burn(tickLower, tickUpper, 0);
-
-            // calculate additional fees owed to position
-            (, , , tokensOwed0, tokensOwed1) = pool.positions(
-                PositionKey.compute(address(sfpm), tickLower, tickUpper)
-            );
+            (tokensOwed0, tokensOwed1) = getTokensOwed(tickLower, tickUpper, 0);
+            vm.startPrank(Bob);
 
             tokensOwed0 += tokensOwedTemp[0];
             tokensOwed1 += tokensOwedTemp[1];
@@ -6565,7 +6595,8 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 < newRequired0);
         }
-        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
+        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
@@ -7140,7 +7171,8 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 < newRequired0);
         }
-        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
+        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
@@ -7598,25 +7630,22 @@ contract PanopticPoolTest is PositionUtils {
         pp.liquidate(posIdList, Alice, posIdList);
     }
 
-    function test_Fail_liquidate_StaleTWAP(uint256 x, int256 tickDeltaSeed) public {
+    function test_Fail_liquidate_StaleTWAP(uint256 x, uint256 sqrtPriceTarget) public {
         _initPool(x);
-        int256 tickDelta = int256(
-            bound(
-                tickDeltaSeed,
-                -(int256(currentTick) - int256(Constants.MIN_V3POOL_TICK)),
-                int256(Constants.MAX_V3POOL_TICK) - int256(currentTick)
-            )
+
+        sqrtPriceTarget = bound(
+            sqrtPriceTarget,
+            Math.getSqrtRatioAtTick(-800_000),
+            Math.getSqrtRatioAtTick(800_000)
         );
-        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 953);
-        vm.store(
-            address(pool),
-            bytes32(0),
-            bytes32(
-                (uint256(vm.load(address(pool), bytes32(0))) &
-                    0xffffffffffffffffff000000ffffffffffffffffffffffffffffffffffffffff) +
-                    (uint256(uint24(int24(int256(currentTick) + int256(tickDelta)))) << 160)
-            )
+        vm.assume(
+            Math.abs(
+                int256(TickMath.getTickAtSqrtRatio(uint160(sqrtPriceTarget))) - pp.getUniV3TWAP_()
+            ) > 953
         );
+
+        vm.startPrank(Swapper);
+        routerV4.swapTo(address(0), poolKey, uint160(sqrtPriceTarget));
 
         vm.expectRevert(Errors.StaleTWAP.selector);
         pp.liquidate(new TokenId[](0), Alice, $posIdList);
@@ -7817,7 +7846,8 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 > newRequired0);
         }
-        (currentTick, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
+        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,

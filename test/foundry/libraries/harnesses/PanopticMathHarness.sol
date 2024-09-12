@@ -11,6 +11,8 @@ import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 
 import "forge-std/Test.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
 
 /// @title PanopticMathHarness: A harness to expose the PanopticMath library for code coverage analysis.
 /// @notice Replicates the interface of the PanopticMath library, passing through any function calls
@@ -44,8 +46,8 @@ contract PanopticMathHarness is Test {
         return (tickLower, tickUpper);
     }
 
-    function getPoolId(address univ3pool) public view returns (uint64) {
-        uint64 poolId = PanopticMath.getPoolId(univ3pool);
+    function getPoolId(PoolKey memory key, PoolId idV4) public pure returns (uint64) {
+        uint64 poolId = PanopticMath.getPoolId(key, idV4);
         return poolId;
     }
 

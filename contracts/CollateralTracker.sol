@@ -346,6 +346,44 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
+                        UNISWAP V4 LOCK CALLBACK
+    //////////////////////////////////////////////////////////////*/
+
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        // require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
+        require(msg.sender == address(POOL_MANAGER_V4));
+
+        (address account, int256 delta) = abi.decode(data, (address, int256));
+
+        address underlyingToken = s_underlyingToken;
+        address panopticPool = address(s_panopticPool);
+        if (delta > 0) {
+            POOL_MANAGER_V4.sync(Currency.wrap(underlyingToken));
+            SafeTransferLib.safeTransferFrom(
+                underlyingToken,
+                account,
+                address(POOL_MANAGER_V4),
+                uint256(delta)
+            );
+            POOL_MANAGER_V4.settle();
+
+            POOL_MANAGER_V4.mint(panopticPool, uint160(underlyingToken), uint256(delta));
+        } else if (delta < 0) {
+            unchecked {
+                delta = -delta;
+            }
+            POOL_MANAGER_V4.burn(panopticPool, uint160(underlyingToken), uint256(delta));
+            POOL_MANAGER_V4.take(Currency.wrap(underlyingToken), account, uint256(delta));
+        }
+
+        return "";
+    }
+
+    function _settleTokenDelta(address account, int256 delta) internal {
+        POOL_MANAGER_V4.unlock(abi.encode(account, delta));
+    }
+
+    /*//////////////////////////////////////////////////////////////
                      STANDARD ERC4626 INTERFACE
     //////////////////////////////////////////////////////////////*/
 
@@ -414,12 +452,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
         // in return for the shares to be minted
-        SafeTransferLib.safeTransferFrom(
-            s_underlyingToken,
-            msg.sender,
-            address(s_panopticPool),
-            assets
-        );
+        _settleTokenDelta(msg.sender, int256(assets));
 
         // mint collateral shares of the Panoptic Pool funds (this ERC20 token)
         _mint(receiver, shares);
@@ -470,12 +503,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
         // in return for the shares to be minted
-        SafeTransferLib.safeTransferFrom(
-            s_underlyingToken,
-            msg.sender,
-            address(s_panopticPool),
-            assets
-        );
+        _settleTokenDelta(msg.sender, int256(assets));
 
         // mint collateral shares of the Panoptic Pool funds (this ERC20 token)
         _mint(receiver, shares);
@@ -540,12 +568,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
-        SafeTransferLib.safeTransferFrom(
-            s_underlyingToken,
-            address(s_panopticPool),
-            receiver,
-            assets
-        );
+        unchecked {
+            _settleTokenDelta(receiver, -int256(assets));
+        }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
@@ -583,12 +608,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
-        SafeTransferLib.safeTransferFrom(
-            s_underlyingToken,
-            address(s_panopticPool),
-            receiver,
-            assets
-        );
+        unchecked {
+            _settleTokenDelta(receiver, -int256(assets));
+        }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
@@ -641,12 +663,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
-        SafeTransferLib.safeTransferFrom(
-            s_underlyingToken,
-            address(s_panopticPool),
-            receiver,
-            assets
-        );
+        unchecked {
+            _settleTokenDelta(receiver, -int256(assets));
+        }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
@@ -908,7 +927,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 bonusAbs = uint256(-bonus);
             }
 
-            SafeTransferLib.safeTransferFrom(s_underlyingToken, liquidator, msg.sender, bonusAbs);
+            _settleTokenDelta(liquidator, int256(bonusAbs));
 
             _mint(liquidatee, convertToShares(bonusAbs));
 

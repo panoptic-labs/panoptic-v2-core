@@ -68,6 +68,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice The canonical Uniswap V4 Pool Manager address.
     IPoolManager internal immutable POOL_MANAGER_V4;
 
+    /// @notice The Uniswap V3 factory contract to use.
+    IUniswapV3Factory internal immutable UNIV3_FACTORY;
+
     /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools.
     SemiFungiblePositionManager internal immutable SFPM;
 
@@ -114,6 +117,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
+        IUniswapV3Factory _uniFactory,
         IPoolManager manager,
         address _poolReference,
         address _collateralReference,
@@ -123,6 +127,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     ) FactoryNFT(properties, indices, pointers) {
         WETH = _WETH9;
         SFPM = _SFPM;
+        UNIV3_FACTORY = _uniFactory;
         POOL_MANAGER_V4 = manager;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
@@ -133,7 +138,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
+        // require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
+        require(msg.sender == address(POOL_MANAGER_V4));
 
         (
             PoolKey memory key,
@@ -142,7 +148,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
             uint128 liquidity,
             address payer
         ) = abi.decode(data, (PoolKey, int24, int24, uint128, address));
-        (BalanceDelta liquidityDelta, BalanceDelta feeDelta) = POOL_MANAGER_V4.modifyLiquidity(
+        (BalanceDelta delta, BalanceDelta feesAccrued) = POOL_MANAGER_V4.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
                 tickLower,
@@ -153,36 +159,37 @@ contract PanopticFactory is FactoryNFT, Multicall {
             ""
         );
 
-        int256 delta0 = int256(liquidityDelta.amount0()) + feeDelta.amount0();
-
-        if (delta0 < 0) {
+        if (delta.amount0() < 0) {
             POOL_MANAGER_V4.sync(key.currency0);
             SafeTransferLib.safeTransferFrom(
                 Currency.unwrap(key.currency0),
                 payer,
                 address(POOL_MANAGER_V4),
-                uint256(-delta0)
+                uint128(-delta.amount0())
             );
             POOL_MANAGER_V4.settle();
-        } else if (delta0 > 0) {
-            POOL_MANAGER_V4.clear(key.currency0, uint256(delta0));
+        } else if (delta.amount0() > 0) {
+            POOL_MANAGER_V4.clear(key.currency0, uint128(delta.amount0()));
         }
 
-        int256 delta1 = int256(liquidityDelta.amount1()) + feeDelta.amount1();
-        if (delta1 < 0) {
+        if (delta.amount1() < 0) {
             POOL_MANAGER_V4.sync(key.currency1);
             SafeTransferLib.safeTransferFrom(
                 Currency.unwrap(key.currency1),
                 payer,
                 address(POOL_MANAGER_V4),
-                uint256(-delta1)
+                uint128(-delta.amount1())
             );
             POOL_MANAGER_V4.settle();
-        } else if (delta1 > 0) {
-            POOL_MANAGER_V4.clear(key.currency1, uint256(delta1));
+        } else if (delta.amount1() > 0) {
+            POOL_MANAGER_V4.clear(key.currency1, uint128(delta.amount1()));
         }
 
-        return abi.encode(liquidityDelta.amount0(), liquidityDelta.amount1());
+        return
+            abi.encode(
+                feesAccrued.amount0() - delta.amount0(),
+                feesAccrued.amount1() - delta.amount1()
+            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -212,6 +219,11 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         if (address(s_getPanopticPool[panopticPoolKey]) != address(0))
             revert Errors.PoolAlreadyInitialized();
+
+        require(
+            UNIV3_FACTORY.getPool(oraclePool.token0(), oraclePool.token1(), oraclePool.fee()) ==
+                address(oraclePool)
+        );
 
         // initialize pool in SFPM if it has not already been initialized
         SFPM.initializeAMMPool(key);

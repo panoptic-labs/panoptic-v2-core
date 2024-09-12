@@ -25,6 +25,10 @@ import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {UniPoolObservationMock} from "../testUtils/PriceMocks.sol";
 
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
 
 /**
  * Test the PanopticMath functionality with Foundry and Fuzzing.
@@ -208,37 +212,20 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    function test_Success_getPoolId(address univ3pool, uint256 _tickSpacing) public {
-        vm.assume(
-            univ3pool > address(10) &&
-                univ3pool != address(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D) &&
-                univ3pool != address(0x000000000000000000636F6e736F6c652e6c6f67) &&
-                univ3pool != address(harness)
-        );
+    function test_Success_getPoolId(PoolId poolId, uint256 _tickSpacing) public {
         _tickSpacing = bound(_tickSpacing, 0, uint16(type(int16).max));
 
-        UniPoolPriceMock pm = new UniPoolPriceMock();
-        vm.etch(univ3pool, address(pm).code);
-        pm = UniPoolPriceMock(univ3pool);
-
-        pm.construct(
-            UniPoolPriceMock.Slot0({
-                sqrtPriceX96: 0,
-                tick: 0,
-                observationIndex: 0,
-                observationCardinality: 0,
-                observationCardinalityNext: 0,
-                feeProtocol: 0,
-                unlocked: false
-            }),
-            address(0),
-            address(0),
+        PoolKey memory key = PoolKey(
+            Currency.wrap(address(0)),
+            Currency.wrap(address(0)),
             0,
-            int24(uint24(_tickSpacing))
+            int24(uint24(_tickSpacing)),
+            IHooks(address(0))
         );
-        uint64 poolPattern = uint64(uint160(univ3pool) >> 112);
-        _tickSpacing <<= 48;
-        assertEq(_tickSpacing + poolPattern, harness.getPoolId(univ3pool));
+        assertEq(
+            (uint64(_tickSpacing) << 48) + uint48(uint256(PoolId.unwrap(poolId))),
+            harness.getPoolId(key, poolId)
+        );
     }
 
     function test_Success_getTicks_normalTickRange(

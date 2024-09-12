@@ -14,6 +14,16 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {Math} from "@libraries/Math.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 contract MiniPositionManager {
     struct CallbackData {
@@ -1295,7 +1305,8 @@ contract PositionUtils is Test {
 
     // this only works if the position is in-range
     function accruePoolFeesInRange(
-        address uniPool,
+        IPoolManager manager,
+        PoolKey memory key,
         uint256 posLiq,
         uint256 posFees0,
         uint256 posFees1
@@ -1303,32 +1314,63 @@ contract PositionUtils is Test {
         uint256 feeGrowthAdd0X128 = FullMath.mulDiv(posFees0, 2 ** 128, posLiq);
         uint256 feeGrowthAdd1X128 = FullMath.mulDiv(posFees1, 2 ** 128, posLiq);
 
+        uint128 _liquidity = StateLibrary.getLiquidity(manager, key.toId());
         // distribute accrued fee amount to Uniswap pool
         deal(
-            IUniswapV3Pool(uniPool).token0(),
-            uniPool,
-            IERC20Partial(IUniswapV3Pool(uniPool).token0()).balanceOf(uniPool) +
-                (IUniswapV3Pool(uniPool).liquidity() * posFees0) /
+            Currency.unwrap(key.currency0),
+            address(manager),
+            IERC20Partial(Currency.unwrap(key.currency0)).balanceOf(address(manager)) +
+                (_liquidity * posFees0) /
                 posLiq
         );
         deal(
-            IUniswapV3Pool(uniPool).token1(),
-            uniPool,
-            IERC20Partial(IUniswapV3Pool(uniPool).token1()).balanceOf(uniPool) +
-                (IUniswapV3Pool(uniPool).liquidity() * posFees1) /
+            Currency.unwrap(key.currency1),
+            address(manager),
+            IERC20Partial(Currency.unwrap(key.currency1)).balanceOf(address(manager)) +
+                (_liquidity * posFees1) /
                 posLiq
         );
 
+        PoolId poolId = key.toId();
         // update global fees
         vm.store(
-            uniPool,
-            bytes32(uint256(1)),
-            bytes32(uint256(vm.load(uniPool, bytes32(uint256(1)))) + feeGrowthAdd0X128)
+            address(manager),
+            bytes32(
+                uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                    StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET
+            ),
+            bytes32(
+                uint256(
+                    vm.load(
+                        address(manager),
+                        bytes32(
+                            uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                                StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET
+                        )
+                    )
+                ) + feeGrowthAdd0X128
+            )
         );
+
         vm.store(
-            uniPool,
-            bytes32(uint256(2)),
-            bytes32(uint256(vm.load(uniPool, bytes32(uint256(2)))) + feeGrowthAdd1X128)
+            address(manager),
+            bytes32(
+                uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                    StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET +
+                    1
+            ),
+            bytes32(
+                uint256(
+                    vm.load(
+                        address(manager),
+                        bytes32(
+                            uint256(StateLibrary._getPoolStateSlot(poolId)) +
+                                StateLibrary.FEE_GROWTH_GLOBAL0_OFFSET +
+                                1
+                        )
+                    )
+                ) + feeGrowthAdd1X128
+            )
         );
     }
 

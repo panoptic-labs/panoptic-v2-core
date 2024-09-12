@@ -21,6 +21,7 @@ import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.so
 import {TokenId} from "@types/TokenId.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
@@ -347,7 +348,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
 
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
@@ -592,8 +593,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+
         (
-            int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 lastObservedTick,
@@ -783,8 +785,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint256 buffer
     ) internal view returns (uint256) {
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+
         (
-            int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 lastObservedTick,
@@ -938,12 +941,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
 
-        int24 currentTick;
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
         {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 fastOracleTick;
             int24 lastObservedTick;
-            (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
+            (fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
                 s_univ3pool,
                 s_miniMedian
             );
@@ -1094,7 +1097,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         LeftRightSigned exerciseFees;
         {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+            int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
 
             uint128 positionSize = s_positionBalance[account][touchedId[0]].positionSize();
 
@@ -1255,7 +1258,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return Whether the current tick has deviated from the median by > MAX_TICKS_DELTA
     function isSafeMode() public view returns (bool) {
         // check if the price has deviated too much recently
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
 
         uint256 medianData = s_miniMedian;
         unchecked {
@@ -1350,7 +1353,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /// @notice Computes and returns all oracle ticks.
-    /// @return currentTick The current tick in the Uniswap pool
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick (either composed of Uniswap observations or tracked by `s_miniMedian`)
     /// @return latestObservation The latest observation from the Uniswap pool
@@ -1359,15 +1361,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
         external
         view
         returns (
-            int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 latestObservation,
             uint256 medianData
         )
     {
-        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath
-            .getOracleTicks(s_univ3pool, s_miniMedian);
+        (fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath.getOracleTicks(
+            s_univ3pool,
+            s_miniMedian
+        );
         medianData = s_miniMedian;
     }
 
@@ -1541,7 +1544,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_positionBalance[owner][tokenId].positionSize()
         );
 
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
 
         LeftRightUnsigned accumulatedPremium;
         {
