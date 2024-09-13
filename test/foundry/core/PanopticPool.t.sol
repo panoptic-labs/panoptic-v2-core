@@ -1460,14 +1460,12 @@ contract PanopticPoolTest is PositionUtils {
         int24 _tickLower,
         int24 _tickUpper,
         uint256 _tokenType
-    ) internal returns (uint128 _tokensOwed0, uint128 _tokensOwed1) {
-        vm.startPrank(address(sfpm));
-
+    ) internal view returns (uint128 _tokensOwed0, uint128 _tokensOwed1) {
         (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) = StateLibrary
             .getFeeGrowthInside(manager, poolKey.toId(), _tickLower, _tickUpper);
 
         bytes32 positionKey = keccak256(
-            abi.encodePacked(poolKey.toId(), address(sfpm), _tokenType, _tickLower, _tickUpper)
+            abi.encodePacked(poolKey.toId(), address(pp), _tokenType, _tickLower, _tickUpper)
         );
 
         (
