@@ -39,7 +39,7 @@ library Errors {
     error InvalidTokenIdParameter(uint256 parameterType);
 
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
-    error InvalidUniswapCallback();
+    error UnauthorizedUniswapCallback();
 
     /// @notice Invalid input in LeftRight library
     error LeftRightInputError();

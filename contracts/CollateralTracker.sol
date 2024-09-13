@@ -350,8 +350,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        // require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
-        require(msg.sender == address(POOL_MANAGER_V4));
+        if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
         (address account, int256 delta) = abi.decode(data, (address, int256));
 

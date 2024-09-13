@@ -56,9 +56,32 @@ contract V4RouterSimple {
             ) = abi.decode(_data, (address, PoolKey, int24, int24, int256, bytes32));
             modifyLiquidityWithSalt(caller, key, tickLower, tickUpper, liquidity, salt);
             return "";
+        } else if (action == 4) {
+            (address caller, Currency currency, uint256 amount) = abi.decode(
+                _data,
+                (address, Currency, uint256)
+            );
+            mintCurrency(caller, currency, amount);
+            return "";
         }
 
         return "";
+    }
+
+    function mintCurrency(address caller, Currency currency, uint256 amount) public {
+        if (msg.sender != address(POOL_MANAGER_V4)) {
+            POOL_MANAGER_V4.unlock(abi.encode(4, abi.encode(msg.sender, currency, amount)));
+            return;
+        }
+        POOL_MANAGER_V4.sync(currency);
+        SafeTransferLib.safeTransferFrom(
+            Currency.unwrap(currency),
+            caller,
+            address(POOL_MANAGER_V4),
+            amount
+        );
+        POOL_MANAGER_V4.settle();
+        POOL_MANAGER_V4.mint(caller, uint160(Currency.unwrap(currency)), amount);
     }
 
     function modifyLiquidity(

@@ -9,7 +9,6 @@ import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
 import {TransientReentrancyGuard} from "solmate/src/utils/TransientReentrancyGuard.sol";
 // Libraries
-import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
@@ -342,8 +341,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        // require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
-        require(msg.sender == address(POOL_MANAGER_V4));
+        if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
         (
             address account,
@@ -458,7 +456,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         tokenId.validate();
 
         uint256 sfpmId = s_V4toSFPMIdData[key.toId()];
-        require(uint64(sfpmId) == tokenId.poolId() && sfpmId != 0);
+        if (uint64(sfpmId) != tokenId.poolId() || sfpmId == 0)
+            revert Errors.UniswapPoolNotInitialized();
 
         // validate the incoming option position, then forward to the AMM for minting/burning required liquidity chunks
         return
@@ -476,105 +475,26 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                      TRANSFER HOOK IMPLEMENTATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Transfer a single token from one user to another.
-    /// @dev Supports token approvals.
-    /// @param from The user to transfer tokens from
-    /// @param to The user to transfer tokens to
-    /// @param id The ERC1155 token id to transfer
-    /// @param amount The amount of tokens to transfer
-    /// @param data Optional data to include in the receive hook
+    /// @notice All ERC1155 transfers are disabled.
     function safeTransferFrom(
-        address from,
-        address to,
-        uint256 id,
-        uint256 amount,
-        bytes calldata data
-    ) public override nonReentrant {
-        registerTokenTransfer(from, to, TokenId.wrap(id), amount);
-
-        super.safeTransferFrom(from, to, id, amount, data);
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes calldata
+    ) public pure override {
+        revert();
     }
 
-    /// @notice Transfer multiple tokens from one user to another.
-    /// @dev Supports token approvals.
-    /// @dev `ids` and `amounts` must be of equal length.
-    /// @param from The user to transfer tokens from
-    /// @param to The user to transfer tokens to
-    /// @param ids The ERC1155 token ids to transfer
-    /// @param amounts The amounts of tokens to transfer
-    /// @param data Optional data to include in the receive hook
+    /// @notice All ERC1155 transfers are disabled.
     function safeBatchTransferFrom(
-        address from,
-        address to,
-        uint256[] calldata ids,
-        uint256[] calldata amounts,
-        bytes calldata data
-    ) public override nonReentrant {
-        for (uint256 i = 0; i < ids.length; ) {
-            registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
-            unchecked {
-                ++i;
-            }
-        }
-
-        super.safeBatchTransferFrom(from, to, ids, amounts, data);
-    }
-
-    /// @notice Update user position data following a token transfer.
-    /// @dev All liquidity for `from` in the chunk for each leg of `id` must be transferred.
-    /// @dev `from` must not have long liquidity in any of the chunks being transferred.
-    /// @dev `to` must not have (long or short) liquidity in any of the chunks being transferred.
-    /// @param from The address of the sender
-    /// @param to The address of the recipient
-    /// @param id The tokenId being transferred
-    /// @param amount The amount of the token being transferred
-    function registerTokenTransfer(address from, address to, TokenId id, uint256 amount) internal {
-        uint64 poolId = id.poolId();
-
-        uint256 numLegs = id.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
-            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                id,
-                leg,
-                uint128(amount)
-            );
-
-            PoolId idV4 = s_poolIdToKey[poolId].toId();
-
-            bytes32 positionKey_from = keccak256(
-                abi.encodePacked(
-                    idV4,
-                    from,
-                    id.tokenType(leg),
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper()
-                )
-            );
-            bytes32 positionKey_to = keccak256(
-                abi.encodePacked(
-                    idV4,
-                    to,
-                    id.tokenType(leg),
-                    liquidityChunk.tickLower(),
-                    liquidityChunk.tickUpper()
-                )
-            );
-
-            // Revert if recipient already has liquidity in `liquidityChunk`
-            // Revert if sender has long liquidity in `liquidityChunk` or they are attempting to transfer less than their `netLiquidity`
-            LeftRightUnsigned fromLiq = s_accountLiquidity[positionKey_from];
-            if (
-                LeftRightUnsigned.unwrap(s_accountLiquidity[positionKey_to]) != 0 ||
-                LeftRightUnsigned.unwrap(fromLiq) != liquidityChunk.liquidity()
-            ) revert Errors.TransferFailed();
-
-            s_accountLiquidity[positionKey_to] = fromLiq;
-            s_accountLiquidity[positionKey_from] = LeftRightUnsigned.wrap(0);
-
-            unchecked {
-                ++leg;
-            }
-        }
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    ) public pure override {
+        revert();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -655,12 +575,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
                 zeroForOne = net0 < 0;
 
+                console2.log("itm0A", itm0);
+                console2.log("itm1A", itm1);
+                console2.log("net0", net0);
+
                 //compute the swap amount, set as positive (exact input)
                 swapAmount = net0;
             } else if (itm0 != 0) {
+                console2.log("itm0B", itm0);
                 zeroForOne = itm0 < 0;
                 swapAmount = itm0;
             } else {
+                console2.log("itm1B", itm1);
                 zeroForOne = itm1 > 0;
                 swapAmount = itm1;
             }

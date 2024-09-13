@@ -13,7 +13,6 @@ import {FactoryNFT} from "@base/FactoryNFT.sol";
 // OpenZeppelin libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 // Libraries
-import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
@@ -138,8 +137,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        // require(msg.sender == address(POOL_MANAGER_V4), Errors.InvalidUniswapCallback());
-        require(msg.sender == address(POOL_MANAGER_V4));
+        if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
         (
             PoolKey memory key,
