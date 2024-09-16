@@ -575,18 +575,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
                 zeroForOne = net0 < 0;
 
-                console2.log("itm0A", itm0);
-                console2.log("itm1A", itm1);
-                console2.log("net0", net0);
+                // console2.log("itm0A", itm0);
+                // console2.log("itm1A", itm1);
+                // console2.log("net0", net0);
 
                 //compute the swap amount, set as positive (exact input)
                 swapAmount = net0;
             } else if (itm0 != 0) {
-                console2.log("itm0B", itm0);
+                // console2.log("itm0B", itm0);
                 zeroForOne = itm0 < 0;
                 swapAmount = itm0;
             } else {
-                console2.log("itm1B", itm1);
+                // console2.log("itm1B", itm1);
                 zeroForOne = itm1 > 0;
                 swapAmount = itm1;
             }
@@ -693,24 +693,24 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // fit within that limit at all times.
         if (amount0 > uint128(type(int128).max - 4) || amount1 > uint128(type(int128).max - 4))
             revert Errors.PositionTooLarge();
-        console2.log("totalMoved.rs", totalMoved.rightSlot());
-        console2.log("totalMoved.ls", totalMoved.leftSlot());
+        // console2.log("totalMoved.rs", totalMoved.rightSlot());
+        // console2.log("totalMoved.ls", totalMoved.leftSlot());
 
         if (tickLimitLow > tickLimitHigh) {
             // if the in-the-money amount is not zero (i.e. positions were minted ITM) and the user did provide tick limits LOW > HIGH, then swap necessary amounts
             if ((LeftRightSigned.unwrap(itmAmounts) != 0)) {
                 LeftRightSigned swpin = swapInAMM(key, itmAmounts);
-                console2.log("swpin.rs", swpin.rightSlot());
-                console2.log("swpin.ls", swpin.leftSlot());
+                // console2.log("swpin.rs", swpin.rightSlot());
+                // console2.log("swpin.ls", swpin.leftSlot());
                 totalMoved = swpin.add(totalMoved);
             }
 
             (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
         }
-        console2.log("totalMoved.rs", totalMoved.rightSlot());
-        console2.log("totalMoved.ls", totalMoved.leftSlot());
-        console2.log("totalCollected.rs", totalCollected.rightSlot());
-        console2.log("totalCollected.ls", totalCollected.leftSlot());
+        // console2.log("totalMoved.rs", totalMoved.rightSlot());
+        // console2.log("totalMoved.ls", totalMoved.leftSlot());
+        // console2.log("totalCollected.rs", totalCollected.rightSlot());
+        // console2.log("totalCollected.ls", totalCollected.leftSlot());
         LeftRightSigned cumulativeDelta = totalMoved.sub(totalCollected);
 
         if (cumulativeDelta.rightSlot() > 0) {

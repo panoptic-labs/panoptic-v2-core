@@ -257,7 +257,12 @@ contract V4RouterSimple {
 
     function swapTo(address caller, PoolKey memory key, uint160 sqrtPriceX96) public {
         if (msg.sender != address(POOL_MANAGER_V4)) {
-            POOL_MANAGER_V4.unlock(abi.encode(1, abi.encode(msg.sender, key, sqrtPriceX96)));
+            bool done;
+            // we can only swap type(int128).max tokens at one time, so we need to loop until the price is set
+            while (!done) {
+                POOL_MANAGER_V4.unlock(abi.encode(1, abi.encode(msg.sender, key, sqrtPriceX96)));
+                done = V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId()) == sqrtPriceX96;
+            }
             return;
         }
         uint160 sqrtPriceX96Before = V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId());
