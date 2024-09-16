@@ -3049,7 +3049,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         uint256 tokensOwed0;
         uint256 tokensOwed1;
         {
-            (uint128 premiumToken0, uint128 premiumtoken1) = sfpm.getAccountPremium(
+            (uint128 premiumToken0, uint128 premiumToken1) = sfpm.getAccountPremium(
                 poolKey.toId(),
                 Alice,
                 1,
@@ -3060,11 +3060,12 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             );
 
             (tokensOwed0, tokensOwed1) = getTokensOwed(Alice, tickLower, tickUpper, 1);
-            assertApproxEqAbs(Math.mulDiv64(premiumToken0, positionLiquidity), tokensOwed0, 1);
-            assertApproxEqAbs(Math.mulDiv64(premiumtoken1, positionLiquidity), tokensOwed1, 1);
+
+            assertEq(premiumToken0, Math.mulDiv(tokensOwed0, 2 ** 64, positionLiquidity));
+            assertEq(premiumToken1, Math.mulDiv(tokensOwed1, 2 ** 64, positionLiquidity));
 
             // cached premia has not been updated yet, so should still be 0
-            (premiumToken0, premiumtoken1) = sfpm.getAccountPremium(
+            (premiumToken0, premiumToken1) = sfpm.getAccountPremium(
                 poolKey.toId(),
                 Alice,
                 1,
@@ -3074,7 +3075,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 0
             );
             assertEq(premiumToken0, 0);
-            assertEq(premiumtoken1, 0);
+            assertEq(premiumToken1, 0);
         }
 
         {

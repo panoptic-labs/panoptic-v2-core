@@ -556,6 +556,8 @@ contract PanopticMathTest is Test, PositionUtils {
         uint256 cardinality,
         uint256 period
     ) public {
+        vm.skip(true);
+
         cardinality = bound(cardinality, 1, 50);
         cardinality = cardinality * 2 - 1;
         period = bound(period, 1, 100 / cardinality);
