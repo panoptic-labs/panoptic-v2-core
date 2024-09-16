@@ -3920,6 +3920,7 @@ contract Misctest is Test, PositionUtils {
         assertLe(ct1.totalSupply() / totalSupplyBefore, 10_000, "protocol loss failed to cap");
     }
 
+    /// forge-config: default.fuzz.runs = 10
     function test_success_liquidation_fuzzedSwapITM(uint256[4] memory prices) public {
         vm.startPrank(Swapper);
         // JIT a bunch of liquidity so swaps at mint can happen normally

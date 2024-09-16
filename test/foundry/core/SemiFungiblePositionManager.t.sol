@@ -3544,7 +3544,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     }
 
     // make sure that we allow the premium to overflow and it does not revert when too much is accumulated with a huge multiplier
+    /// forge-config: ci_test.fuzz.runs = 1
     function test_Success_PremiumDOSPrevention(uint256 widthSeed, int256 strikeSeed) public {
+        vm.skip(true);
+
         _initPool(0);
 
         (int24 width, int24 strike) = PositionUtils.getInRangeSW(

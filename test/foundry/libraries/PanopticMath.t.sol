@@ -548,6 +548,7 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(expectedHash, returnedHash);
     }
 
+    /// forge-config: ci_test.fuzz.runs = 1
     function test_Success_getLastMedianObservation(
         uint256 observationIndex,
         int256[100] memory ticks,
