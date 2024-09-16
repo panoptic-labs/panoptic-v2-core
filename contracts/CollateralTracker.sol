@@ -355,7 +355,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         (address account, int256 delta) = abi.decode(data, (address, int256));
 
         address underlyingToken = s_underlyingToken;
-        address panopticPool = address(s_panopticPool);
         if (delta > 0) {
             POOL_MANAGER_V4.sync(Currency.wrap(underlyingToken));
             SafeTransferLib.safeTransferFrom(
@@ -366,12 +365,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             );
             POOL_MANAGER_V4.settle();
 
-            POOL_MANAGER_V4.mint(panopticPool, uint160(underlyingToken), uint256(delta));
+            POOL_MANAGER_V4.mint(address(s_panopticPool), uint160(underlyingToken), uint256(delta));
         } else if (delta < 0) {
             unchecked {
                 delta = -delta;
             }
-            POOL_MANAGER_V4.burn(panopticPool, uint160(underlyingToken), uint256(delta));
+            POOL_MANAGER_V4.burn(address(s_panopticPool), uint160(underlyingToken), uint256(delta));
             POOL_MANAGER_V4.take(Currency.wrap(underlyingToken), account, uint256(delta));
         }
 

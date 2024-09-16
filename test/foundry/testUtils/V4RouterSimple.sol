@@ -31,8 +31,14 @@ contract V4RouterSimple {
                 int24 tickUpper,
                 int256 liquidity
             ) = abi.decode(_data, (address, PoolKey, int24, int24, int256));
-            modifyLiquidity(caller, key, tickLower, tickUpper, liquidity);
-            return "";
+            (int256 delta0, int256 delta1) = modifyLiquidity(
+                caller,
+                key,
+                tickLower,
+                tickUpper,
+                liquidity
+            );
+            return abi.encode(delta0, delta1);
         } else if (action == 1) {
             (address caller, PoolKey memory key, uint160 sqrtPriceX96) = abi.decode(
                 _data,
@@ -63,6 +69,13 @@ contract V4RouterSimple {
             );
             mintCurrency(caller, currency, amount);
             return "";
+        } else if (action == 5) {
+            (address caller, Currency currency, uint256 amount) = abi.decode(
+                _data,
+                (address, Currency, uint256)
+            );
+            burnCurrency(caller, currency, amount);
+            return "";
         }
 
         return "";
@@ -84,18 +97,27 @@ contract V4RouterSimple {
         POOL_MANAGER_V4.mint(caller, uint160(Currency.unwrap(currency)), amount);
     }
 
+    function burnCurrency(address caller, Currency currency, uint256 amount) public {
+        if (msg.sender != address(POOL_MANAGER_V4)) {
+            POOL_MANAGER_V4.unlock(abi.encode(5, abi.encode(msg.sender, currency, amount)));
+            return;
+        }
+        POOL_MANAGER_V4.burn(caller, uint160(Currency.unwrap(currency)), amount);
+        POOL_MANAGER_V4.take(currency, caller, uint128(amount));
+    }
+
     function modifyLiquidity(
         address caller,
         PoolKey memory key,
         int24 tickLower,
         int24 tickUpper,
         int256 liquidity
-    ) public {
+    ) public returns (int256, int256) {
         if (msg.sender != address(POOL_MANAGER_V4)) {
-            POOL_MANAGER_V4.unlock(
+            bytes memory res = POOL_MANAGER_V4.unlock(
                 abi.encode(0, abi.encode(msg.sender, key, tickLower, tickUpper, liquidity))
             );
-            return;
+            return abi.decode(res, (int256, int256));
         }
 
         (BalanceDelta delta, ) = POOL_MANAGER_V4.modifyLiquidity(
@@ -129,6 +151,8 @@ contract V4RouterSimple {
         } else if (delta.amount1() > 0) {
             POOL_MANAGER_V4.take(key.currency1, caller, uint128(delta.amount1()));
         }
+
+        return (delta.amount0(), delta.amount1());
     }
 
     function modifyLiquidityWithSalt(
