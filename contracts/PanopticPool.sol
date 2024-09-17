@@ -20,8 +20,6 @@ import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
-import {PropertiesAsserts} from "test/echidna/PropertiesHelper.sol";
-
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
@@ -327,7 +325,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function validateCollateralWithdrawable(
         address user,
         TokenId[] calldata positionIdList
-    ) external {
+    ) external view {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
@@ -779,7 +777,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         (
             int24 currentTick,
             int24 fastOracleTick,
@@ -810,7 +808,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint96 tickData,
         uint256 buffer
-    ) internal {
+    ) internal view {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -922,6 +920,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at the TWAP tick or if TWAP tick is too far away from the current tick.
+    /// @param positionIdListLiquidator List of positions owned by the liquidator
     /// @param liquidatee Address of the distressed account
     /// @param positionIdList List of positions owned by the user. Written as [tokenId1, tokenId2, ...]
     function liquidate(
