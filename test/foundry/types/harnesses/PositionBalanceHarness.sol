@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 
@@ -8,30 +8,30 @@ import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.so
 /// @author Axicon Labs Limited
 contract PositionBalanceHarness {
     /// @notice Create a new `PositionBalance` given by positionSize, utilizations, and its tickData.
-    /// @param positionSize The amount of option minted
-    /// @param utilizations packing of two uint16 utilizations into a 32 bit word
-    /// @param tickData packing of 4 int25s into a single uint96
+    /// @param _positionSize The amount of option minted
+    /// @param _utilizations packing of two uint16 utilizations into a 32 bit word
+    /// @param _tickData packing of 4 int25s into a single uint96
     /// @return The new PositionBalance with the given positionSize, utilization, and tickData
     function storeBalanceData(
-        uint128 positionSize,
-        uint32 utilizations,
-        uint96 tickData
+        uint128 _positionSize,
+        uint32 _utilizations,
+        uint96 _tickData
     ) public pure returns (PositionBalance) {
-        return PositionBalanceLibrary.storeBalanceData(positionSize, utilizations, tickData);
+        return PositionBalanceLibrary.storeBalanceData(_positionSize, _utilizations, _tickData);
     }
 
     function packTickData(
-        int24 currentTick,
-        int24 fastOracleTick,
-        int24 slowOracleTick,
-        int24 lastObservedTick
+        int24 _currentTick,
+        int24 _fastOracleTick,
+        int24 _slowOracleTick,
+        int24 _lastObservedTick
     ) public pure returns (uint96) {
         return
             PositionBalanceLibrary.packTickData(
-                currentTick,
-                fastOracleTick,
-                slowOracleTick,
-                lastObservedTick
+                _currentTick,
+                _fastOracleTick,
+                _slowOracleTick,
+                _lastObservedTick
             );
     }
 

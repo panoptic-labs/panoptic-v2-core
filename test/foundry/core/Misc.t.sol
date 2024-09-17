@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -2421,7 +2421,7 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
-        pp.liquidate(Bob, $posIdList);
+        pp.liquidate(new TokenId[](0), Bob, $posIdList);
 
         (uint256 after0, uint256 after1) = (
             ct0.convertToAssets(ct0.balanceOf(Bob)),
@@ -2588,7 +2588,7 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
-        pp.liquidate(Bob, $posIdList);
+        pp.liquidate(new TokenId[](0), Bob, $posIdList);
 
         (uint256 after0, uint256 after1) = (
             ct0.convertToAssets(ct0.balanceOf(Bob)),
@@ -3783,12 +3783,7 @@ contract Misctest is Test, PositionUtils {
         }
 
         vm.startPrank(Charlie);
-        pp.liquidate(
-            new TokenId[](0),
-            Bob,
-            LeftRightUnsigned.wrap(0).toLeftSlot(1_003_003),
-            $posIdList
-        );
+        pp.liquidate(new TokenId[](0), Bob, $posIdList);
 
         assertLe(ct1.totalSupply() / totalSupplyBefore, 10_000, "protocol loss failed to cap");
     }
@@ -3919,7 +3914,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -3983,7 +3978,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
     }
 
@@ -4067,7 +4062,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         // burn second option
-        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
+        vm.expectRevert(Errors.AccountInsolvent.selector);
         pp.burnOptions(
             posIdList2[1],
             posIdList,
@@ -4199,8 +4194,8 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        vm.expectRevert(Errors.DivergentSolvencyCheck.selector);
-        pp.liquidate(Bob, posIdList);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        pp.liquidate(new TokenId[](0), Bob, posIdList);
     }
 
     function test_success_liquidation_currentTick_bonusOptimization_scenarios() public {
@@ -4304,7 +4299,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(twapTick) + t));
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             unchecked {
                 if (
@@ -4410,7 +4405,7 @@ contract Misctest is Test, PositionUtils {
             vm.startPrank(Alice);
             console2.log("");
             console2.log("no-cross collateral", i);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4491,7 +4486,7 @@ contract Misctest is Test, PositionUtils {
             vm.startPrank(Alice);
             console2.log("");
             console2.log("cross collateral", i);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4587,7 +4582,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4680,7 +4675,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4774,7 +4769,7 @@ contract Misctest is Test, PositionUtils {
 
             vm.startPrank(Alice);
 
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4861,7 +4856,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("no cross collateral", i);
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -4944,7 +4939,7 @@ contract Misctest is Test, PositionUtils {
             console2.log("");
             console2.log("cross collateral", i);
 
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5037,7 +5032,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5126,7 +5121,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5215,7 +5210,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
             vm.revertTo(snapshot);
         }
 
@@ -5332,7 +5327,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5449,7 +5444,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }
@@ -5566,7 +5561,7 @@ contract Misctest is Test, PositionUtils {
             }
 
             vm.startPrank(Alice);
-            pp.liquidate(Bob, posIdList);
+            pp.liquidate(new TokenId[](0), Bob, posIdList);
 
             vm.revertTo(snapshot);
         }

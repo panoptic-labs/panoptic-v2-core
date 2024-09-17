@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -80,7 +80,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     uint256 internal constant FULL_RANGE_LIQUIDITY_AMOUNT_TOKEN = 1e6;
 
     /// @notice The `observationCardinalityNext` to set on the Uniswap pool when a new PanopticPool is deployed.
-    uint16 internal constant CARDINALITY_INCREASE = 100;
+    uint16 internal constant CARDINALITY_INCREASE = 51;
 
     /*//////////////////////////////////////////////////////////////
                                 STORAGE

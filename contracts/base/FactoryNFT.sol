@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {PanopticMath} from "@libraries/PanopticMath.sol";
@@ -123,11 +123,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         uint256 rarity
     ) internal view returns (string memory svgOut) {
         svgOut = metadata[bytes32("frames")][
-            rarity < 18
-                ? rarity / 3
-                : rarity < 23
-                    ? 23 - rarity
-                    : 0
+            rarity < 18 ? rarity / 3 : rarity < 23 ? 23 - rarity : 0
         ].decompressedDataStr();
         svgOut = svgOut.replace(
             "<!-- LABEL -->",

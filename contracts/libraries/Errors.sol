@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 /// @title Custom Errors library.
 /// @author Axicon Labs Limited
@@ -18,9 +18,6 @@ library Errors {
     /// @notice CollateralTracker: the amount of shares (or assets) deposited is larger than the maximum permitted
     error DepositTooLarge();
 
-    /// @notice PanopticPool: the solvency check at the provided list of ticks is not all the same (ie. all true or all false)
-    error DivergentSolvencyCheck();
-
     /// @notice PanopticPool: the effective liquidity (X32) is greater than min(`MAX_SPREAD`, `USER_PROVIDED_THRESHOLD`) during a long mint or short burn
     /// @dev Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
     error EffectiveLiquidityAboveThreshold();
@@ -28,14 +25,8 @@ library Errors {
     /// @notice CollateralTracker: attempted to withdraw/redeem more than available liquidity, owned shares, or open positions would allow for
     error ExceedsMaximumRedemption();
 
-    /// @notice PanopticPool: force exercisee is insolvent - liquidatable accounts are not permitted to open or close positions outside of a liquidation
-    error ExerciseeNotSolvent();
-
     /// @notice PanopticPool: the provided list of option positions is incorrect or invalid
     error InputListFail();
-
-    /// @notice PanopticFactory: first 20 bytes of provided salt does not match caller address
-    error InvalidSalt();
 
     /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
     error InvalidTick();
@@ -67,9 +58,6 @@ library Errors {
 
     /// @notice CollateralTracker: the caller for a permissioned function is not the Panoptic Pool
     error NotPanopticPool();
-
-    /// @notice Minting and burning in the SFPM must operate on >0 contracts
-    error OptionsBalanceZero();
 
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();

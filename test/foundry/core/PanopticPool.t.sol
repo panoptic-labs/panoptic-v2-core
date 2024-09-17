@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -6525,28 +6525,33 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
-            $tokenData0,
-            $tokenData1,
-            Math.getSqrtRatioAtTick(TWAPtick),
-            $netExchanged,
-            $shortPremia
-        );
+        {
+            LeftRightSigned bonusAmounts;
+            (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+                $tokenData0,
+                $tokenData1,
+                Math.getSqrtRatioAtTick(TWAPtick),
+                $netExchanged,
+                $shortPremia
+            );
 
-        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
-            Alice,
-            false,
-            $posIdLists[1]
-        );
+            ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
+                Alice,
+                false,
+                $posIdLists[1]
+            );
 
-        ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
-            $tokenData0,
-            $tokenData1,
-            Math.getSqrtRatioAtTick(TWAPtick),
-            $netExchanged,
-            $shortPremia
-        );
+            (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+                $tokenData0,
+                $tokenData1,
+                Math.getSqrtRatioAtTick(TWAPtick),
+                $netExchanged,
+                $shortPremia
+            );
 
+            $bonus0 = bonusAmounts.rightSlot();
+            $bonus1 = bonusAmounts.leftSlot();
+        }
         $delegated0 = uint256(
             int256(ct0.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus0)))
         );
@@ -6591,7 +6596,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
 
-        pp.liquidate(Alice, $posIdLists[1]);
+        pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
@@ -7111,7 +7116,8 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        ($bonus0, $bonus1, ) = PanopticMath.getLiquidationBonus(
+        LeftRightSigned bonusAmounts;
+        (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
             $tokenData0,
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
@@ -7119,6 +7125,8 @@ contract PanopticPoolTest is PositionUtils {
             $shortPremia
         );
 
+        $bonus0 = bonusAmounts.rightSlot();
+        $bonus1 = bonusAmounts.leftSlot();
         $delegated0 = uint256(
             int256(ct0.convertToShares(uint256(int256(uint256(type(uint96).max)) + $bonus0)))
         );
@@ -7163,7 +7171,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
 
-        pp.liquidate(Alice, $posIdLists[1]);
+        pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]);
 
         // take the difference between the share deltas after burn and after mint - that should be the bonus
         $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
@@ -7470,7 +7478,126 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId2;
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.liquidate(Alice, posIdList);
+        pp.liquidate(new TokenId[](0), Alice, posIdList);
+    }
+
+    function test_Fail_liquidate_validatePositionIdListLiquidator(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+
+        posIdList[0] = tokenId;
+
+        pp.mintOptions(
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions(
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        editCollateral(ct0, Alice, 2);
+        editCollateral(ct1, Alice, 2);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.liquidate(new TokenId[](0), Alice, posIdList);
+    }
+
+    function test_Fail_liquidate_liquidatorIsInsolvent(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+
+        posIdList[0] = tokenId;
+
+        pp.mintOptions(
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.startPrank(Bob);
+
+        pp.mintOptions(
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        editCollateral(ct0, Alice, 2);
+        editCollateral(ct1, Alice, 2);
+
+        editCollateral(ct0, Bob, 2);
+        editCollateral(ct1, Bob, 2);
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        pp.liquidate(posIdList, Alice, posIdList);
     }
 
     function test_Fail_liquidate_StaleTWAP(uint256 x, int256 tickDeltaSeed) public {
@@ -7494,7 +7621,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         vm.expectRevert(Errors.StaleTWAP.selector);
-        pp.liquidate(Alice, new TokenId[](0));
+        pp.liquidate(new TokenId[](0), Alice, $posIdList);
     }
 
     function test_Fail_liquidate_NotMarginCalled(
@@ -7724,13 +7851,10 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
         vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
 
-        try pp.liquidate(Alice, $posIdLists[1]) {
+        try pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]) {
             assertFalse(true, "liquidation should have failed");
         } catch (bytes memory reason) {
-            assertTrue(
-                bytes4(reason) == Errors.NotMarginCalled.selector ||
-                    bytes4(reason) == Errors.DivergentSolvencyCheck.selector
-            );
+            assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
         }
     }
 }

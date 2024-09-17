@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
@@ -742,8 +742,7 @@ library PanopticMath {
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
-    /// @return bonus0 Bonus amount for token0
-    /// @return bonus1 Bonus amount for token1
+    /// @return The LeftRight-packed protocol loss for both bonuses
     /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's balance and expended tokens
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
@@ -751,7 +750,9 @@ library PanopticMath {
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium
-    ) internal pure returns (int256 bonus0, int256 bonus1, LeftRightSigned) {
+    ) internal pure returns (LeftRightSigned, LeftRightSigned) {
+        int256 bonus0;
+        int256 bonus1;
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
@@ -802,7 +803,7 @@ library PanopticMath {
             }
 
             // negative premium (owed to the liquidatee) is credited to the collateral balance
-            // this is already present in the netExchanged amount, so to avoid double-counting we remove it from the balance
+            // this is already present in the netPaid amount, so to avoid double-counting we remove it from the balance
             int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
                 int256(uint256(shortPremium.rightSlot()));
             int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
@@ -857,8 +858,7 @@ library PanopticMath {
             paid0 = bonus0 + int256(netPaid.rightSlot());
             paid1 = bonus1 + int256(netPaid.leftSlot());
             return (
-                bonus0,
-                bonus1,
+                LeftRightSigned.wrap(0).toRightSlot(int128(bonus0)).toLeftSlot(int128(bonus1)),
                 LeftRightSigned.wrap(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(
                     int128(balance1 - paid1)
                 )
@@ -876,8 +876,7 @@ library PanopticMath {
     /// @param collateral0 The collateral tracker for token0
     /// @param collateral1 The collateral tracker for token1
     /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
-    /// @return The delta in bonus0 for the liquidator post-haircut
-    /// @return The delta in bonus1 for the liquidator post-haircut
+    /// @return The delta in bonus0 and bonus1 for the liquidator post-haircut
     function haircutPremia(
         address liquidatee,
         TokenId[] memory positionIdList,
@@ -1015,19 +1014,22 @@ library PanopticMath {
                 }
             }
 
-            return (collateralDelta0, collateralDelta1);
+            return
+                LeftRightSigned.wrap(0).toRightSlot(int128(collateralDelta0)).toLeftSlot(
+                    int128(collateralDelta1)
+                );
         }
     }
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
-    /// @param account The address of the user being exercised
+    /// @param exercisee The address of the user being exercised
     /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
     /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
     /// @param ct0 The collateral tracker for token0
     /// @param ct1 The collateral tracker for token1
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
-        address account,
+        address exercisee,
         LeftRightSigned exerciseFees,
         int24 atTick,
         CollateralTracker ct0,
@@ -1038,7 +1040,7 @@ library PanopticMath {
             // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
 
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(account)) -
+                int256(ct0.balanceOf(exercisee)) -
                 int256(ct0.convertToShares(uint128(-exerciseFees.rightSlot())));
 
             if (balanceShortage > 0) {
@@ -1071,7 +1073,7 @@ library PanopticMath {
 
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(account)) -
+                int256(ct1.balanceOf(exercisee)) -
                 int256(ct1.convertToShares(uint128(-exerciseFees.leftSlot())));
             if (balanceShortage > 0) {
                 return

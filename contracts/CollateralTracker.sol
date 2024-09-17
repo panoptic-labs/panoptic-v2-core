@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
-pragma solidity >=0.8.24;
+pragma solidity ^0.8.24;
 
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
@@ -351,10 +351,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev This returns the total tracked assets in the AMM and PanopticPool,
     /// @dev - EXCLUDING the amount of collected fees (because they are reserved for short options)
     /// @dev - EXCLUDING any donations that have been made to the pool
-    /// @return totalManagedAssets The total amount of assets managed
-    function totalAssets() public view returns (uint256 totalManagedAssets) {
+    /// @return The total amount of assets managed by the CollateralTracker vault
+    function totalAssets() public view returns (uint256) {
         unchecked {
-            return s_poolAssets + s_inAMM;
+            return uint256(s_poolAssets) + s_inAMM;
         }
     }
 
@@ -417,9 +417,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets += uint128(assets);
-        }
+        s_poolAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -475,9 +473,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _mint(receiver, shares);
 
         // update tracked asset balance
-        unchecked {
-            s_poolAssets += uint128(assets);
-        }
+        s_poolAssets += uint128(assets);
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -490,7 +486,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
         // We can only use the standard 4626 withdraw function if the user has no open positions
         // For the sake of simplicity assets can only be withdrawn through the redeem function
-        uint256 available = s_poolAssets;
+        uint256 available = s_poolAssets - 1;
         uint256 balance = convertToAssets(balanceOf[owner]);
         return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
@@ -594,7 +590,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param owner The redeeming address.
     /// @return maxShares The maximum amount of shares that can be redeemed.
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
-        uint256 available = convertToShares(s_poolAssets);
+        uint256 available = convertToShares(s_poolAssets - 1);
         uint256 balance = balanceOf[owner];
         return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
     }
@@ -666,14 +662,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param currentTick The current price tick
     /// @param oracleTick The price oracle tick
     /// @param positionId The position to be exercised
-    /// @param positionBalance The balance in `account` of the position to be exercised
+    /// @param positionSize The size of the position to be exercised
     /// @param longAmounts The amount of longs in the position
     /// @return exerciseFees The fees for exercising the option position
     function exerciseCost(
         int24 currentTick,
         int24 oracleTick,
         TokenId positionId,
-        uint128 positionBalance,
+        uint128 positionSize,
         LeftRightSigned longAmounts
     ) external view returns (LeftRightSigned exerciseFees) {
         // find the leg furthest to the strike price 'currentTick'; this will have the lowest exercise cost
@@ -709,7 +705,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                         positionId,
                         leg,
-                        positionBalance
+                        positionSize
                     );
 
                     (currentValue0, currentValue1) = Math.getAmountsForLiquidity(
@@ -929,20 +925,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 unchecked {
                     totalSupply += type(uint248).max - liquidateeBalance;
                 }
-                balanceOf[liquidatee] = liquidateeBalance = 0;
+                liquidateeBalance = 0;
             } else {
                 unchecked {
-                    balanceOf[liquidatee] = liquidateeBalance -= type(uint248).max;
+                    liquidateeBalance -= type(uint248).max;
                 }
             }
 
-            // transfer the bonus to the liquidator
-            uint256 shares = convertToShares(uint256(bonus));
+            balanceOf[liquidatee] = liquidateeBalance;
 
-            // if requested amount is larger than user balance, transfer shares back,
-            // then issue new shares
-            if (shares > liquidateeBalance) {
-                // transfer delegatee balance to delegator
+            uint256 bonusShares = convertToShares(uint256(bonus));
+
+            // if requested amount is larger than user balance, transfer their balance and mint the remaining shares
+            if (bonusShares > liquidateeBalance) {
                 _transferFrom(liquidatee, liquidator, liquidateeBalance);
 
                 // this is paying out protocol loss, so correct for that in the amount of shares to be minted
@@ -963,7 +958,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     _mint(
                         liquidator,
                         Math.min(
-                            Math.mulDiv(
+                            Math.mulDivCapped(
                                 uint256(bonus),
                                 _totalSupply - liquidateeBalance,
                                 uint256(Math.max(1, int256(totalAssets()) - bonus))
@@ -972,10 +967,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         )
                     );
                 }
-            }
-            // if requested amount < delegatee balance, then just transfer shares back
-            else {
-                _transferFrom(liquidatee, liquidator, shares);
+            } else {
+                _transferFrom(liquidatee, liquidator, bonusShares);
             }
         }
     }
@@ -1183,8 +1176,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // read the position size and the pool utilization at mint
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
+            bool underlyingIsToken0 = s_underlyingIsToken0;
+
             // read the pool utilization at mint
-            int16 poolUtilization = s_underlyingIsToken0
+            int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
                 : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
 
@@ -1193,7 +1188,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 tokenId,
                 positionSize,
                 atTick,
-                poolUtilization
+                poolUtilization,
+                underlyingIsToken0
             );
 
             // add to the tokenRequired accumulator
@@ -1212,14 +1208,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param positionSize The size of the option position
     /// @param atTick The tick at which to evaluate the account's positions
     /// @param poolUtilization The utilization of the collateral vault (balance of buying and selling)
+    /// @param underlyingIsToken0 Cached `s_underlyingIsToken0` value for this CollateralTracker instance
     /// @return tokenRequired Total required tokens for all legs of the specified tokenId.
     function _getRequiredCollateralAtTickSinglePosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 atTick,
-        int16 poolUtilization
+        int16 poolUtilization,
+        bool underlyingIsToken0
     ) internal view returns (uint256 tokenRequired) {
-        bool underlyingIsToken0 = s_underlyingIsToken0;
         uint256 numLegs = tokenId.countLegs();
 
         unchecked {
