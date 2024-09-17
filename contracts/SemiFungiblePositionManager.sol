@@ -7,6 +7,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {ERC1155} from "@tokens/ERC1155Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
+import {TransientReentrancyGuard} from "solmate/utils/TransientReentrancyGuard.sol";
 // Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -69,7 +70,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V3 position manager.
 /// @notice Wraps Uniswap V3 positions with up to 4 legs behind an ERC1155 token.
 /// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
-contract SemiFungiblePositionManager is ERC1155, Multicall {
+contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -420,7 +421,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    ) external returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+    )
+        external
+        nonReentrant
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
+    {
         // burn this ERC1155 token id
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -450,7 +455,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
-    ) external returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
+    )
+        external
+        nonReentrant
+        returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped)
+    {
         // create the option position via its ID in this erc1155
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
@@ -487,7 +496,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256 id,
         uint256 amount,
         bytes calldata data
-    ) public override {
+    ) public override nonReentrant {
         registerTokenTransfer(from, to, TokenId.wrap(id), amount);
 
         super.safeTransferFrom(from, to, id, amount, data);
@@ -507,7 +516,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
         uint256[] calldata ids,
         uint256[] calldata amounts,
         bytes calldata data
-    ) public override {
+    ) public override nonReentrant {
         for (uint256 i = 0; i < ids.length; ) {
             registerTokenTransfer(from, to, TokenId.wrap(ids[i]), amounts[i]);
             unchecked {
@@ -1289,57 +1298,58 @@ contract SemiFungiblePositionManager is ERC1155, Multicall {
 
         LeftRightUnsigned acctPremia;
 
-        LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
-        uint128 netLiquidity = accountLiquidities.rightSlot();
-
         // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
-        if (atTick < type(int24).max && netLiquidity != 0) {
+        if (atTick < type(int24).max) {
             // unique key to identify the liquidity chunk in this uniswap pool
-            LeftRightUnsigned amountToCollect;
-            {
-                IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
-                int24 _tickLower = tickLower;
-                int24 _tickUpper = tickUpper;
+            LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
+            uint128 netLiquidity = accountLiquidities.rightSlot();
+            if (netLiquidity != 0) {
+                LeftRightUnsigned amountToCollect;
+                {
+                    IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
+                    int24 _tickLower = tickLower;
+                    int24 _tickUpper = tickUpper;
 
-                // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
-                // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
-                // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())
-                // oldFeesGrowth is the last stored update of fee growth within the position range in the past (feeGrowthRange*liquidityChunk.liquidity()) (s_accountFeesBase[positionKey])
-                LeftRightSigned feesBase = FeesCalc.calculateAMMSwapFees(
-                    _univ3pool,
-                    atTick,
-                    _tickLower,
-                    _tickUpper,
-                    netLiquidity
+                    // how much fees have been accumulated within the liquidity chunk since last time we updated this chunk?
+                    // Compute (currentFeesGrowth - oldFeesGrowth), the amount to collect
+                    // currentFeesGrowth (calculated from FeesCalc.calculateAMMSwapFeesLiquidityChunk) is (ammFeesCollectedPerLiquidity * liquidityChunk.liquidity())
+                    // oldFeesGrowth is the last stored update of fee growth within the position range in the past (feeGrowthRange*liquidityChunk.liquidity()) (s_accountFeesBase[positionKey])
+                    LeftRightSigned feesBase = FeesCalc.calculateAMMSwapFees(
+                        _univ3pool,
+                        atTick,
+                        _tickLower,
+                        _tickUpper,
+                        netLiquidity
+                    );
+
+                    // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
+                    // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
+                    // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
+                    // Guaranteed to be positive, so swap to unsigned type
+                    amountToCollect = LeftRightUnsigned.wrap(
+                        uint256(
+                            LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
+                        )
+                    );
+                }
+
+                (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
+                    accountLiquidities,
+                    amountToCollect
                 );
 
-                // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
-                // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
-                // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-                // Guaranteed to be positive, so swap to unsigned type
-                amountToCollect = LeftRightUnsigned.wrap(
-                    uint256(
-                        LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
-                    )
+                // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
+                // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
+                // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
+                (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
+                    s_accountPremiumOwed[positionKey],
+                    premiumOwed,
+                    s_accountPremiumGross[positionKey],
+                    premiumGross
                 );
+
+                acctPremia = isLong == 1 ? premiumOwed : premiumGross;
             }
-
-            (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(
-                accountLiquidities,
-                amountToCollect
-            );
-
-            // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
-            // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
-            // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
-            (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
-                s_accountPremiumOwed[positionKey],
-                premiumOwed,
-                s_accountPremiumGross[positionKey],
-                premiumGross
-            );
-
-            acctPremia = isLong == 1 ? premiumOwed : premiumGross;
         } else {
             // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
             acctPremia = isLong == 1
