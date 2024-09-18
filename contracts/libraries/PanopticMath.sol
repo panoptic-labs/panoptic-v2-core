@@ -733,7 +733,7 @@ library PanopticMath {
     }
 
     /*//////////////////////////////////////////////////////////////
-                       REVOKE/REFUND COMPUTATIONS
+                LIQUIDATION/FORCE EXERCISE CALCULATIONS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation.
