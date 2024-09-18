@@ -1059,7 +1059,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
             // add premium and token deltas not covered by swap to be paid/collected on position close
-            int256 tokenToPay = swappedAmount - (longAmount - shortAmount) - realizedPremium;
+            int256 tokenToPay = int256(swappedAmount) -
+                (longAmount - shortAmount) -
+                realizedPremium;
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
@@ -1099,7 +1101,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         unchecked {
             // intrinsic value is the amount that need to be exchanged due to minting in-the-money
-            int256 intrinsicValue = swappedAmount - (shortAmount - longAmount);
+            int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
