@@ -736,14 +736,14 @@ library PanopticMath {
                        REVOKE/REFUND COMPUTATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Check that the account is liquidatable, get the split of bonus0 and bonus1 amounts.
-    /// @param tokenData0 Leftright encoded word with balance of token0 in the right slot, and required balance in left slot
-    /// @param tokenData1 Leftright encoded word with balance of token1 in the right slot, and required balance in left slot
+    /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation.
+    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
+    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
-    /// @return The LeftRight-packed protocol loss for both bonuses
-    /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's balance and expended tokens
+    /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
+    /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's starting balance and expended tokens
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
