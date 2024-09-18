@@ -505,8 +505,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function twoWaySwap(uint256 swapSize) public {
         vm.startPrank(Swapper);
 
-        // give Swapper the max amount of tokens
-        _grantTokens(Swapper);
+        deal(token0, Swapper, type(uint248).max);
+        deal(token1, Swapper, type(uint248).max);
 
         IERC20Partial(token0).approve(address(router), type(uint256).max);
         IERC20Partial(token1).approve(address(router), type(uint256).max);
