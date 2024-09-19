@@ -2105,8 +2105,14 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
-                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                            ? PanopticMath.convert0to1(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                baseCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                 ) *
                     13_333 *
                     $ratios[i]) / 10_000);
@@ -2190,14 +2196,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                ITMCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                ITMCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                                ? PanopticMath.convert0to1(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
+                                : PanopticMath.convert1to0(
+                                    ITMCR,
+                                    Math.getSqrtRatioAtTick($fastOracleTick)
+                                )
                     ) *
                         13_333 *
                         $ratios[i]) / 10_000);
