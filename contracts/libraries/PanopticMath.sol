@@ -886,7 +886,7 @@ library PanopticMath {
         CollateralTracker collateral1,
         uint160 atSqrtPriceX96,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
-    ) internal returns (int256, int256) {
+    ) internal returns (LeftRightSigned) {
         unchecked {
             // get the amount of premium paid by the liquidatee
             LeftRightSigned longPremium;

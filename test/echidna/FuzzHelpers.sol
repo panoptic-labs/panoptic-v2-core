@@ -1910,13 +1910,15 @@ contract FuzzHelpers is PropertiesAsserts {
         emit LogUint256("liqResults.shortPremium.rightSlot()", liqResults.shortPremium.rightSlot());
         emit LogUint256("liqResults.shortPremium.leftSlot()", liqResults.shortPremium.leftSlot());
 
-        (liqResults.bonus0, liqResults.bonus1, ) = PanopticMath.getLiquidationBonus(
+        (LeftRightSigned _bonus, ) = PanopticMath.getLiquidationBonus(
             liqResults.margin0,
             liqResults.margin1,
             Math.getSqrtRatioAtTick(twaptick),
             burnSimResults.netExchanged,
             liqResults.shortPremium
         );
+        liqResults.bonus0 = _bonus.rightSlot();
+        liqResults.bonus1 = _bonus.leftSlot();
     }
 
     function _calculate_bonus(int24 tick) internal {
@@ -2103,14 +2105,8 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
                 ) *
                     13_333 *
                     $ratios[i]) / 10_000);
@@ -2194,14 +2190,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
+                            ? PanopticMath.convert0to1(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                     ) *
                         13_333 *
                         $ratios[i]) / 10_000);

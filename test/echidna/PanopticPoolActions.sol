@@ -798,13 +798,13 @@ contract PanopticPoolActions is CollateralActions {
         ($poolAssets0, $inAMM0, ) = collToken0.getPoolData();
         ($poolAssets1, $inAMM1, ) = collToken1.getPoolData();
 
-        if (int256($poolAssets0) - $totalSwapped.rightSlot() >= 0) {
+        if (int256($poolAssets0) - $totalSwapped.rightSlot() + $premiumDelta0Net >= 0) {
             $poolAssets0 = uint256(int256($poolAssets0) - $totalSwapped.rightSlot());
         } else {
             $shouldRevert = true;
         }
 
-        if (int256($poolAssets1) - $totalSwapped.leftSlot() >= 0) {
+        if (int256($poolAssets1) - $totalSwapped.leftSlot() + $premiumDelta1Net >= 0) {
             $poolAssets1 = uint256(int256($poolAssets1) - $totalSwapped.leftSlot());
         } else {
             $shouldRevert = true;
@@ -899,8 +899,6 @@ contract PanopticPoolActions is CollateralActions {
             }
             assertWithMsg(!$shouldRevert, "burnOptions: missing revert");
         } catch (bytes memory reason) {
-            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
-
             assertWithMsg($shouldRevert, "burnOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -1052,9 +1050,9 @@ contract PanopticPoolActions is CollateralActions {
                                 ) ==
                                 keccak256(
                                     abi.encodePacked(
-                                        $tokenIdActive.strike(legIndex),
-                                        $tokenIdActive.width(legIndex),
-                                        $tokenIdActive.tokenType(legIndex)
+                                        $tokenIdActive.strike(i),
+                                        $tokenIdActive.width(i),
+                                        $tokenIdActive.tokenType(i)
                                     )
                                 )
                             ) {
@@ -1077,6 +1075,17 @@ contract PanopticPoolActions is CollateralActions {
                                     $grossPremia0 - $premiumGrowthLeg0,
                                     $legLiquidity
                                 );
+                                emit LogUint256(
+                                    "grossPremiaTotalSumLegs0",
+                                    $grossPremiumTotalSumLegs0
+                                );
+                                emit LogUint256(
+                                    "$Math.mulDiv64($grossPremia0 - $premiumGrowthLeg0, $legLiquidity)",
+                                    Math.mulDiv64($grossPremia0 - $premiumGrowthLeg0, $legLiquidity)
+                                );
+                                emit LogUint256("$grossPremia0", $grossPremia0);
+                                emit LogUint256("$premiumGrowthLeg0", $premiumGrowthLeg0);
+                                emit LogUint256("$legLiquidity", $legLiquidity);
                                 $grossPremiumTotalSumLegs1 += Math.mulDiv64(
                                     $grossPremia1 - $premiumGrowthLeg1,
                                     $legLiquidity
@@ -1086,6 +1095,14 @@ contract PanopticPoolActions is CollateralActions {
                     }
                 }
                 if (!$gross0Correct && $grossPremiaLast0 == 0) {
+                    emit LogUint256("grossPremiaTotalSumLegs0", $grossPremiumTotalSumLegs0);
+                    emit LogUint256(
+                        "$Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)",
+                        Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity)
+                    );
+                    emit LogUint256("$grossPremia0", $grossPremia0);
+                    emit LogUint256("$grossPremiaLast0", $grossPremiaLast0);
+                    emit LogUint256("$shortLiquidity", $shortLiquidity);
                     assertWithMsg(
                         Math.mulDiv64($grossPremia0 - $grossPremiaLast0, $shortLiquidity) >=
                             $grossPremiumTotalSumLegs0,
@@ -1179,8 +1196,6 @@ contract PanopticPoolActions is CollateralActions {
             // intermediate collateral checks may revert
             if ($shouldRevert) revert();
         } catch (bytes memory reason) {
-            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
-
             assertWithMsg($shouldRevert, "burnManyOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -1297,6 +1312,14 @@ contract PanopticPoolActions is CollateralActions {
             $settleIndex
         );
 
+        ($poolAssets0, , ) = collToken0.getPoolData();
+        ($poolAssets1, , ) = collToken1.getPoolData();
+
+        if ($poolAssets0 < premium0) $shouldRevert = true;
+        emit LogBool("revert due to poolAssets0 < premium0", $poolAssets0 < premium0);
+        if ($poolAssets1 < premium1) $shouldRevert = true;
+        emit LogBool("revert due to poolAssets1 < premium1", $poolAssets1 < premium1);
+
         $totalAssets0 = collToken0.totalAssets();
         $totalAssets1 = collToken1.totalAssets();
         $totalSupply0 = collToken0.totalSupply();
@@ -1343,8 +1366,6 @@ contract PanopticPoolActions is CollateralActions {
         {
             assertWithMsg(!$shouldRevert, "SettleLongPremium: missing revert");
         } catch (bytes memory reason) {
-            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
-
             assertWithMsg($shouldRevert, "SettleLongPremium: unexpected revert");
             revert();
         }
@@ -1504,13 +1525,10 @@ contract PanopticPoolActions is CollateralActions {
             assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
-            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
-
             // check if the revert is due to an insufficient amount of tokens from the exercisor or the exercisor is insolvent
             if (
                 keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
-                bytes4(reason) == Errors.AccountInsolvent.selector ||
-                bytes4(reason) == Errors.DivergentSolvencyCheck.selector
+                bytes4(reason) == Errors.AccountInsolvent.selector
             ) {
                 // if exercisor was insolvent beforehand, it's fine to revert
                 try
@@ -1539,8 +1557,6 @@ contract PanopticPoolActions is CollateralActions {
                     assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
                     revert();
                 } catch (bytes memory _reason) {
-                    if (bytes4(_reason) == Errors.CastingError.selector) $shouldRevert = true;
-
                     assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
                     revert();
                 }
@@ -1718,7 +1734,9 @@ contract PanopticPoolActions is CollateralActions {
         emit LogBool("revert due to no open positions", userPositions[liquidatee].length < 1);
 
         TokenId[] memory liquidated_positions = userPositions[liquidatee];
-        TokenId[] memory liquidator_positions = userPositions[liquidator];
+        TokenId[] memory liquidator_positions = liquidatee != liquidator
+            ? userPositions[liquidator]
+            : new TokenId[](0);
 
         emit LogUint256("liquidator positions length", liquidator_positions.length);
         emit LogUint256("liquidated positions length", liquidated_positions.length);
@@ -1790,14 +1808,18 @@ contract PanopticPoolActions is CollateralActions {
         emit LogUint256("liquidator balance pre-liq 1", collToken1.balanceOf(liquidator));
 
         hevm.prank(liquidator);
-        try panopticPool.liquidate(liquidatee, liquidated_positions) {
+        try panopticPool.liquidate(liquidator_positions, liquidatee, liquidated_positions) {
             assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
         } catch (bytes memory reason) {
             emit LogBytes("Reason", reason);
-            if (bytes4(reason) == Errors.CastingError.selector) $shouldRevert = true;
+            // check if the revert is due to an insufficient amount of underlying tokens from the exercisor or the exercisor is insolvent
+            if (
+                keccak256(reason) == keccak256(abi.encodeWithSignature("Panic(uint256)", 0x11)) ||
+                bytes4(reason) == Errors.AccountInsolvent.selector
+            ) {
+                collToken0.credit(msg.sender, (2 ** 104 - 1) * 10_000);
+                collToken1.credit(msg.sender, (2 ** 104 - 1) * 10_000);
 
-            // check if the revert is due to an insufficient amount of underlying from the liquidator
-            if (bytes4(reason) == Errors.TransferFailed.selector) {
                 deal_USDC(liquidator, (2 ** 104 - 1) * 10_000);
                 deal_WETH(liquidator, (2 ** 104 - 1) * 10_000);
 
@@ -1807,12 +1829,10 @@ contract PanopticPoolActions is CollateralActions {
                 IERC20(token1).approve(address(collToken1), (2 ** 104 - 1) * 10_000);
 
                 hevm.prank(msg.sender);
-                try panopticPool.liquidate(liquidatee, liquidated_positions) {
+                try panopticPool.liquidate(liquidator_positions, liquidatee, liquidated_positions) {
                     assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
                     revert();
                 } catch (bytes memory _reason) {
-                    if (bytes4(_reason) == Errors.CastingError.selector) $shouldRevert = true;
-
                     assertWithMsg($shouldRevert, "Liquidate: unexpected revert");
                     revert();
                 }
