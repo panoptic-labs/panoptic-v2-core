@@ -161,6 +161,8 @@ To deploy Panoptic, run:
 forge script script/DeployProtocol.s.sol:DeployProtocol --rpc-url sepolia -vvvv --broadcast
 ```
 
+Include the `--verify` flag, after exporting your ETHERSCAN_API_KEY into the environment, to ensure deployed contracts are verified on Etherscan.
+
 The preconfigured RPC URL aliases are: `sepolia`. To deploy on another chain a custom RPC URL can be passed.
 
 ## License
