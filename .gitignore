@@ -13,6 +13,8 @@ yarn-error.log
 cache
 artifacts
 
+script/echidna/corpus
+
 
 .idea
 tenderly.yaml
@@ -25,3 +27,7 @@ deployments
 broadcast
 out
 docs
+
+crytic-export
+
+test/echidna/corpus

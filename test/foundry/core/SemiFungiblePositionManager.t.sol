@@ -3809,7 +3809,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                                  SANITY
     //////////////////////////////////////////////////////////////*/
 
-    function test_Sanity_ITMSwapApprox(uint256 price, int256 itm0, int256 itm1) public {
+    function test_Sanity_ITMSwapApprox(uint256 price, int256 itm0, int256 itm1) public pure {
         price = bound(price, 10 ** 3, 10 ** 9);
         itm0 = bound(itm0, -10 ** 27, 10 ** 27);
         itm1 = bound(itm1, -10 ** 27, 10 ** 27);

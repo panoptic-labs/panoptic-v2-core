@@ -1,0 +1,20 @@
+
+# Set the directory to upload to the server.
+[input]
+directory = "."
+timeout = "120h"
+name = "echidna assertion" 
+
+[commands]
+setup = '''
+if ! command -v forge >/dev/null 2>&1; then
+  echo "Installing foundry..."
+  curl -L https://foundry.paradigm.xyz | bash
+  source /.bashrc
+  foundryup
+fi
+'''
+
+# This command is run from the input directory
+# after the setup script completes.
+run = "make e"

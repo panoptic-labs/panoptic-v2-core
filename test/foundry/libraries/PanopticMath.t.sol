@@ -346,7 +346,7 @@ contract PanopticMathTest is Test, PositionUtils {
         harness.getTicks(strike, width, tickSpacing);
     }
 
-    function test_Success_incrementPoolPattern(uint64 poolId) public {
+    function test_Success_incrementPoolPattern(uint64 poolId) public view {
         unchecked {
             uint48 pattern = uint48(poolId & 0x0000FFFFFFFFFFFF);
             pattern += 1;
@@ -418,7 +418,7 @@ contract PanopticMathTest is Test, PositionUtils {
         assertEq(LeftRightSigned.unwrap(expectedShorts), LeftRightSigned.unwrap(returnedShorts));
     }
 
-    function test_Success_numberOfLeadingHexZeros(address addr) public {
+    function test_Success_numberOfLeadingHexZeros(address addr) public view {
         uint256 expectedData = addr == address(0)
             ? 40
             : 39 - Math.mostSignificantNibble(uint160(addr));
@@ -818,7 +818,10 @@ contract PanopticMathTest is Test, PositionUtils {
         harness.convert0to1(amount, sqrtPrice);
     }
 
-    function test_Success_convert1to0_PriceX192_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
+    function test_Success_convert1to0_PriceX192_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public view {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
             bound(sqrtPriceSeed, TickMath.MIN_SQRT_RATIO, type(uint128).max - 1)
@@ -982,7 +985,10 @@ contract PanopticMathTest is Test, PositionUtils {
         harness.convert1to0(amount, sqrtPrice);
     }
 
-    function test_Success_convert0to1_PriceX128_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
+    function test_Success_convert0to1_PriceX128_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public view {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
             bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
@@ -1025,7 +1031,10 @@ contract PanopticMathTest is Test, PositionUtils {
         harness.convert0to1(amount, sqrtPrice);
     }
 
-    function test_Success_convert0to1_PriceX128_Int(int256 amount, uint256 sqrtPriceSeed) public {
+    function test_Success_convert0to1_PriceX128_Int(
+        int256 amount,
+        uint256 sqrtPriceSeed
+    ) public view {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
             bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
@@ -1098,7 +1107,10 @@ contract PanopticMathTest is Test, PositionUtils {
         harness.convert0to1(amount, sqrtPrice);
     }
 
-    function test_Success_convert1to0_PriceX128_Uint(uint256 amount, uint256 sqrtPriceSeed) public {
+    function test_Success_convert1to0_PriceX128_Uint(
+        uint256 amount,
+        uint256 sqrtPriceSeed
+    ) public view {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
             bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
@@ -1119,7 +1131,10 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    function test_Success_convert1to0_PriceX128_Int(int256 amount, uint256 sqrtPriceSeed) public {
+    function test_Success_convert1to0_PriceX128_Int(
+        int256 amount,
+        uint256 sqrtPriceSeed
+    ) public view {
         // above this tick we use 128-bit precision because of overflow issues
         uint160 sqrtPrice = uint160(
             bound(sqrtPriceSeed, type(uint128).max, TickMath.MAX_SQRT_RATIO)
@@ -1572,7 +1587,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint256 widthSeed,
         uint256 tickSpacingSeed,
         int24 strike
-    ) public {
+    ) public view {
         // bound the width (1 -> 4094)
         uint24 widthBounded = uint24(bound(widthSeed, 1, 4094));
 

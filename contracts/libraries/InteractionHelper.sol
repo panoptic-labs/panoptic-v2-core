@@ -9,8 +9,8 @@ import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManage
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 
-/// @title InteractionHelper - contains helper functions for external interactions such as approvals.
-/// @notice Used to delegate logic with multiple external calls.
+/// @title InteractionHelper - contains helper functions for internal interactions such as approvals.
+/// @notice Used to delegate logic with multiple internal calls.
 /// @dev Generally employed when there is a need to save or reuse bytecode size
 /// on a core contract (calls take a significant amount of logic).
 /// @author Axicon Labs Limited
@@ -27,7 +27,7 @@ library InteractionHelper {
         CollateralTracker ct1,
         address token0,
         address token1
-    ) external {
+    ) internal {
         // Approve transfers of Panoptic Pool funds by SFPM
         IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
         IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
@@ -51,7 +51,7 @@ library InteractionHelper {
         bool isToken0,
         uint24 fee,
         string memory prefix
-    ) external view returns (string memory) {
+    ) internal view returns (string memory) {
         string memory symbol0 = PanopticMath.safeERC20Symbol(token0);
         string memory symbol1 = PanopticMath.safeERC20Symbol(token1);
 
@@ -78,14 +78,14 @@ library InteractionHelper {
     function computeSymbol(
         address token,
         string memory prefix
-    ) external view returns (string memory) {
+    ) internal view returns (string memory) {
         return string.concat(prefix, PanopticMath.safeERC20Symbol(token));
     }
 
     /// @notice Returns decimals of underlying token (0 if not present).
     /// @param token The address of the underlying token used to compute the decimals
     /// @return The decimals of the token
-    function computeDecimals(address token) external view returns (uint8) {
+    function computeDecimals(address token) internal view returns (uint8) {
         // not guaranteed that token supports metadada extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).decimals() returns (uint8 _decimals) {
