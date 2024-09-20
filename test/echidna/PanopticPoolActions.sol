@@ -1832,7 +1832,7 @@ contract PanopticPoolActions is CollateralActions {
                 try panopticPool.liquidate(liquidator_positions, liquidatee, liquidated_positions) {
                     assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
                     revert();
-                } catch (bytes memory _reason) {
+                } catch {
                     assertWithMsg($shouldRevert, "Liquidate: unexpected revert");
                     revert();
                 }
@@ -1898,9 +1898,7 @@ contract PanopticPoolActions is CollateralActions {
         log_burn_simulation_results();
         log_liquidation_results();
 
-        try
-            panopticPool.validateCollateralWithdrawable(liquidator, userPositions[liquidator])
-        {} catch {
+        try panopticPool.validateSolvency(msg.sender, $positionListExercisor, 10_000) {} catch {
             assertWithMsg(false, "Liquidate: Liquidator left insolvent after liquidation");
         }
 
