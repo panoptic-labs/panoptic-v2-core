@@ -221,11 +221,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev LeftRight - right slot is token0, left slot is token1.
     mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) internal s_settledTokens;
 
-    /// @notice Tracks the amount of liquidity for a user+tokenId (right slot) and the initial pool utilizations when that position was minted (left slot).
-    //    poolUtilizations when minted (left)    liquidity=ERC1155 balance (right)
-    //        token0          token1
-    //  |<-- 64 bits -->|<-- 64 bits -->|<---------- 128 bits ---------->|
-    //  |<-------------------------- 256 bits -------------------------->|
+    /// @notice Tracks the position size of a tokenId for a given user, and the pool utilizations and oracle tick values at the time of last mint.
+    //    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
+    //   lastObservedTick  slowOracleTick  fastOracleTick   currentTick     utilization1    utilization0    positionSize
     mapping(address account => mapping(TokenId tokenId => PositionBalance positionBalance))
         internal s_positionBalance;
 
