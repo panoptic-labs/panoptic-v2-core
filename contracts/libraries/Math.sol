@@ -11,7 +11,7 @@ import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 /// @author Axicon Labs Limited
 /// @notice Contains general math helpers and functions
 library Math {
-    /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
+    /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
     /*//////////////////////////////////////////////////////////////
@@ -68,7 +68,7 @@ library Math {
 
     /// @notice Compute the absolute value of an integer (int256).
     /// @param x The incoming *signed* integer to take the absolute value of
-    /// @dev Does not support `type(int256).min` and will revert (type(int256).max is one less).
+    /// @dev Does not support `type(int256).min` and will revert (`type(int256).max = abs(type(int256).min) - 1`).
     /// @return The absolute value of `x`, e.g. abs(-4) = 4
     function abs(int256 x) internal pure returns (int256) {
         return x > 0 ? x : -x;
@@ -85,7 +85,7 @@ library Math {
     }
 
     /// @notice Returns the index of the most significant nibble of the 160-bit number,
-    /// where the least significant nibble is at index 0 and the most significant nibble is at index 40.
+    /// where the least significant nibble is at index 0 and the most significant nibble is at index 39.
     /// @param x The value for which to compute the most significant nibble
     /// @return r The index of the most significant nibble (default: 0)
     function mostSignificantNibble(uint160 x) internal pure returns (uint256 r) {
@@ -120,10 +120,9 @@ library Math {
                                TICK MATH
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Calculates 1.0001^(tick/2) as an X96 number.
-    /// @dev Implemented using Uniswap's "incorrect" constants. Supplying commented-out real values for an accurate calculation.
-    /// @dev Will revert if |tick| > max tick.
-    /// @param tick Value of the tick for which sqrt(1.0001^tick) is calculated
+    /// @notice Calculates `1.0001^(tick/2)` as an X96 number.
+    /// @dev Will revert if `abs(tick) > 887272`.
+    /// @param tick Value of the tick for which `sqrt(1.0001^tick)` is calculated
     /// @return A Q64.96 number representing the sqrt price at the provided tick
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160) {
         unchecked {
@@ -190,9 +189,8 @@ library Math {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
-    /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
-    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper.
-    /// @return The amount of token0
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
     function getAmount0ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
@@ -207,8 +205,8 @@ library Math {
     }
 
     /// @notice Calculates the amount of token1 received for a given LiquidityChunk.
-    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
-    /// @return The amount of token1
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token1 represented by `liquidityChunk` when `currentTick > tickUpper`
     function getAmount1ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
@@ -218,11 +216,11 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token0 and token1 received for a given LiquidityChunk at the provided currentTick.
-    /// @param currentTick The current tick to be evaluated
-    /// @param liquidityChunk Variable that efficiently packs the liquidity, tickLower, and tickUpper
-    /// @return amount0 The amount of token0
-    /// @return amount1 The amount of token1
+    /// @notice Calculates the amount of token0 and token1 received for a given LiquidityChunk at the provided `currentTick`.
+    /// @param currentTick The tick at which to evaluate `liquidityChunk`
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return amount0 The amount of token0 represented by `liquidityChunk` at `currentTick`
+    /// @return amount1 The amount of token1 represented by `liquidityChunk` at `currentTick`
     function getAmountsForLiquidity(
         int24 currentTick,
         LiquidityChunk liquidityChunk
@@ -237,12 +235,11 @@ library Math {
         }
     }
 
-    /// @notice Returns a LiquidityChunk with `liquidity` corresponding to `amount0` at the provided ticks.
-    /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
+    /// @notice Returns a LiquidityChunk at the provided tick range with `liquidity` corresponding to `amount0`.
     /// @param tickLower The lower tick of the chunk
     /// @param tickUpper The upper tick of the chunk
     /// @param amount0 The amount of token0
-    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity
+    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity for `amount0`
     function getLiquidityForAmount0(
         int24 tickLower,
         int24 tickUpper,
@@ -267,12 +264,11 @@ library Math {
         }
     }
 
-    /// @notice Returns a LiquidityChunk with `liquidity` corresponding to `amount1` at the provided ticks.
-    /// @dev Had to use a less optimal calculation to match Uniswap's implementation.
+    /// @notice Returns a LiquidityChunk at the provided tick range with `liquidity` corresponding to `amount1`.
     /// @param tickLower The lower tick of the chunk
     /// @param tickUpper The upper tick of the chunk
     /// @param amount1 The amount of token1
-    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity
+    /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity for `amount1`
     function getLiquidityForAmount1(
         int24 tickLower,
         int24 tickUpper,
@@ -297,36 +293,37 @@ library Math {
 
     /// @notice Downcast uint256 to uint128. Revert on overflow or underflow.
     /// @param toDowncast The uint256 to be downcasted
-    /// @return downcastedInt The downcasted uint (uint128 now)
+    /// @return downcastedInt `toDowncast` downcasted to uint128
     function toUint128(uint256 toDowncast) internal pure returns (uint128 downcastedInt) {
         if ((downcastedInt = uint128(toDowncast)) != toDowncast) revert Errors.CastingError();
     }
 
     /// @notice Downcast uint256 to uint128, but cap at type(uint128).max on overflow.
-    /// @return downcastedInt The downcasted uint (uint128 now)
+    /// @param toDowncast The uint256 to be downcasted
+    /// @return downcastedInt `toDowncast` downcasted to uint128
     function toUint128Capped(uint256 toDowncast) internal pure returns (uint128 downcastedInt) {
         if ((downcastedInt = uint128(toDowncast)) != toDowncast) {
             downcastedInt = type(uint128).max;
         }
     }
 
-    /// @notice Recast uint128 to int128.
+    /// @notice Downcast uint128 to int128.
     /// @param toCast The uint256 to be downcasted
-    /// @return downcastedInt The downcasted int (int128 now)
+    /// @return downcastedInt `toDowncast` downcasted to int128
     function toInt128(uint128 toCast) internal pure returns (int128 downcastedInt) {
         if ((downcastedInt = int128(toCast)) < 0) revert Errors.CastingError();
     }
 
     /// @notice Cast an int256 to an int128, revert on overflow or underflow.
-    /// @param toCast the int256 to be downcasted to int128
-    /// @return downcastedInt the downcasted integer, now of type int128
+    /// @param toCast the int256 to be downcasted
+    /// @return downcastedInt `toCast` downcasted to int128
     function toInt128(int256 toCast) internal pure returns (int128 downcastedInt) {
         if (!((downcastedInt = int128(toCast)) == toCast)) revert Errors.CastingError();
     }
 
     /// @notice Cast a uint256 to an int256, revert on overflow.
-    /// @param toCast The value to be downcasted to uint128
-    /// @return The incoming uint256 but now of type int256
+    /// @param toCast The uint256 to be downcasted
+    /// @return `toCast` downcasted to int256
     function toInt256(uint256 toCast) internal pure returns (int256) {
         if (toCast > uint256(type(int256).max)) revert Errors.CastingError();
         return int256(toCast);
@@ -336,12 +333,12 @@ library Math {
                            MULDIV ALGORITHMS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Calculates floor(a×b÷denominator) with full precision. Throws if result overflows a uint256 or denominator == 0.
+    /// @notice Calculates `floor(a×b÷denominator)` with full precision. Throws if result overflows a uint256 or `denominator == 0`.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @param denominator The divisor
     /// @return result The 256-bit result
-    /// @dev Credit to Remco Bloemen under MIT license https://xn--2-umb.com/21/muldiv
+    /// @dev Credit to Remco Bloemen under MIT license https://xn--2-umb.com/21/muldiv for this and all following `mulDiv` functions
     function mulDiv(
         uint256 a,
         uint256 b,
@@ -437,7 +434,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates min(floor(a×b÷denominator), 2^256-1) with full precision.
+    /// @notice Calculates `min(floor(a×b÷denominator), 2^256-1)` with full precision.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @param denominator The divisor
@@ -535,7 +532,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates ceil(a×b÷denominator) with full precision. Throws if result overflows a uint256 or denominator == 0.
+    /// @notice Calculates `ceil(a×b÷denominator)` with full precision. Throws if result overflows a uint256 or `denominator == 0`.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @param denominator The divisor
@@ -554,7 +551,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^64) with full precision. Throws if result overflows a uint256.
+    /// @notice Calculates `floor(a×b÷2^64)` with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return The 256-bit result
@@ -617,7 +614,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^96) with full precision. Throws if result overflows a uint256.
+    /// @notice Calculates `floor(a×b÷2^96)` with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return The 256-bit result
@@ -680,7 +677,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates ceil(a×b÷2^96) with full precision. Throws if result overflows a uint256.
+    /// @notice Calculates `ceil(a×b÷2^96)` with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
@@ -694,7 +691,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^128) with full precision. Throws if result overflows a uint256.
+    /// @notice Calculates `floor(a×b÷2^128)` with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return The 256-bit result
@@ -757,7 +754,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates ceil(a×b÷2^128) with full precision. Throws if result overflows a uint256.
+    /// @notice Calculates `ceil(a×b÷2^128)` with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
@@ -771,7 +768,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates floor(a×b÷2^192) with full precision. Throws if result overflows a uint256.
+    /// @notice Calculates `floor(a×b÷2^192)` with full precision. Throws if result overflows a uint256.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return The 256-bit result
@@ -834,7 +831,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates ceil(a×b÷2^192) with full precision.
+    /// @notice Calculates `ceil(a×b÷2^192)` with full precision.
     /// @param a The multiplicand
     /// @param b The multiplier
     /// @return result The 256-bit result
@@ -848,7 +845,7 @@ library Math {
         }
     }
 
-    /// @notice Calculates ceil(a÷b), returning 0 if b == 0.
+    /// @notice Calculates `ceil(a÷b)`, returning 0 if `b == 0`.
     /// @param a The numerator
     /// @param b The denominator
     /// @return result The 256-bit result

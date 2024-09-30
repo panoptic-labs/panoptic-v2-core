@@ -16,6 +16,7 @@ import {Base64} from "solady/utils/Base64.sol";
 /// @title FactoryNFT: ERC721 contract for Panoptic Factory NFTs.
 /// @notice Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks.
 /// @dev Pointers to metadata are provided at deployment time.
+/// @author Axicon Labs Limited
 contract FactoryNFT is MetadataStore, ERC721 {
     using LibString for string;
 

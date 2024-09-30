@@ -27,10 +27,6 @@ using LiquidityChunkLibrary for LiquidityChunk global;
 //                    tickLower     │
 //                              tickUpper
 //
-/// @notice Track Tick Range Information. Lower and Upper ticks including the liquidity deployed within that range.
-/// @notice This is used to track information about a leg in the Option Position identified by `TokenId.sol`.
-/// @notice We pack this tick range info into a uint256.
-//
 // PACKING RULES FOR A LIQUIDITYCHUNK:
 // =================================================================================================
 //  From the LSB to the MSB:

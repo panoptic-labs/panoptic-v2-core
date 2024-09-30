@@ -160,13 +160,13 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified uniquely by the incoming parameters.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
-    /// @dev Salt used in PanopticPool CREATE2 is [leading 20 msg.sender chars][leading 20 pool address chars][salt].
-    /// @param token0 Address of token0 for the underlying Uniswap v3 pool
-    /// @param token1 Address of token1 for the underlying Uniswap v3 pool
-    /// @param fee The fee tier of the underlying Uniswap v3 pool, denominated in hundredths of bips
+    /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][leading 20 pool address chars][salt]`.
+    /// @param token0 Address of token0 for the underlying Uniswap V3 pool
+    /// @param token1 Address of token1 for the underlying Uniswap V3 pool
+    /// @param fee The fee tier of the underlying Uniswap V3 pool, denominated in hundredths of bips
     /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
-    /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment, which serves as a slippage check
-    /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment, which serves as a slippage check
+    /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment
+    /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         address token0,
@@ -251,8 +251,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev Note that the final salt may overflow if too many loops are given relative to the amount in `salt`.
     /// @param deployerAddress Address of the account that deploys the new PanopticPool
     /// @param v3Pool Address of the underlying UniswapV3Pool
-    /// @param salt Salt value ([96-bit nonce]) to start from, useful as a checkpoint across multiple calls
-    /// @param loops The number of mining operations starting from 'salt' in trying to find the highest rarity
+    /// @param salt Salt value to start from, useful as a checkpoint across multiple calls
+    /// @param loops The number of mining operations starting from `salt` in trying to find the highest rarity
     /// @param minTargetRarity The minimum target rarity to mine for. The internal loop stops when this is reached *or* when no more iterations
     /// @return bestSalt The salt of the rarest pool (potentially at the specified minimum target)
     /// @return highestRarity The rarity of `bestSalt`
@@ -263,9 +263,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint256 loops,
         uint256 minTargetRarity
     ) external view returns (uint96 bestSalt, uint256 highestRarity) {
-        // Start at the given 'salt' value (a checkpoint used to continue mining across multiple calls)
+        // Start at the given `salt` value (a checkpoint used to continue mining across multiple calls)
 
-        // Runs until 'bestSalt' reaches 'minTargetRarity' or for 'loops', whichever comes first
+        // Runs until `bestSalt` reaches `minTargetRarity` or for `loops`, whichever comes first
         uint256 maxSalt;
         unchecked {
             maxSalt = uint256(salt) + loops;
@@ -308,7 +308,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param v3Pool The address of the Uniswap V3 pool to deploy liquidity in
     /// @param token0 The address of the first token in the Uniswap V3 pool
     /// @param token1 The address of the second token in the Uniswap V3 pool
-    /// @param fee The fee level of the of the underlying Uniswap v3 pool, denominated in hundredths of bips
+    /// @param fee The fee level of the of the underlying Uniswap V3 pool, denominated in hundredths of bips
     /// @return The amount of token0 deployed at full range
     /// @return The amount of token1 deployed at full range
     function _mintFullRange(
@@ -393,9 +393,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Return the address of the Panoptic Pool associated with 'univ3pool'.
+    /// @notice Return the address of the Panoptic Pool associated with `univ3pool`.
     /// @param univ3pool The Uniswap V3 pool address to query
-    /// @return Address of the Panoptic Pool associated with 'univ3pool'
+    /// @return Address of the Panoptic Pool associated with `univ3pool`
     function getPanopticPool(IUniswapV3Pool univ3pool) external view returns (PanopticPool) {
         return s_getPanopticPool[univ3pool];
     }

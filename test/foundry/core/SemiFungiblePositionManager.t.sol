@@ -2291,7 +2291,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MIN_TICK + 1
         );
 
-        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // poke Uniswap pool to update tokens owed - needed because swap happens after mint
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
@@ -3193,7 +3193,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (, currentTick, , , , , ) = pool.slot0();
 
-        // poke uniswap pool
+        // poke Uniswap pool
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
         vm.startPrank(Alice);

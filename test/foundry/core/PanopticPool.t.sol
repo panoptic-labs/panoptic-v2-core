@@ -3859,7 +3859,7 @@ contract PanopticPoolTest is PositionUtils {
             );
         }
 
-        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // poke Uniswap pool to update tokens owed - needed because swap happens after mint
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
@@ -4030,7 +4030,7 @@ contract PanopticPoolTest is PositionUtils {
 
         twoWaySwap(swapSizeSeed);
 
-        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // poke Uniswap pool to update tokens owed - needed because swap happens after mint
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
@@ -4203,7 +4203,7 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
+            // poke Uniswap pool to update tokens owed - needed because swap happens after mint
             vm.startPrank(address(sfpm));
             pool.burn(tickLower, tickUpper, 0);
 
@@ -4230,7 +4230,7 @@ contract PanopticPoolTest is PositionUtils {
 
             twoWaySwap(swapSizeSeed);
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
+            // poke Uniswap pool to update tokens owed - needed because swap happens after mint
             vm.startPrank(address(sfpm));
             pool.burn(tickLower, tickUpper, 0);
 
@@ -4255,7 +4255,7 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MIN_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
+            // poke Uniswap pool to update tokens owed - needed because swap happens after mint
             vm.startPrank(address(sfpm));
             pool.burn(tickLower, tickUpper, 0);
 
@@ -4412,7 +4412,7 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MAX_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
+            // poke Uniswap pool to update tokens owed - needed because swap happens after mint
             vm.startPrank(address(sfpm));
             pool.burn(tickLower, tickUpper, 0);
 
@@ -4439,7 +4439,7 @@ contract PanopticPoolTest is PositionUtils {
 
             twoWaySwap(swapSizeSeed);
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
+            // poke Uniswap pool to update tokens owed - needed because swap happens after mint
             vm.startPrank(address(sfpm));
             pool.burn(tickLower, tickUpper, 0);
 
@@ -4464,7 +4464,7 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MAX_V3POOL_TICK
             );
 
-            // poke uniswap pool to update tokens owed - needed because swap happens after mint
+            // poke Uniswap pool to update tokens owed - needed because swap happens after mint
             vm.startPrank(address(sfpm));
             pool.burn(tickLower, tickUpper, 0);
 
