@@ -616,6 +616,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
     }
 
+    event LogInt256(string, int256);
+
     /// @notice Create the position in the AMM given in the tokenId.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
     /// @param key The Uniswap V4 pool key
@@ -671,7 +673,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 liquidityChunk,
                 _isBurn
             );
-
+            emit LogInt256("movedLeg.rs", movedLeg.rightSlot());
+            emit LogInt256("movedLeg.ls", movedLeg.leftSlot());
             totalMoved = totalMoved.add(movedLeg);
             totalCollected = totalCollected.add(collectedByLeg[leg]);
 
@@ -687,6 +690,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 ++leg;
             }
         }
+
+        emit LogInt256("totalMoved.rs", totalMoved.rightSlot());
+        emit LogInt256("totalMoved.ls", totalMoved.leftSlot());
 
         // Ensure upper bound on amount of tokens contained across all legs of the position on any given tick does not exceed a maximum of (2**127-1).
         // This is the maximum value of the `int128` type we frequently use to hold token amounts, so a given position's size should be guaranteed to
@@ -796,6 +802,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
             uint128 chunkLiquidity = liquidityChunk.liquidity();
+
+            emit LogInt256("startingLiquidity", int256(uint256(startingLiquidity)));
+            emit LogInt256("removedLiquidity", int256(uint256(removedLiquidity)));
+            emit LogInt256("chunkLiquidity", int256(uint256(chunkLiquidity)));
 
             // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
             // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
@@ -934,14 +944,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function _getPremiaDeltas(
         LeftRightUnsigned currentLiquidity,
         LeftRightUnsigned collectedAmounts
-    )
-        private
-        pure
-        returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross)
-    {
+    ) private returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross) {
         // extract liquidity values
         uint256 removedLiquidity = currentLiquidity.leftSlot();
         uint256 netLiquidity = currentLiquidity.rightSlot();
+
+        emit LogInt256("removedLiquidity", int256(removedLiquidity));
+        emit LogInt256("netLiquidity", int256(netLiquidity));
+        emit LogInt256("collectedAmounts.rs", int256(uint256(collectedAmounts.rightSlot())));
+        emit LogInt256("collectedAmounts.ls", int256(uint256(collectedAmounts.leftSlot())));
 
         // premia spread equations are graphed and documented here: https://www.desmos.com/calculator/mdeqob2m04
         // explains how we get from the premium per liquidity (calculated here) to the total premia collected and the multiplier
@@ -1015,6 +1026,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 }
             }
         }
+
+        emit LogInt256("deltaPremiumOwed.rs", int256(uint256(deltaPremiumOwed.rightSlot())));
+        emit LogInt256("deltaPremiumOwed.ls", int256(uint256(deltaPremiumOwed.leftSlot())));
+        emit LogInt256("deltaPremiumGross.rs", int256(uint256(deltaPremiumGross.rightSlot())));
+        emit LogInt256("deltaPremiumGross.ls", int256(uint256(deltaPremiumGross.leftSlot())));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1063,7 +1079,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 tickUpper,
         int24 atTick,
         uint256 isLong
-    ) external view returns (uint128, uint128) {
+    ) external returns (uint128, uint128) {
         bytes32 positionKey = keccak256(
             abi.encodePacked(idV4, owner, tokenType, tickLower, tickUpper)
         );
@@ -1145,7 +1161,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Returns the Uniswap V4 poolkey  for a given `poolId`.
     /// @param poolId The unique pool identifier for a Uni V4 pool in the SFPM
     /// @return The Uniswap V4 pool key corresponding to `poolId`
-    function getUniswap4PoolKeyFromId(uint64 poolId) external view returns (PoolKey memory) {
+    function getUniswapV4PoolKeyFromId(uint64 poolId) external view returns (PoolKey memory) {
         return s_poolIdToKey[poolId];
     }
 

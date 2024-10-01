@@ -52,7 +52,7 @@ contract PanopticHelper {
         address account,
         int24 atTick,
         TokenId[] calldata positionIdList
-    ) public view returns (uint256, uint256) {
+    ) public returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
         (
             LeftRightUnsigned shortPremium,
@@ -93,7 +93,7 @@ contract PanopticHelper {
         address account,
         int24 atTick,
         TokenId[] calldata positionIdList
-    ) external view returns (int256 value0, int256 value1) {
+    ) external returns (int256 value0, int256 value1) {
         // Compute premia for all options (includes short+long premium)
         (, , uint256[2][] memory positionBalanceArray) = pool.calculateAccumulatedFeesBatch(
             account,
@@ -149,7 +149,7 @@ contract PanopticHelper {
         PanopticPool pool,
         address account,
         TokenId tokenId
-    ) external view returns (uint128, uint16, uint16) {
+    ) external returns (uint128, uint16, uint16) {
         TokenId[] memory tokenIdList = new TokenId[](1);
         tokenIdList[0] = tokenId;
 
@@ -246,7 +246,7 @@ contract PanopticHelper {
         address account,
         int24 tick,
         TokenId[] calldata positionIdList
-    ) internal view returns (int256) {
+    ) internal returns (int256) {
         (uint256 balanceCross, uint256 requiredCross) = checkCollateral(
             PanopticPool(pool),
             account,
@@ -296,7 +296,7 @@ contract PanopticHelper {
         address pool,
         address account,
         TokenId[] calldata positionIdList
-    ) public view returns (int24 liquidationTick) {
+    ) public returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
         (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
         int24 x0 = currentTick - 10000;
@@ -344,7 +344,7 @@ contract PanopticHelper {
         address pool,
         address account,
         TokenId[] calldata positionIdList
-    ) public view returns (int24 liquidationTick) {
+    ) public returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
         (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
         int24 x0 = currentTick;

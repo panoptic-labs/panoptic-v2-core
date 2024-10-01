@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 // OpenZeppelin libraries
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {ERC1155Holder} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 /// @title Minimalist ERC1155 implementation without metadata.
 /// @author Axicon Labs Limited

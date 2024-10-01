@@ -979,7 +979,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // Check that the pool address is set correctly
         assertEq(
-            PoolId.unwrap(sfpm.getUniswap4PoolKeyFromId(poolId).toId()),
+            PoolId.unwrap(sfpm.getUniswapV4PoolKeyFromId(poolId).toId()),
             PoolId.unwrap(poolKey.toId())
         );
 
@@ -1001,7 +1001,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // Check that the pool address is set correctly
             assertEq(
-                PoolId.unwrap(sfpm.getUniswap4PoolKeyFromId(poolId).toId()),
+                PoolId.unwrap(sfpm.getUniswapV4PoolKeyFromId(poolId).toId()),
                 PoolId.unwrap(poolKey.toId())
             );
 

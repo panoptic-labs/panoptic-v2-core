@@ -28,7 +28,9 @@ contract PanopticPoolActions is CollateralActions {
 
         userPositions[msg.sender].push(TokenId.wrap(poolId));
 
-        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+        (, , observationIndex, observationCardinality, , , ) = pool.slot0();
+
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
@@ -122,7 +124,7 @@ contract PanopticPoolActions is CollateralActions {
                         if (
                             sfpm
                                 .getAccountLiquidity(
-                                    address(pool),
+                                    poolKey.toId(),
                                     address(panopticPool),
                                     __chunk.tokenType,
                                     $tickLower,
@@ -195,7 +197,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenTypes[i],
                 $tickLower,
@@ -205,7 +207,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenTypes[i],
                 $tickLower,
@@ -547,7 +549,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -557,7 +559,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -629,7 +631,9 @@ contract PanopticPoolActions is CollateralActions {
 
         ($tickLimitLow, $tickLimitHigh) = (tickLimitSeeds[0], tickLimitSeeds[1]);
 
-        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+        (, , observationIndex, observationCardinality, , , ) = pool.slot0();
+
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
@@ -673,7 +677,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -683,7 +687,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             ($owedPremia0, $owedPremia1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -693,7 +697,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -898,7 +902,7 @@ contract PanopticPoolActions is CollateralActions {
                 $allPositionCount--;
             }
             assertWithMsg(!$shouldRevert, "burnOptions: missing revert");
-        } catch (bytes memory reason) {
+        } catch {
             assertWithMsg($shouldRevert, "burnOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -973,7 +977,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -983,7 +987,7 @@ contract PanopticPoolActions is CollateralActions {
             );
 
             LeftRightUnsigned liquidities = sfpm.getAccountLiquidity(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 $tokenIdActive.tokenType(i),
                 $tickLower,
@@ -1148,7 +1152,9 @@ contract PanopticPoolActions is CollateralActions {
 
         $numOptions = bound(numOptions, 1, userPositions[msg.sender].length);
 
-        (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+        (, , observationIndex, observationCardinality, , , ) = pool.slot0();
+
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
@@ -1195,7 +1201,7 @@ contract PanopticPoolActions is CollateralActions {
         {
             // intermediate collateral checks may revert
             if ($shouldRevert) revert();
-        } catch (bytes memory reason) {
+        } catch {
             assertWithMsg($shouldRevert, "burnManyOptions: unexpected revert");
             // reverse test state changes (i.e. positionidlist)
             revert();
@@ -1330,8 +1336,9 @@ contract PanopticPoolActions is CollateralActions {
                 Math.mulDivRoundingUp(premium1, $totalSupply1, $totalAssets1) >
                 collToken1.balanceOf($settlee))
         ) {
-            ($colTicks[0], $colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool
-                .getOracleTicks();
+            ($colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
+
+            $colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
             $balance0ExpectedP = collToken0.convertToAssets(collToken0.balanceOf($settlee));
             $balance1ExpectedP = collToken1.convertToAssets(collToken1.balanceOf($settlee));
@@ -1365,7 +1372,7 @@ contract PanopticPoolActions is CollateralActions {
             )
         {
             assertWithMsg(!$shouldRevert, "SettleLongPremium: missing revert");
-        } catch (bytes memory reason) {
+        } catch {
             assertWithMsg($shouldRevert, "SettleLongPremium: unexpected revert");
             revert();
         }
@@ -1411,11 +1418,12 @@ contract PanopticPoolActions is CollateralActions {
             longIndex
         );
 
-        (, currentTick, , , , , ) = pool.slot0();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
+
         uint256 tokenType = position.tokenType(longIndex);
         (int24 tickLower, int24 tickUpper) = position.asTicks(longIndex);
         (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = sfpm.getAccountPremium(
-            address(pool),
+            poolKey.toId(),
             address(panopticPool),
             tokenType,
             tickLower,
@@ -1491,7 +1499,8 @@ contract PanopticPoolActions is CollateralActions {
 
         userPositions[$exercisee] = $positionListExercisee;
 
-        (, currentTick, , , , , ) = pool.slot0();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
+
         $twapTick = PanopticMath.twapFilter(pool, 600);
 
         $shouldRevert = false;
@@ -1556,7 +1565,7 @@ contract PanopticPoolActions is CollateralActions {
                 {
                     assertWithMsg(!$shouldRevert, "ForceExercise: missing revert");
                     revert();
-                } catch (bytes memory _reason) {
+                } catch {
                     assertWithMsg($shouldRevert, "ForceExercise: unexpected revert");
                     revert();
                 }
@@ -1566,9 +1575,7 @@ contract PanopticPoolActions is CollateralActions {
             }
         }
 
-        try
-            panopticPool.validateCollateralWithdrawable(msg.sender, $positionListExercisor)
-        {} catch {
+        try panopticPool.validateSolvency(msg.sender, $positionListExercisor, 10_000) {} catch {
             assertWithMsg(false, "ForceExercise: Exercisor left insolvent after force exercise");
         }
 
@@ -1745,7 +1752,7 @@ contract PanopticPoolActions is CollateralActions {
 
         int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
         $twapTick = TWAPtick;
-        (, currentTick, , , , , ) = pool.slot0();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
         if (Math.abs(TWAPtick - currentTick) > 513) $shouldRevert = true;
         emit LogBool("revert due to TWAP tick divergence", Math.abs(TWAPtick - currentTick) > 513);
@@ -1756,8 +1763,8 @@ contract PanopticPoolActions is CollateralActions {
         // log_account_collaterals(liquidator);
         // log_account_collaterals(liquidatee);
         // log_trackers_status();
-
-        ($colTicks[0], $colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
+        $colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
+        ($colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
 
         // replace slow oracle tick with TWAP tick
         $colTicks[2] = TWAPtick;
@@ -1769,7 +1776,7 @@ contract PanopticPoolActions is CollateralActions {
         liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
 
         emit LogBool("revert due to non-burn simulation", $shouldRevert);
-        _execute_burn_simulation(liquidatee);
+        _execute_burn_simulation(liquidatee, liquidator);
         emit LogBool("revert due to burn simulation", $shouldRevert);
 
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
@@ -1832,7 +1839,7 @@ contract PanopticPoolActions is CollateralActions {
                 try panopticPool.liquidate(liquidator_positions, liquidatee, liquidated_positions) {
                     assertWithMsg(!$shouldRevert, "Liquidate: missing revert");
                     revert();
-                } catch (bytes memory _reason) {
+                } catch {
                     assertWithMsg($shouldRevert, "Liquidate: unexpected revert");
                     revert();
                 }
@@ -1978,9 +1985,17 @@ contract PanopticPoolActions is CollateralActions {
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
+            // both positive *and* negative bonuses are rounded down, so if one of the bonuses are negative we need to add a tolerance of token0(negativeBonusAmount)
+            int256 negBonusTol = 0;
+            if (liqResults.bonus0 < 0) negBonusTol += 1;
+            if (liqResults.bonus1 < 0)
+                negBonusTol += int256(
+                    PanopticMath.convert1to0RoundingUp(1, TickMath.getSqrtRatioAtTick(TWAPtick))
+                );
+
             if (liquidatee != liquidator)
                 assertWithMsg(
-                    assets <= liqResults.bonusCombined0,
+                    assets <= liqResults.bonusCombined0 + negBonusTol,
                     "Liquidatee was debited incorrectly high bonus value (no funds leftover)"
                 );
 
@@ -2097,7 +2112,7 @@ contract PanopticPoolActions is CollateralActions {
             (, , $grossPremiaLast0, $grossPremiaLast1) = panopticPool.premiaSettlementData(__chunk);
 
             ($grossPremia0, $grossPremia1) = sfpm.getAccountPremium(
-                address(pool),
+                poolKey.toId(),
                 address(panopticPool),
                 __chunk.tokenType,
                 $tickLower,

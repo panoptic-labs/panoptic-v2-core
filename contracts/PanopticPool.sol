@@ -6,7 +6,7 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {ERC1155Holder} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -161,8 +161,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice The Uniswap v3 pool that this instance of Panoptic is deployed on.
     IUniswapV3Pool internal s_univ3pool;
 
-    PoolKey internal s_poolKey;
-
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     // LAST UPDATED BLOCK TIMESTAMP (40 bits)
@@ -252,6 +250,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //  |<---------------------- 256 bits ------------------------------>|
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
+    PoolKey internal s_poolKey;
+
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
@@ -331,7 +331,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function validateCollateralWithdrawable(
         address user,
         TokenId[] calldata positionIdList
-    ) external view {
+    ) external {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
@@ -346,7 +346,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
+    ) external returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
 
@@ -377,7 +377,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
-        view
         returns (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -784,7 +783,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256) {
+    ) internal returns (uint256) {
         int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
 
         (
@@ -816,7 +815,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint96 tickData,
         uint256 buffer
-    ) internal view {
+    ) internal {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -1173,7 +1172,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24[] memory atTicks,
         uint256 buffer,
         bool expectedSolvent
-    ) internal view {
+    ) internal {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -1454,7 +1453,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
-        view
         returns (
             LeftRightSigned[4] memory premiaByLeg,
             uint256[2][4] memory premiumAccumulatorsByLeg
