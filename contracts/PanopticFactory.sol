@@ -10,9 +10,9 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
-// OpenZeppelin libraries
-import {Clones} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
-// Libraries
+// External libraries
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
+// Internal libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
@@ -58,7 +58,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                  TYPES
     //////////////////////////////////////////////////////////////*/
 
-    using Clones for address;
+    using ClonesWithImmutableArgs for address;
 
     /*//////////////////////////////////////////////////////////////
                          CONSTANTS & IMMUTABLE
@@ -81,6 +81,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
     /// @notice Address of the Wrapped Ether (or other numeraire token) contract.
     address internal immutable WETH;
+
+    /// @notice Multiplier, in basis points, to the Uniswap fee that is charged on the intrinsic value of ITM positions by `CollateralTracker`.
+    /// @dev e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee.
+    uint256 immutable ITM_SPREAD_MULTIPLIER;
 
     /// @notice An amount of `WETH` deployed when initializing the SFPM against a new AMM pool.
     /// @dev If we know one of the tokens is WETH, we deploy 0.1 ETH worth in tokens.
@@ -110,6 +114,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param manager The canonical Uniswap V4 pool manager
     /// @param _poolReference The reference implementation of the `PanopticPool` to clone
     /// @param _collateralReference The reference implementation of the `CollateralTracker` to clone
+    /// @param _itmSpreadMultiplier Multiplier, in basis points, to the Uniswap fee that is charged on the intrinsic value of ITM positions by `CollateralTracker`.
     /// @param properties An array of identifiers for different categories of metadata
     /// @param indices A nested array of keys for K-V metadata pairs for each property in `properties`
     /// @param pointers Contains pointers to the metadata values stored in contract data slices for each index in `indices`
@@ -120,6 +125,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         IPoolManager manager,
         address _poolReference,
         address _collateralReference,
+        uint256 _itmSpreadMultiplier,
         bytes32[] memory properties,
         uint256[][] memory indices,
         Pointer[][] memory pointers
@@ -130,6 +136,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         POOL_MANAGER_V4 = manager;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
+        ITM_SPREAD_MULTIPLIER = _itmSpreadMultiplier;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -208,11 +215,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint256 amount0Max,
         uint256 amount1Max
     ) external returns (PanopticPool newPoolContract) {
-        PoolId idV4 = key.toId();
         bytes32 panopticPoolKey = keccak256(abi.encode(key, oraclePool));
 
         // reverts if the Uni v3 pool has not been initialized
-        if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4) == 0)
+        if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId()) == 0)
             revert Errors.UniswapPoolNotInitialized();
 
         if (address(s_getPanopticPool[panopticPoolKey]) != address(0))
@@ -236,34 +242,58 @@ contract PanopticFactory is FactoryNFT, Multicall {
             )
         );
 
-        // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
-        newPoolContract = PanopticPool(POOL_REFERENCE.cloneDeterministic(salt32));
+        // using CREATE3 for the PanopticPool given we don't know some of the immutable args (`CollateralTracker` addresses)
+        // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
+        newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
+
+        uint256 itmSpreadFee = (key.fee * ITM_SPREAD_MULTIPLIER) / 10_000;
 
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
-            Clones.clone(COLLATERAL_REFERENCE)
+            COLLATERAL_REFERENCE.clone(
+                abi.encodePacked(
+                    newPoolContract,
+                    true,
+                    key.currency0,
+                    key.currency0,
+                    key.currency1,
+                    key.fee,
+                    itmSpreadFee
+                )
+            )
         );
+
         CollateralTracker collateralTracker1 = CollateralTracker(
-            Clones.clone(COLLATERAL_REFERENCE)
+            COLLATERAL_REFERENCE.clone(
+                abi.encodePacked(
+                    newPoolContract,
+                    false,
+                    key.currency1,
+                    key.currency0,
+                    key.currency1,
+                    key.fee,
+                    itmSpreadFee
+                )
+            )
         );
 
-        // Run state initialization sequence for pool and collateral tokens
-        collateralTracker0.startToken(
-            true,
-            Currency.unwrap(key.currency0),
-            Currency.unwrap(key.currency1),
-            key.fee,
-            newPoolContract
-        );
-        collateralTracker1.startToken(
-            false,
-            Currency.unwrap(key.currency0),
-            Currency.unwrap(key.currency1),
-            key.fee,
-            newPoolContract
+        // This creates a new Panoptic Pool (proxy to the PanopticPool implementation)
+        newPoolContract = PanopticPool(
+            POOL_REFERENCE.clone3(
+                abi.encodePacked(
+                    collateralTracker0,
+                    collateralTracker1,
+                    oraclePool,
+                    key.toId(),
+                    abi.encode(key)
+                ),
+                salt32
+            )
         );
 
-        newPoolContract.startPool(key, oraclePool, collateralTracker0, collateralTracker1);
+        newPoolContract.initialize();
+        collateralTracker0.initialize();
+        collateralTracker1.initialize();
 
         s_getPanopticPool[panopticPoolKey] = newPoolContract;
 
@@ -274,7 +304,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
-        (uint256 amount0, uint256 amount1) = _mintFullRange(key, idV4);
+        (uint256 amount0, uint256 amount1) = _mintFullRange(key, key.toId());
 
         if (amount0 > amount0Max || amount1 > amount1Max) revert Errors.PriceBoundFail();
 
@@ -301,7 +331,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev The rarity is defined in terms of how many leading zeros the Panoptic pool address has.
     /// @dev Note that the final salt may overflow if too many loops are given relative to the amount in `salt`.
     /// @param deployerAddress Address of the account that deploys the new PanopticPool
-    /// @param v3Pool Address of the underlying UniswapV3Pool
     /// @param salt Salt value ([96-bit nonce]) to start from, useful as a checkpoint across multiple calls
     /// @param loops The number of mining operations starting from 'salt' in trying to find the highest rarity
     /// @param minTargetRarity The minimum target rarity to mine for. The internal loop stops when this is reached *or* when no more iterations
@@ -309,7 +338,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @return highestRarity The rarity of `bestSalt`
     function minePoolAddress(
         address deployerAddress,
-        address v3Pool,
+        address oraclePool,
+        PoolKey calldata key,
         uint96 salt,
         uint256 loops,
         uint256 minTargetRarity
@@ -326,13 +356,13 @@ contract PanopticFactory is FactoryNFT, Multicall {
             bytes32 newSalt = bytes32(
                 abi.encodePacked(
                     uint80(uint160(deployerAddress) >> 80),
-                    uint80(uint160(v3Pool) >> 80),
+                    uint80(uint256(keccak256(abi.encode(key, oraclePool))) >> 80),
                     salt
                 )
             );
 
             uint256 rarity = PanopticMath.numberOfLeadingHexZeros(
-                POOL_REFERENCE.predictDeterministicAddress(newSalt)
+                ClonesWithImmutableArgs.addressOfClone3(newSalt)
             );
 
             if (rarity > highestRarity) {

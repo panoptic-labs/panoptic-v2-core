@@ -34,6 +34,7 @@ import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 
 import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
 // V4 types
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -50,11 +51,11 @@ import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     constructor(
         IPoolManager _manager
-    ) CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, _manager) {}
+    ) CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, _manager) {}
 
     // view deployer (panoptic pool)
-    function panopticPool() external view returns (PanopticPool) {
-        return s_panopticPool;
+    function panopticPool() external pure returns (PanopticPool) {
+        return _panopticPool();
     }
 
     // whether the token has been initialized already or not
@@ -63,8 +64,8 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     // whether the current instance is token 0
-    function underlyingIsToken0() external view returns (bool) {
-        return s_underlyingIsToken0;
+    function underlyingIsToken0() external pure returns (bool) {
+        return _underlyingIsToken0();
     }
 
     function _inAMM() external view returns (uint256) {
@@ -119,8 +120,6 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 }
 
-// Inherits all of PanopticPool's functionality, however uses a modified version of startPool
-// which enables us to use our modified CollateralTracker harness that exposes internal data
 contract PanopticPoolHarness is PanopticPool {
     constructor(
         SemiFungiblePositionManager _SFPM,
@@ -443,29 +442,61 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
 
-        // deploy modified Panoptic pool
-        panopticPool = new PanopticPoolHarness(sfpm, manager);
+        panopticPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.addressOfClone3(PoolId.unwrap(poolKey.toId()))
+        );
 
         collateralToken0 = new CollateralTrackerHarness(manager);
         collateralToken1 = new CollateralTrackerHarness(manager);
 
-        collateralToken0.startToken(true, token0, token1, fee, PanopticPool(address(panopticPool)));
-
-        collateralToken1.startToken(
-            false,
-            token0,
-            token1,
-            fee,
-            PanopticPool(address(panopticPool))
+        collateralToken0 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone(
+                address(collateralToken0),
+                abi.encodePacked(
+                    panopticPool,
+                    true,
+                    token0,
+                    token0,
+                    token1,
+                    fee,
+                    (fee * 20_000) / 10_000
+                )
+            )
+        );
+        collateralToken1 = CollateralTrackerHarness(
+            ClonesWithImmutableArgs.clone(
+                address(collateralToken1),
+                abi.encodePacked(
+                    panopticPool,
+                    false,
+                    token0,
+                    token0,
+                    token1,
+                    fee,
+                    (fee * 20_000) / 10_000
+                )
+            )
         );
 
-        // initalize Panoptic Pool
-        panopticPool.startPool(
-            poolKey,
-            pool,
-            CollateralTracker(address(collateralToken0)),
-            CollateralTracker(address(collateralToken1))
+        panopticPool = new PanopticPoolHarness(sfpm, manager);
+
+        panopticPool = PanopticPoolHarness(
+            ClonesWithImmutableArgs.clone(
+                address(panopticPool),
+                abi.encodePacked(
+                    collateralToken0,
+                    collateralToken1,
+                    pool,
+                    poolKey.toId(),
+                    abi.encode(poolKey)
+                )
+            )
         );
+
+        panopticPool.initialize();
+
+        collateralToken0.initialize();
+        collateralToken1.initialize();
 
         // store panoptic pool address
         panopticPoolAddress = address(panopticPool);
@@ -565,7 +596,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         START TOKEN TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Success_StartToken_virtualShares() public {
+    function test_Success_initialize_virtualShares() public {
         _initWorld(0);
         CollateralTracker ct = new CollateralTracker(
             10,
@@ -574,27 +605,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
             -1_024,
             5_000,
             9_000,
-            20_000,
             manager
         );
-        ct.startToken(false, token0, token1, fee, panopticPool);
+        ct.initialize();
 
         assertEq(ct.totalSupply(), 10 ** 6);
         assertEq(ct.totalAssets(), 1);
     }
 
-    function test_Fail_startToken_alreadyInitializedToken(uint256 x) public {
+    function test_Fail_initialize_alreadyInitializedToken(uint256 x) public {
         _initWorld(x);
 
         // Deploy collateral token
         collateralToken0 = new CollateralTrackerHarness(manager);
 
         // initialize the token
-        collateralToken0.startToken(false, token0, token1, fee, PanopticPool(address(0)));
+        collateralToken0.initialize();
 
         // fails if already initialized
         vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
-        collateralToken0.startToken(false, token0, token1, fee, PanopticPool(address(0)));
+        collateralToken0.initialize();
     }
 
     /*//////////////////////////////////////////////////////////////

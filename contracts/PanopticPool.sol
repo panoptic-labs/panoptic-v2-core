@@ -6,6 +6,7 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
+import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {ERC1155Holder} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
@@ -21,12 +22,13 @@ import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.so
 import {TokenId} from "@types/TokenId.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
 import {V4StateReader} from "@libraries/V4StateReader.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is ERC1155Holder, Multicall {
+contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -158,11 +160,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The Uniswap v3 pool that this instance of Panoptic is deployed on.
-    IUniswapV3Pool internal s_univ3pool;
-
-    PoolKey internal s_poolKey;
-
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     // LAST UPDATED BLOCK TIMESTAMP (40 bits)
@@ -201,15 +198,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // [CURRENT TICK] [3]
     // (000000000000000000000000) // dynamic
     uint256 internal s_miniMedian;
-
-    // ERC4626 vaults that users collateralize their positions with
-    // Each token has its own vault, listed in the same order as the tokens in the pool
-    // In addition to collateral deposits, these vaults also handle various collateral/bonus/exercise computations
-
-    /// @notice Collateral vault for token0 in the Uniswap pool.
-    CollateralTracker internal s_collateralToken0;
-    /// @notice Collateral vault for token1 in the Uniswap pool.
-    CollateralTracker internal s_collateralToken1;
 
     /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
     /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
@@ -253,6 +241,40 @@ contract PanopticPool is ERC1155Holder, Multicall {
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
     /*//////////////////////////////////////////////////////////////
+                   POOL-SPECIFIC IMMUTABLE PARAMETERS
+    //////////////////////////////////////////////////////////////*/
+    /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
+    /// @return Collateral token corresponding to token0 in Uniswap
+    function collateralToken0() public pure returns (CollateralTracker) {
+        return CollateralTracker(_getArgAddress(0));
+    }
+
+    /// @notice Get the collateral token corresponding to token1 of the Uniswap pool.
+    /// @return Collateral token corresponding to token1 in Uniswap
+    function collateralToken1() public pure returns (CollateralTracker) {
+        return CollateralTracker(_getArgAddress(20));
+    }
+
+    /// @notice Get the address of the Uniswap V3 pool used as a price feed by this Panoptic Pool.
+    /// @return The Uniswap V3 oracle pool used by this Panoptic Pool
+    function oraclePool() public pure returns (IUniswapV3Pool) {
+        return IUniswapV3Pool(_getArgAddress(40));
+    }
+
+    function _V4PoolId() internal pure returns (PoolId) {
+        return PoolId.wrap(bytes32(_getArgUint256(60)));
+    }
+
+    function poolKey() public pure returns (PoolKey calldata key) {
+        uint256 offset = _getImmutableArgsOffset();
+
+        assembly {
+            // 0x5c (60 + 32) + 0xa0 (length of PoolKey struct=5 slots of 32 bytes)
+            key := add(offset, 0xfc)
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
@@ -264,26 +286,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         POOL_MANAGER_V4 = _poolManager;
     }
 
-    /// @notice Initializes a Panoptic Pool on top of an existing Uniswap v3 + collateral vault pair.
+    /// @notice Initializes the median oracle of a new `PanopticPool` instance with median oracle state and performs initial token approvals.
     /// @dev Must be called first (by a factory contract) before any transaction can occur.
-    /// @param _univ3pool Address of the target Uniswap v3 pool
-    /// @param collateralTracker0 Address of the collateral vault for token0
-    /// @param collateralTracker1 Address of the collateral vault for token1
-    function startPool(
-        PoolKey memory key,
-        IUniswapV3Pool _univ3pool,
-        CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1
-    ) external {
-        // reverts if the Uniswap pool has already been initialized
-        if (address(s_univ3pool) != address(0)) revert Errors.PoolAlreadyInitialized();
+    function initialize() external {
+        // reverts if this contract has already been initialized (assuming block.timestamp > 0)
+        if (s_miniMedian != 0) revert Errors.PoolAlreadyInitialized();
 
-        // Store the univ3Pool variable
-        s_univ3pool = IUniswapV3Pool(_univ3pool);
-
-        s_poolKey = key;
-
-        (, int24 currentTick, , , , , ) = IUniswapV3Pool(_univ3pool).slot0();
+        (, int24 currentTick, , , , , ) = oraclePool().slot0();
 
         // Store the median data
         unchecked {
@@ -296,13 +305,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 (uint256(uint24(currentTick))); // add to slot 3
         }
 
-        // Store the collateral token0
-        s_collateralToken0 = collateralTracker0;
-        s_collateralToken1 = collateralTracker1;
-
         POOL_MANAGER_V4.setOperator(address(SFPM), true);
-        POOL_MANAGER_V4.setOperator(address(collateralTracker0), true);
-        POOL_MANAGER_V4.setOperator(address(collateralTracker1), true);
+        POOL_MANAGER_V4.setOperator(address(collateralToken0()), true);
+        POOL_MANAGER_V4.setOperator(address(collateralToken1()), true);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -314,8 +319,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param minValue0 The minimum acceptable `token0` value of collateral
     /// @param minValue1 The minimum acceptable `token1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
-        CollateralTracker ct0 = s_collateralToken0;
-        CollateralTracker ct1 = s_collateralToken1;
+        CollateralTracker ct0 = collateralToken0();
+        CollateralTracker ct1 = collateralToken1();
         if (
             ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
             ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
@@ -348,7 +353,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
@@ -464,14 +469,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the MEDIAN_PERIOD has elapsed.
     function pokeMedian() external {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = s_univ3pool.slot0();
+        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = oraclePool().slot0();
 
         (, uint256 medianData) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             Constants.MEDIAN_PERIOD,
             s_miniMedian,
-            s_univ3pool
+            oraclePool()
         );
 
         if (medianData != 0) s_miniMedian = medianData;
@@ -576,7 +581,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validatePositionList(msg.sender, positionIdList, 1);
 
         // make sure the tokenId is for this Panoptic pool
-        if (tokenId.poolId() != SFPM.getPoolId(s_poolKey.toId()))
+        if (tokenId.poolId() != SFPM.getPoolId(_V4PoolId()))
             revert Errors.InvalidTokenIdParameter(0);
 
         // disallow user to mint exact same position
@@ -593,14 +598,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
         (
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 lastObservedTick,
             uint256 medianData
-        ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+        ) = PanopticMath.getOracleTicks(oraclePool(), s_miniMedian);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -653,7 +658,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .mintTokenizedPosition(s_poolKey, tokenId, positionSize, tickLimitLow, tickLimitHigh);
+            .mintTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         _updateSettlementPostMint(
             tokenId,
@@ -687,13 +692,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        uint32 utilization0 = s_collateralToken0.takeCommissionAddData(
+        uint32 utilization0 = collateralToken0().takeCommissionAddData(
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot()
         );
-        uint32 utilization1 = s_collateralToken1.takeCommissionAddData(
+        uint32 utilization1 = collateralToken1().takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -785,14 +790,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint256 buffer
     ) internal view returns (uint256) {
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
         (
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 lastObservedTick,
             uint256 medianData
-        ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+        ) = PanopticMath.getOracleTicks(oraclePool(), s_miniMedian);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -886,7 +891,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .burnTokenizedPosition(s_poolKey, tokenId, positionSize, tickLimitLow, tickLimitHigh);
+            .burnTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
             owner,
@@ -900,7 +905,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             .computeExercisedAmounts(tokenId, positionSize);
 
         {
-            int128 paid0 = s_collateralToken0.exercise(
+            int128 paid0 = collateralToken0().exercise(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
@@ -911,7 +916,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         {
-            int128 paid1 = s_collateralToken1.exercise(
+            int128 paid1 = collateralToken1().exercise(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
@@ -941,13 +946,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
 
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
         {
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
             int24 fastOracleTick;
             int24 lastObservedTick;
             (fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
-                s_univ3pool,
+                oraclePool(),
                 s_miniMedian
             );
 
@@ -987,7 +992,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick
             );
 
-            tokenData0 = s_collateralToken0.getAccountMarginDetails(
+            tokenData0 = collateralToken0().getAccountMarginDetails(
                 liquidatee,
                 twapTick,
                 positionBalanceArray,
@@ -995,7 +1000,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 longPremium.rightSlot()
             );
 
-            tokenData1 = s_collateralToken1.getAccountMarginDetails(
+            tokenData1 = collateralToken1().getAccountMarginDetails(
                 liquidatee,
                 twapTick,
                 positionBalanceArray,
@@ -1005,8 +1010,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(liquidatee);
-        s_collateralToken1.delegate(liquidatee);
+        collateralToken0().delegate(liquidatee);
+        collateralToken1().delegate(liquidatee);
 
         LeftRightSigned bonusAmounts;
         {
@@ -1052,8 +1057,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 _positionIdList,
                 premiasByLeg,
                 collateralRemaining,
-                s_collateralToken0,
-                s_collateralToken1,
+                collateralToken0(),
+                collateralToken1(),
                 Math.getSqrtRatioAtTick(_twapTick),
                 s_settledTokens
             );
@@ -1062,8 +1067,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
-        s_collateralToken0.settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
-        s_collateralToken1.settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
+        collateralToken0().settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
+        collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, NO_BUFFER);
@@ -1097,7 +1102,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         LeftRightSigned exerciseFees;
         {
-            int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+            int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
             uint128 positionSize = s_positionBalance[account][touchedId[0]].positionSize();
 
@@ -1108,7 +1113,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
-            exerciseFees = s_collateralToken0.exerciseCost(
+            exerciseFees = collateralToken0().exerciseCost(
                 currentTick,
                 twapTick,
                 touchedId[0],
@@ -1118,8 +1123,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(account);
-        s_collateralToken1.delegate(account);
+        collateralToken0().delegate(account);
+        collateralToken1().delegate(account);
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
@@ -1130,17 +1135,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
             account,
             exerciseFees,
             twapTick,
-            s_collateralToken0,
-            s_collateralToken1
+            collateralToken0(),
+            collateralToken1()
         );
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
-        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
+        collateralToken0().refund(account, msg.sender, refundAmounts.rightSlot());
+        collateralToken1().refund(account, msg.sender, refundAmounts.leftSlot());
 
         // revoke the virtual shares that were delegated after settling the difference with the exercisor
-        s_collateralToken0.revoke(account);
-        s_collateralToken1.revoke(account);
+        collateralToken0().revoke(account);
+        collateralToken1().revoke(account);
 
         _validateSolvency(account, positionIdListExercisee, NO_BUFFER);
 
@@ -1229,14 +1234,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
-        LeftRightUnsigned tokenData0 = s_collateralToken0.getAccountMarginDetails(
+        LeftRightUnsigned tokenData0 = collateralToken0().getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
             shortPremium.rightSlot(),
             longPremium.rightSlot()
         );
-        LeftRightUnsigned tokenData1 = s_collateralToken1.getAccountMarginDetails(
+        LeftRightUnsigned tokenData1 = collateralToken1().getAccountMarginDetails(
             account,
             atTick,
             positionBalanceArray,
@@ -1258,7 +1263,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return Whether the current tick has deviated from the median by > MAX_TICKS_DELTA
     function isSafeMode() public view returns (bool) {
         // check if the price has deviated too much recently
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
         uint256 medianData = s_miniMedian;
         unchecked {
@@ -1334,24 +1339,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Get the address of the AMM pool connected to this Panoptic pool.
-    /// @return AMM pool corresponding to this Panoptic pool
-    function univ3pool() external view returns (IUniswapV3Pool) {
-        return s_univ3pool;
-    }
-
-    /// @notice Get the collateral token corresponding to token0 of the AMM pool.
-    /// @return Collateral token corresponding to token0 in the AMM
-    function collateralToken0() external view returns (CollateralTracker) {
-        return s_collateralToken0;
-    }
-
-    /// @notice Get the collateral token corresponding to token1 of the AMM pool.
-    /// @return Collateral token corresponding to token1 in the AMM
-    function collateralToken1() external view returns (CollateralTracker) {
-        return s_collateralToken1;
-    }
-
     /// @notice Computes and returns all oracle ticks.
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick (either composed of Uniswap observations or tracked by `s_miniMedian`)
@@ -1368,7 +1355,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         )
     {
         (fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath.getOracleTicks(
-            s_univ3pool,
+            oraclePool(),
             s_miniMedian
         );
         medianData = s_miniMedian;
@@ -1401,7 +1388,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getUniV3TWAP() internal view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
+        twapTick = PanopticMath.twapFilter(oraclePool(), TWAP_WINDOW);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1473,7 +1460,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
                 (premiumAccumulatorsByLeg[leg][0], premiumAccumulatorsByLeg[leg][1]) = SFPM
                     .getAccountPremium(
-                        s_poolKey.toId(),
+                        _V4PoolId(),
                         address(this),
                         tokenType,
                         liquidityChunk.tickLower(),
@@ -1544,13 +1531,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
             s_positionBalance[owner][tokenId].positionSize()
         );
 
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, s_poolKey.toId());
+        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
         LeftRightUnsigned accumulatedPremium;
         {
             uint256 tokenType = tokenId.tokenType(legIndex);
             (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
-                s_poolKey.toId(),
+                _V4PoolId(),
                 address(this),
                 tokenType,
                 liquidityChunk.tickLower(),
@@ -1580,8 +1567,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 .toLeftSlot(int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)));
 
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-            s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
-            s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
+            collateralToken0().exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
+            collateralToken1().exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
@@ -1641,7 +1628,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint256 tokenType = tokenId.tokenType(leg);
                 // can use (type(int24).max flag because premia accumulators were updated during the mintTokenizedPosition step.
                 (grossCurrent0, grossCurrent1) = SFPM.getAccountPremium(
-                    s_poolKey.toId(),
+                    _V4PoolId(),
                     address(this),
                     tokenType,
                     liquidityChunk.tickLower(),
@@ -1779,7 +1766,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(leg);
 
         LeftRightUnsigned accountLiquidities = SFPM.getAccountLiquidity(
-            s_poolKey.toId(),
+            _V4PoolId(),
             address(this),
             tokenId.tokenType(leg),
             tickLower,

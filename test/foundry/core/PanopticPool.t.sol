@@ -60,7 +60,7 @@ contract PanopticPoolHarness is PanopticPool {
      * @return twapTick the TWAP price in ticks
      */
     function getUniV3TWAP_() external view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
+        twapTick = PanopticMath.twapFilter(oraclePool(), TWAP_WINDOW);
     }
 
     function settledTokens(bytes32 chunk) external view returns (LeftRightUnsigned) {
@@ -409,6 +409,7 @@ contract PanopticPoolTest is PositionUtils {
             manager,
             poolReference,
             collateralReference,
+            20_000,
             new bytes32[](0),
             new uint256[][](0),
             new Pointer[][](0)
@@ -516,7 +517,7 @@ contract PanopticPoolTest is PositionUtils {
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm, manager));
         collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, manager)
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, manager)
         );
     }
 
@@ -1493,12 +1494,12 @@ contract PanopticPoolTest is PositionUtils {
                          POOL INITIALIZATION: -
     //////////////////////////////////////////////////////////////*/
 
-    function test_Fail_startPool_PoolAlreadyInitialized(uint256 x) public {
+    function test_Fail_initialize_PoolAlreadyInitialized(uint256 x) public {
         _initWorld(x);
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(poolKey, pool, ct0, ct1);
+        pp.initialize();
     }
 
     /*//////////////////////////////////////////////////////////////

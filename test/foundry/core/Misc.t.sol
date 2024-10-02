@@ -23,6 +23,7 @@ import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
 // V4 types
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -244,7 +245,7 @@ contract Misctest is Test, PositionUtils {
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(sfpm, manager));
         collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, manager)
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, manager)
         );
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -376,6 +377,7 @@ contract Misctest is Test, PositionUtils {
             manager,
             poolReference,
             collateralReference,
+            20_000,
             new bytes32[](0),
             new uint256[][](0),
             new Pointer[][](0)
@@ -730,12 +732,17 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_success_ITMspreadfee_0_01bp() public {
-        CollateralTracker(collateralReference).startToken(
-            true,
-            address(token0),
-            address(token1),
-            1,
-            pp
+        collateralReference = ClonesWithImmutableArgs.clone(
+            collateralReference,
+            abi.encodePacked(
+                pp,
+                true,
+                token0,
+                token0,
+                token1,
+                uint256(1),
+                uint256((1 * 20_000) / 10_000)
+            )
         );
 
         vm.startPrank(Bob);

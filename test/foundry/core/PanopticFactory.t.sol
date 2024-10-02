@@ -47,6 +47,7 @@ contract PanopticFactoryHarness is PanopticFactory {
         IPoolManager manager,
         address poolReference,
         address collateralReference,
+        uint256 itmSpreadMultiplier,
         bytes32[] memory properties,
         uint256[][] memory indices,
         Pointer[][] memory pointers
@@ -58,6 +59,7 @@ contract PanopticFactoryHarness is PanopticFactory {
             manager,
             poolReference,
             collateralReference,
+            itmSpreadMultiplier,
             properties,
             indices,
             pointers
@@ -250,7 +252,8 @@ contract PanopticFactoryTest is Test {
             V3FACTORY,
             manager,
             address(new PanopticPool(sfpm, manager)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, manager)),
+            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, manager)),
+            20_000,
             props,
             indices,
             pointers
@@ -312,8 +315,8 @@ contract PanopticFactoryTest is Test {
                 address(deployedPool)
             );
             // see if correct pool was linked in the panopticPool
-            IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).univ3pool();
-            address linkedPoolAddress = address(PanopticPool(preComputedPool).univ3pool());
+            IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).oraclePool();
+            address linkedPoolAddress = address(PanopticPool(preComputedPool).oraclePool());
             assertEq(address(pool), linkedPoolAddress);
 
             // check the pool has the correct parameters
@@ -490,6 +493,7 @@ contract PanopticFactoryTest is Test {
         (uint96 bestSalt, uint256 highestRarity) = panopticFactory.minePoolAddress(
             randomAddress,
             address(pool),
+            poolKey,
             nonce,
             50_000,
             minTargetRarity

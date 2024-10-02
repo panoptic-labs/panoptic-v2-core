@@ -43,9 +43,9 @@ contract FactoryNFT is MetadataStore, ERC721 {
         return
             constructMetadata(
                 panopticPool,
-                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).univ3pool().token0()),
-                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).univ3pool().token1()),
-                PanopticPool(panopticPool).univ3pool().fee()
+                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).oraclePool().token0()),
+                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).oraclePool().token1()),
+                PanopticPool(panopticPool).oraclePool().fee()
             );
     }
 
