@@ -442,6 +442,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
 
+        vm.startPrank(address(this));
+
         panopticPool = PanopticPoolHarness(
             ClonesWithImmutableArgs.addressOfClone3(PoolId.unwrap(poolKey.toId()))
         );
@@ -481,7 +483,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         panopticPool = new PanopticPoolHarness(sfpm, manager);
 
         panopticPool = PanopticPoolHarness(
-            ClonesWithImmutableArgs.clone(
+            ClonesWithImmutableArgs.clone3(
                 address(panopticPool),
                 abi.encodePacked(
                     collateralToken0,
@@ -489,9 +491,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     pool,
                     poolKey.toId(),
                     abi.encode(poolKey)
-                )
+                ),
+                PoolId.unwrap(poolKey.toId())
             )
         );
+
+        vm.startPrank(Swapper);
 
         panopticPool.initialize();
 

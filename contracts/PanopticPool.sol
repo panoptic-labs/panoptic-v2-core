@@ -269,8 +269,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         uint256 offset = _getImmutableArgsOffset();
 
         assembly {
-            // 0x5c (60 + 32) + 0xa0 (length of PoolKey struct=5 slots of 32 bytes)
-            key := add(offset, 0xfc)
+            key := add(offset, 0x5c)
         }
     }
 

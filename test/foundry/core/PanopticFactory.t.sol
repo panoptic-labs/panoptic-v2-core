@@ -69,6 +69,10 @@ contract PanopticFactoryHarness is PanopticFactory {
     function getPoolReference() external view returns (address) {
         return POOL_REFERENCE;
     }
+
+    function create3Address(bytes32 salt) external view returns (address) {
+        return ClonesWithImmutableArgs.cloneDeterministic(POOL_REFERENCE, salt);
+    }
 }
 
 contract PanopticFactoryTest is Test {
