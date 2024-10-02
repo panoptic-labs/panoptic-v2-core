@@ -11,7 +11,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
 // OpenZeppelin libraries
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Clones} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/proxy/Clones.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
