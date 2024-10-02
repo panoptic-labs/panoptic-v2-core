@@ -76,7 +76,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emitted when a UniswapV3Pool is initialized in the SFPM.
-    /// @param uniswapPool Address of the underlying Uniswap v3 pool
+    /// @param uniswapPool Address of the underlying Uniswap V3 pool
     /// @param poolId The SFPM's pool identifier for the pool, including the 16-bit tick spacing and 48-bit pool pattern
     event PoolInitialized(address indexed uniswapPool, uint64 poolId);
 
@@ -91,7 +91,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     );
 
     /// @notice Emitted when a position is created/minted.
-    /// @dev `recipient` is used to track whether it was minted directly by the user or through an option contract.
     /// @param caller The address of the user who minted the position
     /// @param tokenId The tokenId of the minted position
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
@@ -282,7 +281,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     mapping(bytes32 positionKey => LeftRightUnsigned accountPremium) private s_accountPremiumGross;
 
     /// @notice Per-liquidity accumulator for the fees collected on an account for a given chunk.
-    /// @dev Base fees is stored as int128((feeGrowthInside0LastX128 * liquidity) / 2**128), which allows us to store the accumulated fees as int128 instead of uint256.
+    /// @dev Base fees are stored as `int128((feeGrowthInsideLastX128 * liquidity) / 2**128)`, which allows us to store the accumulated fees as int128 instead of uint256.
     /// @dev Right slot: int128 token0 base fees, Left slot: int128 token1 base fees.
     /// @dev feesBase represents the baseline fees collected by the position last time it was updated - this is recalculated every time the position is collected from with the new value.
     mapping(bytes32 positionKey => LeftRightSigned baseFees0And1) internal s_accountFeesBase;
@@ -297,16 +296,16 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         FACTORY = _factory;
     }
 
-    /// @notice Initialize a Uniswap v3 pool in the SFPM.
+    /// @notice Initialize a Uniswap V3 pool in the SFPM.
     /// @dev Revert if already initialized.
     /// @param token0 The contract address of token0 of the pool
     /// @param token1 The contract address of token1 of the pool
-    /// @param fee The fee level of the of the underlying Uniswap v3 pool, denominated in hundredths of bips
+    /// @param fee The fee level of the of the underlying Uniswap V3 pool, denominated in hundredths of bips
     function initializeAMMPool(address token0, address token1, uint24 fee) external {
-        // compute the address of the Uniswap v3 pool for the given token0, token1, and fee tier
+        // compute the address of the Uniswap V3 pool for the given token0, token1, and fee tier
         address univ3pool = FACTORY.getPool(token0, token1, fee);
 
-        // reverts if the Uni v3 pool has not been initialized
+        // reverts if the Uniswap V3 pool has not been initialized
         if (univ3pool == address(0)) revert Errors.UniswapPoolNotInitialized();
 
         // return if the pool has already been initialized in SFPM
@@ -604,8 +603,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //   If we take token0 as an example, we deploy it to the AMM pool and *then* swap to get the right mix of token0 and token1
     //   to be correctly in the money at that strike.
     //   It that position is burnt, then we remove a mix of the two tokens and swap one of them so that the user receives only one.
-    /// @param univ3pool The uniswap pool in which to swap.
-    /// @param itmAmounts How much to swap - how much is ITM
+    /// @param univ3pool The Uniswap pool in which to swap.
+    /// @param itmAmounts How much to swap (i.e. how many tokens are ITM)
     /// @return totalSwapped The token deltas swapped in the AMM
     function swapInAMM(
         IUniswapV3Pool univ3pool,
@@ -815,7 +814,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         LiquidityChunk liquidityChunk,
         bool isBurn
     ) internal returns (LeftRightSigned moved, LeftRightUnsigned collectedSingleLeg) {
-        // unique key to identify the liquidity chunk in this uniswap pool
+        // unique key to identify the liquidity chunk in this Uniswap pool
         bytes32 positionKey = keccak256(
             abi.encodePacked(
                 address(univ3pool),
@@ -890,14 +889,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // add the fees that accumulated in uniswap within the liquidityChunk:
 
         /* if the position is NOT long (selling a put or a call), then _mintLiquidity to move liquidity
-            from the msg.sender to the uniswap v3 pool:
+            from the msg.sender to the Uniswap V3 pool:
             Selling(isLong=0): Mint chunk of liquidity in Uniswap (defined by upper tick, lower tick, and amount)
                    ┌─────────────────────────────────┐
             ▲     ┌▼┐ liquidityChunk                 │
             │  ┌──┴─┴──┐                         ┌───┴──┐
             │  │       │                         │      │
             └──┴───────┴──►                      └──────┘
-                Uniswap v3                      msg.sender
+                Uniswap V3                      msg.sender
         
             else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
             Buying(isLong=1): Burn in Uniswap
@@ -906,7 +905,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             │  ┌──┴─┴──┐         ┌───▼──┐
             │  │       │         │      │
             └──┴───────┴──►      └──────┘
-                Uniswap v3      msg.sender 
+                Uniswap V3      msg.sender 
         */
         moved = isLong == 0
             ? _mintLiquidity(liquidityChunk, univ3pool)
@@ -986,8 +985,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         // (feegrowth * liquidity) / 2 ** 128
         // here we're converting the value to an int128 even though all values (feeGrowth, liquidity, Q128) are strictly positive.
-        // That's because of the way feeGrowthInside works in Uniswap v3, where it can underflow when stored for the first time.
-        // This is not a problem in Uniswap v3 because the fees are always calculated by taking the difference of the feeGrowths,
+        // That's because of the way feeGrowthInside works in Uniswap V3, where it can underflow when stored for the first time.
+        // This is not a problem in Uniswap V3 because the fees are always calculated by taking the difference of the feeGrowths,
         // so that the net different is always positive.
         // So by using int128 instead of uint128, we remove the need to handle extremely large underflows and simply allow it to be negative
         feesBase = roundUp
@@ -1005,11 +1004,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
     }
 
-    /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap v3 pool; return the amount moved.
-    /// @dev Note that "moved" means: mint in Uniswap and move tokens from msg.sender.
+    /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap V3 pool; return the amount moved.
     /// @param liquidityChunk The liquidity chunk in Uniswap to mint
-    /// @param univ3pool The Uniswap v3 pool to mint liquidity in/to
-    /// @return movedAmounts How many tokens were moved from msg.sender to Uniswap
+    /// @param univ3pool The Uniswap V3 pool to mint liquidity in/to
+    /// @return movedAmounts How many tokens were moved from `msg.sender` to Uniswap
     function _mintLiquidity(
         LiquidityChunk liquidityChunk,
         IUniswapV3Pool univ3pool
@@ -1026,8 +1024,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 })
         );
 
-        /// mint the required amount in the Uniswap pool
-        /// @dev this triggers the uniswap mint callback function
+        // mint the required amount in the Uniswap pool
+        // this triggers the uniswap mint callback function
         (uint256 amount0, uint256 amount1) = univ3pool.mint(
             address(this),
             liquidityChunk.tickLower(),
@@ -1044,11 +1042,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         );
     }
 
-    /// @notice Burn a chunk of liquidity (`liquidityChunk`) in the Uniswap v3 pool and send to msg.sender; return the amount moved.
-    /// @dev Note that "moved" means: burn position in Uniswap and send tokens to msg.sender.
+    /// @notice Burn a chunk of liquidity (`liquidityChunk`) in the Uniswap V3 pool and send to msg.sender; return the amount moved.
     /// @param liquidityChunk The liquidity chunk in Uniswap to burn
-    /// @param univ3pool The Uniswap v3 pool to burn liquidity in/from
-    /// @return movedAmounts How many tokens were moved from Uniswap to msg.sender
+    /// @param univ3pool The Uniswap V3 pool to burn liquidity in/from
+    /// @return movedAmounts How many tokens were moved from Uniswap to `msg.sender`
     function _burnLiquidity(
         LiquidityChunk liquidityChunk,
         IUniswapV3Pool univ3pool
@@ -1076,7 +1073,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param liquidityChunk The liquidity chunk in Uniswap to collect from
     /// @param univ3pool The Uniswap pool where the position is deployed
     /// @param currentLiquidity The existing liquidity msg.sender owns in the AMM for this chunk before the SFPM was called
-    /// @param positionKey The unique key to identify the liquidity chunk/tokenType pairing in this uniswap pool
+    /// @param positionKey The unique key to identify the liquidity chunk/tokenType pairing in this Uniswap pool
     /// @param movedInLeg How much liquidity has been moved between msg.sender and Uniswap before this function call
     /// @param isLong Whether the leg in question is long (=1) or short (=0)
     /// @return collectedChunk The amount of tokens collected from Uniswap
@@ -1139,7 +1136,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Compute deltas for Owed/Gross premium given quantities of tokens collected from Uniswap.
-    /// @dev Returned accumulators are capped at the max value (2**128 - 1) for each token if they overflow.
+    /// @dev Returned accumulators are capped at the max value (`2^128 - 1`) for each token if they overflow.
     /// @param currentLiquidity NetLiquidity (right) and removedLiquidity (left) at the start of the transaction
     /// @param collectedAmounts Total amount of tokens (token0 and token1) collected from Uniswap
     /// @return deltaPremiumOwed The extra premium (per liquidity X64) to be added to the owed accumulator for token0 (right) and token1 (left)
@@ -1234,14 +1231,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                             SFPM PROPERTIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Return the liquidity associated with a given liquidity chunk/tokenType.
-    /// @dev Computes accountLiquidity[keccak256(abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper))].
-    /// @param univ3pool The address of the Uniswap v3 Pool
+    /// @notice Return the liquidity associated with a given liquidity chunk/tokenType for a user on a Uniswap pool.
+    /// @param univ3pool The address of the Uniswap V3 Pool
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
-    /// @param tickLower The lower end of the tick range for the position (int24)
-    /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
+    /// @param tickLower The lower end of the tick range for the position
+    /// @param tickUpper The upper end of the tick range for the position
+    /// @return accountLiquidities The amount of liquidity that held in and removed from Uniswap for that chunk (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
     function getAccountLiquidity(
         address univ3pool,
         address owner,
@@ -1249,7 +1245,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 tickLower,
         int24 tickUpper
     ) external view returns (LeftRightUnsigned accountLiquidities) {
-        // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+        // Extract the account liquidity for a given Uniswap pool, owner, token type, and ticks
         // tokenType input here is the asset of the positions minted, this avoids put liquidity to be used for call, and vice-versa
         accountLiquidities = s_accountLiquidity[
             keccak256(abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper))
@@ -1257,19 +1253,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Return the premium associated with a given position, where premium is an accumulator of feeGrowth for the touched position.
-    /// @dev Computes s_accountPremium{isLong ? Owed : Gross}[keccak256(abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper))].
-    /// @dev If an atTick parameter is provided that is different from type(int24).max, then it will update the premium up to the current
-    /// block at the provided atTick value. We do this because this may be called immediately after the Uni v3 pool has been touched,
-    /// so no need to read the feeGrowths from the Uni v3 pool.
-    /// @param univ3pool The address of the Uniswap v3 Pool
+    /// @dev If an atTick parameter is provided that is different from `type(int24).max`, then it will update the premium up to the current
+    /// block at the provided atTick value. We do this because this may be called immediately after the Uniswap V3 pool has been touched,
+    /// so no need to read the feeGrowths from the Uniswap V3 pool.
+    /// @param univ3pool The address of the Uniswap V3 Pool
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
-    /// @param tickLower The lower end of the tick range for the position (int24)
-    /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @param atTick The current tick. Set atTick < type(int24).max = 8388608 to get latest premium up to the current block
+    /// @param tickLower The lower end of the tick range for the position
+    /// @param tickUpper The upper end of the tick range for the position
+    /// @param atTick The current tick. Set `atTick < (type(int24).max = 8388608)` to get latest premium up to the current block
     /// @param isLong Whether the position is long (=1) or short (=0)
-    /// @return The amount of premium (per liquidity X64) for token0 = sum (feeGrowthLast0X128) over every block where the position has been touched
-    /// @return The amount of premium (per liquidity X64) for token1 = sum (feeGrowthLast0X128) over every block where the position has been touched
+    /// @return The amount of premium (per liquidity X64) for token0 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
+    /// @return The amount of premium (per liquidity X64) for token1 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
     function getAccountPremium(
         address univ3pool,
         address owner,
@@ -1288,9 +1283,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
         uint128 netLiquidity = accountLiquidities.rightSlot();
 
-        // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
+        // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if `atTick == (type(int24).max = 8388608)`
         if (atTick < type(int24).max && netLiquidity != 0) {
-            // unique key to identify the liquidity chunk in this uniswap pool
+            // unique key to identify the liquidity chunk in this Uniswap pool
             LeftRightUnsigned amountToCollect;
             {
                 IUniswapV3Pool _univ3pool = IUniswapV3Pool(univ3pool);
@@ -1337,7 +1332,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             acctPremia = isLong == 1 ? premiumOwed : premiumGross;
         } else {
-            // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+            // Extract the account liquidity for a given Uniswap pool, owner, token type, and ticks
             acctPremia = isLong == 1
                 ? s_accountPremiumOwed[positionKey]
                 : s_accountPremiumGross[positionKey];
@@ -1346,12 +1341,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Return the feesBase associated with a given liquidity chunk.
-    /// @dev Computes accountFeesBase[keccak256(abi.encodePacked(univ3pool, owner, tickLower, tickUpper))].
-    /// @param univ3pool The address of the Uniswap v3 Pool
+    /// @param univ3pool The address of the Uniswap V3 Pool
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position (the token it started as)
-    /// @param tickLower The lower end of the tick range for the position (int24)
-    /// @param tickUpper The upper end of the tick range for the position (int24)
+    /// @param tickLower The lower end of the tick range for the position
+    /// @param tickUpper The upper end of the tick range for the position
     /// @return feesBase0 The feesBase of the position for token0
     /// @return feesBase1 The feesBase of the position for token1
     function getAccountFeesBase(
@@ -1370,7 +1364,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Returns the Uniswap pool for a given `poolId`.
-    /// @param poolId The unique pool identifier for a Uni v3 pool
+    /// @param poolId The unique pool identifier for a Uniswap V3 pool
     /// @return uniswapV3Pool The Uniswap pool corresponding to `poolId`
     function getUniswapV3PoolFromId(
         uint64 poolId

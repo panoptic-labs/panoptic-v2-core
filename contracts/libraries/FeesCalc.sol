@@ -34,8 +34,8 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 //              of the AMM
 //
 library FeesCalc {
-    /// @notice Calculate the AMM Swap/trading fees for a `liquidityChunk` of each token.
-    /// @dev Read from the uniswap pool and compute the accumulated fees from swapping activity.
+    /// @notice Calculate the AMM swap fees accumulated by the `liquidityChunk` in each token of the pool.
+    /// @dev Read from the Uniswap pool and compute the accumulated fees from swapping activity.
     /// @param univ3pool The AMM/Uniswap pool where fees are collected from
     /// @param currentTick The current price tick
     /// @param tickLower The lower tick of the chunk to calculate fees for
@@ -68,7 +68,7 @@ library FeesCalc {
 
     /// @notice Calculates the fee growth that has occurred (per unit of liquidity) in the AMM/Uniswap for an
     /// option position's tick range.
-    /// @dev Extracts the feeGrowth from the uniswap v3 pool.
+    /// @dev Extracts the feeGrowth from the Uniswap V3 pool.
     /// @param univ3pool The AMM pool where the leg is deployed
     /// @param currentTick The current price tick in the AMM
     /// @param tickLower The lower tick of the option position leg (a liquidity chunk)

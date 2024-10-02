@@ -10,7 +10,7 @@ import {Errors} from "@libraries/Errors.sol";
 /// @author Axicon Labs Limited
 /// @notice This library provides functions to verify that a callback came from a canonical Uniswap V3 pool with a claimed set of features.
 library CallbackLib {
-    /// @notice Defining characteristics of a Uni V3 pool
+    /// @notice Defining characteristics of a Uniswap V3 pool
     struct PoolFeatures {
         address token0;
         address token1;

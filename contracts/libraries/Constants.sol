@@ -24,7 +24,7 @@ library Constants {
     /// @notice Parameter that determines which oracle type to use for the "slow" oracle price on non-liquidation solvency checks.
     /// @dev If false, an 8-slot internal median array is used to compute the "slow" oracle price.
     /// @dev This oracle is updated with the last Uniswap observation during `mintOptions` if MEDIAN_PERIOD has elapsed past the last observation.
-    /// @dev If true, the "slow" oracle price is instead computed on-the-fly from 8 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls.
+    /// @dev If true, the "slow" oracle price is instead computed on-the-fly from 9 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls.
     bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
 
     /// @notice The minimum amount of time, in seconds, permitted between internal TWAP updates.
@@ -43,6 +43,6 @@ library Constants {
     uint256 internal constant SLOW_ORACLE_CARDINALITY = 9;
 
     /// @notice Amount of observation indices to skip in between each observation for the "slow" oracle price.
-    /// @dev Structured such that the minimum total observation time is 8 minutes on Ethereum (similar to internal median mode).
+    /// @dev Structured such that the minimum total observation time is 9 minutes on Ethereum.
     uint256 internal constant SLOW_ORACLE_PERIOD = 5;
 }
