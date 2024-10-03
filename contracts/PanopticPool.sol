@@ -833,20 +833,22 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
         // This approach is more conservative than checking each tick difference individually,
         // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
-        if (
-            int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(lastObservedTick - slowOracleTick) ** 2 +
-                int256(currentTick - slowOracleTick) ** 2 >
-            MAX_TICKS_DELTA ** 2
-        ) {
-            atTicks = new int24[](4);
-            atTicks[0] = fastOracleTick;
-            atTicks[1] = slowOracleTick;
-            atTicks[2] = lastObservedTick;
-            atTicks[3] = currentTick;
-        } else {
-            atTicks = new int24[](1);
-            atTicks[0] = fastOracleTick;
+        unchecked {
+            if (
+                int256(fastOracleTick - slowOracleTick) ** 2 +
+                    int256(lastObservedTick - slowOracleTick) ** 2 +
+                    int256(currentTick - slowOracleTick) ** 2 >
+                MAX_TICKS_DELTA ** 2
+            ) {
+                atTicks = new int24[](4);
+                atTicks[0] = fastOracleTick;
+                atTicks[1] = slowOracleTick;
+                atTicks[2] = lastObservedTick;
+                atTicks[3] = currentTick;
+            } else {
+                atTicks = new int24[](1);
+                atTicks[0] = fastOracleTick;
+            }
         }
 
         _checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer, ASSERT_SOLVENCY);
