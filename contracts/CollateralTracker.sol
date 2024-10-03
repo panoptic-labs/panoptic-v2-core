@@ -120,13 +120,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     IPoolManager internal immutable POOL_MANAGER_V4;
 
     /*//////////////////////////////////////////////////////////////
-                          INITIALIZATION STATE
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Boolean tracking whether this CollateralTracker has been initialized.
-    bool internal s_initialized;
-
-    /*//////////////////////////////////////////////////////////////
                          POOL UTILIZATION DATA
     //////////////////////////////////////////////////////////////*/
 
@@ -135,6 +128,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
+
+    /*//////////////////////////////////////////////////////////////
+                          INITIALIZATION STATE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Boolean tracking whether this CollateralTracker has been initialized.
+    bool internal s_initialized;
 
     /*//////////////////////////////////////////////////////////////
                    POOL-SPECIFIC IMMUTABLE PARAMETERS

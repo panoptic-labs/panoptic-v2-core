@@ -461,7 +461,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     token0,
                     token1,
                     fee,
-                    (fee * 20_000) / 10_000
+                    (fee * uint256(20_000)) / 10_000
                 )
             )
         );
@@ -471,11 +471,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 abi.encodePacked(
                     panopticPool,
                     false,
-                    token0,
+                    token1,
                     token0,
                     token1,
                     fee,
-                    (fee * 20_000) / 10_000
+                    (fee * uint256(20_000)) / 10_000
                 )
             )
         );

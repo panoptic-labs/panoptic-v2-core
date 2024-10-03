@@ -237,7 +237,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
-                uint80(uint256(panopticPoolKey) >> 80),
+                uint80(uint256(panopticPoolKey)),
                 salt
             )
         );
@@ -356,7 +356,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
             bytes32 newSalt = bytes32(
                 abi.encodePacked(
                     uint80(uint160(deployerAddress) >> 80),
-                    uint80(uint256(keccak256(abi.encode(key, oraclePool))) >> 80),
+                    uint80(uint256(keccak256(abi.encode(key, oraclePool)))),
                     salt
                 )
             );

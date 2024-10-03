@@ -1162,12 +1162,12 @@ contract PositionUtils is Test {
         int256 assetDelta = convertToAssets(ct, shareDelta);
         vm.store(
             address(ct),
-            bytes32(uint256(7)),
+            bytes32(uint256(3)),
             bytes32(
                 uint256(
                     LeftRightSigned.unwrap(
                         LeftRightSigned
-                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
+                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(3))))))
                             .add(LeftRightSigned.wrap(int256(uint256(uint128(int128(assetDelta))))))
                     )
                 )

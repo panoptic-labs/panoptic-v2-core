@@ -1521,61 +1521,16 @@ contract PanopticPoolTest is PositionUtils {
         assertEq(vm.load(address(ct0), bytes32(uint256(2))), bytes32(uint256(0))); // allowance slot
         assertEq(vm.load(address(ct1), bytes32(uint256(2))), bytes32(uint256(0))); // allowance slot
 
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(3))),
-            bytes32(uint256(uint256(1 << 160) + uint160(address(token0))))
-        ); // underlying token + initialized
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(3))),
-            bytes32(uint256(uint256(1 << 160) + uint160(address(token1))))
-        ); // underlying token + initialized
+        assertEq(vm.load(address(ct0), bytes32(uint256(3))), bytes32(uint256(1))); // poolAssets + inAMM
 
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(4))),
-            bytes32(uint256(uint160(address(token0))))
-        ); // token0
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(4))),
-            bytes32(uint256(uint160(address(token0))))
-        ); // token0
+        assertEq(vm.load(address(ct1), bytes32(uint256(3))), bytes32(uint256(1))); // poolAssets + inAMM
 
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(5))),
-            bytes32(uint256(uint256(1 << 160) + uint160(address(token1))))
-        ); // token1 + underlyingistoken0
+        assertEq(vm.load(address(ct0), bytes32(uint256(4))), bytes32(uint256(1))); // initialized
+        assertEq(vm.load(address(ct1), bytes32(uint256(4))), bytes32(uint256(1))); // initialized
 
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(5))),
-            bytes32(uint256(uint160(address(token1))))
-        ); // token1 + underlyingistoken0
+        assertEq(vm.load(address(ct0), bytes32(uint256(5))), bytes32(uint256(0))); // 0
 
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(6))),
-            bytes32(uint256(uint160(address(pp))))
-        ); // pool
-
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(6))),
-            bytes32(uint256(uint160(address(pp))))
-        ); // pool
-
-        assertEq(vm.load(address(ct0), bytes32(uint256(7))), bytes32(uint256(1))); // poolAssets + inAMM
-
-        assertEq(vm.load(address(ct1), bytes32(uint256(7))), bytes32(uint256(1))); // poolAssets + inAMM
-
-        assertEq(
-            vm.load(address(ct0), bytes32(uint256(8))),
-            bytes32(uint256((2 * uint256(fee)) + (uint256(fee) << 128)))
-        ); // ITMSpreadFee + poolFee
-
-        assertEq(
-            vm.load(address(ct1), bytes32(uint256(8))),
-            bytes32(uint256((2 * uint256(fee)) + (uint256(fee) << 128)))
-        ); // ITMSpreadFee + poolFee
-
-        assertEq(vm.load(address(ct0), bytes32(uint256(9))), bytes32(uint256(0))); // 0
-
-        assertEq(vm.load(address(ct1), bytes32(uint256(9))), bytes32(uint256(0))); // 0
+        assertEq(vm.load(address(ct1), bytes32(uint256(5))), bytes32(uint256(0))); // 0
     }
 
     /*//////////////////////////////////////////////////////////////

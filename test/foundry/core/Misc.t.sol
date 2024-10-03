@@ -740,10 +740,12 @@ contract Misctest is Test, PositionUtils {
                 token0,
                 token0,
                 token1,
-                uint256(1),
-                uint256((1 * 20_000) / 10_000)
+                uint24(1),
+                uint256((1 * uint256(20_000)) / 10_000)
             )
         );
+
+        CollateralTracker(collateralReference).initialize();
 
         vm.startPrank(Bob);
         token0.mint(Bob, type(uint104).max);
