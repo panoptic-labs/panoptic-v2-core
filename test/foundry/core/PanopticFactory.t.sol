@@ -155,7 +155,7 @@ contract PanopticFactoryTest is Test {
     // Used as a mitigation technique for the ERC4626 share inflation attack
     uint256 constant INITIAL_DEPOSIT = 1e4;
 
-    // Define the struct needed when minting a Uni v3 LP position
+    // Define the struct needed when minting a Uniswap V3 LP position
     struct CallbackData {
         PoolAddress.PoolKey univ3poolKey;
         address payer;
@@ -294,7 +294,7 @@ contract PanopticFactoryTest is Test {
 
         {
             // Deploy pool
-            // links the uni v3 pool to the Panoptic pool
+            // links the Uniswap V3 pool to the Panoptic pool
             PanopticPool deployedPool = panopticFactory.deployNewPool(
                 pool,
                 poolKey,
@@ -484,7 +484,7 @@ contract PanopticFactoryTest is Test {
 
         nonce = uint96(bound(nonce, 0, type(uint96).max - 1001));
 
-        // fuzz a random uniswap pool
+        // fuzz a random Uniswap pool
         _initWorld(x);
 
         randomAddress = address(uint160(uint256(keccak256(abi.encode(randomAddress)))));
@@ -574,7 +574,7 @@ contract PanopticFactoryTest is Test {
                 fullRangeLiquidity = liquidity0 > liquidity1 ? liquidity0 : liquidity1;
             }
 
-            // simulate the amounts minted in the uniswap pool
+            // simulate the amounts minted in the Uniswap pool
             uint256 snapshot = vm.snapshot();
             (int256 amount0, int256 amount1) = routerV4.modifyLiquidity(
                 address(0),

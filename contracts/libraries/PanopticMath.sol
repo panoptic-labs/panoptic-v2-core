@@ -19,24 +19,25 @@ import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
+/// @notice Contains Panoptic-specific helpers and math functions.
 /// @author Axicon Labs Limited
 library PanopticMath {
     using Math for uint256;
 
-    /// @notice This is equivalent to type(uint256).max — used in assembly blocks as a replacement.
+    /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
-    /// @notice Masks 16-bit tickSpacing out of 64-bit [16-bit tickspacing][48-bit poolPattern] format poolId
+    /// @notice Masks 16-bit tickSpacing out of 64-bit `[16-bit tickspacing][48-bit poolPattern]` format poolId
     uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
 
     /*//////////////////////////////////////////////////////////////
                               MATH HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Given an address to a Uniswap v3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
+    /// @notice Given an address to a Uniswap V3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
     // Example:
     //      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
-    //      of the Uniswap v3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
+    //      of the Uniswap V3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
     //      e.g.:
     //        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
     //        tickSpacing = 60
@@ -113,21 +114,18 @@ library PanopticMath {
                               UTILITIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Update an existing account's "positions hash" with a new single position `tokenId`.
-    /// @notice The positions hash contains a single fingerprint of all positions created by an account/user as well as a tally of the positions.
-    /// @dev The combined hash is the XOR of all individual position hashes.
+    /// @notice Update an existing account's "positions hash" with a new `tokenId`.
+    /// @notice The positions hash contains a fingerprint of all open positions created by an account/user and a count of those positions.
+    /// @dev The "fingerprint" portion of the hash is given by XORing the hashed `tokenId` of each position the user has open together.
     /// @param existingHash The existing position hash containing all historical N positions created and the count of the positions
-    /// @param tokenId The new position to add to the existing hash: existingHash = uint248(existingHash) ^ hashOf(tokenId)
-    /// @param addFlag Whether to mint (add) the tokenId to the count of positions or burn (subtract) it from the count (existingHash >> 248) +/- 1
+    /// @param tokenId The new position to add to the existing hash: `existingHash = uint248(existingHash) ^ hashOf(tokenId)`
+    /// @param addFlag Whether to mint (add) the tokenId to the count of positions or burn (subtract) it from the count `(existingHash >> 248) +/- 1`
     /// @return newHash The new positionHash with the updated hash
     function updatePositionsHash(
         uint256 existingHash,
         TokenId tokenId,
         bool addFlag
     ) internal pure returns (uint256) {
-        // add the XOR`ed hash of the single option position `tokenId` to the `existingHash`
-        // @dev 0 ^ x = x
-
         // update hash by taking the XOR of the new tokenId
         uint256 updatedHash = uint248(existingHash) ^
             (uint248(uint256(keccak256(abi.encode(tokenId)))));
@@ -146,9 +144,9 @@ library PanopticMath {
                           ORACLE CALCULATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Gets several ticks from Uniswap regarding the underlying pair.
+    /// @notice Computes various oracle prices corresponding to a Uniswap pool.
     /// @param univ3pool The Uniswap pool to get the observations from
-    /// @param miniMedian The packed structure representing the sorted 8-slot queue of ticks
+    /// @param miniMedian The packed structure representing the sorted 8-slot queue of internal median observations
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
     /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
@@ -246,7 +244,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
+    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values and an updated queue if another observation is warranted.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
     /// @param observationIndex The index of the last observation in the Uniswap pool
     /// @param observationCardinality The number of observations in the Uniswap pool
@@ -362,7 +360,7 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice For a given option position (`tokenId`), leg index within that position (`legIndex`), and `positionSize` get the tick range spanned and its
-    /// liquidity (share ownership) in the Univ3 pool; this is a liquidity chunk.
+    /// liquidity (share ownership) in the Uniswap V3 pool; this is a liquidity chunk.
     //          Liquidity chunk  (defined by tick upper, tick lower, and its size/amount: the liquidity)
     //   liquidity    │
     //         ▲      │
@@ -371,7 +369,7 @@ library PanopticMath {
     //         │  │       │
     //         │  │       │
     //         └──┴───────┴────► price
-    //         Uniswap v3 Pool
+    //         Uniswap V3 Pool
     /// @param tokenId The option position id
     /// @param legIndex The leg index of the option position, can be {0,1,2,3}
     /// @param positionSize The number of contracts held by this leg
@@ -384,10 +382,10 @@ library PanopticMath {
         // get the tick range for this leg
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
-        // Get the amount of liquidity owned by this leg in the univ3 pool in the above tick range
+        // Get the amount of liquidity owned by this leg in the Uniswap V3 pool in the above tick range
         // Background:
         //
-        //  In Uniswap v3, the amount of liquidity received for a given amount of token0 when the price is
+        //  In Uniswap V3, the amount of liquidity received for a given amount of token0 when the price is
         //  not in range is given by:
         //     Liquidity = amount0 * (sqrt(upper) * sqrt(lower)) / (sqrt(upper) - sqrt(lower))
         //  For token1, it is given by:
@@ -397,7 +395,7 @@ library PanopticMath {
         //  In TradFi, the asset is always cash and selling a $1000 put requires the user to lock $1000, and selling
         //  a call requires the user to lock 1 unit of asset.
         //
-        //  Because Uni v3 chooses token0 and token1 from the alphanumeric order, there is no consistency as to whether token0 is
+        //  Because Uniswap V3 chooses token0 and token1 from the alphanumeric order, there is no consistency as to whether token0 is
         //  stablecoin, ETH, or an ERC20. Some pools may want ETH to be the asset (e.g. ETH-DAI) and some may wish the stablecoin to
         //  be the asset (e.g. DAI-ETH) so that K asset is moved for puts and 1 asset is moved for calls.
         //  But since the convention is to force the order always we have no say in this.
@@ -422,7 +420,7 @@ library PanopticMath {
     /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
     /// @param strike The strike price of the option
     /// @param width The width of the option
-    /// @param tickSpacing The tick spacing of the underlying Uniswap v3 pool
+    /// @param tickSpacing The tick spacing of the underlying Uniswap V3 pool
     /// @return tickLower The lower tick of the liquidity chunk
     /// @return tickUpper The upper tick of the liquidity chunk
     function getTicks(
@@ -472,7 +470,7 @@ library PanopticMath {
                          TOKEN CONVERSION LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Compute the amount of funds that are underlying this option position. This is useful when exercising a position.
+    /// @notice Compute the amount of notional value underlying this option position.
     /// @param tokenId The option position id
     /// @param positionSize The number of contracts of this option
     /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
@@ -499,7 +497,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
@@ -516,7 +514,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
@@ -536,7 +534,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
@@ -553,7 +551,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
@@ -578,7 +576,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token0 to convert into token1
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
@@ -601,7 +599,7 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as sqrt(1/0)*2^96.
+    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
     /// @param amount The amount of token1 to convert into token0
     /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
@@ -632,8 +630,8 @@ library PanopticMath {
     /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
     /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
     /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
-    /// @return The combined collateral balance of `tokenData0` and `tokenData1` in terms of (token0 if price(token1/token0) < 1 and vice versa)
-    /// @return The combined required collateral threshold of `tokenData0` and `tokenData1` in terms of (token0 if price(token1/token0) < 1 and vice versa)
+    /// @return The combined collateral balance of `tokenData0` and `tokenData1` in terms of (token0 if `price(token1/token0) < 1` and vice versa)
+    /// @return The combined required collateral threshold of `tokenData0` and `tokenData1` in terms of (token0 if `price(token1/token0) < 1` and vice versa)
     function getCrossBalances(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
@@ -656,7 +654,7 @@ library PanopticMath {
         );
     }
 
-    /// @notice Compute the amount of token0 and token1 moved. Given an option position `tokenId`, leg index `legIndex`, and how many contracts are in the leg `positionSize`.
+    /// @notice Compute the notional value (for `tokenType = 0` and `tokenType = 1`) represented by a given leg in an option position.
     /// @param tokenId The option position identifier
     /// @param positionSize The number of option contracts held in this position (each contract can control multiple tokens)
     /// @param legIndex The leg index of the option contract, can be {0,1,2,3}
@@ -691,7 +689,7 @@ library PanopticMath {
         return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);
     }
 
-    /// @notice Compute the amount of funds that are moved to and removed from the Panoptic Pool.
+    /// @notice Compute the amount of funds that are moved to or removed from the Panoptic Pool when `tokenId` is created.
     /// @param tokenId The option position identifier
     /// @param positionSize The number of positions minted
     /// @param legIndex The leg index minted in this position, can be {0,1,2,3}
@@ -731,14 +729,14 @@ library PanopticMath {
                 LIQUIDATION/FORCE EXERCISE CALCULATIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation.
+    /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
     /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
     /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
     /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
-    /// @return The LeftRight-packed protocol loss for both tokens, i.e., the delta between the user's starting balance and expended tokens
+    /// @return The LeftRight-packed protocol loss (pre-haircut) for both tokens, i.e., the delta between the user's starting balance and expended tokens
     function getLiquidationBonus(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
@@ -871,7 +869,7 @@ library PanopticMath {
     /// @param collateral0 The collateral tracker for token0
     /// @param collateral1 The collateral tracker for token1
     /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
-    /// @return The delta in bonus0 and bonus1 for the liquidator post-haircut
+    /// @return The delta, if any, to apply to the existing liquidation bonus
     function haircutPremia(
         address liquidatee,
         TokenId[] memory positionIdList,
@@ -1018,8 +1016,8 @@ library PanopticMath {
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
     /// @param exercisee The address of the user being exercised
-    /// @param exerciseFees Exercise fees to debit from exercisor at tick(atTick) rightSlot = token0 left = token1
-    /// @param atTick Tick to convert values at. This can be the current tick or some TWAP/median tick
+    /// @param exerciseFees Pre-adjustment exercise fees to debit from exercisor (rightSlot = token0 left = token1)
+    /// @param atTick The tick at which to convert between token0/token1 when redistributing the exercise fees
     /// @param ct0 The collateral tracker for token0
     /// @param ct1 The collateral tracker for token1
     /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee

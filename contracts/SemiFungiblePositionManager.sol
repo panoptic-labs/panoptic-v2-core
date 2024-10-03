@@ -98,7 +98,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     );
 
     /// @notice Emitted when a position is created/minted.
-    /// @dev `recipient` is used to track whether it was minted directly by the user or through an option contract.
     /// @param caller The address of the user who minted the position
     /// @param tokenId The tokenId of the minted position
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
@@ -297,7 +296,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         POOL_MANAGER_V4 = poolManager;
     }
 
-    /// @notice Initialize a Uniswap v3 pool in the SFPM.
+    /// @notice Initialize a Uniswap V3 pool in the SFPM.
     /// @dev Revert if already initialized.
     /// @param key An identifying key for a Uniswap V4 pool
     function initializeAMMPool(PoolKey calldata key) external {
@@ -524,7 +523,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //   If we take token0 as an example, we deploy it to the AMM pool and *then* swap to get the right mix of token0 and token1
     //   to be correctly in the money at that strike.
     //   It that position is burnt, then we remove a mix of the two tokens and swap one of them so that the user receives only one.
-    /// @param itmAmounts How much to swap - how much is ITM
+    /// @param itmAmounts How much to swap (i.e. how many tokens are ITM)
     /// @return totalSwapped The token deltas swapped in the AMM
     function swapInAMM(
         PoolKey memory key,
@@ -771,7 +770,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         LiquidityChunk liquidityChunk,
         bool isBurn
     ) internal returns (LeftRightSigned moved, LeftRightUnsigned collectedSingleLeg) {
-        // unique key to identify the liquidity chunk in this uniswap pool
+        // unique key to identify the liquidity chunk in this Uniswap pool
         bytes32 positionKey = keccak256(
             abi.encodePacked(
                 key.toId(),
@@ -846,14 +845,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // add the fees that accumulated in uniswap within the liquidityChunk:
 
         /* if the position is NOT long (selling a put or a call), then _mintLiquidity to move liquidity
-            from the account to the uniswap v3 pool:
+            from the msg.sender to the Uniswap V3 pool:
             Selling(isLong=0): Mint chunk of liquidity in Uniswap (defined by upper tick, lower tick, and amount)
                    ┌─────────────────────────────────┐
             ▲     ┌▼┐ liquidityChunk                 │
             │  ┌──┴─┴──┐                         ┌───┴──┐
             │  │       │                         │      │
             └──┴───────┴──►                      └──────┘
-                Uniswap v3                      account
+                Uniswap V3                      msg.sender
         
             else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
             Buying(isLong=1): Burn in Uniswap
@@ -862,7 +861,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             │  ┌──┴─┴──┐         ┌───▼──┐
             │  │       │         │      │
             └──┴───────┴──►      └──────┘
-                Uniswap v3      account 
+                Uniswap V3      msg.sender 
         */
 
         LiquidityChunk _liquidityChunk = liquidityChunk;
@@ -926,7 +925,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Compute deltas for Owed/Gross premium given quantities of tokens collected from Uniswap.
-    /// @dev Returned accumulators are capped at the max value (2**128 - 1) for each token if they overflow.
+    /// @dev Returned accumulators are capped at the max value (`2^128 - 1`) for each token if they overflow.
     /// @param currentLiquidity NetLiquidity (right) and removedLiquidity (left) at the start of the transaction
     /// @param collectedAmounts Total amount of tokens (token0 and token1) collected from Uniswap
     /// @return deltaPremiumOwed The extra premium (per liquidity X64) to be added to the owed accumulator for token0 (right) and token1 (left)
@@ -1021,13 +1020,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                             SFPM PROPERTIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Return the liquidity associated with a given liquidity chunk/tokenType.
-    /// @dev Computes accountLiquidity[keccak256(abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper))].
+    /// @notice Return the liquidity associated with a given liquidity chunk/tokenType for a user on a Uniswap pool.
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
-    /// @param tickLower The lower end of the tick range for the position (int24)
-    /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @return accountLiquidities The amount of liquidity that has been shorted/added to the Uniswap contract (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
+    /// @param tickLower The lower end of the tick range for the position
+    /// @param tickUpper The upper end of the tick range for the position
+    /// @return accountLiquidities The amount of liquidity that held in and removed from Uniswap for that chunk (netLiquidity:removedLiquidity -> rightSlot:leftSlot)
     function getAccountLiquidity(
         PoolId idV4,
         address owner,
@@ -1035,7 +1033,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 tickLower,
         int24 tickUpper
     ) external view returns (LeftRightUnsigned accountLiquidities) {
-        // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+        // Extract the account liquidity for a given Uniswap pool, owner, token type, and ticks
         // tokenType input here is the asset of the positions minted, this avoids put liquidity to be used for call, and vice-versa
         accountLiquidities = s_accountLiquidity[
             keccak256(abi.encodePacked(idV4, owner, tokenType, tickLower, tickUpper))
@@ -1043,18 +1041,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Return the premium associated with a given position, where premium is an accumulator of feeGrowth for the touched position.
-    /// @dev Computes s_accountPremium{isLong ? Owed : Gross}[keccak256(abi.encodePacked(univ3pool, owner, tokenType, tickLower, tickUpper))].
-    /// @dev If an atTick parameter is provided that is different from type(int24).max, then it will update the premium up to the current
-    /// block at the provided atTick value. We do this because this may be called immediately after the Uni v3 pool has been touched,
-    /// so no need to read the feeGrowths from the Uni v3 pool.
+    /// @dev If an atTick parameter is provided that is different from `type(int24).max`, then it will update the premium up to the current
+    /// block at the provided atTick value. We do this because this may be called immediately after the Uniswap V3 pool has been touched,
+    /// so no need to read the feeGrowths from the Uniswap V3 pool.
     /// @param owner The address of the account that is queried
     /// @param tokenType The tokenType of the position
-    /// @param tickLower The lower end of the tick range for the position (int24)
-    /// @param tickUpper The upper end of the tick range for the position (int24)
-    /// @param atTick The current tick. Set atTick < type(int24).max = 8388608 to get latest premium up to the current block
+    /// @param tickLower The lower end of the tick range for the position
+    /// @param tickUpper The upper end of the tick range for the position
+    /// @param atTick The current tick. Set `atTick < (type(int24).max = 8388608)` to get latest premium up to the current block
     /// @param isLong Whether the position is long (=1) or short (=0)
-    /// @return The amount of premium (per liquidity X64) for token0 = sum (feeGrowthLast0X128) over every block where the position has been touched
-    /// @return The amount of premium (per liquidity X64) for token1 = sum (feeGrowthLast0X128) over every block where the position has been touched
+    /// @return The amount of premium (per liquidity X64) for token0 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
+    /// @return The amount of premium (per liquidity X64) for token1 = `sum(feeGrowthLast0X128)` over every block where the position has been touched
     function getAccountPremium(
         PoolId idV4,
         address owner,
@@ -1073,9 +1070,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         LeftRightUnsigned accountLiquidities = s_accountLiquidity[positionKey];
         uint128 netLiquidity = accountLiquidities.rightSlot();
 
-        // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if atTick == type(int24).max = 8388608
+        // Compute the premium up to the current block (ie. after last touch until now). Do not proceed if `atTick == (type(int24).max = 8388608)`
         if (atTick < type(int24).max && netLiquidity != 0) {
-            // unique key to identify the liquidity chunk in this uniswap pool
+            // unique key to identify the liquidity chunk in this Uniswap pool
             LeftRightUnsigned amountToCollect;
             {
                 PoolId _idV4 = idV4;
@@ -1134,7 +1131,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             acctPremia = isLong == 1 ? premiumOwed : premiumGross;
         } else {
-            // Extract the account liquidity for a given uniswap pool, owner, token type, and ticks
+            // Extract the account liquidity for a given Uniswap pool, owner, token type, and ticks
             acctPremia = isLong == 1
                 ? s_accountPremiumOwed[positionKey]
                 : s_accountPremiumGross[positionKey];
