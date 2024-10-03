@@ -1147,7 +1147,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionIdList`.
-    /// @dev This will return true if solvent at any of the provided tick, and return false iff the account is insolvent at all ticks.
+    /// @dev This will revert if `account` is not solvent at all provided ticks and `expectedSolvent == true`, or if `account` is solvent at all ticks and `expectedSolvent == false`.
     /// @param account The account to check solvency for
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)

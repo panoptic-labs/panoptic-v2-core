@@ -485,9 +485,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
         // We can only use the standard 4626 withdraw function if the user has no open positions
         // For the sake of simplicity assets can only be withdrawn through the redeem function
-        uint256 available = s_poolAssets - 1;
-        uint256 balance = convertToAssets(balanceOf[owner]);
-        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        uint256 poolAssets = s_poolAssets;
+        unchecked {
+            uint256 available = poolAssets > 0 ? poolAssets - 1 : 0;
+            uint256 balance = convertToAssets(balanceOf[owner]);
+            return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        }
     }
 
     /// @notice Returns the amount of shares that would be burned to withdraw a given amount of assets.
@@ -589,9 +592,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param owner The redeeming address
     /// @return maxShares The maximum amount of shares that can be redeemed by `owner`
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
-        uint256 available = convertToShares(s_poolAssets - 1);
-        uint256 balance = balanceOf[owner];
-        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        uint256 poolAssets = s_poolAssets;
+        unchecked {
+            uint256 available = convertToShares(poolAssets > 0 ? poolAssets - 1 : 0);
+            uint256 balance = balanceOf[owner];
+            return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        }
     }
 
     /// @notice Returns the amount of assets resulting from a given amount of shares being redeemed.
