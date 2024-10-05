@@ -1539,7 +1539,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     /// forge-config: default.fuzz.runs = 10
-    function test_Success_calculateAccumulatedFeesBatch_2xOTMShortCall(
+    function test_Success_getAccumulatedFeesAndPositionsData_2xOTMShortCall(
         uint256 x,
         uint256[2] memory widthSeeds,
         int256[2] memory strikeSeeds,
@@ -1674,7 +1674,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[1] = tokenId2;
 
             uint256[2][] memory posBalanceArray;
-            ($shortPremia, $longPremia, posBalanceArray) = pp.calculateAccumulatedFeesBatch(
+            ($shortPremia, $longPremia, posBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
                 Alice,
                 false,
                 posIdList
@@ -1702,7 +1702,7 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
-    function test_Success_calculateAccumulatedFeesBatch_VeryLargePremia(
+    function test_Success_getAccumulatedFeesAndPositionsData_VeryLargePremia(
         uint256 x,
         uint256 positionSizeSeed,
         uint256[2] memory premiaSeed
@@ -1741,7 +1741,7 @@ contract PanopticPoolTest is PositionUtils {
         premiaSeed[0] = bound(premiaSeed[0], 2 ** 64, 2 ** 120);
         premiaSeed[1] = bound(premiaSeed[1], 2 ** 64, 2 ** 120);
 
-        ($shortPremiaBefore, $longPremiaBefore, ) = pp.calculateAccumulatedFeesBatch(
+        ($shortPremiaBefore, $longPremiaBefore, ) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
             true,
             posIdList
@@ -1752,14 +1752,22 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
 
-        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, false, posIdList);
+        ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
+            Alice,
+            false,
+            posIdList
+        );
 
         // we have not settled any accrued premium yet, so the calculated amount (excluding pending premium) should be 0
         assertEq(LeftRightUnsigned.unwrap($shortPremia), 0);
         assertEq(LeftRightUnsigned.unwrap($longPremia), 0);
 
         // if we include pending premium, the amount should be the same as the accrued premium
-        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
+        ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
+            Alice,
+            true,
+            posIdList
+        );
 
         assertApproxEqAbs(
             uint256(
@@ -5264,7 +5272,11 @@ contract PanopticPoolTest is PositionUtils {
 
         updateIntrinsicValueBurn(longAmounts, shortAmounts);
 
-        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(Alice, true, posIdList);
+        ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
+            Alice,
+            true,
+            posIdList
+        );
 
         vm.startPrank(Bob);
         (currentSqrtPriceX96, currentTick, observationIndex, observationCardinality, , , ) = pool
@@ -6381,7 +6393,7 @@ contract PanopticPoolTest is PositionUtils {
         TWAPtick = pp.getUniV3TWAP_();
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        ($shortPremia, $longPremia, $positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+        ($shortPremia, $longPremia, $positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
             false,
             $posIdLists[1]
@@ -6517,7 +6529,7 @@ contract PanopticPoolTest is PositionUtils {
         $liquidatorAssetBalance0 = IERC20Partial(token0).balanceOf(Charlie);
         $liquidatorAssetBalance1 = IERC20Partial(token1).balanceOf(Charlie);
 
-        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
+        ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
             false,
             $posIdLists[1]
@@ -6533,7 +6545,7 @@ contract PanopticPoolTest is PositionUtils {
                 $shortPremia
             );
 
-            ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
+            ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
                 Alice,
                 false,
                 $posIdLists[1]
@@ -6974,7 +6986,7 @@ contract PanopticPoolTest is PositionUtils {
         TWAPtick = pp.getUniV3TWAP_();
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        ($shortPremia, $longPremia, $positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+        ($shortPremia, $longPremia, $positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
             false,
             $posIdLists[1]
@@ -7108,7 +7120,7 @@ contract PanopticPoolTest is PositionUtils {
         $liquidatorAssetBalance0 = IERC20Partial(token0).balanceOf(Charlie);
         $liquidatorAssetBalance1 = IERC20Partial(token1).balanceOf(Charlie);
 
-        ($shortPremia, $longPremia, ) = pp.calculateAccumulatedFeesBatch(
+        ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
             false,
             $posIdLists[1]

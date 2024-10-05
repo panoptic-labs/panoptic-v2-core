@@ -324,14 +324,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
-    /// @notice Compute the total amount of premium accumulated for a list of positions.
+    /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing positions data.
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as `[tokenId1, tokenId2, ...]`
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
-    function calculateAccumulatedFeesBatch(
+    function getAccumulatedFeesAndPositionsData(
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
