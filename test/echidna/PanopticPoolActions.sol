@@ -828,8 +828,12 @@ contract PanopticPoolActions is CollateralActions {
             $shouldRevert = true;
         }
 
-        $poolUtil0 = ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0);
-        $poolUtil1 = ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1);
+        $poolUtil0 = ($poolAssets0 + $inAMM0) > 0
+            ? ($inAMM0 * 10_000) / ($poolAssets0 + $inAMM0)
+            : 0;
+        $poolUtil1 = ($poolAssets1 + $inAMM1) > 0
+            ? ($inAMM1 * 10_000) / ($poolAssets1 + $inAMM1)
+            : 0;
 
         if ($safeMode) ($poolUtil0, $poolUtil1) = (10_000, 10_000);
         emit LogUint256("poolUtil0", $poolUtil0);
