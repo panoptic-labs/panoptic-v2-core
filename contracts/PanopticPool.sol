@@ -333,14 +333,14 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
-    /// @notice Compute the total amount of premium accumulated for a list of positions.
+    /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing positions data.
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as `[tokenId1, tokenId2, ...]`
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
-    function calculateAccumulatedFeesBatch(
+    function getAccumulatedFeesAndPositionsData(
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
@@ -633,7 +633,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
+    /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
     /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
@@ -1160,7 +1160,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionIdList`.
-    /// @dev This will return true if solvent at any of the provided tick, and return false iff the account is insolvent at all ticks.
+    /// @dev This will revert if `account` is not solvent at all provided ticks and `expectedSolvent == true`, or if `account` is solvent at all ticks and `expectedSolvent == false`.
     /// @param account The account to check solvency for
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)

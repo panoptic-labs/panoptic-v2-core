@@ -251,7 +251,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
-            COLLATERAL_REFERENCE.clone(
+            COLLATERAL_REFERENCE.clone2(
                 abi.encodePacked(
                     newPoolContract,
                     true,
@@ -265,7 +265,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         );
 
         CollateralTracker collateralTracker1 = CollateralTracker(
-            COLLATERAL_REFERENCE.clone(
+            COLLATERAL_REFERENCE.clone2(
                 abi.encodePacked(
                     newPoolContract,
                     false,

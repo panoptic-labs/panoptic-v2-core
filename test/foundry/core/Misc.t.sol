@@ -3427,7 +3427,7 @@ contract Misctest is Test, PositionUtils {
 
         pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
 
-        (, , uint256[2][] memory positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+        (, , uint256[2][] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
             Bob,
             false,
             $posIdList
