@@ -454,7 +454,7 @@ library TokenIdLibrary {
     //  - optionRatio is zeroed
     //  - asset is zeroed
     //  - width is zeroed
-    // - strike is zeroed
+    //  - strike is zeroed
     //  - tokenType is zeroed
     //  - isLong is zeroed
     //  - riskPartner is zeroed
