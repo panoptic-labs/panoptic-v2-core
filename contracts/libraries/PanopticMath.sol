@@ -16,7 +16,6 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @notice Contains Panoptic-specific helpers and math functions.
@@ -34,23 +33,23 @@ library PanopticMath {
                               MATH HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Given an address to a Uniswap V3 pool, return its 64-bit ID as used in the `TokenId` of Panoptic.
+    /// @notice Given a 256-bit Uniswap V4 pool ID (hash) and the corresponding `tickSpacing`, return its 64-bit ID as used in the `TokenId` of Panoptic.
     // Example:
-    //      the 64 bits are the 48 *last* (most significant) bits - and thus corresponds to the *first* 12 hex characters (reading left to right)
-    //      of the Uniswap V3 pool address, with the tickSpacing written in the highest 16 bits (i.e, max tickSpacing is 32768)
+    //      [16-bit tickSpacing][last 48 bits of Uniswap V4 pool ID] = poolId
     //      e.g.:
-    //        univ3pool   = 0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8
+    //        idV4        = 0x9c33e1937fe23c3ff82d7725f2bb5af696db1c89a9b8cae141cb0e986847638a
     //        tickSpacing = 60
     //      the returned id is then:
-    //        poolPattern = 0x00008ad599c3A0ff
+    //        poolPattern = 0x0000e986847638a
     //        tickSpacing = 0x003c000000000000    +
     //        --------------------------------------------
-    //        poolId      = 0x003c8ad599c3A0ff
-    //
-    /// @return A uint64 representing a fingerprint of the uniswap v3 pool address
-    function getPoolId(PoolKey memory key, PoolId idV4) internal pure returns (uint64) {
+    //        poolId      = 0x003ce986847638a
+    /// @param idV4 The 256-bit Uniswap V4 pool ID
+    /// @param tickSpacing The tick spacing of the Uniswap V4 pool identified by `idV4`
+    /// @return A fingerprint representing the Uniswap V4 pool
+    function getPoolId(PoolId idV4, int24 tickSpacing) internal pure returns (uint64) {
         unchecked {
-            return uint48(uint256(PoolId.unwrap(idV4))) + (uint64(uint24(key.tickSpacing)) << 48);
+            return uint48(uint256(PoolId.unwrap(idV4))) + (uint64(uint24(tickSpacing)) << 48);
         }
     }
 
@@ -150,7 +149,7 @@ library PanopticMath {
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
     /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
-    /// @return medianData the updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
+    /// @return medianData The updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
     function getOracleTicks(
         IUniswapV3Pool univ3pool,
         uint256 miniMedian
@@ -360,7 +359,7 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice For a given option position (`tokenId`), leg index within that position (`legIndex`), and `positionSize` get the tick range spanned and its
-    /// liquidity (share ownership) in the Uniswap V3 pool; this is a liquidity chunk.
+    /// liquidity (share ownership) in the Uniswap V4 pool; this is a liquidity chunk.
     //          Liquidity chunk  (defined by tick upper, tick lower, and its size/amount: the liquidity)
     //   liquidity    │
     //         ▲      │
@@ -369,7 +368,7 @@ library PanopticMath {
     //         │  │       │
     //         │  │       │
     //         └──┴───────┴────► price
-    //         Uniswap V3 Pool
+    //         Uniswap V4 Pool
     /// @param tokenId The option position id
     /// @param legIndex The leg index of the option position, can be {0,1,2,3}
     /// @param positionSize The number of contracts held by this leg
@@ -382,10 +381,10 @@ library PanopticMath {
         // get the tick range for this leg
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
 
-        // Get the amount of liquidity owned by this leg in the Uniswap V3 pool in the above tick range
+        // Get the amount of liquidity owned by this leg in the Uniswap V4 pool in the above tick range
         // Background:
         //
-        //  In Uniswap V3, the amount of liquidity received for a given amount of token0 when the price is
+        //  In Uniswap V4, the amount of liquidity received for a given amount of token0 when the price is
         //  not in range is given by:
         //     Liquidity = amount0 * (sqrt(upper) * sqrt(lower)) / (sqrt(upper) - sqrt(lower))
         //  For token1, it is given by:
@@ -395,7 +394,7 @@ library PanopticMath {
         //  In TradFi, the asset is always cash and selling a $1000 put requires the user to lock $1000, and selling
         //  a call requires the user to lock 1 unit of asset.
         //
-        //  Because Uniswap V3 chooses token0 and token1 from the alphanumeric order, there is no consistency as to whether token0 is
+        //  Because Uniswap V4 chooses token0 and token1 from the alphanumeric order, there is no consistency as to whether token0 is
         //  stablecoin, ETH, or an ERC20. Some pools may want ETH to be the asset (e.g. ETH-DAI) and some may wish the stablecoin to
         //  be the asset (e.g. DAI-ETH) so that K asset is moved for puts and 1 asset is moved for calls.
         //  But since the convention is to force the order always we have no say in this.
@@ -420,7 +419,7 @@ library PanopticMath {
     /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
     /// @param strike The strike price of the option
     /// @param width The width of the option
-    /// @param tickSpacing The tick spacing of the underlying Uniswap V3 pool
+    /// @param tickSpacing The tick spacing of the underlying Uniswap V4 pool
     /// @return tickLower The lower tick of the liquidity chunk
     /// @return tickUpper The upper tick of the liquidity chunk
     function getTicks(
@@ -428,26 +427,19 @@ library PanopticMath {
         int24 width,
         int24 tickSpacing
     ) internal pure returns (int24 tickLower, int24 tickUpper) {
-        unchecked {
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+        (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
 
-            (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                tickLower % tickSpacing != 0 ||
-                tickUpper % tickSpacing != 0 ||
-                tickLower < minTick ||
-                tickUpper > maxTick
-            ) revert Errors.TicksNotInitializable();
-        }
+        // Revert if the upper/lower ticks are not multiples of tickSpacing
+        // Revert if the tick range extends from the strike outside of the valid tick range
+        // These are invalid states, and would revert later on in the Uniswap pool
+        if (
+            tickLower % tickSpacing != 0 ||
+            tickUpper % tickSpacing != 0 ||
+            tickLower < Constants.MIN_V4POOL_TICK ||
+            tickUpper > Constants.MAX_V4POOL_TICK
+        ) revert Errors.TicksNotInitializable();
     }
 
     /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.

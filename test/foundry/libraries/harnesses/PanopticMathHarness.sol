@@ -46,8 +46,8 @@ contract PanopticMathHarness is Test {
         return (tickLower, tickUpper);
     }
 
-    function getPoolId(PoolKey memory key, PoolId idV4) public pure returns (uint64) {
-        uint64 poolId = PanopticMath.getPoolId(key, idV4);
+    function getPoolId(PoolId idV4, int24 tickSpacing) public pure returns (uint64) {
+        uint64 poolId = PanopticMath.getPoolId(idV4, tickSpacing);
         return poolId;
     }
 

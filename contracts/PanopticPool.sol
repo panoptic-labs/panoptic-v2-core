@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
@@ -12,18 +13,16 @@ import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
-import {InteractionHelper} from "@libraries/InteractionHelper.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
-import {V4StateReader} from "@libraries/V4StateReader.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
@@ -98,10 +97,10 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Lower price bound used when no slippage check is required.
-    int24 internal constant MIN_SWAP_TICK = Constants.MIN_V3POOL_TICK - 1;
+    int24 internal constant MIN_SWAP_TICK = Constants.MIN_V4POOL_TICK - 1;
 
     /// @notice Upper price bound used when no slippage check is required.
-    int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK + 1;
+    int24 internal constant MAX_SWAP_TICK = Constants.MAX_V4POOL_TICK + 1;
 
     /// @notice Flag that signals to compute premia for both the short and long legs of a position.
     bool internal constant COMPUTE_ALL_PREMIA = true;
@@ -173,22 +172,22 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     // [7] [5] [3] [1] [0] [2] [4] [6]
     // 111 101 011 001 000 010 100 110
     //
-    // [Constants.MIN_V3POOL_TICK-1] [7]
+    // [Constants.MIN_V4POOL_TICK-1] [7]
     // 111100100111011000010111
     //
-    // [Constants.MAX_V3POOL_TICK+1] [0]
+    // [Constants.MAX_V4POOL_TICK+1] [0]
     // 000011011000100111101001
     //
-    // [Constants.MIN_V3POOL_TICK-1] [6]
+    // [Constants.MIN_V4POOL_TICK-1] [6]
     // 111100100111011000010111
     //
-    // [Constants.MAX_V3POOL_TICK+1] [1]
+    // [Constants.MAX_V4POOL_TICK+1] [1]
     // 000011011000100111101001
     //
-    // [Constants.MIN_V3POOL_TICK-1] [5]
+    // [Constants.MIN_V4POOL_TICK-1] [5]
     // 111100100111011000010111
     //
-    // [Constants.MAX_V3POOL_TICK+1] [2]
+    // [Constants.MAX_V4POOL_TICK+1] [2]
     // 000011011000100111101001
     //
     // [CURRENT TICK] [4]
@@ -255,14 +254,19 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         return IUniswapV3Pool(_getArgAddress(40));
     }
 
+    /// @notice Get the Uniswap Pool ID for the V4 pool used by this Panoptic Pool (hash of `poolKey`).
+    /// @return The Uniswap V4 Pool ID for this Panoptic Pool
     function _V4PoolId() internal pure returns (PoolId) {
         return PoolId.wrap(bytes32(_getArgUint256(60)));
     }
 
+    /// @notice Get the pool key for the Uniswap V4 pool used by this Panoptic Pool.
+    /// @return key The Uniswap V4 Pool Key for this Panoptic Pool
     function poolKey() public pure returns (PoolKey calldata key) {
         uint256 offset = _getImmutableArgsOffset();
 
         assembly {
+            // 60 + 32
             key := add(offset, 0x5c)
         }
     }
@@ -271,16 +275,16 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Store the address of the canonical SemiFungiblePositionManager (SFPM) contract.
+    /// @notice Store the address of the canonical SemiFungiblePositionManager (SFPM) and Uniswap V4 pool manager contracts.
     /// @param _sfpm The address of the SFPM
-    /// @param _poolManager The canonical Uniswap V4 pool manager address
+    /// @param _poolManager The address of the canonical Uniswap V4 pool manager
     constructor(SemiFungiblePositionManager _sfpm, IPoolManager _poolManager) {
         SFPM = _sfpm;
         POOL_MANAGER_V4 = _poolManager;
     }
 
     /// @notice Initializes the median oracle of a new `PanopticPool` instance with median oracle state and performs initial token approvals.
-    /// @dev Must be called first (by a factory contract) before any transaction can occur.
+    /// @dev Must be called first (by the factory contract) before any transaction can occur.
     function initialize() external {
         // reverts if this contract has already been initialized (assuming block.timestamp > 0)
         if (s_miniMedian != 0) revert Errors.PoolAlreadyInitialized();
@@ -1335,9 +1339,9 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Computes and returns all oracle ticks.
-    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the oracle pool
     /// @return slowOracleTick The slow oracle tick (either composed of Uniswap observations or tracked by `s_miniMedian`)
-    /// @return latestObservation The latest observation from the Uniswap pool
+    /// @return latestObservation The latest observation from the oracle pool
     /// @return medianData The updated value for `s_miniMedian` (0 if `MEDIAN_PERIOD` not elapsed) if `pokeMedian` is called at the current state
     function getOracleTicks()
         external

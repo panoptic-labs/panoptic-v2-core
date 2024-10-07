@@ -18,13 +18,12 @@ import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-
-import {V4StateReader} from "@libraries/V4StateReader.sol";
 import {Currency} from "v4-core/types/Currency.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 
@@ -82,10 +81,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Address of the Wrapped Ether (or other numeraire token) contract.
     address internal immutable WETH;
 
-    /// @notice Multiplier, in basis points, to the Uniswap fee that is charged on the intrinsic value of ITM positions by `CollateralTracker`.
-    /// @dev e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee.
-    uint256 immutable ITM_SPREAD_MULTIPLIER;
-
     /// @notice An amount of `WETH` deployed when initializing the SFPM against a new AMM pool.
     /// @dev If we know one of the tokens is WETH, we deploy 0.1 ETH worth in tokens.
     uint256 internal constant FULL_RANGE_LIQUIDITY_AMOUNT_WETH = 0.1 ether;
@@ -114,7 +109,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param manager The canonical Uniswap V4 pool manager
     /// @param _poolReference The reference implementation of the `PanopticPool` to clone
     /// @param _collateralReference The reference implementation of the `CollateralTracker` to clone
-    /// @param _itmSpreadMultiplier Multiplier, in basis points, to the Uniswap fee that is charged on the intrinsic value of ITM positions by `CollateralTracker`.
     /// @param properties An array of identifiers for different categories of metadata
     /// @param indices A nested array of keys for K-V metadata pairs for each property in `properties`
     /// @param pointers Contains pointers to the metadata values stored in contract data slices for each index in `indices`
@@ -125,7 +119,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
         IPoolManager manager,
         address _poolReference,
         address _collateralReference,
-        uint256 _itmSpreadMultiplier,
         bytes32[] memory properties,
         uint256[][] memory indices,
         Pointer[][] memory pointers
@@ -136,13 +129,17 @@ contract PanopticFactory is FactoryNFT, Multicall {
         POOL_MANAGER_V4 = manager;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
-        ITM_SPREAD_MULTIPLIER = _itmSpreadMultiplier;
     }
 
     /*//////////////////////////////////////////////////////////////
                         UNISWAP V4 LOCK CALLBACK
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Uniswap V4 unlock callback implementation.
+    /// @dev Parameters are `(PoolKey key, int24 tickLower, int24 tickUpper, uint128 liquidity, address payer)`.
+    /// @dev Adds `liquidity` to the Uniswap V4 pool `key` at `tickLower-tickUpper` and transfers the tokens from `payer`.
+    /// @param data The encoded data containing the input parameters
+    /// @return `(uint256 token0Delta, uint256 token1Delta`) The amount of token0 and token1 used to create `liquidity` in the Uniswap pool
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
@@ -204,8 +201,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified uniquely by the incoming parameters.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
-    /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][leading 20 pool address chars][salt]`.
-    /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
+    /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oraclePoolAddress))))][salt]`.
+    /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool
     /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment
     /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment
     /// @return newPoolContract The address of the newly deployed Panoptic pool
@@ -218,23 +215,17 @@ contract PanopticFactory is FactoryNFT, Multicall {
     ) external returns (PanopticPool newPoolContract) {
         bytes32 panopticPoolKey = keccak256(abi.encode(key, oraclePool));
 
-        // reverts if the Uni v3 pool has not been initialized
         if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId()) == 0)
             revert Errors.UniswapPoolNotInitialized();
 
         if (address(s_getPanopticPool[panopticPoolKey]) != address(0))
             revert Errors.PoolAlreadyInitialized();
 
-        require(
-            UNIV3_FACTORY.getPool(oraclePool.token0(), oraclePool.token1(), oraclePool.fee()) ==
-                address(oraclePool)
-        );
-
         // initialize pool in SFPM if it has not already been initialized
         SFPM.initializeAMMPool(key);
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
-        // salt format: (first 20 characters of deployer address) + (first 20 characters of UniswapV3Pool) + (uint96 user supplied salt)
+        // salt format: (first 20 characters of deployer address) + (hash of pool key and oracle pool address) + (uint96 user supplied salt)
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
@@ -247,8 +238,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // this allows us to link the PanopticPool into the CollateralTrackers as an immutable arg without advance knowledge of their addresses
         newPoolContract = PanopticPool(ClonesWithImmutableArgs.addressOfClone3(salt32));
 
-        uint256 itmSpreadFee = (key.fee * ITM_SPREAD_MULTIPLIER) / 10_000;
-
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
             COLLATERAL_REFERENCE.clone2(
@@ -258,8 +247,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                     key.currency0,
                     key.currency0,
                     key.currency1,
-                    key.fee,
-                    itmSpreadFee
+                    key.fee
                 )
             )
         );
@@ -272,8 +260,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                     key.currency1,
                     key.currency0,
                     key.currency1,
-                    key.fee,
-                    itmSpreadFee
+                    key.fee
                 )
             )
         );
@@ -386,7 +373,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         }
     }
 
-    /// @notice Seeds Uniswap V3 pool with a full-tick-range liquidity deployment using funds from caller.
+    /// @notice Seeds Uniswap V4 pool with a full-tick-range liquidity deployment using funds from caller.
     /// @return The amount of token0 deployed at full range
     /// @return The amount of token1 deployed at full range
     function _mintFullRange(PoolKey memory key, PoolId idV4) internal returns (uint256, uint256) {
@@ -437,11 +424,12 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // tickSpacing = 10: tU/L = +/-887270
         // tickSpacing = 60: tU/L = +/-887220
         // tickSpacing = 200: tU/L = +/-887200
+        // etc...
         int24 tickLower;
         int24 tickUpper;
         unchecked {
             int24 tickSpacing = key.tickSpacing;
-            tickLower = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
+            tickLower = (Constants.MIN_V4POOL_TICK / tickSpacing) * tickSpacing;
             tickUpper = -tickLower;
         }
 
@@ -458,9 +446,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Return the address of the Panoptic Pool associated with 'univ3pool'.
+    /// @notice Return the address of the Panoptic Pool associated with 'panopticPoolKey' (hash of Uniswap pool key and oracle pool address).
     /// @param panopticPoolKey The keccak256 hash of the Uniswap V4 pool key and the oracle pool address
-    /// @return Address of the Panoptic Pool associated with 'univ3pool'
+    /// @return Address of the Panoptic Pool associated with `panopticPoolKey`
     function getPanopticPool(bytes32 panopticPoolKey) external view returns (PanopticPool) {
         return s_getPanopticPool[panopticPoolKey];
     }

@@ -267,7 +267,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing,
             IHooks(address(0))
         );
-        poolId = PanopticMath.getPoolId(poolKey, poolKey.toId());
+        poolId = PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing);
     }
 
     function setUp() public {
@@ -986,7 +986,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // Check that the pool ID is set correctly
         assertEq(
             sfpm.getPoolIdWithInitBit(poolKey.toId()),
-            PanopticMath.getPoolId(poolKey, poolKey.toId()) + 2 ** 255
+            PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing) + 2 ** 255
         );
     }
 
@@ -1008,7 +1008,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             // Check that the pool ID is set correctly
             assertEq(
                 sfpm.getPoolIdWithInitBit(poolKey.toId()),
-                PanopticMath.getPoolId(poolKey, poolKey.toId()) + 2 ** 255
+                PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing) + 2 ** 255
             );
         }
     }

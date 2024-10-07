@@ -72,8 +72,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @notice Prefix for the token symbol (i.e. poUSDC).
     string internal constant TICKER_PREFIX = "po";
 
-    /// @notice Prefix for the token name (i.e POPT-V1 USDC LP on ETH/USDC 30bps).
-    string internal constant NAME_PREFIX = "POPT-V1.5";
+    /// @notice Prefix for the token name (i.e POPT-V1.1 USDC LP on ETH/USDC 30bps).
+    string internal constant NAME_PREFIX = "POPT-V1.1";
 
     /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%).
     /// @dev uint type for composability with unsigned integer based mathematical operations.
@@ -116,6 +116,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @dev i.e 90% -> 0.9 * 10_000 = 9_000.
     uint256 immutable SATURATED_POOL_UTIL;
 
+    /// @notice Fee, in basis points, that is charged on the intrinsic value of ITM positions.
+    uint256 immutable ITM_SPREAD_FEE;
+
     /// @notice The canonical Uniswap V4 Pool Manager address.
     IPoolManager internal immutable POOL_MANAGER_V4;
 
@@ -140,10 +143,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                    POOL-SPECIFIC IMMUTABLE PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Retrieve the Panoptic Pool that this collateral token belongs to.
+    /// @return The Panoptic Pool associated with this collateral token
     function _panopticPool() internal pure returns (PanopticPool) {
         return PanopticPool(_getArgAddress(0));
     }
 
+    /// @notice Retrieve a boolean indicating whether the underlying token is token0 or token1 in the Uniswap V4 pool.
+    /// @return underlyingIsToken0 True if the underlying token is token0, false if it is token1
     function _underlyingIsToken0() internal pure returns (bool underlyingIsToken0) {
         uint256 offset = _getImmutableArgsOffset();
 
@@ -152,28 +159,32 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         }
     }
 
+    /// @notice Retrieve the address of the underlying token.
+    /// @return The address of the underlying token
     function _underlyingToken() internal pure returns (address) {
         return _getArgAddress(21);
     }
 
+    /// @notice Retrieve the address of token0 in the Uniswap V4 pool.
+    /// @return The address of token0 in the Uniswap V4 pool
     function _token0() internal pure returns (address) {
         return _getArgAddress(41);
     }
 
+    /// @notice Retrieve the address of token1 in the Uniswap V4 pool.
+    /// @return The address of token1 in the Uniswap V4 pool
     function _token1() internal pure returns (address) {
         return _getArgAddress(61);
     }
 
+    /// @notice Retrieve the fee of the Uniswap V4 pool.
+    /// @return poolFee The fee of the Uniswap V4 pool
     function _poolFee() internal pure returns (uint24 poolFee) {
         uint256 offset = _getImmutableArgsOffset();
 
         assembly ("memory-safe") {
             poolFee := shr(0xe8, calldataload(add(offset, 81)))
         }
-    }
-
-    function _itmSpreadFee() internal pure returns (uint256) {
-        return _getArgUint256(84);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -197,6 +208,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise a position that is barely far-the-money (out-of-range)
     /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000
     /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000
+    /// @param _ITMSpreadFee Fee, in basis points, that is charged on the intrinsic value of ITM positions
     /// @param _manager The canonical Uniswap V4 pool manager
     constructor(
         uint256 _commissionFee,
@@ -205,6 +217,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         int256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization,
+        uint256 _ITMSpreadFee,
         IPoolManager _manager
     ) {
         COMMISSION_FEE = _commissionFee;
@@ -213,6 +226,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         FORCE_EXERCISE_COST = _forceExerciseCost;
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
+        ITM_SPREAD_FEE = _ITMSpreadFee;
         POOL_MANAGER_V4 = _manager;
     }
 
@@ -222,7 +236,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         s_initialized = true;
 
         // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
-        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
+        // e.g. if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
         totalSupply = 10 ** 6;
 
         // set total assets to 1
@@ -322,6 +336,11 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         UNISWAP V4 LOCK CALLBACK
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Uniswap V4 unlock callback implementation.
+    /// @dev Parameters are `(address account, int256 delta)`.
+    /// @dev Wraps/unwraps `delta` amount of the underlying token and transfers to/from the Panoptic Pool.
+    /// @param data The encoded data containing the account and delta
+    /// @return This function returns no data
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
@@ -358,6 +377,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         return "";
     }
 
+    /// @notice Initiates the unlock callback to wrap/unwrap `delta` amount of the underlying token and transfer to/from the Panoptic Pool.
+    /// @param account The address of the account to transfer the underlying token to/from
+    /// @param delta The amount of the underlying token to wrap/unwrap and transfer
     function _settleTokenDelta(address account, int256 delta) internal {
         POOL_MANAGER_V4.unlock(abi.encode(account, delta));
     }
@@ -1116,8 +1138,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             if (intrinsicValue != 0) {
                 // the swap commission is paid on the intrinsic value, and it is always positive
                 uint256 swapCommission = Math.unsafeDivRoundingUp(
-                    _itmSpreadFee() * uint256(Math.abs(intrinsicValue)),
-                    DECIMALS * 100
+                    ITM_SPREAD_FEE * uint256(Math.abs(intrinsicValue)),
+                    DECIMALS
                 );
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
@@ -1334,10 +1356,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     // a higher ratio will result in an increased slope for the collateral requirement
                     uint160 ratio = tokenType == 1 // tokenType
                         ? Math.getSqrtRatioAtTick(
-                            Math.max24(2 * (atTick - strike), Constants.MIN_V3POOL_TICK)
+                            Math.max24(2 * (atTick - strike), Constants.MIN_V4POOL_TICK)
                         ) // puts ->  price/strike
                         : Math.getSqrtRatioAtTick(
-                            Math.max24(2 * (strike - atTick), Constants.MIN_V3POOL_TICK)
+                            Math.max24(2 * (strike - atTick), Constants.MIN_V4POOL_TICK)
                         ); // calls -> strike/price
 
                     // compute the collateral requirement depending on whether the position is ITM & out-of-range or ITM and in-range:

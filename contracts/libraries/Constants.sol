@@ -8,17 +8,17 @@ library Constants {
     /// @notice Fixed point multiplier: 2**96
     uint256 internal constant FP96 = 0x1000000000000000000000000;
 
-    /// @notice Minimum possible price tick in a Uniswap V3 pool
-    int24 internal constant MIN_V3POOL_TICK = -887272;
+    /// @notice Minimum possible price tick in a Uniswap V4 pool
+    int24 internal constant MIN_V4POOL_TICK = -887272;
 
-    /// @notice Maximum possible price tick in a Uniswap V3 pool
-    int24 internal constant MAX_V3POOL_TICK = 887272;
+    /// @notice Maximum possible price tick in a Uniswap V4 pool
+    int24 internal constant MAX_V4POOL_TICK = 887272;
 
-    /// @notice Minimum possible sqrtPriceX96 in a Uniswap V3 pool
-    uint160 internal constant MIN_V3POOL_SQRT_RATIO = 4295128739;
+    /// @notice Minimum possible sqrtPriceX96 in a Uniswap V4 pool
+    uint160 internal constant MIN_V4POOL_SQRT_RATIO = 4295128739;
 
-    /// @notice Maximum possible sqrtPriceX96 in a Uniswap V3 pool
-    uint160 internal constant MAX_V3POOL_SQRT_RATIO =
+    /// @notice Maximum possible sqrtPriceX96 in a Uniswap V4 pool
+    uint160 internal constant MAX_V4POOL_SQRT_RATIO =
         1461446703485210103287273052203988822378723970342;
 
     /// @notice Parameter that determines which oracle type to use for the "slow" oracle price on non-liquidation solvency checks.

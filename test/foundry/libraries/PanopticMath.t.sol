@@ -215,16 +215,9 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_Success_getPoolId(PoolId poolId, uint256 _tickSpacing) public {
         _tickSpacing = bound(_tickSpacing, 0, uint16(type(int16).max));
 
-        PoolKey memory key = PoolKey(
-            Currency.wrap(address(0)),
-            Currency.wrap(address(0)),
-            0,
-            int24(uint24(_tickSpacing)),
-            IHooks(address(0))
-        );
         assertEq(
             (uint64(_tickSpacing) << 48) + uint48(uint256(PoolId.unwrap(poolId))),
-            harness.getPoolId(key, poolId)
+            harness.getPoolId(poolId, int24(uint24(_tickSpacing)))
         );
     }
 

@@ -48,7 +48,6 @@ contract PanopticFactoryHarness is PanopticFactory {
         IPoolManager manager,
         address poolReference,
         address collateralReference,
-        uint256 itmSpreadMultiplier,
         bytes32[] memory properties,
         uint256[][] memory indices,
         Pointer[][] memory pointers
@@ -60,7 +59,6 @@ contract PanopticFactoryHarness is PanopticFactory {
             manager,
             poolReference,
             collateralReference,
-            itmSpreadMultiplier,
             properties,
             indices,
             pointers
@@ -257,8 +255,7 @@ contract PanopticFactoryTest is Test {
             V3FACTORY,
             manager,
             address(new PanopticPool(sfpm, manager)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, manager)),
-            20_000,
+            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20, manager)),
             props,
             indices,
             pointers

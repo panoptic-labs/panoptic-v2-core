@@ -51,7 +51,7 @@ import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
     constructor(
         IPoolManager _manager
-    ) CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, _manager) {}
+    ) CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20, _manager) {}
 
     // view deployer (panoptic pool)
     function panopticPool() external pure returns (PanopticPool) {
@@ -406,7 +406,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tickSpacing,
             IHooks(address(0))
         );
-        poolId = PanopticMath.getPoolId(poolKey, poolKey.toId());
+        poolId = PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing);
     }
 
     function _deployCustomPanopticPool() internal {
@@ -610,6 +610,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             -1_024,
             5_000,
             9_000,
+            20,
             manager
         );
         ct.initialize();
@@ -916,8 +917,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             uint128(bound(positionSizeSeed, 501, 1000)),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -952,8 +953,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
@@ -963,8 +964,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             500,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         collateralToken0.setPoolAssets(collateralToken0._availableAssets() - 300);
@@ -975,8 +976,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         panopticPool.burnOptions(
             tokenId,
             positionIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -1011,8 +1012,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
@@ -1025,8 +1026,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             500,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -1061,8 +1062,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             750,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         collateralToken0.setInAMM(-250);
@@ -1073,8 +1074,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         panopticPool.burnOptions(
             tokenId,
             positionIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -1415,8 +1416,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList,
             positionSize0,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // Attempt a transfer to Alice from Bob
@@ -1507,8 +1508,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionIdList,
                 positionSize0,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1873,8 +1874,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.takeCommissionAddData(
             address(0),
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
@@ -1882,8 +1883,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             address(0),
             0,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
