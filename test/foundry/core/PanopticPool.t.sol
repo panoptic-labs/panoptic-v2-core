@@ -6589,7 +6589,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
@@ -7167,7 +7167,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
@@ -7843,7 +7843,7 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 > newRequired0);
         }
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
         {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,

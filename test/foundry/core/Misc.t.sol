@@ -2768,7 +2768,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
@@ -2777,7 +2777,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
     }
@@ -2796,7 +2796,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
@@ -2805,7 +2805,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
     }
@@ -2834,7 +2834,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -2882,7 +2882,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(!pp.isSafeMode(), "not in safe mode");
@@ -2930,7 +2930,7 @@ contract Misctest is Test, PositionUtils {
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         console2.log("currentTick", currentTick);
         console2.log("slowOracleTick", slowOracleTick);
@@ -2989,7 +2989,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -3115,7 +3115,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -3168,7 +3168,7 @@ contract Misctest is Test, PositionUtils {
         }
         routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
-        (, slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3210,7 +3210,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V4POOL_TICK
         );
 
-        (, int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
         assertEq(medianData, medianDataStale, "no slow oracle update");
@@ -3226,7 +3226,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V4POOL_TICK
         );
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3235,7 +3235,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3244,7 +3244,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3253,7 +3253,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "Slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3277,7 +3277,7 @@ contract Misctest is Test, PositionUtils {
         }
         routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
-        (, slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3312,7 +3312,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V4POOL_TICK
         );
 
-        (, int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
         assertEq(medianData, medianDataStale, "no slow oracle update");
@@ -3327,7 +3327,7 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V4POOL_TICK
         );
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3336,7 +3336,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3345,7 +3345,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3354,7 +3354,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -4066,7 +4066,7 @@ contract Misctest is Test, PositionUtils {
         posIdList[0] = tokenId;
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
@@ -4082,7 +4082,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         assertTrue(!pp.isSafeMode(), "not in safe mode");
 
@@ -4176,7 +4176,7 @@ contract Misctest is Test, PositionUtils {
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         vm.startPrank(Swapper);
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
@@ -4194,7 +4194,7 @@ contract Misctest is Test, PositionUtils {
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         assertTrue(!pp.isSafeMode(), "not in safe mode");
 
@@ -4319,7 +4319,7 @@ contract Misctest is Test, PositionUtils {
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
 
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(

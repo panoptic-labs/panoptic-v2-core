@@ -308,7 +308,9 @@ contract PanopticFactoryTest is Test {
 
             // check if pool is linked to the correct panoptic pool in factory
             assertEq(
-                address(panopticFactory.getPanopticPool(keccak256(abi.encode(poolKey, pool)))),
+                address(
+                    panopticFactory.getPanopticPool(poolKey, IV3CompatibleOracle(address(pool)))
+                ),
                 address(deployedPool)
             );
             // see if correct pool was linked in the panopticPool

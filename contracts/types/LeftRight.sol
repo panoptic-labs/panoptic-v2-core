@@ -256,31 +256,6 @@ library LeftRightLibrary {
         }
     }
 
-    /// @notice Subtract two LeftRight-encoded words; revert on overflow or underflow.
-    /// @notice For each slot, rectify difference `x - y` to 0 if negative.
-    /// @param x The minuend
-    /// @param y The subtrahend
-    /// @return z The difference `x - y`
-    function subRect(
-        LeftRightSigned x,
-        LeftRightSigned y
-    ) internal pure returns (LeftRightSigned z) {
-        unchecked {
-            int256 left256 = int256(x.leftSlot()) - y.leftSlot();
-            int128 left128 = int128(left256);
-
-            int256 right256 = int256(x.rightSlot()) - y.rightSlot();
-            int128 right128 = int128(right256);
-
-            if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
-
-            return
-                z.toRightSlot(int128(Math.max(right128, 0))).toLeftSlot(
-                    int128(Math.max(left128, 0))
-                );
-        }
-    }
-
     /// @notice Adds two sets of LeftRight-encoded words, freezing both right slots if either overflows, and vice versa.
     /// @dev Used for linked accumulators, so if the accumulator for one side overflows for a token, both cease to accumulate.
     /// @param x The first augend

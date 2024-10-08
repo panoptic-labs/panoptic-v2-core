@@ -92,7 +92,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mapping from keccak256(Uniswap V4 pool id, oracle pool address) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
+    /// @notice Mapping from keccak256(Uniswap V4 pool id, oracle contract address) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
     mapping(bytes32 panopticPoolKey => PanopticPool panopticPool) internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
@@ -221,7 +221,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         SFPM.initializeAMMPool(key);
 
         // Users can specify a salt, the aim is to incentivize the mining of addresses with leading zeros
-        // salt format: (first 20 characters of deployer address) + (hash of pool key and oracle pool address) + (uint96 user supplied salt)
+        // salt format: (first 20 characters of deployer address) + (hash of pool key and oracle contract address) + (uint96 user supplied salt)
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
@@ -442,10 +442,14 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Return the address of the Panoptic Pool associated with 'panopticPoolKey' (hash of Uniswap pool key and oracle pool address).
-    /// @param panopticPoolKey The keccak256 hash of the Uniswap V4 pool key and the oracle pool address
-    /// @return Address of the Panoptic Pool associated with `panopticPoolKey`
-    function getPanopticPool(bytes32 panopticPoolKey) external view returns (PanopticPool) {
-        return s_getPanopticPool[panopticPoolKey];
+    /// @notice Return the address of the Panoptic Pool associated with the given Uniswap V4 pool key and oracle contract.
+    /// @param keyV4 The Uniswap V4 pool key
+    /// @param oracleContract The external oracle contract used by the Panoptic Pool
+    /// @return Address of the Panoptic Pool on `keyV4` using `oracleContract`
+    function getPanopticPool(
+        PoolKey calldata keyV4,
+        IV3CompatibleOracle oracleContract
+    ) external view returns (PanopticPool) {
+        return s_getPanopticPool[keccak256(abi.encode(keyV4, oracleContract))];
     }
 }

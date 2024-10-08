@@ -465,7 +465,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
                           ONBOARD MEDIAN TWAP
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
+    /// @notice Updates the internal median with the last oracle observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeMedian() external {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = oracleContract()
             .slot0();
@@ -1339,21 +1339,25 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
                                 QUERIES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Computes and returns all oracle ticks.
-    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the oracle pool
-    /// @return slowOracleTick The slow oracle tick (either composed of Uniswap observations or tracked by `s_miniMedian`)
-    /// @return latestObservation The latest observation from the oracle pool
+    /// @notice Computes and returns all ticks used for collateral checks at mint/burn.
+    /// @return currentTick The current tick of the Uniswap V4 pool
+    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the oracle contract
+    /// @return slowOracleTick The slow oracle tick (either composed of oracle observations or tracked by `s_miniMedian`)
+    /// @return latestObservation The latest observation from the oracle contract
     /// @return medianData The updated value for `s_miniMedian` (0 if `MEDIAN_PERIOD` not elapsed) if `pokeMedian` is called at the current state
     function getOracleTicks()
         external
         view
         returns (
+            int24 currentTick,
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 latestObservation,
             uint256 medianData
         )
     {
+        currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
+
         (fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath.getOracleTicks(
             oracleContract(),
             s_miniMedian

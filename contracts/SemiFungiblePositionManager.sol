@@ -1148,4 +1148,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function getPoolId(PoolId idV4) external view returns (uint64) {
         return uint64(s_V4toSFPMIdData[idV4]);
     }
+
+    /// @notice Returns the SFPM `poolId` for a given Uniswap V4 `PoolKey`.
+    /// @param key The Uniswap V4 pool key
+    /// @return The unique pool identifier in the SFPM corresponding to `key`
+    function getPoolId(PoolKey calldata key) external view returns (uint64) {
+        return uint64(s_V4toSFPMIdData[key.toId()]);
+    }
 }

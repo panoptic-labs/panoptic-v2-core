@@ -30,7 +30,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         Pointer[][] memory pointers
     )
         MetadataStore(properties, indices, pointers)
-        ERC721("Panoptic Factory Deployer NFTs", "PANOPTIC-NFT")
+        ERC721("Panoptic V1.1 Factory Deployer NFTs", "PANOPTIC-NFT")
     {}
 
     /// @notice Returns the metadata URI for a given `tokenId`.
