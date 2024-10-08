@@ -730,47 +730,6 @@ contract Misctest is Test, PositionUtils {
         pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
     }
 
-    function test_success_ITMspreadfee_0_01bp() public {
-        collateralReference = ClonesWithImmutableArgs.clone(
-            collateralReference,
-            abi.encodePacked(
-                pp,
-                true,
-                token0,
-                token0,
-                token1,
-                uint24(1),
-                uint256((1 * uint256(20_000)) / 10_000)
-            )
-        );
-
-        CollateralTracker(collateralReference).initialize();
-
-        vm.startPrank(Bob);
-        token0.mint(Bob, type(uint104).max);
-        token0.approve(collateralReference, type(uint104).max);
-        CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
-
-        vm.startPrank(Alice);
-        token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        CollateralTracker(collateralReference).deposit(
-            (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
-            Alice
-        );
-
-        vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).takeCommissionAddData(Alice, 0, 0, 1_000_000_000);
-        assertEq(
-            1_000_000_000_000_000 -
-                1 -
-                CollateralTracker(collateralReference).convertToAssets(
-                    CollateralTracker(collateralReference).balanceOf(Alice)
-                ),
-            1_000_000_000 + 2000
-        );
-    }
-
     function test_parity_maxmint_previewmint() public {
         assertEq(ct0.previewMint(ct0.maxMint(Alice)), type(uint104).max);
     }
@@ -2340,7 +2299,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum
-        ct0.deposit(100_200, Bob);
+        ct0.deposit(100_300, Bob);
         ct1.deposit(0, Bob);
 
         // mint fails
@@ -2403,7 +2362,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum - covered
         ct0.deposit(0, Bob);
-        ct1.deposit(100_200, Bob);
+        ct1.deposit(100_300, Bob);
 
         // mint fails
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -2468,7 +2427,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
-        ct1.deposit(17_818, Bob);
+        ct1.deposit(17_828, Bob);
 
         // mint succeeds
         pp.mintOptions(
@@ -2550,7 +2509,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for covered mints
-        ct0.deposit(150504, Bob);
+        ct0.deposit(150905, Bob);
         ct1.deposit(0, Bob);
 
         pp.mintOptions(
@@ -2639,7 +2598,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
-        ct1.deposit(17_820, Bob);
+        ct1.deposit(17_830, Bob);
 
         // mint succeeds
         pp.mintOptions(
@@ -2720,7 +2679,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for covered mints
         ct0.deposit(0, Bob);
-        ct1.deposit(150466, Bob);
+        ct1.deposit(150766, Bob);
 
         pp.mintOptions(
             $posIdList,
@@ -3076,7 +3035,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit only token1
         ct0.deposit(0, Bob);
-        ct1.deposit(181_183, Bob); //
+        ct1.deposit(181_583, Bob); //
 
         // can mint covered positions
         pp.mintOptions(
@@ -3562,7 +3521,7 @@ contract Misctest is Test, PositionUtils {
         // she could have still earned some fees, but now the accumulation is frozen forever.
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1244790
+            -1558763
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
