@@ -8,7 +8,7 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -89,7 +89,6 @@ contract DeployProtocol is Script {
         new PanopticFactory(
             WETH9,
             sfpm,
-            uniFactory,
             _manager,
             address(new PanopticPool(sfpm, _manager)),
             address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20, _manager)),
