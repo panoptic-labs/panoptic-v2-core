@@ -5,7 +5,7 @@ pragma solidity ^0.8.24;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {ERC1155Holder} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
@@ -248,10 +248,10 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         return CollateralTracker(_getArgAddress(20));
     }
 
-    /// @notice Get the address of the Uniswap V3 pool used as a price feed by this Panoptic Pool.
-    /// @return The Uniswap V3 oracle pool used by this Panoptic Pool
-    function oraclePool() public pure returns (IUniswapV3Pool) {
-        return IUniswapV3Pool(_getArgAddress(40));
+    /// @notice Get the address of the external oracle contract used by this Panoptic Pool.
+    /// @return The external oracle contract used by this Panoptic Pool
+    function oracleContract() public pure returns (IV3CompatibleOracle) {
+        return IV3CompatibleOracle(_getArgAddress(40));
     }
 
     /// @notice Get the Uniswap Pool ID for the V4 pool used by this Panoptic Pool (hash of `poolKey`).
@@ -289,7 +289,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         // reverts if this contract has already been initialized (assuming block.timestamp > 0)
         if (s_miniMedian != 0) revert Errors.PoolAlreadyInitialized();
 
-        (, int24 currentTick, , , , , ) = oraclePool().slot0();
+        (, int24 currentTick, , , , , ) = oracleContract().slot0();
 
         // Store the median data
         unchecked {
@@ -467,14 +467,15 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeMedian() external {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = oraclePool().slot0();
+        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = oracleContract()
+            .slot0();
 
         (, uint256 medianData) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
             Constants.MEDIAN_PERIOD,
             s_miniMedian,
-            oraclePool()
+            oracleContract()
         );
 
         if (medianData != 0) s_miniMedian = medianData;
@@ -603,7 +604,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             int24 slowOracleTick,
             int24 lastObservedTick,
             uint256 medianData
-        ) = PanopticMath.getOracleTicks(oraclePool(), s_miniMedian);
+        ) = PanopticMath.getOracleTicks(oracleContract(), s_miniMedian);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -795,7 +796,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             int24 slowOracleTick,
             int24 lastObservedTick,
             uint256 medianData
-        ) = PanopticMath.getOracleTicks(oraclePool(), s_miniMedian);
+        ) = PanopticMath.getOracleTicks(oracleContract(), s_miniMedian);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -944,7 +945,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         _validatePositionList(liquidatee, positionIdList, 0);
 
         // Assert the account we are liquidating is actually insolvent
-        int24 twapTick = getUniV3TWAP();
+        int24 twapTick = getOracleTWAP();
 
         int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
         {
@@ -952,7 +953,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             int24 fastOracleTick;
             int24 lastObservedTick;
             (fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
-                oraclePool(),
+                oracleContract(),
                 s_miniMedian
             );
 
@@ -1095,7 +1096,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        int24 twapTick = getUniV3TWAP();
+        int24 twapTick = getOracleTWAP();
 
         // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
         touchedId[0].validateIsExercisable(twapTick);
@@ -1354,7 +1355,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         )
     {
         (fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath.getOracleTicks(
-            oraclePool(),
+            oracleContract(),
             s_miniMedian
         );
         medianData = s_miniMedian;
@@ -1386,8 +1387,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
-    function getUniV3TWAP() internal view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapFilter(oraclePool(), TWAP_WINDOW);
+    function getOracleTWAP() internal view returns (int24 twapTick) {
+        twapTick = PanopticMath.twapFilter(oracleContract(), TWAP_WINDOW);
     }
 
     /*//////////////////////////////////////////////////////////////

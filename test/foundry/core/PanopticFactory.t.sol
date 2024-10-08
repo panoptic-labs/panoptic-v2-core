@@ -17,6 +17,7 @@ import {Errors} from "@libraries/Errors.sol";
 // Panoptic Types
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 // Panoptic Interfaces
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
@@ -44,7 +45,6 @@ contract PanopticFactoryHarness is PanopticFactory {
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
-        IUniswapV3Factory _univ3Factory,
         IPoolManager manager,
         address poolReference,
         address collateralReference,
@@ -55,7 +55,6 @@ contract PanopticFactoryHarness is PanopticFactory {
         PanopticFactory(
             _WETH9,
             _SFPM,
-            _univ3Factory,
             manager,
             poolReference,
             collateralReference,
@@ -252,7 +251,6 @@ contract PanopticFactoryTest is Test {
         panopticFactory = new PanopticFactoryHarness(
             address(_WETH),
             sfpm,
-            V3FACTORY,
             manager,
             address(new PanopticPool(sfpm, manager)),
             address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20, manager)),
@@ -293,7 +291,7 @@ contract PanopticFactoryTest is Test {
             // Deploy pool
             // links the Uniswap V3 pool to the Panoptic pool
             PanopticPool deployedPool = panopticFactory.deployNewPool(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 poolKey,
                 salt,
                 type(uint256).max,
@@ -314,8 +312,10 @@ contract PanopticFactoryTest is Test {
                 address(deployedPool)
             );
             // see if correct pool was linked in the panopticPool
-            IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).oraclePool();
-            address linkedPoolAddress = address(PanopticPool(preComputedPool).oraclePool());
+            IUniswapV3Pool linkedPool = IUniswapV3Pool(
+                address(PanopticPool(preComputedPool).oracleContract())
+            );
+            address linkedPoolAddress = address(PanopticPool(preComputedPool).oracleContract());
             assertEq(address(pool), linkedPoolAddress);
 
             // check the pool has the correct parameters
@@ -342,7 +342,13 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        panopticFactory.deployNewPool(pool, poolKey, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     // deploy a pool with token1 as WETH
@@ -356,7 +362,13 @@ contract PanopticFactoryTest is Test {
 
         // Deploy pool
         // links the uni v3 pool to the Panoptic pool
-        panopticFactory.deployNewPool(pool, poolKey, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     function test_Success_deployNewPool_SlippagePass() public {
@@ -366,7 +378,13 @@ contract PanopticFactoryTest is Test {
 
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
-        panopticFactory.deployNewPool(pool, poolKey, uint96(salt), amount0, amount1);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            uint96(salt),
+            amount0,
+            amount1
+        );
     }
 
     function test_Fail_deployNewPool_Slippage0() public {
@@ -377,7 +395,13 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(pool, poolKey, uint96(salt), amount0 - 1, amount1);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            uint96(salt),
+            amount0 - 1,
+            amount1
+        );
     }
 
     function test_Fail_deployNewPool_Slippage1() public {
@@ -388,7 +412,13 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(pool, poolKey, uint96(salt), amount0, amount1 - 1);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            uint96(salt),
+            amount0,
+            amount1 - 1
+        );
     }
 
     function test_Fail_deployNewPool_Slippage0Both() public {
@@ -399,7 +429,13 @@ contract PanopticFactoryTest is Test {
         (, uint256 amount0, uint256 amount1) = computeFullRangeLiquidity();
 
         vm.expectRevert(Errors.PriceBoundFail.selector);
-        panopticFactory.deployNewPool(pool, poolKey, uint96(salt), amount0 - 1, amount1 - 1);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            uint96(salt),
+            amount0 - 1,
+            amount1 - 1
+        );
     }
 
     // Revert if trying to deploy a Panoptic Pool ontop of an invalid Uniswap Pool
@@ -409,7 +445,13 @@ contract PanopticFactoryTest is Test {
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(pool, poolKey, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -422,13 +464,19 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
-        panopticFactory.deployNewPool(pool, poolKey, salt, type(uint256).max, type(uint256).max);
+        panopticFactory.deployNewPool(
+            IV3CompatibleOracle(address(pool)),
+            poolKey,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
 
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
             panopticFactory.deployNewPool(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 poolKey,
                 salt + 1,
                 type(uint256).max,
@@ -445,7 +493,7 @@ contract PanopticFactoryTest is Test {
         _initalizeWorldState(pools[1]);
         uint96 salt = uint96(block.timestamp);
         PanopticPool deployedPool = panopticFactory.deployNewPool(
-            pool,
+            IV3CompatibleOracle(address(pool)),
             poolKey,
             salt,
             type(uint256).max,

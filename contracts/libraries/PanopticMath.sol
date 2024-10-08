@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
@@ -90,23 +90,25 @@ library PanopticMath {
         }
     }
 
-    /// @notice Converts `fee` to a string with "bps" appended.
+    /// @notice Converts `fee` to a string with "bps" appended, or DYNAMIC if "fee" is equivalent to `0x800000`.
     /// @dev The lowest supported value of `fee` is 1 (`="0.01bps"`).
     /// @param fee The fee to convert to a string (in hundredths of basis points)
     /// @return Stringified version of `fee` with "bps" appended
     function uniswapFeeToString(uint24 fee) internal pure returns (string memory) {
         return
-            string.concat(
-                Strings.toString(fee / 100),
-                fee % 100 == 0
-                    ? ""
-                    : string.concat(
-                        ".",
-                        Strings.toString((fee / 10) % 10),
-                        Strings.toString(fee % 10)
-                    ),
-                "bps"
-            );
+            fee == 0x800000
+                ? "DYNAMIC"
+                : string.concat(
+                    Strings.toString(fee / 100),
+                    fee % 100 == 0
+                        ? ""
+                        : string.concat(
+                            ".",
+                            Strings.toString((fee / 10) % 10),
+                            Strings.toString(fee % 10)
+                        ),
+                    "bps"
+                );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -144,14 +146,14 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Computes various oracle prices corresponding to a Uniswap pool.
-    /// @param univ3pool The Uniswap pool to get the observations from
+    /// @param oracleContract The external oracle contract to retrieve observations from
     /// @param miniMedian The packed structure representing the sorted 8-slot queue of internal median observations
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
     /// @return slowOracleTick The slow oracle tick as tracked by `s_miniMedian`
     /// @return latestObservation The latest observation from the Uniswap pool (price at the end of the last block)
     /// @return medianData The updated value for `s_miniMedian` (returns 0 if not enough time has passed since last observation)
     function getOracleTicks(
-        IUniswapV3Pool univ3pool,
+        IV3CompatibleOracle oracleContract,
         uint256 miniMedian
     )
         external
@@ -166,10 +168,10 @@ library PanopticMath {
         uint16 observationIndex;
         uint16 observationCardinality;
 
-        (, , observationIndex, observationCardinality, , , ) = univ3pool.slot0();
+        (, , observationIndex, observationCardinality, , , ) = oracleContract.slot0();
 
         (fastOracleTick, latestObservation) = computeMedianObservedPrice(
-            univ3pool,
+            oracleContract,
             observationIndex,
             observationCardinality,
             Constants.FAST_ORACLE_CARDINALITY,
@@ -178,7 +180,7 @@ library PanopticMath {
 
         if (Constants.SLOW_ORACLE_UNISWAP_MODE) {
             (slowOracleTick, ) = computeMedianObservedPrice(
-                univ3pool,
+                oracleContract,
                 observationIndex,
                 observationCardinality,
                 Constants.SLOW_ORACLE_CARDINALITY,
@@ -190,19 +192,19 @@ library PanopticMath {
                 observationCardinality,
                 Constants.MEDIAN_PERIOD,
                 miniMedian,
-                univ3pool
+                oracleContract
             );
         }
     }
 
-    /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
+    /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `oracleContract`.
     /// @dev Used when we need a manipulation-resistant TWAP price.
     /// @dev Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
     /// @dev The maximum frequency of observations is 1 per block, but there is no guarantee that the pool will be observed at every block.
     /// @dev Each period has a minimum length of blocktime * period, but may be longer if the Uniswap pool is relatively inactive.
     /// @dev The final price used in the array (of length `cardinality`) is the average of all observations comprising `period` (which is itself a number of observations).
     /// @dev Thus, the minimum total time window is `cardinality` * `period` * `blocktime`.
-    /// @param univ3pool The Uniswap pool to get the median observation from
+    /// @param oracleContract The external oracle contract to retrieve observations from
     /// @param observationIndex The index of the last observation in the pool
     /// @param observationCardinality The number of observations in the pool
     /// @param cardinality The number of `periods` to in the median price array, should be odd
@@ -210,7 +212,7 @@ library PanopticMath {
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
     /// @return The latest observation in the Uniswap pool
     function computeMedianObservedPrice(
-        IUniswapV3Pool univ3pool,
+        IV3CompatibleOracle oracleContract,
         uint256 observationIndex,
         uint256 observationCardinality,
         uint256 cardinality,
@@ -222,7 +224,7 @@ library PanopticMath {
             uint256[] memory timestamps = new uint256[](cardinality + 1);
             // get the last "cardinality" timestamps/tickCumulatives (if observationIndex < cardinality, the index will wrap back from observationCardinality)
             for (uint256 i = 0; i < cardinality + 1; ++i) {
-                (timestamps[i], tickCumulatives[i], , ) = univ3pool.observations(
+                (timestamps[i], tickCumulatives[i], , ) = oracleContract.observations(
                     uint256(
                         (int256(observationIndex) - int256(i * period)) +
                             int256(observationCardinality)
@@ -249,7 +251,7 @@ library PanopticMath {
     /// @param observationCardinality The number of observations in the Uniswap pool
     /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
     /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
-    /// @param univ3pool The Uniswap pool to retrieve observations from
+    /// @param oracleContract The external oracle contract to retrieve observations from
     /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
     /// @return updatedMedianData The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
@@ -257,7 +259,7 @@ library PanopticMath {
         uint256 observationCardinality,
         uint256 period,
         uint256 medianData,
-        IUniswapV3Pool univ3pool
+        IV3CompatibleOracle oracleContract
     ) public view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
@@ -270,13 +272,16 @@ library PanopticMath {
             if (block.timestamp >= uint256(uint40(medianData >> 216)) + period) {
                 int24 lastObservedTick;
                 {
-                    (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
-                        uint256(
-                            int256(observationIndex) - int256(1) + int256(observationCardinality)
-                        ) % observationCardinality
-                    );
+                    (uint256 timestamp_old, int56 tickCumulative_old, , ) = oracleContract
+                        .observations(
+                            uint256(
+                                int256(observationIndex) -
+                                    int256(1) +
+                                    int256(observationCardinality)
+                            ) % observationCardinality
+                        );
 
-                    (uint256 timestamp_last, int56 tickCumulative_last, , ) = univ3pool
+                    (uint256 timestamp_last, int56 tickCumulative_last, , ) = oracleContract
                         .observations(observationIndex);
                     lastObservedTick = int24(
                         (tickCumulative_last - tickCumulative_old) /
@@ -319,13 +324,16 @@ library PanopticMath {
         }
     }
 
-    /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
+    /// @notice Computes a TWAP price over `twapWindow` on a Uniswap V3-style observation oracle.
     /// @dev Note that our definition of TWAP differs from a typical mean of prices over a time window.
     /// @dev We instead observe the average price over a series of time intervals, and define the TWAP as the median of those averages.
-    /// @param univ3pool The Uniswap pool from which to compute the TWAP
+    /// @param oracleContract The external oracle contract to retrieve observations from
     /// @param twapWindow The time window to compute the TWAP over
     /// @return The final calculated TWAP tick
-    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
+    function twapFilter(
+        IV3CompatibleOracle oracleContract,
+        uint32 twapWindow
+    ) external view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
         int256[] memory twapMeasurement = new int256[](19);
@@ -337,7 +345,7 @@ library PanopticMath {
             }
 
             // observe the tickCumulative at the 20 pre-defined time slots
-            (int56[] memory tickCumulatives, ) = univ3pool.observe(secondsAgos);
+            (int56[] memory tickCumulatives, ) = oracleContract.observe(secondsAgos);
 
             // compute the average tick per 30s window
             for (uint256 i = 0; i < 19; ++i) {

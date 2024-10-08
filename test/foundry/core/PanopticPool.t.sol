@@ -21,6 +21,7 @@ import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
@@ -59,8 +60,8 @@ contract PanopticPoolHarness is PanopticPool {
      * @notice compute the TWAP price from the last 600s = 10mins
      * @return twapTick the TWAP price in ticks
      */
-    function getUniV3TWAP_() external view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapFilter(oraclePool(), TWAP_WINDOW);
+    function getOracleTWAP_() external view returns (int24 twapTick) {
+        twapTick = PanopticMath.twapFilter(oracleContract(), TWAP_WINDOW);
     }
 
     function settledTokens(bytes32 chunk) external view returns (LeftRightUnsigned) {
@@ -405,7 +406,6 @@ contract PanopticPoolTest is PositionUtils {
         factory = new PanopticFactory(
             WETH,
             sfpm,
-            V3FACTORY,
             manager,
             poolReference,
             collateralReference,
@@ -422,7 +422,7 @@ contract PanopticPoolTest is PositionUtils {
         pp = PanopticPoolHarness(
             address(
                 factory.deployNewPool(
-                    pool,
+                    IV3CompatibleOracle(address(pool)),
                     poolKey,
                     uint96(block.timestamp),
                     type(uint256).max,
@@ -2729,7 +2729,7 @@ contract PanopticPoolTest is PositionUtils {
             (, , observationIndex, observationCardinality, , , ) = pool.slot0();
 
             (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 observationIndex,
                 observationCardinality,
                 3,
@@ -2741,7 +2741,7 @@ contract PanopticPoolTest is PositionUtils {
                 observationCardinality,
                 60,
                 pp.miniMedian(),
-                pool
+                IV3CompatibleOracle(address(pool))
             );
 
             assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
@@ -2886,7 +2886,7 @@ contract PanopticPoolTest is PositionUtils {
         (, , observationIndex, observationCardinality, , , ) = pool.slot0();
 
         (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            pool,
+            IV3CompatibleOracle(address(pool)),
             observationIndex,
             observationCardinality,
             3,
@@ -2898,7 +2898,7 @@ contract PanopticPoolTest is PositionUtils {
             observationCardinality,
             60,
             pp.miniMedian(),
-            pool
+            IV3CompatibleOracle(address(pool))
         );
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
@@ -3048,7 +3048,7 @@ contract PanopticPoolTest is PositionUtils {
         (, , observationIndex, observationCardinality, , , ) = pool.slot0();
 
         (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            pool,
+            IV3CompatibleOracle(address(pool)),
             observationIndex,
             observationCardinality,
             3,
@@ -3060,7 +3060,7 @@ contract PanopticPoolTest is PositionUtils {
             observationCardinality,
             60,
             pp.miniMedian(),
-            pool
+            IV3CompatibleOracle(address(pool))
         );
 
         updatePositionDataLong();
@@ -3293,7 +3293,7 @@ contract PanopticPoolTest is PositionUtils {
         (, , observationIndex, observationCardinality, , , ) = pool.slot0();
 
         (fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-            pool,
+            IV3CompatibleOracle(address(pool)),
             observationIndex,
             observationCardinality,
             3,
@@ -3305,7 +3305,7 @@ contract PanopticPoolTest is PositionUtils {
             observationCardinality,
             60,
             pp.miniMedian(),
-            pool
+            IV3CompatibleOracle(address(pool))
         );
 
         updatePositionDataLong();
@@ -4794,7 +4794,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(lastCollateralBalance1[Alice]);
             (, , observationIndex, observationCardinality, , , ) = pool.slot0();
             (int24 _fastOracleTick, ) = PanopticMath.computeMedianObservedPrice(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 observationIndex,
                 observationCardinality,
                 3,
@@ -5193,7 +5193,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 exerciseableCount;
             // make sure position is exercisable - the uniswap twap is used to determine exercisability
             // so it could potentially be both OTM and non-exercisable (in-range)
-            TWAPtick = pp.getUniV3TWAP_();
+            TWAPtick = pp.getOracleTWAP_();
             for (uint256 i = 0; i < numLegs; ++i) {
                 if (
                     (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
@@ -5602,7 +5602,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 exerciseableCount;
             // make sure position is exercisable - the uniswap twap is used to determine exercisability
             // so it could potentially be both OTM and non-exercisable (in-range)
-            TWAPtick = pp.getUniV3TWAP_();
+            TWAPtick = pp.getOracleTWAP_();
             for (uint256 i = 0; i < numLegs; ++i) {
                 if (
                     (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
@@ -5703,14 +5703,14 @@ contract PanopticPoolTest is PositionUtils {
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Bob,
-            pp.getUniV3TWAP_(),
+            pp.getOracleTWAP_(),
             $posIdLists[0]
         );
 
-        if (pp.getUniV3TWAP_() > 0)
+        if (pp.getOracleTWAP_() > 0)
             totalCollateralRequired0 = PanopticMath.convert1to0(
                 totalCollateralRequired0,
-                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
             );
 
         uint256 totalCollateralB0 = bound(
@@ -5724,7 +5724,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(
                     PanopticMath.convert1to0(
                         $balanceDelta1,
-                        Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                        Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
                     ) + $balanceDelta0
                 ) *
                 2 >
@@ -5745,7 +5745,7 @@ contract PanopticPoolTest is PositionUtils {
                 PanopticMath.convert0to1(
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 5_000, 6_000))) /
                         10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
                 )
             )
         );
@@ -5814,7 +5814,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 exerciseableCount;
             // make sure position is exercisable - the uniswap twap is used to determine exercisability
             // so it could potentially be both OTM and non-exercisable (in-range)
-            TWAPtick = pp.getUniV3TWAP_();
+            TWAPtick = pp.getOracleTWAP_();
             for (uint256 i = 0; i < numLegs; ++i) {
                 if (
                     (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
@@ -5915,14 +5915,14 @@ contract PanopticPoolTest is PositionUtils {
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            pp.getUniV3TWAP_(),
+            pp.getOracleTWAP_(),
             $posIdLists[3]
         );
 
-        if (pp.getUniV3TWAP_() > 0)
+        if (pp.getOracleTWAP_() > 0)
             totalCollateralRequired0 = PanopticMath.convert1to0(
                 totalCollateralRequired0,
-                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
             );
 
         uint256 totalCollateralB0 = bound(
@@ -5936,7 +5936,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(
                     PanopticMath.convert1to0(
                         $balanceDelta1,
-                        Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                        Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
                     ) + $balanceDelta0
                 ) *
                 2 >
@@ -5956,7 +5956,7 @@ contract PanopticPoolTest is PositionUtils {
             ct1.convertToShares(
                 PanopticMath.convert0to1(
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
                 )
             )
         );
@@ -6023,7 +6023,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 exerciseableCount;
             // make sure position is exercisable - the uniswap twap is used to determine exercisability
             // so it could potentially be both OTM and non-exercisable (in-range)
-            TWAPtick = pp.getUniV3TWAP_();
+            TWAPtick = pp.getOracleTWAP_();
             for (uint256 i = 0; i < numLegs; ++i) {
                 if (
                     (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
@@ -6361,19 +6361,19 @@ contract PanopticPoolTest is PositionUtils {
         currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
+        vm.assume(Math.abs(int256(currentTick) - pp.getOracleTWAP_()) <= 513);
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            pp.getUniV3TWAP_(),
+            pp.getOracleTWAP_(),
             $posIdLists[1]
         );
 
-        if (pp.getUniV3TWAP_() > 0)
+        if (pp.getOracleTWAP_() > 0)
             totalCollateralRequired0 = PanopticMath.convert1to0(
                 totalCollateralRequired0,
-                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
             );
 
         uint256 totalCollateralB0 = bound(
@@ -6395,12 +6395,12 @@ contract PanopticPoolTest is PositionUtils {
             ct1.convertToShares(
                 PanopticMath.convert0to1(
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
                 )
             )
         );
 
-        TWAPtick = pp.getUniV3TWAP_();
+        TWAPtick = pp.getOracleTWAP_();
         currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -6583,7 +6583,7 @@ contract PanopticPoolTest is PositionUtils {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
                 Alice,
-                pp.getUniV3TWAP_(),
+                pp.getOracleTWAP_(),
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -6957,19 +6957,19 @@ contract PanopticPoolTest is PositionUtils {
         currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
+        vm.assume(Math.abs(int256(currentTick) - pp.getOracleTWAP_()) <= 513);
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            pp.getUniV3TWAP_(),
+            pp.getOracleTWAP_(),
             $posIdLists[1]
         );
 
-        if (pp.getUniV3TWAP_() > 0)
+        if (pp.getOracleTWAP_() > 0)
             totalCollateralRequired0 = PanopticMath.convert1to0(
                 totalCollateralRequired0,
-                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
             );
 
         uint256 totalCollateralB0 = bound(
@@ -6991,12 +6991,12 @@ contract PanopticPoolTest is PositionUtils {
             ct1.convertToShares(
                 PanopticMath.convert0to1(
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
-                    Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                    Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
                 )
             )
         );
 
-        TWAPtick = pp.getUniV3TWAP_();
+        TWAPtick = pp.getOracleTWAP_();
         currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -7161,7 +7161,7 @@ contract PanopticPoolTest is PositionUtils {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
                 Alice,
-                pp.getUniV3TWAP_(),
+                pp.getOracleTWAP_(),
                 $posIdLists[1]
             );
             vm.assume(newBalance0 < newRequired0);
@@ -7635,7 +7635,7 @@ contract PanopticPoolTest is PositionUtils {
         );
         vm.assume(
             Math.abs(
-                int256(TickMath.getTickAtSqrtRatio(uint160(sqrtPriceTarget))) - pp.getUniV3TWAP_()
+                int256(TickMath.getTickAtSqrtRatio(uint160(sqrtPriceTarget))) - pp.getOracleTWAP_()
             ) > 953
         );
 
@@ -7764,19 +7764,19 @@ contract PanopticPoolTest is PositionUtils {
         currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) <= 513);
+        vm.assume(Math.abs(int256(currentTick) - pp.getOracleTWAP_()) <= 513);
 
         (, uint256 twapCollateralRequired0) = ph.checkCollateral(
             pp,
             Alice,
-            pp.getUniV3TWAP_(),
+            pp.getOracleTWAP_(),
             $posIdLists[1]
         );
 
-        if (pp.getUniV3TWAP_() > 0)
+        if (pp.getOracleTWAP_() > 0)
             twapCollateralRequired0 = PanopticMath.convert1to0(
                 twapCollateralRequired0,
-                Math.getSqrtRatioAtTick(pp.getUniV3TWAP_())
+                Math.getSqrtRatioAtTick(pp.getOracleTWAP_())
             );
 
         (, uint256 currentCollateralRequired0) = ph.checkCollateral(
@@ -7826,7 +7826,7 @@ contract PanopticPoolTest is PositionUtils {
                     (totalCollateralB0 * (10_000 - bound(collateralRatioSeed, 0, 10_000))) / 10_000,
                     Math.getSqrtRatioAtTick(
                         twapCollateralRequired0 > currentCollateralRequired0
-                            ? pp.getUniV3TWAP_()
+                            ? pp.getOracleTWAP_()
                             : currentTick
                     )
                 )
@@ -7837,7 +7837,7 @@ contract PanopticPoolTest is PositionUtils {
             (uint256 newBalance0, uint256 newRequired0) = ph.checkCollateral(
                 pp,
                 Alice,
-                pp.getUniV3TWAP_(),
+                pp.getOracleTWAP_(),
                 $posIdLists[1]
             );
             vm.assume(newBalance0 > newRequired0);
@@ -7873,7 +7873,7 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         vm.startPrank(Bob);
-        vm.assume(Math.abs(int256(currentTick) - pp.getUniV3TWAP_()) < 953);
+        vm.assume(Math.abs(int256(currentTick) - pp.getOracleTWAP_()) < 953);
 
         try pp.liquidate(new TokenId[](0), Alice, $posIdLists[1]) {
             assertFalse(true, "liquidation should have failed");

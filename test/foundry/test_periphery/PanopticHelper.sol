@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Libraries
@@ -184,7 +184,7 @@ contract PanopticHelper {
     /// @param period The number of observations to average to compute one entry in the median price array
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
     function computeMedianObservedPrice(
-        IUniswapV3Pool univ3pool,
+        IV3CompatibleOracle univ3pool,
         uint256 cardinality,
         uint256 period
     ) external view returns (int24) {
@@ -210,7 +210,7 @@ contract PanopticHelper {
     function computeInternalMedian(
         uint256 period,
         uint256 medianData,
-        IUniswapV3Pool univ3pool
+        IV3CompatibleOracle univ3pool
     ) external view returns (int24, uint256) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
 
@@ -230,7 +230,10 @@ contract PanopticHelper {
     /// @param univ3pool The Uniswap pool from which to compute the TWAP.
     /// @param twapWindow The time window to compute the TWAP over.
     /// @return The final calculated TWAP tick.
-    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
+    function twapFilter(
+        IV3CompatibleOracle univ3pool,
+        uint32 twapWindow
+    ) external view returns (int24) {
         return PanopticMath.twapFilter(univ3pool, twapWindow);
     }
 
@@ -298,7 +301,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).oraclePool().slot0();
+        (, int24 currentTick, , , , , ) = PanopticPool(pool).oracleContract().slot0();
         int24 x0 = currentTick - 10000;
         int24 x1 = currentTick;
         int24 tol = 100000;
@@ -346,7 +349,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public view returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).oraclePool().slot0();
+        (, int24 currentTick, , , , , ) = PanopticPool(pool).oracleContract().slot0();
         int24 x0 = currentTick;
         int24 x1 = currentTick + 10000;
         int24 tol = 100000;

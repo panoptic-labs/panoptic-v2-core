@@ -18,6 +18,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {Math} from "@libraries/Math.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -373,7 +374,6 @@ contract Misctest is Test, PositionUtils {
         factory = new PanopticFactory(
             address(token1),
             sfpm,
-            V3FACTORY,
             manager,
             poolReference,
             collateralReference,
@@ -390,7 +390,7 @@ contract Misctest is Test, PositionUtils {
         pp = PanopticPool(
             address(
                 factory.deployNewPool(
-                    uniPool,
+                    IV3CompatibleOracle(address(uniPool)),
                     poolKey,
                     uint96(block.timestamp),
                     type(uint256).max,
@@ -710,7 +710,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Swapper);
 
-        PanopticMath.twapFilter(uniPool, 600);
+        PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
 
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
@@ -724,7 +724,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        PanopticMath.twapFilter(uniPool, 600);
+        PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
 
         vm.startPrank(Bob);
         pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
@@ -4302,7 +4302,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        twapTick = PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -4443,7 +4443,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        twapTick = PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,

@@ -5,8 +5,7 @@ pragma solidity ^0.8.24;
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 // Inherited implementations
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
@@ -37,7 +36,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
-    /// @param oraclePool Address of the Uniswap V3 pool used as an oracle
+    /// @param oracleContract Address of the Uniswap V3 pool used as an oracle
     /// @param poolKey The Uniswap V4 pool key
     /// @param collateralTracker0 Address of the collateral tracker contract for token0
     /// @param collateralTracker1 Address of the collateral tracker contract for token1
@@ -45,7 +44,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param amount1 The amount of token1 deployed at full range
     event PoolDeployed(
         PanopticPool indexed poolAddress,
-        IUniswapV3Pool indexed oraclePool,
+        IV3CompatibleOracle indexed oracleContract,
         PoolKey poolKey,
         CollateralTracker collateralTracker0,
         CollateralTracker collateralTracker1,
@@ -65,9 +64,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
     /// @notice The canonical Uniswap V4 Pool Manager address.
     IPoolManager internal immutable POOL_MANAGER_V4;
-
-    /// @notice The Uniswap V3 factory contract to use.
-    IUniswapV3Factory internal immutable UNIV3_FACTORY;
 
     /// @notice The Semi Fungible Position Manager (SFPM) which tracks option positions across Panoptic Pools.
     SemiFungiblePositionManager internal immutable SFPM;
@@ -115,7 +111,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     constructor(
         address _WETH9,
         SemiFungiblePositionManager _SFPM,
-        IUniswapV3Factory _uniFactory,
         IPoolManager manager,
         address _poolReference,
         address _collateralReference,
@@ -125,7 +120,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
     ) FactoryNFT(properties, indices, pointers) {
         WETH = _WETH9;
         SFPM = _SFPM;
-        UNIV3_FACTORY = _uniFactory;
         POOL_MANAGER_V4 = manager;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
@@ -201,19 +195,21 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified uniquely by the incoming parameters.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
-    /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oraclePoolAddress))))][salt]`.
+    /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oracleContractAddress))))][salt]`.
+    /// @param oracleContract The external oracle contract to be used by the newly deployed Panoptic Pool
+    /// @param key The Uniswap V4 pool key
     /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool
     /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment
     /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
-        IUniswapV3Pool oraclePool,
+        IV3CompatibleOracle oracleContract,
         PoolKey calldata key,
         uint96 salt,
         uint256 amount0Max,
         uint256 amount1Max
     ) external returns (PanopticPool newPoolContract) {
-        bytes32 panopticPoolKey = keccak256(abi.encode(key, oraclePool));
+        bytes32 panopticPoolKey = keccak256(abi.encode(key, oracleContract));
 
         if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId()) == 0)
             revert Errors.UniswapPoolNotInitialized();
@@ -271,7 +267,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                 abi.encodePacked(
                     collateralTracker0,
                     collateralTracker1,
-                    oraclePool,
+                    oracleContract,
                     key.toId(),
                     abi.encode(key)
                 ),
@@ -288,7 +284,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // The Panoptic pool won't be safe to use until the observation cardinality is at least CARDINALITY_INCREASE
         // If this is not the case, we increase the next cardinality during deployment so the cardinality can catch up over time
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
-        oraclePool.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
+        oracleContract.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
 
         // Mints the full-range initial deposit
         // which is why the deployer becomes also a "donor" of full-range liquidity
@@ -302,7 +298,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         emit PoolDeployed(
             newPoolContract,
-            oraclePool,
+            oracleContract,
             key,
             collateralTracker0,
             collateralTracker1,
@@ -326,7 +322,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @return highestRarity The rarity of `bestSalt`
     function minePoolAddress(
         address deployerAddress,
-        address oraclePool,
+        address oracleContract,
         PoolKey calldata key,
         uint96 salt,
         uint256 loops,
@@ -344,7 +340,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
             bytes32 newSalt = bytes32(
                 abi.encodePacked(
                     uint80(uint160(deployerAddress) >> 80),
-                    uint80(uint256(keccak256(abi.encode(key, oraclePool)))),
+                    uint80(uint256(keccak256(abi.encode(key, oracleContract)))),
                     salt
                 )
             );

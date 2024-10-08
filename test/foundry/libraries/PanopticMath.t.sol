@@ -14,6 +14,7 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
 // Uniswap
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {FixedPoint96} from "v3-core/libraries/FixedPoint96.sol";
@@ -41,20 +42,20 @@ contract PanopticMathTest is Test, PositionUtils {
     PanopticMathHarness harness;
 
     // store a few different mainnet pairs - the pool used is part of the fuzz
-    IUniswapV3Pool constant USDC_WETH_5 =
-        IUniswapV3Pool(0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640);
-    IUniswapV3Pool constant WBTC_ETH_30 =
-        IUniswapV3Pool(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD);
-    IUniswapV3Pool constant USDC_WETH_30 =
-        IUniswapV3Pool(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
-    IUniswapV3Pool[3] public pools = [USDC_WETH_5, WBTC_ETH_30, USDC_WETH_30];
+    IV3CompatibleOracle constant USDC_WETH_5 =
+        IV3CompatibleOracle(0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640);
+    IV3CompatibleOracle constant WBTC_ETH_30 =
+        IV3CompatibleOracle(0xCBCdF9626bC03E24f779434178A73a0B4bad62eD);
+    IV3CompatibleOracle constant USDC_WETH_30 =
+        IV3CompatibleOracle(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
+    IV3CompatibleOracle[3] public pools = [USDC_WETH_5, WBTC_ETH_30, USDC_WETH_30];
 
     function setUp() public {
         harness = new PanopticMathHarness();
     }
 
     // use storage as temp to avoid stack to deeps
-    IUniswapV3Pool selectedPool;
+    IV3CompatibleOracle selectedPool;
     int24 tickSpacing;
     int24 currentTick;
 
@@ -86,7 +87,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(positionSize, 0, 2)]; // reuse position size as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -160,7 +161,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(positionSize, 0, 2)]; // reuse position size as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -228,7 +229,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
-        tickSpacing = selectedPool.tickSpacing();
+        tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
         // Width must be > 0 < 4096
         int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
@@ -260,7 +261,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
-        tickSpacing = selectedPool.tickSpacing();
+        tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
         // Width must be > 0 < 4096
         int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
 
@@ -290,7 +291,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
-        tickSpacing = selectedPool.tickSpacing();
+        tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
         // Width must be > 0 < 4096
         int24 width = int24(uint24(bound(widthSeed, 1, 4095)));
         int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -318,7 +319,7 @@ contract PanopticMathTest is Test, PositionUtils {
     ) public {
         // bound fuzzed tick
         selectedPool = pools[bound(poolSeed, 0, 2)];
-        tickSpacing = selectedPool.tickSpacing();
+        tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
         // Width must be > 0 < 4095 (4095 is full range)
         int24 width = int24(int256(bound(widthSeed, 1, 4094)));
         int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -375,7 +376,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(positionSize, 0, 2)]; // reuse position size as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -441,7 +442,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -500,7 +501,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -608,7 +609,7 @@ contract PanopticMathTest is Test, PositionUtils {
         }
         assertEq(
             harness.computeMedianObservedPrice(
-                IUniswapV3Pool(address(mockPool)),
+                IV3CompatibleOracle(address(mockPool)),
                 observationIndex,
                 observationCardinality,
                 cardinality,
@@ -1158,7 +1159,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
 
@@ -1241,7 +1242,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
 
@@ -1324,7 +1325,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -1382,7 +1383,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -1454,7 +1455,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;
@@ -1513,7 +1514,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
             // bound fuzzed tick
             selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-            tickSpacing = selectedPool.tickSpacing();
+            tickSpacing = IUniswapV3Pool(address(selectedPool)).tickSpacing();
 
             width = int24(bound(width, 1, 2048));
             int24 oneSidedRange = (width * tickSpacing) / 2;

@@ -144,7 +144,7 @@ contract PanopticPoolHarness is PanopticPool {
     }
 
     function getTWAP() external view returns (int24 twapTick) {
-        return PanopticPool.getUniV3TWAP();
+        return PanopticPool.getOracleTWAP();
     }
 
     function positionBalance(

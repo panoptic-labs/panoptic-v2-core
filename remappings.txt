@@ -8,6 +8,7 @@ v4-core/=lib/v4-core/src
 @contracts/=contracts
 @libraries/=contracts/libraries
 @base/=contracts/base
+@interfaces/=contracts/interfaces
 @test_periphery/=test/foundry/test_periphery
 @tokens/=contracts/tokens
 @types/=contracts/types
