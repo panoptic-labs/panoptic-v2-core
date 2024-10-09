@@ -236,6 +236,13 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /*//////////////////////////////////////////////////////////////
                    POOL-SPECIFIC IMMUTABLE PARAMETERS
     //////////////////////////////////////////////////////////////*/
+
+    // The parameters will be encoded in calldata at `_getImmutableArgsOffset()` as follows:
+    // abi.encodePacked(address collateralToken0, address collateralToken1, address oracleContract, uint256 poolId, abi.encode(PoolKey poolKey))
+    // bytes: 0                    20                   40                   60                   92
+    //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 256 bits ---->|<---- 1280 bits ---->|
+    //           collateralToken0     collateralToken1      oracleContract           poolId               poolKey
+
     /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
     /// @return Collateral token corresponding to token0 in Uniswap
     function collateralToken0() public pure returns (CollateralTracker) {
@@ -266,8 +273,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         uint256 offset = _getImmutableArgsOffset();
 
         assembly {
-            // 60 + 32
-            key := add(offset, 0x5c)
+            key := add(offset, 92)
         }
     }
 

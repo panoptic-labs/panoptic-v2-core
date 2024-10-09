@@ -143,6 +143,12 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                    POOL-SPECIFIC IMMUTABLE PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
+    // The parameters will be encoded at `_getImmutableArgsOffset()` in calldata as follows:
+    // abi.encodePacked(address panopticPool, bool underlyingIsToken0, address underlyingToken, address token0, address token1, uint24 poolFee)
+    // bytes: 0                    20                 21                   41                   61                   81
+    //        |<---- 160 bits ---->|<---- 8 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 24 bits ---->|
+    //             panopticPool     underlyingIsToken0    underlyingToken          token0               token1              poolFee
+
     /// @notice Retrieve the Panoptic Pool that this collateral token belongs to.
     /// @return The Panoptic Pool associated with this collateral token
     function _panopticPool() internal pure returns (PanopticPool) {
