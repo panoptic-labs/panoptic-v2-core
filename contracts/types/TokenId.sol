@@ -448,7 +448,7 @@ library TokenIdLibrary {
         return 4;
     }
 
-    /// @notice Clear a leg in an option position with index `i`.
+    /// @notice Clear a leg in an option position at `legIndex`.
     /// @dev set bits of the leg to zero. Also sets the optionRatio and asset to zero of that leg.
     /// @dev NOTE: it's important that the caller fills in the leg details after.
     //  - optionRatio is zeroed
@@ -459,28 +459,28 @@ library TokenIdLibrary {
     //  - isLong is zeroed
     //  - riskPartner is zeroed
     /// @param self The TokenId to clear the leg from
-    /// @param i The leg index to reset, in {0,1,2,3}
-    /// @return `self` with the `i`th leg zeroed including optionRatio and asset
-    function clearLeg(TokenId self, uint256 i) internal pure returns (TokenId) {
-        if (i == 0)
+    /// @param legIndex The leg index to reset, in {0,1,2,3}
+    /// @return `self` with the `legIndex`th leg zeroed including optionRatio and asset
+    function clearLeg(TokenId self, uint256 legIndex) internal pure returns (TokenId) {
+        if (legIndex == 0)
             return
                 TokenId.wrap(
                     TokenId.unwrap(self) &
                         0xFFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFFFFFF
                 );
-        if (i == 1)
+        if (legIndex == 1)
             return
                 TokenId.wrap(
                     TokenId.unwrap(self) &
                         0xFFFFFFFFFFFF_FFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF
                 );
-        if (i == 2)
+        if (legIndex == 2)
             return
                 TokenId.wrap(
                     TokenId.unwrap(self) &
                         0xFFFFFFFFFFFF_000000000000_FFFFFFFFFFFF_FFFFFFFFFFFF_FFFFFFFFFFFFFFFF
                 );
-        if (i == 3)
+        if (legIndex == 3)
             return
                 TokenId.wrap(
                     TokenId.unwrap(self) &
