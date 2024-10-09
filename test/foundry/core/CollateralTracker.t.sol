@@ -1875,7 +1875,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             address(0),
             0,
             Constants.MAX_V4POOL_TICK,
-            Constants.MIN_V4POOL_TICK
+            Constants.MIN_V4POOL_TICK,
+            false
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);

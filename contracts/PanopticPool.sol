@@ -337,13 +337,13 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
-    /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing positions data.
+    /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing the corresponding `PositionBalance` information for each position.
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as `[tokenId1, tokenId2, ...]`
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
+    /// @return A list of `PositionBalance` data (balance and pool utilization/oracle ticks at last mint) for each position, of the form `[[tokenId0, PositionBalance_0], [tokenId1, PositionBalance_1], ...]`
     function getAccumulatedFeesAndPositionsData(
         address user,
         bool includePendingPremium,
@@ -666,7 +666,12 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             effectiveLiquidityLimitX32
         );
 
-        uint32 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
+        uint32 poolUtilizations = _payCommissionAndWriteData(
+            tokenId,
+            positionSize,
+            totalSwapped,
+            tickLimitLow < tickLimitHigh
+        );
 
         if (safeMode) {
             return uint32(10_000 + (10_000 << 16));
@@ -679,13 +684,15 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped The amount of tokens moved during creation of the option position
+    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
-        LeftRightSigned totalSwapped
+        LeftRightSigned totalSwapped,
+        bool isCovered
     ) internal returns (uint32) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
@@ -695,13 +702,15 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
-            totalSwapped.rightSlot()
+            totalSwapped.rightSlot(),
+            isCovered
         );
         uint32 utilization1 = collateralToken1().takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
-            totalSwapped.leftSlot()
+            totalSwapped.leftSlot(),
+            isCovered
         );
 
         // return pool utilizations as two uint16 (pool Utilization is always < 10000)
@@ -1165,7 +1174,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionIdList`.
-    /// @dev This will revert if `account` is not solvent at all provided ticks and `expectedSolvent == true`, or if `account` is solvent at all ticks and `expectedSolvent == false`.
+    /// @dev Reverts if `account` is not solvent at all provided ticks and `expectedSolvent == true`, or if `account` is solvent at all ticks and `!expectedSolvent`.
     /// @param account The account to check solvency for
     /// @param positionIdList The list of positions to check solvency for
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)

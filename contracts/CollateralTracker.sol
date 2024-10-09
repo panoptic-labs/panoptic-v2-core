@@ -1030,19 +1030,26 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return utilization The final utilization of the collateral vault
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 swappedAmount,
+        bool isCovered
     ) external onlyPanopticPool returns (uint32 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
+            int256 tokenToPay = _getExchangedAmount(
+                longAmount,
+                shortAmount,
+                swappedAmount,
+                isCovered
+            );
 
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
@@ -1123,11 +1130,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param longAmount The amount of long options held
     /// @param shortAmount The amount of short options held
     /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return exchangedAmount The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 swappedAmount,
+        bool isCovered
     ) internal view returns (int256 exchangedAmount) {
         // If amount swapped is positive, the amount of tokens to pay is the ITM amount
 
@@ -1136,11 +1145,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
             if (intrinsicValue != 0) {
-                // the swap commission is paid on the intrinsic value, and it is always positive
-                uint256 swapCommission = Math.unsafeDivRoundingUp(
-                    ITM_SPREAD_FEE * uint256(Math.abs(intrinsicValue)),
-                    DECIMALS
-                );
+                // the swap commission is paid on the intrinsic value (if a swap occured -- users who mint covered options with their own collateral do not pay this fee)
+                uint256 swapCommission = isCovered
+                    ? 0
+                    : (ITM_SPREAD_FEE * uint256(Math.abs(intrinsicValue))) / DECIMALS;
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
                 exchangedAmount = intrinsicValue + int256(swapCommission);
