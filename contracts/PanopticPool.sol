@@ -651,7 +651,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             effectiveLiquidityLimitX32
         );
 
-        uint32 poolUtilizations = _payCommissionAndWriteData(tokenId, positionSize, totalSwapped);
+        uint32 poolUtilizations = _payCommissionAndWriteData(
+            tokenId,
+            positionSize,
+            totalSwapped,
+            tickLimitLow < tickLimitHigh
+        );
 
         if (safeMode) {
             return uint32(10_000 + (10_000 << 16));
@@ -664,13 +669,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped The amount of tokens moved during creation of the option position
+    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
-        LeftRightSigned totalSwapped
+        LeftRightSigned totalSwapped,
+        bool isCovered
     ) internal returns (uint32) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
@@ -680,13 +687,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
-            totalSwapped.rightSlot()
+            totalSwapped.rightSlot(),
+            isCovered
         );
         uint32 utilization1 = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
-            totalSwapped.leftSlot()
+            totalSwapped.leftSlot(),
+            isCovered
         );
 
         // return pool utilizations as two uint16 (pool Utilization is always < 10000)

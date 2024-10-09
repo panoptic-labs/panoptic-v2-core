@@ -705,7 +705,13 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).takeCommissionAddData(Alice, 0, 0, 1_000_000_000);
+        CollateralTracker(collateralReference).takeCommissionAddData(
+            Alice,
+            0,
+            0,
+            1_000_000_000,
+            false
+        );
         assertEq(
             1_000_000_000_000_000 -
                 1 -
