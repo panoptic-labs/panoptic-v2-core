@@ -6074,47 +6074,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertEq(expectedPoolUtilization, currentPoolUtilization);
     }
 
-    function test_Success_name(uint256 x) public {
-        _initWorld(x);
-
-        // string memory expectedName =
-        //     string.concat(
-        //             "POPT-V1",
-        //             " ",
-        //             IERC20Metadata(s_univ3token0).symbol(),
-        //             " LP on ",
-        //             symbol0,
-        //             "/",
-        //             symbol1,
-        //             " ",
-        //             fee % 100 == 0
-        //                 ? Strings.toString(fee / 100)
-        //                 : string.concat(Strings.toString(fee / 100), ".", Strings.toString(fee % 100)),
-        //             "bps"
-        //         );
-
-        string memory returnedName = collateralToken0.name();
-        console2.log(returnedName);
-    }
-
-    function test_Success_symbol(uint256 x) public {
-        _initWorld(x);
-
-        // string.concat(TICKER_PREFIX, symbol);
-        // "po" + symbol IERC20Metadata(s_underlyingToken).symbol()
-
-        string memory returnedSymbol = collateralToken0.symbol();
-        console2.log(returnedSymbol);
-    }
-
-    function test_Success_decimals(uint256 x) public {
-        _initWorld(x);
-
-        //IERC20Metadata(s_underlyingToken).decimals()
-
-        console2.log(collateralToken0.decimals());
-    }
-
     /*//////////////////////////////////////////////////////////////
                     REPLICATED FUNCTIONS (TEST HELPERS)
     //////////////////////////////////////////////////////////////*/

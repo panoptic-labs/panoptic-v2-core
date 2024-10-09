@@ -333,40 +333,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         UNISWAP V4 LOCK CALLBACK
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Uniswap V4 unlock callback implementation.
-    /// @dev Parameters are `(PoolKey key, int24 tickLimitLow, int24 tickLimitHigh, uint128 positionSize, TokenId tokenId, bool isBurn)`.
-    /// @dev Executes the corresponding operations and state updates required to mint `tokenId` of `positionSize` in `key`
-    /// @dev (shorts/longs are reversed before calling this function at burn)
-    /// @param data The encoded data containing the input parameters
-    /// @return `(LeftRightUnsigned[4] collectedByLeg, LeftRightSigned totalMoved)` An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg and the net amount of token0 and token1 moved to/from the Uniswap V4 pool
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
-
-        (
-            address account,
-            PoolKey memory key,
-            int24 tickLimitLow,
-            int24 tickLimitHigh,
-            uint128 positionSize,
-            TokenId tokenId,
-            bool isBurn
-        ) = abi.decode(data, (address, PoolKey, int24, int24, uint128, TokenId, bool));
-
-        (
-            LeftRightUnsigned[4] memory collectedByLeg,
-            LeftRightSigned totalMoved
-        ) = _createPositionInAMM(
-                account,
-                key,
-                tickLimitLow,
-                tickLimitHigh,
-                positionSize,
-                tokenId,
-                isBurn
-            );
-        return abi.encode(collectedByLeg, totalMoved);
-    }
-
     /// @notice Executes the corresponding operations and state updates required to mint `tokenId` of `positionSize` in `key`
     /// @param key The Uniswap V4 pool key in which to mint `tokenId`
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
@@ -399,6 +365,40 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 ),
                 (LeftRightUnsigned[4], LeftRightSigned)
             );
+    }
+
+    /// @notice Uniswap V4 unlock callback implementation.
+    /// @dev Parameters are `(PoolKey key, int24 tickLimitLow, int24 tickLimitHigh, uint128 positionSize, TokenId tokenId, bool isBurn)`.
+    /// @dev Executes the corresponding operations and state updates required to mint `tokenId` of `positionSize` in `key`
+    /// @dev (shorts/longs are reversed before calling this function at burn)
+    /// @param data The encoded data containing the input parameters
+    /// @return `(LeftRightUnsigned[4] collectedByLeg, LeftRightSigned totalMoved)` An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg and the net amount of token0 and token1 moved to/from the Uniswap V4 pool
+    function unlockCallback(bytes calldata data) external returns (bytes memory) {
+        if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
+
+        (
+            address account,
+            PoolKey memory key,
+            int24 tickLimitLow,
+            int24 tickLimitHigh,
+            uint128 positionSize,
+            TokenId tokenId,
+            bool isBurn
+        ) = abi.decode(data, (address, PoolKey, int24, int24, uint128, TokenId, bool));
+
+        (
+            LeftRightUnsigned[4] memory collectedByLeg,
+            LeftRightSigned totalMoved
+        ) = _createPositionInAMM(
+                account,
+                key,
+                tickLimitLow,
+                tickLimitHigh,
+                positionSize,
+                tokenId,
+                isBurn
+            );
+        return abi.encode(collectedByLeg, totalMoved);
     }
 
     /*//////////////////////////////////////////////////////////////

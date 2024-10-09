@@ -336,6 +336,13 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                         UNISWAP V4 LOCK CALLBACK
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Initiates the unlock callback to wrap/unwrap `delta` amount of the underlying token and transfer to/from the Panoptic Pool.
+    /// @param account The address of the account to transfer the underlying token to/from
+    /// @param delta The amount of the underlying token to wrap/unwrap and transfer
+    function _settleTokenDelta(address account, int256 delta) internal {
+        POOL_MANAGER_V4.unlock(abi.encode(account, delta));
+    }
+
     /// @notice Uniswap V4 unlock callback implementation.
     /// @dev Parameters are `(address account, int256 delta)`.
     /// @dev Wraps/unwraps `delta` amount of the underlying token and transfers to/from the Panoptic Pool.
@@ -375,13 +382,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         }
 
         return "";
-    }
-
-    /// @notice Initiates the unlock callback to wrap/unwrap `delta` amount of the underlying token and transfer to/from the Panoptic Pool.
-    /// @param account The address of the account to transfer the underlying token to/from
-    /// @param delta The amount of the underlying token to wrap/unwrap and transfer
-    function _settleTokenDelta(address account, int256 delta) internal {
-        POOL_MANAGER_V4.unlock(abi.encode(account, delta));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -521,8 +521,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param owner The address being withdrawn for
     /// @return maxAssets The maximum amount of assets that can be withdrawn
     function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
-        // We can only use the standard 4626 withdraw function if the user has no open positions
-        // For the sake of simplicity assets can only be withdrawn through the redeem function
         uint256 poolAssets = s_poolAssets;
         unchecked {
             uint256 available = poolAssets > 0 ? poolAssets - 1 : 0;

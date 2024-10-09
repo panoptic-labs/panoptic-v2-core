@@ -36,8 +36,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
-    /// @param oracleContract Address of the Uniswap V3 pool used as an oracle
-    /// @param poolKey The Uniswap V4 pool key
+    /// @param oracleContract The external oracle contract used by the newly deployed Panoptic Pool
+    /// @param poolKey The Uniswap V4 pool key associated with the Panoptic Pool
     /// @param collateralTracker0 Address of the collateral tracker contract for token0
     /// @param collateralTracker1 Address of the collateral tracker contract for token1
     /// @param amount0 The amount of token0 deployed at full range
@@ -133,7 +133,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev Parameters are `(PoolKey key, int24 tickLower, int24 tickUpper, uint128 liquidity, address payer)`.
     /// @dev Adds `liquidity` to the Uniswap V4 pool `key` at `tickLower-tickUpper` and transfers the tokens from `payer`.
     /// @param data The encoded data containing the input parameters
-    /// @return `(uint256 token0Delta, uint256 token1Delta`) The amount of token0 and token1 used to create `liquidity` in the Uniswap pool
+    /// @return `(uint256 token0Delta, uint256 token1Delta)` The amount of token0 and token1 used to create `liquidity` in the Uniswap pool
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
@@ -195,10 +195,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified uniquely by the incoming parameters.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
-    /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oracleContractAddress))))][salt]`.
+    /// @dev Salt used in PanopticPool creation is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oracleContractAddress))))][salt]`.
     /// @param oracleContract The external oracle contract to be used by the newly deployed Panoptic Pool
     /// @param key The Uniswap V4 pool key
-    /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool
+    /// @param salt User-defined component of salt used in deployment process for the PanopticPool
     /// @param amount0Max The maximum amount of token0 to spend on the full-range deployment
     /// @param amount1Max The maximum amount of token1 to spend on the full-range deployment
     /// @return newPoolContract The address of the newly deployed Panoptic pool
@@ -370,6 +370,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     }
 
     /// @notice Seeds Uniswap V4 pool with a full-tick-range liquidity deployment using funds from caller.
+    /// @param key The Uniswap V4 pool key
+    /// @param idV4 The Uniswap V4 pool id (hash of `key`)
     /// @return The amount of token0 deployed at full range
     /// @return The amount of token1 deployed at full range
     function _mintFullRange(PoolKey memory key, PoolId idV4) internal returns (uint256, uint256) {
