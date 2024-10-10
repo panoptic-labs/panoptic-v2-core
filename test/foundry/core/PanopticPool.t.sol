@@ -391,7 +391,7 @@ contract PanopticPoolTest is PositionUtils {
         IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
         IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
 
-        manager.initialize(poolKey, currentSqrtPriceX96, "");
+        manager.initialize(poolKey, currentSqrtPriceX96);
 
         routerV4.modifyLiquidity(
             address(0),

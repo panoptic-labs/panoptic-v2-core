@@ -180,7 +180,7 @@ contract PanopticFactoryTest is Test {
         );
 
         (uint160 currentSqrtPriceX96, , , , , , ) = pool.slot0();
-        manager.initialize(poolKey, currentSqrtPriceX96, "");
+        manager.initialize(poolKey, currentSqrtPriceX96);
 
         // give test contract a sufficient amount of tokens to deploy a new pool
         deal(token0, address(this), INITIAL_MOCK_TOKENS);

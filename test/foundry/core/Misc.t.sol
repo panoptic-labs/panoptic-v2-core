@@ -286,7 +286,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, 10 ** 17 * 2 ** 96);
 
-        manager.initialize(poolKey, 10 ** 17 * 2 ** 96, "");
+        manager.initialize(poolKey, 10 ** 17 * 2 ** 96);
 
         swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
 

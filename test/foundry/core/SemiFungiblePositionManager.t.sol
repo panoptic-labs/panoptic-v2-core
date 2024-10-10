@@ -224,7 +224,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
         IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
 
-        manager.initialize(poolKey, currentSqrtPriceX96, "");
+        manager.initialize(poolKey, currentSqrtPriceX96);
 
         routerV4.modifyLiquidity(
             address(0),
@@ -995,7 +995,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         for (uint256 i = 0; i < pools.length; i++) {
             _cacheWorldState(pools[i]);
 
-            manager.initialize(poolKey, currentSqrtPriceX96, "");
+            manager.initialize(poolKey, currentSqrtPriceX96);
 
             sfpm.initializeAMMPool(poolKey);
 
