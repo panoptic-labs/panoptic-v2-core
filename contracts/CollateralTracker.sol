@@ -1148,7 +1148,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
             // the swap commission is paid on the intrinsic value (if a swap occured -- users who mint covered options with their own collateral do not pay this fee)
             if (!isCovered)
-                exchangedAmount += uint256(
+                exchangedAmount += int256(
                     Math.unsafeDivRoundingUp(
                         ITM_SPREAD_FEE * uint256(Math.abs(exchangedAmount)),
                         DECIMALS
