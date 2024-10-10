@@ -98,7 +98,7 @@ contracts/
 ├── PanopticPool - "Coordinates all options trading activity - minting, burning, force exercises, liquidations"
 ├── SemiFungiblePositionManager - "The 'engine' of Panoptic - manages all Uniswap V3 positions in the protocol as well as being a more advanced, gas-efficient alternative to NFPM for Uniswap LPs"
 ├── base
-│   ├── FactoryNFT - "Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks" 
+│   ├── FactoryNFT - "Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks"
 │   ├── MetadataStore - "Base contract that can store two-deep objects with large value sizes at deployment time"
 │   └── Multicall - "Adds a function to inheriting contracts that allows for multiple calls to be executed in a single transaction"
 ├── tokens
