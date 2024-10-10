@@ -9,8 +9,23 @@ import {IUniswapV3Factory} from "v3-core/interfaces/IUniswapV3Factory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
+<<<<<<< Updated upstream
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
+=======
+<<<<<<< Updated upstream
+import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
+import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+>>>>>>> Stashed changes
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
+=======
+<<<<<<< Updated upstream
+import {PanopticFactory} from "@contracts/PanopticFactory.sol";
+=======
+import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
+import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {Pointer, PointerLibrary} from "@types/Pointer.sol";
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
 struct PointerInfo {
     uint256 codeIndex;
@@ -33,6 +48,7 @@ contract DeployProtocol is Script {
 
         vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
 
+<<<<<<< Updated upstream
         SemiFungiblePositionManager SFPM = new SemiFungiblePositionManager(UNISWAP_V3_FACTORY);
 
         // Import the Panoptic Pool reference (for cloning)
@@ -44,6 +60,43 @@ contract DeployProtocol is Script {
         );
 
         // Read metadata for deployment
+=======
+<<<<<<< Updated upstream
+        string memory metadata = vm.readFile("./metadata/out/MetadataPackage.json");
+
+        bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
+        address[] memory pointerAddresses = new address[](bytecodes.length);
+
+        for (uint256 i = 0; i < bytecodes.length; i++) {
+            bytes memory code = bytecodes[i];
+            address pointer;
+            // deploy code and store pointer
+            assembly {
+                pointer := create(0, add(code, 0x20), mload(code))
+                if iszero(extcodesize(pointer)) {
+                    revert(0, 0)
+                }
+            }
+            pointerAddresses[i] = pointer;
+        }
+
+        PointerInfo[][] memory pointerInfo = abi.decode(
+            vm.parseJson(metadata, ".pointers"),
+            (PointerInfo[][])
+=======
+<<<<<<< Updated upstream
+        // Import the Collateral Tracker reference (for cloning)
+        address collateralReference = address(
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
+>>>>>>> Stashed changes
+        );
+        Pointer[][] memory pointers = new Pointer[][](pointerInfo.length);
+
+<<<<<<< Updated upstream
+=======
+        IDonorNFT dNFT = IDonorNFT(address(new DonorNFT()));
+=======
+>>>>>>> Stashed changes
         string memory metadata = vm.readFile("./metadata/out/MetadataPackage.json");
 
         // Parse bytecodes from metadata
@@ -70,7 +123,11 @@ contract DeployProtocol is Script {
         );
         Pointer[][] memory pointers = new Pointer[][](pointerInfo.length);
 
+<<<<<<< Updated upstream
         // Create pointers from decoded information
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
         for (uint256 i = 0; i < pointerInfo.length; i++) {
             pointers[i] = new Pointer[](pointerInfo[i].length);
             for (uint256 j = 0; j < pointerInfo[i].length; j++) {
@@ -99,9 +156,15 @@ contract DeployProtocol is Script {
             }
         }
 
+<<<<<<< Updated upstream
         // Deploy the PanopticFactory with the new constructor parameters
         PanopticFactory factory = new PanopticFactory(
             WETH9,
+=======
+<<<<<<< Updated upstream
+        new PanopticFactory(
+            WETH,
+>>>>>>> Stashed changes
             SFPM,
             UNISWAP_V3_FACTORY,
             poolReference,
@@ -111,6 +174,30 @@ contract DeployProtocol is Script {
             pointers
         );
 
+=======
+>>>>>>> Stashed changes
+        PanopticFactory factory = new PanopticFactory(
+            WETH,
+            SFPM,
+            UNISWAP_V3_FACTORY,
+<<<<<<< Updated upstream
+            dNFT,
+            poolReference,
+            collateralReference
+        );
+
+        DonorNFT(address(dNFT)).changeFactory(address(factory));
+
+=======
+            address(new PanopticPool(SFPM)),
+            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20_000)),
+            props,
+            indices,
+            pointers
+        );
+        // factory.tokenURI(0x00c34C41289e6c433723542BB1Eba79c6919504EDD);
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
         vm.stopBroadcast();
     }
 }

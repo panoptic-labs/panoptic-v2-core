@@ -26,6 +26,14 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
 import {CallbackValidation} from "v3-periphery/libraries/CallbackValidation.sol";
 import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
+<<<<<<< Updated upstream
+=======
+import {Base64} from "solady/utils/Base64.sol";
+<<<<<<< Updated upstream
+import {JSONParserLib} from "solady/utils/JSONParserLib.sol";
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
 contract PanopticFactoryHarness is PanopticFactory {
     constructor(
@@ -486,6 +494,36 @@ contract PanopticFactoryTest is Test {
 
         // check highestRarity address was reached or surpassed
         assertGe(highestRarity, minTargetRarity);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    NFT TOKEN URI TESTS
+    //////////////////////////////////////////////////////////////*/
+    function test_Success_tokenURI_decodes() public {
+        _initalizeWorldState(pools[1]);
+        uint96 salt = uint96(block.timestamp);
+        PanopticPool deployedPool = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            salt,
+            type(uint256).max,
+            type(uint256).max
+        );
+        uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
+        bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
+        uint256 prefixLength = bytes("data:application/json;base64,").length;
+        bytes memory encodedPartBytes = new bytes(uri.length - prefixLength);
+        for (uint256 i = 0; i < encodedPartBytes.length; i++) {
+            encodedPartBytes[i] = uri[i + prefixLength];
+        }
+        // TODO: If you decode this logged string with https://www.base64decode.org/ and paste it into https://jsonlint.org, you'll see it's correct. So, the test should pass with the right incantation to vm.parseJson().
+        console2.log(string(encodedPartBytes));
+        bytes memory tokenURIDecoded = Base64.decode(string(encodedPartBytes));
+
+        bytes memory json = vm.parseJson(string(tokenURIDecoded));
+
+        assertTrue(json.length > 0, "Decoded URI should not be empty");
     }
 
     /*//////////////////////////////////////////////////////////////

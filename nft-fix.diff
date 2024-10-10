@@ -1,0 +1,62 @@
+diff --git a/contracts/base/FactoryNFT.sol b/contracts/base/FactoryNFT.sol
+index ce7072a..15824a2 100644
+--- a/contracts/base/FactoryNFT.sol
++++ b/contracts/base/FactoryNFT.sol
+@@ -106,7 +106,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
+                                 '"}, {"trait_type": "ChainId", "value": "',
+                                 getChainName(),
+                                 '"}]',
+-                                '", "image": "',
++                                ', "image": "',
+                                 "data:image/svg+xml;base64,",
+                                 Base64.encode(bytes(svgOut)),
+                                 '"}'
+diff --git a/test/foundry/core/PanopticFactory.t.sol b/test/foundry/core/PanopticFactory.t.sol
+index 91c7462..49c9f1c 100644
+--- a/test/foundry/core/PanopticFactory.t.sol
++++ b/test/foundry/core/PanopticFactory.t.sol
+@@ -26,6 +26,7 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
+ import {PoolAddress} from "v3-periphery/libraries/PoolAddress.sol";
+ import {CallbackValidation} from "v3-periphery/libraries/CallbackValidation.sol";
+ import {TransferHelper} from "v3-periphery/libraries/TransferHelper.sol";
++import {Base64} from "solady/utils/Base64.sol";
+ 
+ contract PanopticFactoryHarness is PanopticFactory {
+     constructor(
+@@ -488,6 +489,36 @@ contract PanopticFactoryTest is Test {
+         assertGe(highestRarity, minTargetRarity);
+     }
+ 
++    /*//////////////////////////////////////////////////////////////
++                    NFT TOKEN URI TESTS
++    //////////////////////////////////////////////////////////////*/
++    function test_Success_tokenURI_decodes() public {
++        _initalizeWorldState(pools[1]);
++        uint96 salt = uint96(block.timestamp);
++        PanopticPool deployedPool = panopticFactory.deployNewPool(
++            token0,
++            token1,
++            fee,
++            salt,
++            type(uint256).max,
++            type(uint256).max
++        );
++        uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
++        bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
++        uint256 prefixLength = bytes("data:application/json;base64,").length;
++        bytes memory encodedPartBytes = new bytes(uri.length - prefixLength);
++        for (uint256 i = 0; i < encodedPartBytes.length; i++) {
++            encodedPartBytes[i] = uri[i + prefixLength];
++        }
++        // TODO: If you decode this logged string with https://www.base64decode.org/ and paste it into https://jsonlint.org, you'll see it's correct. So, the test should pass with the right incantation to vm.parseJson().
++        console2.log(string(encodedPartBytes));
++        bytes memory tokenURIDecoded = Base64.decode(string(encodedPartBytes));
++
++        bytes memory json = vm.parseJson(string(tokenURIDecoded));
++
++        assertTrue(json.length > 0, "Decoded URI should not be empty");
++    }
++
+     /*//////////////////////////////////////////////////////////////
+                     PRECOMPUTE CLONE ADDRESS
+     //////////////////////////////////////////////////////////////*/
