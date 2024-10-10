@@ -7,8 +7,6 @@ import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -25,9 +23,6 @@ contract DeployProtocol is Script {
 
         // 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14: sepolia
         address WETH9 = vm.envAddress("WETH9");
-
-        // 0x0227628f3f023bb0b980b67d528571c95c6dac1c: sepolia
-        IUniswapV3Factory uniFactory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
 
         IPoolManager manager = IPoolManager(vm.envAddress("POOL_MANAGER"));
 

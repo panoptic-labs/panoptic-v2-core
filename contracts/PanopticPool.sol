@@ -8,7 +8,7 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
-import {ERC1155Holder} from "@uniswap/v4-core/lib/openzeppelin-contracts/contracts/token/ERC1155/utils/ERC1155Holder.sol";
+import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -169,8 +169,9 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     // The position of the bit codon from most to least significant is the ordering of the
     // tick index it points to from least to greatest.
     //
-    // [7] [5] [3] [1] [0] [2] [4] [6]
-    // 111 101 011 001 000 010 100 110
+    // slot:  0   1   2   3   4   5   6   7
+    // rank: [7] [5] [3] [1] [0] [2] [4] [6]
+    //       111 101 011 001 000 010 100 110
     //
     // [Constants.MIN_V4POOL_TICK-1] [7]
     // 111100100111011000010111
@@ -304,8 +305,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_miniMedian initialization for format of this magic number
                 (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                (uint256(uint24(currentTick))); // add to slot 3
+                (uint256(uint24(currentTick)) << 24) + // add to slot 1 (rank 3)
+                (uint256(uint24(currentTick))); // add to slot 0 (rank 4)
         }
 
         POOL_MANAGER_V4.setOperator(address(SFPM), true);
@@ -804,8 +805,6 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint256 buffer
     ) internal view returns (uint256) {
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
-
         (
             int24 fastOracleTick,
             int24 slowOracleTick,
@@ -814,7 +813,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         ) = PanopticMath.getOracleTicks(oracleContract(), s_miniMedian);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
-            currentTick,
+            V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId()),
             fastOracleTick,
             slowOracleTick,
             lastObservedTick
@@ -1118,8 +1117,6 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
         LeftRightSigned exerciseFees;
         {
-            int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
-
             uint128 positionSize = s_positionBalance[account][touchedId[0]].positionSize();
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
@@ -1130,7 +1127,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
             exerciseFees = collateralToken0().exerciseCost(
-                currentTick,
+                V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId()),
                 twapTick,
                 touchedId[0],
                 positionSize,
@@ -1278,8 +1275,6 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
     /// @return Whether the current tick has deviated from the median by `> MAX_TICKS_DELTA`
     function isSafeMode() public view returns (bool) {
-        int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
-
         uint256 medianData = s_miniMedian;
         unchecked {
             int24 medianTick = (int24(
@@ -1287,7 +1282,9 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
             // If ticks have recently deviated more than +/- 10%, enforce covered mints
-            return Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA;
+            return
+                Math.abs(V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId()) - medianTick) >
+                MAX_TICKS_DELTA;
         }
     }
 

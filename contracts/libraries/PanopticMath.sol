@@ -339,7 +339,7 @@ library PanopticMath {
         int256[] memory twapMeasurement = new int256[](19);
 
         unchecked {
-            // construct the time stots
+            // construct the time slots
             for (uint256 i = 0; i < 20; ++i) {
                 secondsAgos[i] = uint32(((i + 1) * twapWindow) / 20);
             }

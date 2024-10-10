@@ -42,6 +42,8 @@ library V4StateReader {
 
     /// @notice Calculates the fee growth that has occurred (per unit of liquidity) in the AMM/Uniswap for an
     /// option position's tick range.
+    /// @param manager The Uniswap V4 pool manager contract
+    /// @param idV4 The pool ID of the Uniswap V4 pool
     /// @param currentTick The current price tick in the AMM
     /// @param tickLower The lower tick of the option position leg (a liquidity chunk)
     /// @param tickUpper The upper tick of the option position leg (a liquidity chunk)

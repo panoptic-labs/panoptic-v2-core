@@ -148,8 +148,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
            received minted  
           ▲ for isLong=0     amount           
           │                 moved out      actual amount 
-          │  ┌────┐-T      due isLong=1   in the Uniswap V4 pool 
-          │  │    │          mints      
+          │  ┌────┐-T      due isLong=1   in the Uniswap V4 
+          │  │    │          mints          pool 
+          │  │    │      
           │  │    │                        ┌────┐-(T-R)  
           │  │    │         ┌────┐-R       │    │          
           │  │    │         │    │         │    │     
@@ -302,7 +303,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
-        // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pools
+        // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
         // if poolId == 0, we have a bit on the left set if it was initialized, so this will still return properly
         if (s_V4toSFPMIdData[idV4] != 0) return;
 
@@ -549,8 +550,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             // the netting swap is not perfectly accurate, and it is possible for swaps to run out of liquidity, so we do not want to rely on it
             // this is simply a convenience feature, and should be treated as such
             if ((itm0 != 0) && (itm1 != 0)) {
-                uint160 sqrtPriceX96 = V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId());
-
                 // implement a single "netting" swap. Thank you @danrobinson for this puzzle/idea
                 // NOTE: negative ITM amounts denote a surplus of tokens (burning liquidity), while positive amounts denote a shortage of tokens (minting liquidity)
                 // compute the approximate delta of token0 that should be resolved in the swap at the current tick
@@ -578,7 +577,11 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 //    netting swap: net0 = 100 - (100/2) = 50, ZF1 = false, 100 1 => 50 0
                 // - = Net surplus of token0
                 // + = Net shortage of token0
-                int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
+                int256 net0 = itm0 -
+                    PanopticMath.convert1to0(
+                        itm1,
+                        V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId())
+                    );
 
                 zeroForOne = net0 < 0;
 
