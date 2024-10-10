@@ -220,7 +220,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_initialized = true;
 
         // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
-        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
+        // e.g. if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
         totalSupply = 10 ** 6;
 
         // set total assets to 1
@@ -485,9 +485,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function maxWithdraw(address owner) public view returns (uint256 maxAssets) {
         // We can only use the standard 4626 withdraw function if the user has no open positions
         // For the sake of simplicity assets can only be withdrawn through the redeem function
-        uint256 available = s_poolAssets - 1;
-        uint256 balance = convertToAssets(balanceOf[owner]);
-        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        uint256 poolAssets = s_poolAssets;
+        unchecked {
+            uint256 available = poolAssets > 0 ? poolAssets - 1 : 0;
+            uint256 balance = convertToAssets(balanceOf[owner]);
+            return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        }
     }
 
     /// @notice Returns the amount of shares that would be burned to withdraw a given amount of assets.
@@ -589,9 +592,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param owner The redeeming address
     /// @return maxShares The maximum amount of shares that can be redeemed by `owner`
     function maxRedeem(address owner) public view returns (uint256 maxShares) {
-        uint256 available = convertToShares(s_poolAssets - 1);
-        uint256 balance = balanceOf[owner];
-        return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        uint256 poolAssets = s_poolAssets;
+        unchecked {
+            uint256 available = convertToShares(poolAssets > 0 ? poolAssets - 1 : 0);
+            uint256 balance = balanceOf[owner];
+            return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+        }
     }
 
     /// @notice Returns the amount of assets resulting from a given amount of shares being redeemed.
@@ -995,19 +1001,26 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return utilization The final utilization of the collateral vault
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 swappedAmount,
+        bool isCovered
     ) external onlyPanopticPool returns (uint32 utilization) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
             // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            int256 tokenToPay = _getExchangedAmount(longAmount, shortAmount, swappedAmount);
+            int256 tokenToPay = _getExchangedAmount(
+                longAmount,
+                shortAmount,
+                swappedAmount,
+                isCovered
+            );
 
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
@@ -1088,11 +1101,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of long options held
     /// @param shortAmount The amount of short options held
     /// @param swappedAmount The amount of tokens moved during creation of the option position
+    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return exchangedAmount The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 swappedAmount,
+        bool isCovered
     ) internal view returns (int256 exchangedAmount) {
         // If amount swapped is positive, the amount of tokens to pay is the ITM amount
 
@@ -1101,11 +1116,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
             if (intrinsicValue != 0) {
-                // the swap commission is paid on the intrinsic value, and it is always positive
-                uint256 swapCommission = Math.unsafeDivRoundingUp(
-                    s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
-                    DECIMALS * 100
-                );
+                // the swap commission is paid on the intrinsic value (if a swap occured -- users who mint covered options with their own collateral do not pay this fee)
+                uint256 swapCommission = isCovered
+                    ? 0
+                    : Math.unsafeDivRoundingUp(
+                        s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
+                        DECIMALS * 100
+                    );
 
                 // set the exchanged amount to the sum of the intrinsic value and swapCommission
                 exchangedAmount = intrinsicValue + int256(swapCommission);

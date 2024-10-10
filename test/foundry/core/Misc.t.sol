@@ -705,7 +705,13 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).takeCommissionAddData(Alice, 0, 0, 1_000_000_000);
+        CollateralTracker(collateralReference).takeCommissionAddData(
+            Alice,
+            0,
+            0,
+            1_000_000_000,
+            false
+        );
         assertEq(
             1_000_000_000_000_000 -
                 1 -
@@ -3296,7 +3302,7 @@ contract Misctest is Test, PositionUtils {
 
         pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
 
-        (, , uint256[2][] memory positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+        (, , uint256[2][] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
             Bob,
             false,
             $posIdList

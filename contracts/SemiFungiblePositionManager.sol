@@ -310,7 +310,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
-        // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pools
+        // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
         // if poolId == 0, we have a bit on the left set if it was initialized, so this will still return properly
         if (s_AddrToPoolIdData[univ3pool] != 0) return;
 
@@ -414,20 +414,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
+    /// @return The net amount of token0 and token1 moved to/from the Uniswap V3 pool
+
     function burnTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
     ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
-        // burn this ERC1155 token id
         _burn(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
-        // emit event
         emit TokenizedPositionBurnt(msg.sender, tokenId, positionSize);
 
-        // Call a function that contains other functions to mint/burn position, collect amounts, swap if necessary
         return
             _createPositionInAMM(
                 slippageTickLimitLow,
@@ -444,14 +442,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
-    /// @return A LeftRight encoded word containing the total amount of token0 and token1 swapped if minting ITM
+    /// @return The net amount of token0 and token1 moved to/from the Uniswap V3 pool
+
     function mintTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
         int24 slippageTickLimitLow,
         int24 slippageTickLimitHigh
     ) external nonReentrant returns (LeftRightUnsigned[4] memory, LeftRightSigned) {
-        // create the option position via its ID in this erc1155
         _mint(msg.sender, TokenId.unwrap(tokenId), positionSize);
 
         emit TokenizedPositionMinted(msg.sender, tokenId, positionSize);
@@ -459,7 +457,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // verify that the tokenId is correctly formatted and conforms to all enforced constraints
         tokenId.validate();
 
-        // validate the incoming option position, then forward to the AMM for minting/burning required liquidity chunks
         return
             _createPositionInAMM(
                 slippageTickLimitLow,
@@ -703,7 +700,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
     }
 
-    /// @notice Create the position in the AMM given in the tokenId.
+    /// @notice Create the position in the AMM defined by `tokenId`.
     /// @dev Loops over each leg in the tokenId and calls _createLegInAMM for each, which does the mint/burn in the AMM.
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
@@ -826,10 +823,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         );
 
         // update our internal bookkeeping of how much liquidity we have deployed in the AMM
-        // for example: if this _leg is short, we add liquidity to the amm, make sure to add that to our tracking
+        // for example: if this leg is short, we add liquidity to the amm, make sure to add that to our tracking
         uint128 updatedLiquidity;
         uint256 isLong = tokenId.isLong(leg);
-        LeftRightUnsigned currentLiquidity = s_accountLiquidity[positionKey]; //cache
+        LeftRightUnsigned currentLiquidity = s_accountLiquidity[positionKey];
         {
             // did we have liquidity already deployed in Uniswap for this chunk range from some past mint?
 
@@ -898,7 +895,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             └──┴───────┴──►                      └──────┘
                 Uniswap V3                      msg.sender
         
-            else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from univ3
+            else: the position is long (buying a put or a call), then _burnLiquidity to remove liquidity from Uniswap V3
             Buying(isLong=1): Burn in Uniswap
                    ┌─────────────────┐
             ▲     ┌┼┐                │

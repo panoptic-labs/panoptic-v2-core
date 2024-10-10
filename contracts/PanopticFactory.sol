@@ -203,10 +203,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
 
         // Deploy collateral token proxies
         CollateralTracker collateralTracker0 = CollateralTracker(
-            Clones.clone(COLLATERAL_REFERENCE)
+            COLLATERAL_REFERENCE.cloneDeterministic(bytes32(uint256(salt32) + 1))
         );
         CollateralTracker collateralTracker1 = CollateralTracker(
-            Clones.clone(COLLATERAL_REFERENCE)
+            COLLATERAL_REFERENCE.cloneDeterministic(bytes32(uint256(salt32) + 2))
         );
 
         // Run state initialization sequence for pool and collateral tokens
