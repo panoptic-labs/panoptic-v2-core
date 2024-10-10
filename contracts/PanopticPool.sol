@@ -166,8 +166,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // The position of the bit codon from most to least significant is the ordering of the
     // tick index it points to from least to greatest.
     //
-    // [7] [5] [3] [1] [0] [2] [4] [6]
-    // 111 101 011 001 000 010 100 110
+    // rank:  0   1   2   3   4   5   6   7
+    // slot: [7] [5] [3] [1] [0] [2] [4] [6]
+    //       111 101 011 001 000 010 100 110
     //
     // [Constants.MIN_V3POOL_TICK-1] [7]
     // 111100100111011000010111
@@ -278,8 +279,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_miniMedian initialization for format of this magic number
                 (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                (uint256(uint24(currentTick))); // add to slot 3
+                (uint256(uint24(currentTick)) << 24) + // add to slot 1 (rank 3)
+                (uint256(uint24(currentTick))); // add to slot 0 (rank 4)
         }
 
         // Store the collateral token0

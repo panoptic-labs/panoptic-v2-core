@@ -7,7 +7,7 @@ using LiquidityChunkLibrary for LiquidityChunk global;
 /// @title A Panoptic Liquidity Chunk. Tracks Tick Range and Liquidity Information for a "chunk." Used to track movement of chunks.
 /// @author Axicon Labs Limited
 ///
-/// @notice A liquidity chunk is an amount of `liquidity` (an amount of WETH, e.g.) deployed between two ticks: `tickLower` and `tickUpper`
+/// @notice A liquidity chunk is an amount of `liquidity` deployed between two ticks: `tickLower` and `tickUpper`
 /// into a concentrated liquidity AMM.
 //
 //                liquidity

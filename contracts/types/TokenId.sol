@@ -566,7 +566,7 @@ library TokenIdLibrary {
                     if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
                         revert Errors.InvalidTokenIdParameter(5);
                 }
-            } // end for loop over legs
+            }
         }
     }
 

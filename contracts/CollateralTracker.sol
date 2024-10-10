@@ -220,7 +220,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_initialized = true;
 
         // these virtual shares function as a multiplier for the capital requirement to manipulate the pool price
-        // e.g if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
+        // e.g. if the virtual shares are 10**6, then the capital requirement to manipulate the price to 10**12 is 10**18
         totalSupply = 10 ** 6;
 
         // set total assets to 1
