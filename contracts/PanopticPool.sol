@@ -169,8 +169,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     // The position of the bit codon from most to least significant is the ordering of the
     // tick index it points to from least to greatest.
     //
-    // slot:  0   1   2   3   4   5   6   7
-    // rank: [7] [5] [3] [1] [0] [2] [4] [6]
+    // rank:  0   1   2   3   4   5   6   7
+    // slot: [7] [5] [3] [1] [0] [2] [4] [6]
     //       111 101 011 001 000 010 100 110
     //
     // [Constants.MIN_V4POOL_TICK-1] [7]
