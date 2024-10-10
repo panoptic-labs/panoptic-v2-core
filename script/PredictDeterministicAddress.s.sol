@@ -11,39 +11,33 @@ contract PredictDeterministicAddress is Script {
         address deployer
     ) external view returns (address predicted) {
         bytes32 newSalt = bytes32(
-          abi.encodePacked(
-            uint80(uint160(deployer) >> 80),
-            uint80(uint160(v3Pool) >> 80),
-            salt
-          )
+            abi.encodePacked(uint80(uint160(deployer) >> 80), uint80(uint160(v3Pool) >> 80), salt)
         );
-        console.log('deployer');
+        console.log("deployer");
         console.log(deployer);
 
-        console.log('\n');
-        console.log('uint160(deployer)');
+        console.log("\n");
+        console.log("uint160(deployer)");
         console.log(uint160(deployer));
 
-        console.log('\n');
-        console.log('uint80(uint160(deployer))');
+        console.log("\n");
+        console.log("uint80(uint160(deployer))");
         console.log(uint80(uint160(deployer)));
 
-        console.log('\n');
-        console.log('deployer >> 80');
+        console.log("\n");
+        console.log("deployer >> 80");
         console.logUint(uint80(uint160(deployer)) >> 80);
 
         ////// abi tests
-        console.log('\n');
+        console.log("\n");
         console.log("abi.encodePacked( \
           uint80(uint160(deployer) >> 80), \
         )");
-        bytes32 byteesss = bytes32(abi.encodePacked(
-          uint80(uint160(deployer) >> 80)
-        ));
+        bytes32 byteesss = bytes32(abi.encodePacked(uint80(uint160(deployer) >> 80)));
         console.logBytes32(byteesss);
 
-        console.log('\n');
-        console.log('new salt');
+        console.log("\n");
+        console.log("new salt");
         console.logBytes32(newSalt);
 
         assembly ("memory-safe") {
@@ -59,11 +53,16 @@ contract PredictDeterministicAddress is Script {
     }
 
     function run() public {
-      // address deployer = 0x17b393d0c5a27136deC50aC94715CCcA1D8A0B0e; // factory
-      address v3pool = 0x1D2abCcE86Ddaf69Ae85a22DB2F11e6ce43A89A1;
-      address deployer = 0x7643c4F21661691fb851AfedaF627695672C9fac; // me
-      address addr = this.predictDeterministicAddress(v3pool, 0x96Ee1f82ddc769e54dd09555f4deB2431Ae4264F, 29677519060991083555293295980, deployer);
-      console.log('predicted address');
-      console.log(addr);
+        // address deployer = 0x17b393d0c5a27136deC50aC94715CCcA1D8A0B0e; // factory
+        address v3pool = 0x1D2abCcE86Ddaf69Ae85a22DB2F11e6ce43A89A1;
+        address deployer = 0x7643c4F21661691fb851AfedaF627695672C9fac; // me
+        address addr = this.predictDeterministicAddress(
+            v3pool,
+            0x96Ee1f82ddc769e54dd09555f4deB2431Ae4264F,
+            29677519060991083555293295980,
+            deployer
+        );
+        console.log("predicted address");
+        console.log(addr);
     }
 }
