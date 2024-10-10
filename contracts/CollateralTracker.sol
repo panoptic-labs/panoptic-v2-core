@@ -1128,7 +1128,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 exchangedAmount = intrinsicValue + int256(swapCommission);
             }
 
-            //compute total commission amount = commission rate + spread fee
+            // compute total commission amount = commission rate + spread fee
             exchangedAmount += int256(
                 Math.unsafeDivRoundingUp(
                     uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,

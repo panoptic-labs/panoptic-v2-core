@@ -667,7 +667,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
                 zeroForOne = net0 < 0;
 
-                //compute the swap amount, set as positive (exact input)
+                // compute the swap amount, set as positive (exact input)
                 swapAmount = -net0;
             } else if (itm0 != 0) {
                 zeroForOne = itm0 < 0;

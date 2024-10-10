@@ -4139,7 +4139,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // if net0 is negative, then the protocol has a net surplus of token0
         zeroForOne = net0 < 0;
 
-        //compute the swap amount, set as positive (exact input)
+        // compute the swap amount, set as positive (exact input)
         swapAmount = -net0;
 
         (int256 d0, int256 d1) = evalSwapFixed(swapAmount, zeroForOne, int256(price));
