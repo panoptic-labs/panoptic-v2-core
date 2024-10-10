@@ -6166,7 +6166,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // if net1 is negative, then the protocol has a surplus of token0
             zeroForOne = net1 < net0;
 
-            //compute the swap amount, set as positive (exact input)
+            // compute the swap amount, set as positive (exact input)
             swapAmount = zeroForOne ? net0 : net1;
         } else if (itm0 != 0) {
             zeroForOne = itm0 < 0;
