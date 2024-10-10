@@ -1155,6 +1155,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     )
                 );
 
+            // total commission rate = notional value * COMMISSION_FEE + intrinsic value (swapped) * ITM_SPREAD_FEE
             exchangedAmount += int256(
                 Math.unsafeDivRoundingUp(
                     uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
