@@ -1142,26 +1142,19 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         int128 swappedAmount,
         bool isCovered
     ) internal view returns (int256 exchangedAmount) {
-        // If amount swapped is positive, the amount of tokens to pay is the ITM amount
-
         unchecked {
-            // intrinsic value is the amount that need to be exchanged due to minting in-the-money
-            int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
+            // add the intrinsic value (amount that needs to be exchanged due to minting in-the-money)
+            exchangedAmount = int256(swappedAmount) - (shortAmount - longAmount);
 
-            if (intrinsicValue != 0) {
-                // the swap commission is paid on the intrinsic value (if a swap occured -- users who mint covered options with their own collateral do not pay this fee)
-                uint256 swapCommission = isCovered
-                    ? 0
-                    : Math.unsafeDivRoundingUp(
-                        ITM_SPREAD_FEE * uint256(Math.abs(intrinsicValue)),
+            // the swap commission is paid on the intrinsic value (if a swap occured -- users who mint covered options with their own collateral do not pay this fee)
+            if (!isCovered)
+                exchangedAmount += uint256(
+                    Math.unsafeDivRoundingUp(
+                        ITM_SPREAD_FEE * uint256(Math.abs(exchangedAmount)),
                         DECIMALS
-                    );
+                    )
+                );
 
-                // set the exchanged amount to the sum of the intrinsic value and swapCommission
-                exchangedAmount = intrinsicValue + int256(swapCommission);
-            }
-
-            // compute total commission amount = commission rate + spread fee
             exchangedAmount += int256(
                 Math.unsafeDivRoundingUp(
                     uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
