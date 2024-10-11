@@ -948,6 +948,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at one of the oracle ticks or if TWAP tick is too far away from the current tick.
+    /// @dev If native currency is attached, non-EOA callers *must* accept empty calls with value up to the amount attached.
     /// @param positionIdListLiquidator List of positions owned by the liquidator
     /// @param liquidatee Address of the distressed account
     /// @param positionIdList List of positions owned by the user. Written as `[tokenId1, tokenId2, ...]`
@@ -955,7 +956,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         TokenId[] calldata positionIdListLiquidator,
         address liquidatee,
         TokenId[] calldata positionIdList
-    ) external {
+    ) external payable {
         _validatePositionList(liquidatee, positionIdList, 0);
 
         // Assert the account we are liquidating is actually insolvent
@@ -1082,7 +1083,12 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
-        collateralToken0().settleLiquidation(msg.sender, liquidatee, bonusAmounts.rightSlot());
+        // native currency is represented as address(0), so it will always be token0 alphanumerically
+        collateralToken0().settleLiquidation{value: msg.value}(
+            msg.sender,
+            liquidatee,
+            bonusAmounts.rightSlot()
+        );
         collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         // ensure the liquidator is still solvent after the liquidation

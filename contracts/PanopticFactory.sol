@@ -130,7 +130,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Uniswap V4 unlock callback implementation.
-    /// @dev Parameters are `(PoolKey key, int24 tickLower, int24 tickUpper, uint128 liquidity, address payer)`.
+    /// @dev Parameters are `(PoolKey key, int24 tickLower, int24 tickUpper, uint128 liquidity, address payer, uint256 valueOrigin)`.
     /// @dev Adds `liquidity` to the Uniswap V4 pool `key` at `tickLower-tickUpper` and transfers the tokens from `payer`.
     /// @param data The encoded data containing the input parameters
     /// @return `(uint256 token0Delta, uint256 token1Delta)` The amount of token0 and token1 used to create `liquidity` in the Uniswap pool
@@ -142,8 +142,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
             int24 tickLower,
             int24 tickUpper,
             uint128 liquidity,
-            address payer
-        ) = abi.decode(data, (PoolKey, int24, int24, uint128, address));
+            address payer,
+            uint256 valueOrigin
+        ) = abi.decode(data, (PoolKey, int24, int24, uint128, address, uint256));
         (BalanceDelta delta, BalanceDelta feesAccrued) = POOL_MANAGER_V4.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
@@ -156,19 +157,27 @@ contract PanopticFactory is FactoryNFT, Multicall {
         );
 
         if (delta.amount0() < 0) {
-            POOL_MANAGER_V4.sync(key.currency0);
-            SafeTransferLib.safeTransferFrom(
-                Currency.unwrap(key.currency0),
-                payer,
-                address(POOL_MANAGER_V4),
-                uint128(-delta.amount0())
-            );
-            POOL_MANAGER_V4.settle();
+            if (key.currency0.isAddressZero()) {
+                POOL_MANAGER_V4.settle{value: uint128(delta.amount0())}();
+
+                uint256 surplus = valueOrigin - uint128(delta.amount0());
+                if (surplus > 0) SafeTransferLib.safeTransferETH(payer, surplus);
+            } else {
+                POOL_MANAGER_V4.sync(key.currency0);
+                SafeTransferLib.safeTransferFrom(
+                    Currency.unwrap(key.currency0),
+                    payer,
+                    address(POOL_MANAGER_V4),
+                    uint128(-delta.amount0())
+                );
+                POOL_MANAGER_V4.settle();
+            }
         } else if (delta.amount0() > 0) {
             POOL_MANAGER_V4.clear(key.currency0, uint128(delta.amount0()));
         }
 
         if (delta.amount1() < 0) {
+            // native currency is represented as address(0), so it will always be token0 alphanumerically
             POOL_MANAGER_V4.sync(key.currency1);
             SafeTransferLib.safeTransferFrom(
                 Currency.unwrap(key.currency1),
@@ -196,6 +205,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
     /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
     /// @dev Salt used in PanopticPool creation is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oracleContractAddress))))][salt]`.
+    /// @dev If creating a pool where token0 is the native currency (`key.currency0 == address(0)`), non-EOA callers *must* accept empty calls with value up to the amount attached.
     /// @param oracleContract The external oracle contract to be used by the newly deployed Panoptic Pool
     /// @param key The Uniswap V4 pool key
     /// @param salt User-defined component of salt used in deployment process for the PanopticPool
@@ -208,7 +218,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint96 salt,
         uint256 amount0Max,
         uint256 amount1Max
-    ) external returns (PanopticPool newPoolContract) {
+    ) external payable returns (PanopticPool newPoolContract) {
         bytes32 panopticPoolKey = keccak256(abi.encode(key, oracleContract));
 
         if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId()) == 0)
@@ -385,11 +395,11 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint128 fullRangeLiquidity;
         unchecked {
             // Since we know one of the tokens is WETH, we simply add 0.1 ETH + worth in tokens
-            if (Currency.unwrap(key.currency0) == WETH) {
+            if (Currency.unwrap(key.currency0) == WETH || key.currency0.isAddressZero()) {
                 fullRangeLiquidity = uint128(
                     Math.mulDiv96RoundingUp(FULL_RANGE_LIQUIDITY_AMOUNT_WETH, currentSqrtPriceX96)
                 );
-            } else if (Currency.unwrap(key.currency1) == WETH) {
+            } else if (Currency.unwrap(key.currency1) == WETH || key.currency1.isAddressZero()) {
                 fullRangeLiquidity = uint128(
                     Math.mulDivRoundingUp(
                         FULL_RANGE_LIQUIDITY_AMOUNT_WETH,
@@ -434,7 +444,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         return
             abi.decode(
                 POOL_MANAGER_V4.unlock(
-                    abi.encode(key, tickLower, tickUpper, fullRangeLiquidity, msg.sender)
+                    abi.encode(key, tickLower, tickUpper, fullRangeLiquidity, msg.sender, msg.value)
                 ),
                 (uint256, uint256)
             );

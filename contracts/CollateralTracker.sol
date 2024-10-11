@@ -346,29 +346,39 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param account The address of the account to transfer the underlying token to/from
     /// @param delta The amount of the underlying token to wrap/unwrap and transfer
     function _settleTokenDelta(address account, int256 delta) internal {
-        POOL_MANAGER_V4.unlock(abi.encode(account, delta));
+        POOL_MANAGER_V4.unlock(abi.encode(account, delta, msg.value));
     }
 
     /// @notice Uniswap V4 unlock callback implementation.
-    /// @dev Parameters are `(address account, int256 delta)`.
+    /// @dev Parameters are `(address account, int256 delta, uint256 valueOrigin)`.
     /// @dev Wraps/unwraps `delta` amount of the underlying token and transfers to/from the Panoptic Pool.
     /// @param data The encoded data containing the account and delta
     /// @return This function returns no data
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
 
-        (address account, int256 delta) = abi.decode(data, (address, int256));
+        (address account, int256 delta, uint256 valueOrigin) = abi.decode(
+            data,
+            (address, int256, uint256)
+        );
 
         address underlyingToken = _underlyingToken();
         if (delta > 0) {
-            POOL_MANAGER_V4.sync(Currency.wrap(underlyingToken));
-            SafeTransferLib.safeTransferFrom(
-                underlyingToken,
-                account,
-                address(POOL_MANAGER_V4),
-                uint256(delta)
-            );
-            POOL_MANAGER_V4.settle();
+            if (Currency.wrap(underlyingToken).isAddressZero()) {
+                POOL_MANAGER_V4.settle{value: uint256(delta)}();
+
+                uint256 surplus = valueOrigin - uint256(delta);
+                if (surplus > 0) SafeTransferLib.safeTransferETH(account, surplus);
+            } else {
+                POOL_MANAGER_V4.sync(Currency.wrap(underlyingToken));
+                SafeTransferLib.safeTransferFrom(
+                    underlyingToken,
+                    account,
+                    address(POOL_MANAGER_V4),
+                    uint256(delta)
+                );
+                POOL_MANAGER_V4.settle();
+            }
 
             POOL_MANAGER_V4.mint(
                 address(_panopticPool()),
@@ -446,13 +456,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
+    /// @dev If depositing native currency (`asset() == address(0)`), non-EOA callers *must* accept empty calls with value up to the amount attached.
     /// @dev There is a maximum asset deposit limit of `2^104 - 1`.
     /// @dev An "MEV tax" is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP (`receiver`).
     /// @param assets Amount of assets deposited
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
-    function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external payable returns (uint256 shares) {
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
 
         shares = previewDeposit(assets);
@@ -497,13 +508,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
+    /// @dev If depositing native currency (`asset() == address(0)`), non-EOA callers *must* accept empty calls with value up to the amount attached.
     /// @dev There is a maximum asset deposit limit of `2^104 - 1`.
     /// An "MEV tax" is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP (`receiver`).
     /// @param shares Amount of shares to be minted
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
-    function mint(uint256 shares, address receiver) external returns (uint256 assets) {
+    function mint(uint256 shares, address receiver) external payable returns (uint256 assets) {
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -928,7 +940,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
         address liquidator,
         address liquidatee,
         int256 bonus
-    ) external onlyPanopticPool {
+    ) external payable onlyPanopticPool {
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -955,6 +967,9 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 }
             }
         } else {
+            // refund liquidator if they attached value expecting to settle a negative bonus in the native currency
+            if (msg.value > 0) SafeTransferLib.safeTransferETH(liquidator, msg.value);
+
             uint256 liquidateeBalance = balanceOf[liquidatee];
 
             if (type(uint248).max > liquidateeBalance) {
