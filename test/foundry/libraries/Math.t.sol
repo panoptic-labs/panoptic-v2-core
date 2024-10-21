@@ -227,7 +227,7 @@ contract MathTest is Test {
     }
 
     function test_Success_log_Sqrt1p0001(uint256 x) public {
-        x = bound(x, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO);
+        x = bound(x, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO - 1);
 
         // abs(max_error) ≈ 1.70234
         assertApproxEqAbs(
