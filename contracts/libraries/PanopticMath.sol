@@ -7,7 +7,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
-import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -46,10 +45,10 @@ library PanopticMath {
     //        poolId      = 0x003c8ad599c3A0ff
     //
     /// @param univ3pool The address of the Uniswap V3 pool to get the ID of
+    /// @param tickSpacing The tick spacing of `univ3pool`
     /// @return A uint64 representing a fingerprint of the Uniswap V3 pool address
-    function getPoolId(address univ3pool) internal view returns (uint64) {
+    function getPoolId(address univ3pool, int24 tickSpacing) internal pure returns (uint64) {
         unchecked {
-            int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
             uint64 poolId = uint64(uint160(univ3pool) >> 112);
             poolId += uint64(uint24(tickSpacing)) << 48;
             return poolId;
@@ -422,36 +421,21 @@ library PanopticMath {
         }
     }
 
-    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
+    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`.
     /// @param strike The strike price of the option
     /// @param width The width of the option
     /// @param tickSpacing The tick spacing of the underlying Uniswap V3 pool
-    /// @return tickLower The lower tick of the liquidity chunk
-    /// @return tickUpper The upper tick of the liquidity chunk
+    /// @return The lower tick of the liquidity chunk
+    /// @return The upper tick of the liquidity chunk
     function getTicks(
         int24 strike,
         int24 width,
         int24 tickSpacing
-    ) internal pure returns (int24 tickLower, int24 tickUpper) {
+    ) internal pure returns (int24, int24) {
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+
         unchecked {
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
-
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
-
-            (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                tickLower % tickSpacing != 0 ||
-                tickUpper % tickSpacing != 0 ||
-                tickLower < minTick ||
-                tickUpper > maxTick
-            ) revert Errors.TicksNotInitializable();
+            return (strike - rangeDown, strike + rangeUp);
         }
     }
 

@@ -30,7 +30,7 @@ import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
+    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
@@ -342,7 +342,7 @@ contract PanopticPoolTest is PositionUtils {
 
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool));
+        poolId = PanopticMath.getPoolId(address(_pool), _pool.tickSpacing());
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -359,7 +359,6 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
-            WETH,
             sfpm,
             V3FACTORY,
             poolReference,
@@ -375,16 +374,7 @@ contract PanopticPoolTest is PositionUtils {
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(
-                factory.deployNewPool(
-                    token0,
-                    token1,
-                    fee,
-                    uint96(block.timestamp),
-                    type(uint256).max,
-                    type(uint256).max
-                )
-            )
+            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
         );
 
         ct0 = pp.collateralToken0();
@@ -1337,6 +1327,41 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Swapper);
 
         swapSize = bound(swapSize, 10 ** 18, 10 ** 20);
+        for (uint256 i = 0; i < 10; ++i) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
+
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    (swapSize * (1_000_000 - fee)) / 1_000_000,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+    }
+
+    function twoWaySwapBig() public {
+        vm.startPrank(Swapper);
+
+        uint256 swapSize = 10 ** 21;
         for (uint256 i = 0; i < 10; ++i) {
             router.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams(
@@ -7594,7 +7619,13 @@ contract PanopticPoolTest is PositionUtils {
                 int256(Constants.MAX_V3POOL_TICK) - int256(currentTick)
             )
         );
-        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 953);
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 20);
+        twoWaySwapBig();
+
+        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 513);
+
         vm.store(
             address(pool),
             bytes32(0),

@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {MathHarness} from "./harnesses/MathHarness.sol";
 import {Errors} from "@libraries/Errors.sol";
+import {Math} from "@libraries/Math.sol";
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
@@ -223,6 +224,17 @@ contract MathTest is Test {
         uint160 uniV3Result = TickMath.getSqrtRatioAtTick(x);
         uint160 returnedResult = harness.getSqrtRatioAtTick(x);
         assertEq(uniV3Result, returnedResult);
+    }
+
+    function test_Success_log_Sqrt1p0001(uint256 x) public {
+        x = bound(x, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO);
+
+        // abs(max_error) ≈ 1.70234
+        assertApproxEqAbs(
+            Math.log_Sqrt1p0001(x << 32, 13),
+            TickMath.getTickAtSqrtRatio(uint160(x)),
+            2
+        );
     }
 
     function test_Success_getAmount0ForLiquidity(uint128 a) public {

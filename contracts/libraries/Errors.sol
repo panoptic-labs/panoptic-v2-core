@@ -82,8 +82,9 @@ library Errors {
     error TransferFailed();
 
     /// @notice The tick range given by the strike price and width is invalid
-    /// because the upper and lower ticks are not multiples of `tickSpacing`
-    error TicksNotInitializable();
+    /// because the upper and lower ticks are not initializable multiples of `tickSpacing`
+    /// or one of the ticks exceeds the `MIN_TICK` or `MAX_TICK` bounds.
+    error InvalidTickBound();
 
     /// @notice An operation in a library has failed due to an underflow or overflow
     error UnderOverFlow();
