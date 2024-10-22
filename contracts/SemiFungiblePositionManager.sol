@@ -124,7 +124,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     using Math for uint256;
     using Math for int256;
 
-    /// @notice Type for data associated with an initialized `poolId`in the SFPM
+    /// @notice Type for data associated with an initialized `poolId` in the SFPM.
     /// @param maxLiquidityPerTick The maximum liquidity that can reference any given tick in the Uniswap pool
     /// @param poolId The SFPM's pool identifier for the pool, including the 16-bit tick spacing and 48-bit pool pattern
     /// @param minEnforcedTick The current minimum enforced tick for the pool
@@ -361,8 +361,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             poolId = PanopticMath.incrementPoolPattern(poolId);
         }
 
-        uint128 maxLiquidityPerTick = Math.getMaxLiquidityPerTick(key.tickSpacing);
         s_poolIdToKey[poolId] = key;
+
+        uint128 maxLiquidityPerTick = Math.getMaxLiquidityPerTick(key.tickSpacing);
 
         int24 minEnforcedTick;
         int24 maxEnforcedTick;
@@ -395,8 +396,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
         }
 
-        s_poolIdToKey[poolId] = key;
-
         s_V4toSFPMIdData[idV4] = PoolIdData(
             maxLiquidityPerTick,
             poolId,
@@ -417,7 +416,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @dev The purpose of this function is to prevent pools created while a large amount of one of the tokens was flash-minted from being stuck in a narrow tick range.
     /// @param key The key for the Uniswap V4 pool on which to expand the enforced tick range
     function expandEnforcedTickRange(PoolKey calldata key) external {
-        PoolIdData memory dataOld = s_V4toSFPMIdData[key.toId()];
+        PoolId idV4 = key.toId();
+
+        PoolIdData memory dataOld = s_V4toSFPMIdData[idV4];
 
         if (!dataOld.initialized) revert Errors.PoolNotInitialized();
 
@@ -463,7 +464,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
         }
 
-        dataOld = PoolIdData(
+        s_V4toSFPMIdData[idV4] = PoolIdData(
             maxLiquidityPerTick,
             dataOld.poolId,
             minEnforcedTick,
