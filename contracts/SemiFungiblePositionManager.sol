@@ -124,6 +124,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     using Math for uint256;
     using Math for int256;
 
+    /// @notice Type for data associated with an initialized `poolId`in the SFPM
+    /// @param maxLiquidityPerTick The maximum liquidity that can reference any given tick in the Uniswap pool
+    /// @param poolId The SFPM's pool identifier for the pool, including the 16-bit tick spacing and 48-bit pool pattern
+    /// @param minEnforcedTick The current minimum enforced tick for the pool
+    /// @param maxEnforcedTick The current maximum enforced tick for the pool
+    /// @param initialized Whether the pool has been initialized in the SFPM
     struct PoolIdData {
         uint128 maxLiquidityPerTick;
         uint64 poolId;
