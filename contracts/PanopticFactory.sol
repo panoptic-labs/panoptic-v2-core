@@ -13,11 +13,9 @@ import {FactoryNFT} from "@base/FactoryNFT.sol";
 // OpenZeppelin libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 // Libraries
-import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
 
@@ -98,40 +96,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
         UNIV3_FACTORY = _univ3Factory;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                           CALLBACK HANDLERS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Called after minting liquidity to a position.
-    /// @dev Pays the pool tokens owed for the minted liquidity from the payer (always the caller).
-    /// @param amount0Owed The amount of token0 due to the pool for the minted liquidity
-    /// @param amount1Owed The amount of token1 due to the pool for the minted liquidity
-    /// @param data Contains the payer address and the pool features required to validate the callback
-    function uniswapV3MintCallback(
-        uint256 amount0Owed,
-        uint256 amount1Owed,
-        bytes calldata data
-    ) external {
-        CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
-
-        CallbackLib.validateCallback(msg.sender, UNIV3_FACTORY, decoded.poolFeatures);
-
-        if (amount0Owed > 0)
-            SafeTransferLib.safeTransferFrom(
-                decoded.poolFeatures.token0,
-                decoded.payer,
-                msg.sender,
-                amount0Owed
-            );
-        if (amount1Owed > 0)
-            SafeTransferLib.safeTransferFrom(
-                decoded.poolFeatures.token1,
-                decoded.payer,
-                msg.sender,
-                amount1Owed
-            );
     }
 
     /*//////////////////////////////////////////////////////////////
