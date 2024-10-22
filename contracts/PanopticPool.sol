@@ -81,11 +81,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
+    /// @param commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
     event OptionMinted(
         address indexed recipient,
         uint128 positionSize,
         TokenId indexed tokenId,
-        uint128 poolUtilizations
+        uint128 poolUtilizations,
+        LeftRightUnsigned commissions
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -576,7 +578,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             revert Errors.PositionAlreadyMinted();
 
         // Mint in the SFPM and update state of collateral
-        uint32 poolUtilizations = _mintInSFPMAndUpdateCollateral(
+        (uint32 poolUtilizations, LeftRightUnsigned commissions) = _mintInSFPMAndUpdateCollateral(
             tokenId,
             positionSize,
             effectiveLiquidityLimitX32,
@@ -584,23 +586,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tickLimitHigh
         );
 
-        (
-            int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 lastObservedTick,
-            uint256 medianData
-        ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+        uint96 tickData;
+        {
+            (
+                int24 currentTick,
+                int24 fastOracleTick,
+                int24 slowOracleTick,
+                int24 lastObservedTick,
+                uint256 medianData
+            ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
 
-        uint96 tickData = PositionBalanceLibrary.packTickData(
-            currentTick,
-            fastOracleTick,
-            slowOracleTick,
-            lastObservedTick
-        );
+            tickData = PositionBalanceLibrary.packTickData(
+                currentTick,
+                fastOracleTick,
+                slowOracleTick,
+                lastObservedTick
+            );
 
-        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
-        if (medianData != 0) s_miniMedian = medianData;
+            // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
+            if (medianData != 0) s_miniMedian = medianData;
+        }
 
         // update the users options balance of position `tokenId`
         // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
@@ -608,14 +613,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
-            uint96(tickData)
+            tickData
         );
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         _checkSolvency(msg.sender, positionIdList, tickData, BP_DECREASE_BUFFER);
 
-        emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations);
+        emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations, commissions);
     }
 
     /// @notice Move all the required liquidity to/from the AMM and settle any required collateral deltas.
@@ -624,15 +629,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
+    /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
     /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens
+    /// @return commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (uint32) {
+    ) internal returns (uint32 poolUtilizations, LeftRightUnsigned commissions) {
         bool safeMode = isSafeMode();
 
         // if safeMode, enforce covered deployment
@@ -652,18 +658,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
             effectiveLiquidityLimitX32
         );
 
-        uint32 poolUtilizations = _payCommissionAndWriteData(
+        (poolUtilizations, commissions) = _payCommissionAndWriteData(
             tokenId,
             positionSize,
             totalSwapped,
             tickLimitLow < tickLimitHigh
         );
 
-        if (safeMode) {
-            return uint32(10_000 + (10_000 << 16));
-        } else {
-            return poolUtilizations;
-        }
+        if (safeMode) poolUtilizations = uint32(10_000 + (10_000 << 16));
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
@@ -674,24 +676,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
+    /// @return The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
         LeftRightSigned totalSwapped,
         bool isCovered
-    ) internal returns (uint32) {
+    ) internal returns (uint32, LeftRightUnsigned) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        uint32 utilization0 = s_collateralToken0.takeCommissionAddData(
+        (uint32 utilization0, uint128 commission0) = s_collateralToken0.takeCommissionAddData(
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot(),
             isCovered
         );
-        uint32 utilization1 = s_collateralToken1.takeCommissionAddData(
+        (uint32 utilization1, uint128 commission1) = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -701,7 +704,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // return pool utilizations as two uint16 (pool Utilization is always < 10000)
         unchecked {
-            return utilization0 + (utilization1 << 16);
+            return (
+                utilization0 + (utilization1 << 16),
+                LeftRightUnsigned.wrap(commission0).toLeftSlot(commission1)
+            );
         }
     }
 
