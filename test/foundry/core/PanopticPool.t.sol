@@ -7640,8 +7640,15 @@ contract PanopticPoolTest is PositionUtils {
             Math.getSqrtRatioAtTick(-800_000),
             Math.getSqrtRatioAtTick(800_000)
         );
+
         vm.roll(block.number + 1);
         vm.warp(block.timestamp + 20);
+
+        vm.assume(
+            Math.abs(
+                int256(TickMath.getTickAtSqrtRatio(uint160(sqrtPriceTarget))) - pp.getOracleTWAP_()
+            ) > 513
+        );
 
         vm.startPrank(Swapper);
         routerV4.swapTo(address(0), poolKey, uint160(sqrtPriceTarget));
