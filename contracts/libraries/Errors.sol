@@ -59,6 +59,9 @@ library Errors {
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();
 
+    /// @notice SemiFungiblePositionManager: Tick range cannot be expanded on an an uninitialized pool
+    error PoolNotInitialized();
+
     /// @notice PanopticPool: A position with the given token ID has already been minted by the caller and is still open
     error PositionAlreadyMinted();
 
@@ -82,8 +85,9 @@ library Errors {
     error TransferFailed();
 
     /// @notice The tick range given by the strike price and width is invalid
-    /// because the upper and lower ticks are not multiples of `tickSpacing`
-    error TicksNotInitializable();
+    /// because the upper and lower ticks are not initializable multiples of `tickSpacing`
+    /// or one of the ticks exceeds the `MIN_TICK` or `MAX_TICK` bounds.
+    error InvalidTickBound();
 
     /// @notice An operation in a library has failed due to an underflow or overflow
     error UnderOverFlow();

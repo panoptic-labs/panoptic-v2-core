@@ -7,7 +7,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
-import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -424,30 +423,22 @@ library PanopticMath {
         }
     }
 
-    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
+    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`.
     /// @param strike The strike price of the option
     /// @param width The width of the option
     /// @param tickSpacing The tick spacing of the underlying Uniswap V4 pool
-    /// @return tickLower The lower tick of the liquidity chunk
-    /// @return tickUpper The upper tick of the liquidity chunk
+    /// @return The lower tick of the liquidity chunk
+    /// @return The upper tick of the liquidity chunk
     function getTicks(
         int24 strike,
         int24 width,
         int24 tickSpacing
-    ) internal pure returns (int24 tickLower, int24 tickUpper) {
+    ) internal pure returns (int24, int24) {
         (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
 
-        (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
-
-        // Revert if the upper/lower ticks are not multiples of tickSpacing
-        // Revert if the tick range extends from the strike outside of the valid tick range
-        // These are invalid states, and would revert later on in the Uniswap pool
-        if (
-            tickLower % tickSpacing != 0 ||
-            tickUpper % tickSpacing != 0 ||
-            tickLower < Constants.MIN_V4POOL_TICK ||
-            tickUpper > Constants.MAX_V4POOL_TICK
-        ) revert Errors.TicksNotInitializable();
+        unchecked {
+            return (strike - rangeDown, strike + rangeUp);
+        }
     }
 
     /// @notice Returns the distances of the upper and lower ticks from the strike for a position with the given width and tickSpacing.

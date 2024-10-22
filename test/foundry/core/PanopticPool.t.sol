@@ -41,7 +41,7 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IPoolManager _manager) SemiFungiblePositionManager(_manager) {}
+    constructor(IPoolManager _manager) SemiFungiblePositionManager(_manager, 10 ** 13, 0) {}
 }
 
 contract PanopticPoolHarness is PanopticPool {
@@ -404,7 +404,6 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
-            WETH,
             sfpm,
             manager,
             poolReference,
@@ -424,9 +423,7 @@ contract PanopticPoolTest is PositionUtils {
                 factory.deployNewPool(
                     IV3CompatibleOracle(address(pool)),
                     poolKey,
-                    uint96(block.timestamp),
-                    type(uint256).max,
-                    type(uint256).max
+                    uint96(block.timestamp)
                 )
             )
         );
@@ -1416,6 +1413,41 @@ contract PanopticPoolTest is PositionUtils {
 
         currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
+    }
+
+    function twoWaySwapBig() public {
+        vm.startPrank(Swapper);
+
+        uint256 swapSize = 10 ** 21;
+        for (uint256 i = 0; i < 10; ++i) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
+
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    (swapSize * (1_000_000 - fee)) / 1_000_000,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
     }
 
     function oneWaySwap(uint256 swapSize, bool swapDirection) public {
@@ -7608,11 +7640,8 @@ contract PanopticPoolTest is PositionUtils {
             Math.getSqrtRatioAtTick(-800_000),
             Math.getSqrtRatioAtTick(800_000)
         );
-        vm.assume(
-            Math.abs(
-                int256(TickMath.getTickAtSqrtRatio(uint160(sqrtPriceTarget))) - pp.getOracleTWAP_()
-            ) > 953
-        );
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 20);
 
         vm.startPrank(Swapper);
         routerV4.swapTo(address(0), poolKey, uint160(sqrtPriceTarget));

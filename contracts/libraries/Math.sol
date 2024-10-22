@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
 import {Constants} from "@libraries/Constants.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+
 // Custom types
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 
@@ -120,6 +122,48 @@ library Math {
                                TICK MATH
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Computes a tick that will require approximately `amount` of token0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick` in Uniswap.
+    /// @dev This function can have a maximum of two ticks of error from one of the ticks with `amount(tickLower) < amount < amount(tickUpper)`.
+    /// @dev `tickSpacing is assumed to be within the range (0, 32768)
+    /// @dev `maxLiquidityPerTick` for `s=tickSpacing` should be defined by `(2^128 - 1) / ((887272/s) - (-887272/s) + 1)`
+    /// @param amount The desired amount of token0 required to fill the returned tick
+    /// @param tickSpacing The spacing between initializable ticks in the Uniswap pool
+    /// @param maxLiquidityPerTick The maximum liquidity that can reference any given tick in the Uniswap pool
+    /// @return A tick that will require approximately `amount` of token0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick`
+    function getApproxTickWithMaxAmount(
+        uint256 amount,
+        int24 tickSpacing,
+        uint256 maxLiquidityPerTick
+    ) internal pure returns (int24) {
+        unchecked {
+            // abs(max_error) ≈ 2^-13 * log₂(√1.0001)⁻¹ ≈ -1.70234
+            return
+                int24(
+                    Math.log_Sqrt1p0001(
+                        (amount * 2 ** 96) /
+                            (maxLiquidityPerTick *
+                                (2 ** 96 - 2 ** 192 / Math.getSqrtRatioAtTick(tickSpacing))),
+                        13
+                    )
+                );
+        }
+    }
+
+    /// @notice Computes the maximum liquidity that is allowed to reference any given tick in a Uniswap pool with `tickSpacing`.
+    /// @param tickSpacing The spacing between initializable ticks in the Uniswap pool
+    /// @return The maximum liquidity that can reference any given tick in the Uniswap pool
+    function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
+        unchecked {
+            return
+                type(uint128).max /
+                uint24(
+                    (Constants.MIN_V4POOL_TICK / tickSpacing) -
+                        (Constants.MAX_V4POOL_TICK / tickSpacing) +
+                        1
+                );
+        }
+    }
+
     /// @notice Calculates `1.0001^(tick/2)` as an X96 number.
     /// @dev Will revert if `abs(tick) > 887272`.
     /// @param tick Value of the tick for which `sqrt(1.0001^tick)` is calculated
@@ -181,6 +225,53 @@ library Math {
 
             // Downcast + rounding up to keep is consistent with Uniswap's
             return uint160((sqrtR >> 32) + (sqrtR % (1 << 32) == 0 ? 0 : 1));
+        }
+    }
+
+    /// @notice Approximates the log base `sqrt(1.0001)` of `argX128/2^128` with `precision` bits of precision.
+    /// @dev Validated for `argX128` in the range `[18447437466114719744, 6276865796315986613307619852238232712866172378830163935232)`.
+    /// @dev Validated for `precision` in the range `[0, 20]`.
+    /// @param argX128 The Q128.128 fixed-point number to calculate the log of
+    /// @param precision The bits of precision with which to compute the result, max 64 (`err <≈ 2^-precision * log₂(√1.0001)⁻¹`)
+    /// @return The log with base `sqrt(1.0001)` of `argX128/2^128`
+    function log_Sqrt1p0001(uint256 argX128, uint256 precision) internal pure returns (int256) {
+        unchecked {
+            // =[log₂(x)] =MSB(x)
+            uint256 log2_floor = FixedPointMathLib.log2(argX128);
+
+            // Normalize argX128 to [1, 2)
+            // x_normal = x / 2^[log₂(x)]
+            // = 1.a₁a₂a₃... = 2^(0.b₁b₂b₃...)
+            // log₂(x_normal) = log₂(x / 2^⌊log₂(x)⌋)
+            // log₂(x_normal) = log₂(x) - log₂(2^⌊log₂(x)⌋)
+            // log₂(x_normal) = log₂(x) - ⌊log₂(x)⌋
+            // log₂(x) = log₂(x_normal) + ⌊log₂(x)⌋
+            if (log2_floor >= 128) argX128 = argX128 >> (log2_floor - 127);
+            else argX128 = argX128 << (127 - log2_floor);
+
+            // =[log₂(x)] * 2^64
+            int256 log2_X64 = (int256(log2_floor) - 128) << 64;
+
+            // log₂(x_normal) = 0.b₁b₂b₃...
+            // x_normal = (1.a₁a₂a₃...) = 2^(0.b₁b₂b₃...)
+            // x_normal² = (1.a₁a₂a₃...)² = (2^(0.b₁b₂b₃...))²
+            // = 2^(0.b₁b₂b₃... * 2)
+            // = 2^(b₁ + 0.b₂b₃...)
+            // if bᵢ = 1, renormalize x_normal² to [1, 2):
+            // 2^(b₁ + 0.b₂b₃...) / 2^b₁ = 2^((b₁ - 1).b₂b₃...)
+            // = 2^(0.b₂b₃...)
+            // error = [0, 2⁻ⁿ)
+            uint256 iterBound = 63 - precision;
+            for (uint256 i = 63; i > iterBound; i--) {
+                argX128 = (argX128 ** 2) >> 127;
+                uint256 bit = argX128 >> 128;
+                log2_X64 += int256(uint256(bit) << i);
+                argX128 >>= bit;
+            }
+
+            // log₍√₁.₀₀₀₁₎(x) = log₂(x) / log₂(√1.0001)
+            // 2^64 / log₂(√1.0001) ≈ 255738959000112593413423
+            return (log2_X64 * 255738959000112593413423) / 2 ** 128;
         }
     }
 
