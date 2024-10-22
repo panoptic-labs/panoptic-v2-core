@@ -16,6 +16,9 @@ library Math {
     /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
+    /// @notice This is equivalent to `type(uint128).max` — used in assembly blocks as a replacement.
+    uint256 internal constant MAX_UINT128 = 2 ** 128 - 1;
+
     /*//////////////////////////////////////////////////////////////
                           GENERAL MATH HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -151,16 +154,18 @@ library Math {
 
     /// @notice Computes the maximum liquidity that is allowed to reference any given tick in a Uniswap pool with `tickSpacing`.
     /// @param tickSpacing The spacing between initializable ticks in the Uniswap pool
-    /// @return The maximum liquidity that can reference any given tick in the Uniswap pool
-    function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
-        unchecked {
-            return
-                type(uint128).max /
-                uint24(
-                    (Constants.MIN_V4POOL_TICK / tickSpacing) -
-                        (Constants.MAX_V4POOL_TICK / tickSpacing) +
-                        1
-                );
+    /// @return maxLiquidityPerTick The maximum liquidity that can reference any given tick in the Uniswap pool
+    function getMaxLiquidityPerTick(
+        int24 tickSpacing
+    ) internal pure returns (uint128 maxLiquidityPerTick) {
+        int24 MAX_TICK = Constants.MAX_V4POOL_TICK;
+        assembly {
+            // Uniswap V4 adds an unnecessary round toward negative infinity to match tick compression behavior (thanks spearbit!!! /s)
+            // Equivalent to type(uint128).max/(floor(MAX_TICK/tickSpacing) - floor(MIN_TICK/tickSpacing) + 1)
+            maxLiquidityPerTick := div(
+                MAX_UINT128,
+                add(add(mul(div(MAX_TICK, tickSpacing), 2), gt(mod(MAX_TICK, tickSpacing), 0)), 1)
+            )
         }
     }
 

@@ -229,9 +229,10 @@ contract MathTest is Test {
 
     function test_Success_getMaxLiquidityPerTick(int256 x) public {
         x = bound(x, 1, 32767);
+        console2.log("Math act", Math.getMaxLiquidityPerTick(int24(x)));
         assertEq(
-            Math.getMaxLiquidityPerTick(int24(x)),
-            Pool.tickSpacingToMaxLiquidityPerTick(int24(x))
+            Pool.tickSpacingToMaxLiquidityPerTick(int24(x)),
+            Math.getMaxLiquidityPerTick(int24(x))
         );
     }
 

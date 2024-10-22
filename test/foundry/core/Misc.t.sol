@@ -236,7 +236,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Deployer);
 
         manager = IPoolManager(address(new PoolManager()));
-        manager = IPoolManager(address(new PoolManager()));
 
         routerV4 = new V4RouterSimple(manager);
 
@@ -294,6 +293,8 @@ contract Misctest is Test, PositionUtils {
         _createPanopticPool();
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        routerV4.modifyLiquidity(address(0), poolKey, -887270, 887270, 1);
 
         vm.startPrank(Alice);
 
