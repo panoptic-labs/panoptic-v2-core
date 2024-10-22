@@ -123,7 +123,7 @@ library Math {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Computes a tick that will require approximately `amount` of token0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick` in Uniswap.
-    /// @dev This function can have a maximum of two ticks of error from one of the ticks with `amount(tickLower) < amount < amount(tickUpper)`.
+    /// @dev This function can have a maximum of two ticks of error from one of the ticks with `amount(tickA) < amount < amount(tickA + 1 = tickB)`.
     /// @dev `tickSpacing is assumed to be within the range (0, 32768)
     /// @dev `maxLiquidityPerTick` for `s=tickSpacing` should be defined by `(2^128 - 1) / ((887272/s) - (-887272/s) + 1)`
     /// @param amount The desired amount of token0 required to fill the returned tick

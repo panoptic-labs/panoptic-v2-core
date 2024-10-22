@@ -122,6 +122,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     using Math for uint256;
     using Math for int256;
 
+    /// @notice Type for data associated with a given Uniswap `pool`.
+    /// @param pool A canonical Uniswap V3 pool initialized in the SFPM
+    /// @param minEnforcedTick The current minimum enforced tick for the pool in the SFPM
+    /// @param maxEnforcedTick The current maximum enforced tick for the pool in the SFPM
     struct PoolData {
         IUniswapV3Pool pool;
         int24 minEnforcedTick;
@@ -433,7 +437,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                             MIN_ENFORCED_TICKFILL_COST,
                             (Math.min(
                                 IERC20Partial(dataOld.pool.token0()).totalSupply(),
-                                2 ** 127
+                                uint128(type(int128).max)
                             ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                         ),
                         tickSpacing,
@@ -449,7 +453,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                             MIN_ENFORCED_TICKFILL_COST,
                             (Math.min(
                                 IERC20Partial(dataOld.pool.token1()).totalSupply(),
-                                2 ** 127
+                                uint128(type(int128).max)
                             ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                         ),
                         tickSpacing,
