@@ -169,7 +169,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                             STORAGE 
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Retrieve the corresponding SFPM poolId and enforced ticks for a given Uniswap V4 poolId.
+    /// @notice Retrieve the SFPM PoolIdData struct associated with a given Uniswap V4 poolId.
     mapping(PoolId idV4 => PoolIdData poolIdData) internal s_V4toSFPMIdData;
 
     /// @notice Retrieve the Uniswap V4 pool key corresponding to a given poolId.
