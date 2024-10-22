@@ -239,7 +239,7 @@ contract Misctest is Test, PositionUtils {
 
         routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager);
+        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 0);
 
         ph = new PanopticHelper(sfpm);
 
@@ -293,6 +293,8 @@ contract Misctest is Test, PositionUtils {
         _createPanopticPool();
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        routerV4.modifyLiquidity(address(0), poolKey, -887270, 887270, 1);
 
         vm.startPrank(Alice);
 
@@ -372,7 +374,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
-            address(token1),
             sfpm,
             manager,
             poolReference,
@@ -392,9 +393,7 @@ contract Misctest is Test, PositionUtils {
                 factory.deployNewPool(
                     IV3CompatibleOracle(address(uniPool)),
                     poolKey,
-                    uint96(block.timestamp),
-                    type(uint256).max,
-                    type(uint256).max
+                    uint96(block.timestamp)
                 )
             )
         );
