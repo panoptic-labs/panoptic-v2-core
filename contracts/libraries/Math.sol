@@ -149,6 +149,15 @@ library Math {
         }
     }
 
+    /// @notice Computes the maximum liquidity that is allowed to reference any given tick in a Uniswap V3 pool with `tickSpacing`.
+    /// @param tickSpacing The spacing between initializable ticks in the Uniswap V3 pool
+    /// @return The maximum liquidity that can reference any given tick in the Uniswap V3 pool
+    function getMaxLiquidityPerTick(int24 tickSpacing) internal pure returns (uint128) {
+        unchecked {
+            return type(uint128).max / uint24((Constants.MAX_V3POOL_TICK / tickSpacing) * 2 + 1);
+        }
+    }
+
     /// @notice Calculates `1.0001^(tick/2)` as an X96 number.
     /// @dev Will revert if `abs(tick) > 887272`.
     /// @param tick Value of the tick for which `sqrt(1.0001^tick)` is calculated

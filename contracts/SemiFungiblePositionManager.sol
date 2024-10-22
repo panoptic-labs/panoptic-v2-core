@@ -367,7 +367,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             poolId = PanopticMath.incrementPoolPattern(poolId);
         }
 
-        uint256 maxLiquidityPerTick = IUniswapV3Pool(univ3pool).maxLiquidityPerTick();
+        uint256 maxLiquidityPerTick = Math.getMaxLiquidityPerTick(tickSpacing);
 
         int24 minEnforcedTick;
         int24 maxEnforcedTick;
@@ -424,7 +424,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // tick spacing is stored in the highest 16 bits of the poolId
         int24 tickSpacing = int24(uint24(poolId >> 48));
 
-        uint128 maxLiquidityPerTick = dataOld.pool.maxLiquidityPerTick();
+        uint128 maxLiquidityPerTick = Math.getMaxLiquidityPerTick(tickSpacing);
 
         int24 minEnforcedTick;
         int24 maxEnforcedTick;
