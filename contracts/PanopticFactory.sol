@@ -15,15 +15,11 @@ import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmu
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
-import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {PoolId} from "v4-core/types/PoolId.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {Currency} from "v4-core/types/Currency.sol";
-import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
@@ -104,69 +100,6 @@ contract PanopticFactory is FactoryNFT, Multicall {
         POOL_MANAGER_V4 = manager;
         POOL_REFERENCE = _poolReference;
         COLLATERAL_REFERENCE = _collateralReference;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                        UNISWAP V4 LOCK CALLBACK
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Uniswap V4 unlock callback implementation.
-    /// @dev Parameters are `(PoolKey key, int24 tickLower, int24 tickUpper, uint128 liquidity, address payer)`.
-    /// @dev Adds `liquidity` to the Uniswap V4 pool `key` at `tickLower-tickUpper` and transfers the tokens from `payer`.
-    /// @param data The encoded data containing the input parameters
-    /// @return `(uint256 token0Delta, uint256 token1Delta)` The amount of token0 and token1 used to create `liquidity` in the Uniswap pool
-    function unlockCallback(bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != address(POOL_MANAGER_V4)) revert Errors.UnauthorizedUniswapCallback();
-
-        (
-            PoolKey memory key,
-            int24 tickLower,
-            int24 tickUpper,
-            uint128 liquidity,
-            address payer
-        ) = abi.decode(data, (PoolKey, int24, int24, uint128, address));
-        (BalanceDelta delta, BalanceDelta feesAccrued) = POOL_MANAGER_V4.modifyLiquidity(
-            key,
-            IPoolManager.ModifyLiquidityParams(
-                tickLower,
-                tickUpper,
-                int256(uint256(liquidity)),
-                bytes32(0)
-            ),
-            ""
-        );
-
-        if (delta.amount0() < 0) {
-            POOL_MANAGER_V4.sync(key.currency0);
-            SafeTransferLib.safeTransferFrom(
-                Currency.unwrap(key.currency0),
-                payer,
-                address(POOL_MANAGER_V4),
-                uint128(-delta.amount0())
-            );
-            POOL_MANAGER_V4.settle();
-        } else if (delta.amount0() > 0) {
-            POOL_MANAGER_V4.clear(key.currency0, uint128(delta.amount0()));
-        }
-
-        if (delta.amount1() < 0) {
-            POOL_MANAGER_V4.sync(key.currency1);
-            SafeTransferLib.safeTransferFrom(
-                Currency.unwrap(key.currency1),
-                payer,
-                address(POOL_MANAGER_V4),
-                uint128(-delta.amount1())
-            );
-            POOL_MANAGER_V4.settle();
-        } else if (delta.amount1() > 0) {
-            POOL_MANAGER_V4.clear(key.currency1, uint128(delta.amount1()));
-        }
-
-        return
-            abi.encode(
-                feesAccrued.amount0() - delta.amount0(),
-                feesAccrued.amount1() - delta.amount1()
-            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -262,7 +195,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         // If this is not the case, we increase the next cardinality during deployment so the cardinality can catch up over time
         // When that happens, there will be a period of time where the PanopticPool is deployed, but not (safely) usable
         oracleContract.increaseObservationCardinalityNext(CARDINALITY_INCREASE);
-        // Issue reward NFT to donor
+
         uint256 tokenId = uint256(uint160(address(newPoolContract)));
         _mint(msg.sender, tokenId);
 
