@@ -463,6 +463,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
         }
 
+        s_poolIdToPoolData[poolId] = PoolData(dataOld.pool, minEnforcedTick, maxEnforcedTick);
+
         emit EnforcedTicksUpdated(poolId, minEnforcedTick, maxEnforcedTick);
     }
 
