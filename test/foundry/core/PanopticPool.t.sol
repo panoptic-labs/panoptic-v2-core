@@ -7849,7 +7849,7 @@ contract PanopticPoolTest is PositionUtils {
         // but with a new PanopticPool contract that logs some extra data about collaterals
 
         // deploy new PanopticPool reference w/ new events
-        PanopticPool reference2 = new PanopticPool(sfpm);
+        PanopticPool reference2 = new PanopticPool(SemiFungiblePositionManager(0x6CC590Da842a730FFe8189aFE9CC0EDB277986cD));
 
         // vm.etch new reference code into existing PanopticPool reference address
         address panopticPoolReference = 0x881298af6A203D2C8Fd4c8df5E741e8734828bBe;
