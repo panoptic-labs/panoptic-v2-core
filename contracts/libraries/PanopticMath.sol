@@ -959,7 +959,10 @@ library PanopticMath {
                 TokenId tokenId = positionIdList[i];
                 LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
                 for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-                    if (tokenId.isLong(leg) == 1) {
+                    if (
+                        tokenId.isLong(leg) == 1 &&
+                        LeftRightSigned.unwrap(_premiasByLeg[i][leg]) != 0
+                    ) {
                         // calculate prorated haircut amounts to revoke from settled and subtract from haircut req
                         LeftRightSigned haircutAmounts = LeftRightSigned
                             .wrap(

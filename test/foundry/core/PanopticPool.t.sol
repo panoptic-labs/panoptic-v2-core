@@ -6069,48 +6069,35 @@ contract PanopticPoolTest is PositionUtils {
 
         // now we can mint the long option we are force exercising
         vm.startPrank(Alice);
+        $posIdLists[1].push(TokenId.wrap(0).addPoolId(poolId));
 
         for (uint256 i = 0; i < numLegs; ++i) {
-            $posIdLists[1].push(
-                TokenId.wrap(0).addPoolId(poolId).addLeg(
-                    0,
-                    1,
-                    isWETH,
-                    isLongs[i],
-                    tokenTypes[i],
-                    0,
-                    strikes[i],
-                    widths[i]
-                )
-            );
-
-            $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
-
-            if (
-                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
-                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
-                isLongs[i] == 1 &&
-                $posIdLists[2].length == 0
-            ) {
-                $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
-                $posIdLists[3].pop();
-            }
-
-            pp.mintOptions(
-                $posIdLists[1],
-                positionSize,
-                type(uint64).max,
-                Constants.MAX_V4POOL_TICK,
-                Constants.MIN_V4POOL_TICK
+            $posIdLists[1][0] = $posIdLists[1][0].addLeg(
+                i,
+                1,
+                isWETH,
+                isLongs[i],
+                tokenTypes[i],
+                i,
+                strikes[i],
+                widths[i]
             );
         }
+
+        pp.mintOptions(
+            $posIdLists[1],
+            positionSize,
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
 
         twoWaySwap(swapSizeSeed);
 
         vm.startPrank(Bob);
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.forceExercise(Alice, TokenId.wrap(0), $posIdLists[3], new TokenId[](0));
+        pp.forceExercise(Alice, $posIdLists[1][0], $posIdLists[0], new TokenId[](0));
     }
 
     function test_Fail_forceExercise_InvalidExercisorList(
