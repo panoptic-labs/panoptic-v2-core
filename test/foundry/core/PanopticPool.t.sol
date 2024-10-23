@@ -6088,8 +6088,8 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1],
             positionSize,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         twoWaySwap(swapSizeSeed);

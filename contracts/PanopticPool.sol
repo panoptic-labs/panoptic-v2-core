@@ -72,7 +72,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param recipient User that burnt the option
     /// @param positionSize The number of contracts burnt, expressed in terms of the asset
     /// @param tokenId TokenId of the burnt option
-    /// @param premia LeftRight packing for the amount of premia collected for currency0 (right) and currency1 (left) for each leg of `tokenId`
+    /// @param premiaByLeg LeftRight packing for the amount of premia collected for currency0 (right) and currency1 (left) for each leg of `tokenId`
     event OptionBurnt(
         address indexed recipient,
         uint128 positionSize,
