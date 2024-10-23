@@ -7842,4 +7842,73 @@ contract PanopticPoolTest is PositionUtils {
             assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
         }
     }
+
+    function test_inspectCollateral() public {
+        // deploy new PanopticPool reference w/ new events
+        PanopticPool reference2 = new PanopticPool(sfpm);
+
+        // vm.etch new reference code into existing PanopticPool reference address
+        address panopticPoolReference = 0x881298af6A203D2C8Fd4c8df5E741e8734828bBe;
+        vm.etch(panopticPoolReference, address(reference2).code);
+
+        // Call multicall() on the liquidatorContract
+        address liquidatorEoa = 0x3Fa4a259E96631D6E19B4D28ff733de35f0c3023;
+        vm.prank(liquidatorEoa);
+        address liquidationBotMulticallV1 = 0x3Fa4a259E96631D6E19B4D28ff733de35f0c3023;
+
+        address[] memory targets = new address[](4);
+        targets[0] = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
+        targets[1] = 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E;
+        targets[2] = 0x2B071aC1dDD8eE0cE7d40aB1d844900521a00a46;
+        targets[3] = 0xa578df96D10ec4e67A24aFEB948cD461d5103877;
+
+        bytes[] memory data = new bytes[](4);
+        data[
+            0
+        ] = hex"095ea7b30000000000000000000000003bfa4769fb09eefc5a80d6e87c3b9c650f7ae48effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        data[
+            1
+        ] = hex"5ae401dc0000000000000000000000000000000000000000000000000000000066fe1f2100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000e45023b4df000000000000000000000000fff9976782d46cc05630d1f6ebab18b2324d6b14000000000000000000000000a578df96d10ec4e67a24afeb948cd461d51038770000000000000000000000000000000000000000000000000000000000002710000000000000000000000000e37c6dd5daccbd6f2e1aa9c4aedfe4bff9c1219800000000000000000000000000000000000000000000000398503e1a8f0af6e900000000000000000000000000000000000000000000037305a299eabb9f9c8a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        data[
+            2
+        ] = hex"e4ecc2390000000000000000000000000000000000000000000000000000000000000060000000000000000000000000e79d9aca96bf0410a3223463013a3248b5c3a1370000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000f0000b40202000ae549883274bf0000000000000000000000000000000000000f0000d20202000ae549883274bf";
+        data[
+            3
+        ] = hex"095ea7b30000000000000000000000003bfa4769fb09eefc5a80d6e87c3b9c650f7ae48effffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+        uint256[] memory minCollateralBalances = new uint256[](2);
+        uint256[] memory positionIds = new uint256[](0);
+        uint256[] memory minBals = new uint256[](2);
+
+        bytes[] memory exitPaths = new bytes[](2);
+        exitPaths[1] = abi.encodePacked(
+            address(0xa578df96D10ec4e67A24aFEB948cD461d5103877),
+            uint24(10000),
+            address(0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14)
+        );
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = 0x2C509FF4B6DE07386F3D83695B5e43b1a603D72B;
+        tokens[1] = 0xa578df96D10ec4e67A24aFEB948cD461d5103877;
+
+        address[] memory vaults = new address[](2);
+        vaults[0] = 0x2cB743CbeCFa0cbB2bb277104885c583EfC4B9eb;
+        vaults[1] = 0x284aEe73CC1467C871b14C29eBD79272aFD32571;
+
+        // Run test w/ fork block where txn took place
+        (bool success, bytes memory ret) = liquidationBotMulticallV1.call(
+            abi.encodeWithSignature(
+                "multicall(address[] targets,bytes[] data,uint256[] minCollateralBalances,uint256[] positionIds,uint256[] minBals,bytes[] exitPaths,address[] tokens,address[] vaults)",
+                targets,
+                data,
+                minCollateralBalances,
+                positionIds,
+                minBals,
+                exitPaths,
+                tokens,
+                vaults
+            )
+        );
+        console2.log("success?", success);
+    }
 }

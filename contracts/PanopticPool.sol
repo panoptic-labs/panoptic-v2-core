@@ -39,6 +39,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightSigned bonusAmounts
     );
 
+    event AssetsShares(uint256 totalAssets, uint256 totalSupply);
+
     /// @notice Emitted when a position is force exercised.
     /// @param exercisor Address of the account that forces the exercise of the position
     /// @param user Address of the owner of the liquidated position
@@ -769,6 +771,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             owner
         );
 
+        emit AssetsShares(s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
+        emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
         emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
     }
 
@@ -1066,6 +1070,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, NO_BUFFER);
 
+        emit AssetsShares(s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
+        emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
 
