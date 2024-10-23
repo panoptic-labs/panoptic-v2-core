@@ -76,17 +76,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Emitted when an option is minted.
     /// @param recipient User that minted the option
-    /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param tokenId TokenId of the created option
-    /// @param poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
-    /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
+    /// @param balanceData The `PositionBalance` data for `tokenId` containing the number of contracts, pool utilizations, and ticks at mint
     /// @param commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
     event OptionMinted(
         address indexed recipient,
-        uint128 positionSize,
         TokenId indexed tokenId,
-        uint128 poolUtilizations,
+        PositionBalance balanceData,
         LeftRightUnsigned commissions
     );
 
@@ -607,20 +603,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
             if (medianData != 0) s_miniMedian = medianData;
         }
 
-        // update the users options balance of position `tokenId`
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        // NOTE: cannot add the tickData yet because it is computed in _validateSolvency
-        s_positionBalance[msg.sender][tokenId] = PositionBalanceLibrary.storeBalanceData(
+        PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
             tickData
         );
 
+        // update the users options balance of position `tokenId`
+        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+        s_positionBalance[msg.sender][tokenId] = balanceData;
+
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         _checkSolvency(msg.sender, positionIdList, tickData, BP_DECREASE_BUFFER);
 
-        emit OptionMinted(msg.sender, positionSize, tokenId, poolUtilizations, commissions);
+        emit OptionMinted(msg.sender, tokenId, balanceData, commissions);
     }
 
     /// @notice Move all the required liquidity to/from the AMM and settle any required collateral deltas.
