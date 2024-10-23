@@ -1145,8 +1145,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @param shortAmount The amount of short options held
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
-    /// @return exchangedAmount The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
-    /// @return commission The total commission (base rate + ITM spread) paid for minting the option
+    /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
+    /// @return The total commission (base rate + ITM spread) paid for minting the option
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
