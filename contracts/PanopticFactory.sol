@@ -33,8 +33,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param poolAddress Address of the deployed Panoptic pool
     /// @param oracleContract The external oracle contract used by the newly deployed Panoptic Pool
     /// @param poolKey The Uniswap V4 pool key associated with the Panoptic Pool
-    /// @param collateralTracker0 Address of the collateral tracker contract for token0
-    /// @param collateralTracker1 Address of the collateral tracker contract for token1
+    /// @param collateralTracker0 Address of the collateral tracker contract for currency0
+    /// @param collateralTracker1 Address of the collateral tracker contract for currency1
     event PoolDeployed(
         PanopticPool indexed poolAddress,
         IV3CompatibleOracle indexed oracleContract,

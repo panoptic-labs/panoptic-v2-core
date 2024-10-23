@@ -76,13 +76,14 @@ library PanopticMath {
         }
     }
 
-    /// @notice Returns ERC20 symbol of `token`.
-    /// @param token The address of the token to get the symbol of
-    /// @return The symbol of `token` or "???" if not supported
-    function safeERC20Symbol(address token) external view returns (string memory) {
+    /// @notice Returns ERC20 symbol of `asset`.
+    /// @param asset The address of the asset to get the symbol of (`address(0)` = native asset)
+    /// @return The symbol of `asset` or "???" if not supported
+    function safeERC20Symbol(address asset) external view returns (string memory) {
+        if (asset == address(0)) return "ETH";
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
-        try IERC20Metadata(token).symbol() returns (string memory symbol) {
+        try IERC20Metadata(asset).symbol() returns (string memory symbol) {
             return symbol;
         } catch {
             return "???";
@@ -391,22 +392,22 @@ library PanopticMath {
         // Get the amount of liquidity owned by this leg in the Uniswap V4 pool in the above tick range
         // Background:
         //
-        //  In Uniswap V4, the amount of liquidity received for a given amount of token0 when the price is
+        //  In Uniswap V4, the amount of liquidity received for a given amount of currency0 when the price is
         //  not in range is given by:
         //     Liquidity = amount0 * (sqrt(upper) * sqrt(lower)) / (sqrt(upper) - sqrt(lower))
-        //  For token1, it is given by:
+        //  For currency1, it is given by:
         //     Liquidity = amount1 / (sqrt(upper) - sqrt(lower))
         //
         //  However, in Panoptic, each position has a asset parameter. The asset is the "basis" of the position.
         //  In TradFi, the asset is always cash and selling a $1000 put requires the user to lock $1000, and selling
         //  a call requires the user to lock 1 unit of asset.
         //
-        //  Because Uniswap V4 chooses token0 and token1 from the alphanumeric order, there is no consistency as to whether token0 is
+        //  Because Uniswap V4 chooses currency0 and currency1 from the alphanumeric order, there is no consistency as to whether currency0 is
         //  stablecoin, ETH, or an ERC20. Some pools may want ETH to be the asset (e.g. ETH-DAI) and some may wish the stablecoin to
         //  be the asset (e.g. DAI-ETH) so that K asset is moved for puts and 1 asset is moved for calls.
         //  But since the convention is to force the order always we have no say in this.
         //
-        //  To solve this, we encode the asset value in tokenId. This parameter specifies which of token0 or token1 is the
+        //  To solve this, we encode the asset value in tokenId. This parameter specifies which of currency0 or currency1 is the
         //  asset, such that:
         //     when asset=0, then amount0 moved at strike K =1.0001**currentTick is 1, amount1 moved to strike K is 1/K
         //     when asset=1, then amount1 moved at strike K =1.0001**currentTick is K, amount0 moved to strike K is 1
@@ -464,8 +465,8 @@ library PanopticMath {
     /// @notice Compute the amount of notional value underlying this option position.
     /// @param tokenId The option position id
     /// @param positionSize The number of contracts of this option
-    /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
-    /// @return shortAmounts Left-right packed word where where rightSlot = token0 and leftSlot = token1 borrowed to create short legs
+    /// @return longAmounts Left-right packed word where rightSlot = currency0 and leftSlot = currency1 held against borrowed Uniswap liquidity for long legs
+    /// @return shortAmounts Left-right packed word where where rightSlot = currency0 and leftSlot = currency1 borrowed to create short legs
     function computeExercisedAmounts(
         TokenId tokenId,
         uint128 positionSize
@@ -488,11 +489,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @notice Convert an amount of currency0 into an amount of currency1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
-    /// @param amount The amount of token0 to convert into token1
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
-    /// @return The converted `amount` of token0 represented in terms of token1
+    /// @param amount The amount of currency0 to convert into currency1
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of currency0 into currency1
+    /// @return The converted `amount` of currency0 represented in terms of currency1
     function convert0to1(uint256 amount, uint160 sqrtPriceX96) internal pure returns (uint256) {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
@@ -505,11 +506,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @notice Convert an amount of currency0 into an amount of currency1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
-    /// @param amount The amount of token0 to convert into token1
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
-    /// @return The converted `amount` of token0 represented in terms of token1
+    /// @param amount The amount of currency0 to convert into currency1
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of currency0 into currency1
+    /// @return The converted `amount` of currency0 represented in terms of currency1
     function convert0to1RoundingUp(
         uint256 amount,
         uint160 sqrtPriceX96
@@ -525,11 +526,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @notice Convert an amount of currency1 into an amount of currency0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token1 to convert into token0
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
-    /// @return The converted `amount` of token1 represented in terms of token0
+    /// @param amount The amount of currency1 to convert into currency0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of currency1 into currency0
+    /// @return The converted `amount` of currency1 represented in terms of currency0
     function convert1to0(uint256 amount, uint160 sqrtPriceX96) internal pure returns (uint256) {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
@@ -542,11 +543,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @notice Convert an amount of currency1 into an amount of currency0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token1 to convert into token0
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
-    /// @return The converted `amount` of token1 represented in terms of token0
+    /// @param amount The amount of currency1 to convert into currency0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of currency1 into currency0
+    /// @return The converted `amount` of currency1 represented in terms of currency0
     function convert1to0RoundingUp(
         uint256 amount,
         uint160 sqrtPriceX96
@@ -567,11 +568,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @notice Convert an amount of currency0 into an amount of currency1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token0 to convert into token1
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token0 into token1
-    /// @return The converted `amount` of token0 represented in terms of token1
+    /// @param amount The amount of currency0 to convert into currency1
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of currency0 into currency1
+    /// @return The converted `amount` of currency0 represented in terms of currency1
     function convert0to1(int256 amount, uint160 sqrtPriceX96) internal pure returns (int256) {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
@@ -590,11 +591,11 @@ library PanopticMath {
         }
     }
 
-    /// @notice Convert an amount of token1 into an amount of token0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
+    /// @notice Convert an amount of currency1 into an amount of currency0 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks.
-    /// @param amount The amount of token1 to convert into token0
-    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of token1 into token0
-    /// @return The converted `amount` of token1 represented in terms of token0
+    /// @param amount The amount of currency1 to convert into currency0
+    /// @param sqrtPriceX96 The square root of the price at which to convert `amount` of currency1 into currency0
+    /// @return The converted `amount` of currency1 represented in terms of currency0
     function convert1to0(int256 amount, uint160 sqrtPriceX96) internal pure returns (int256) {
         unchecked {
             // the tick 443636 is the maximum price where (price) * 2**192 fits into a uint256 (< 2**256-1)
@@ -617,18 +618,18 @@ library PanopticMath {
         }
     }
 
-    /// @notice Get a single collateral balance and requirement in terms of the lowest-priced token for a given set of (token0/token1) collateral balances and requirements.
-    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
-    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
+    /// @notice Get a single collateral balance and requirement in terms of the lowest-priced token for a given set of (currency0/currency1) collateral balances and requirements.
+    /// @param tokenData0 LeftRight encoded word with balance of currency0 in the right slot, and required balance in left slot
+    /// @param tokenData1 LeftRight encoded word with balance of currency1 in the right slot, and required balance in left slot
     /// @param sqrtPriceX96 The price at which to compute the collateral value and requirements
-    /// @return The combined collateral balance of `tokenData0` and `tokenData1` in terms of (token0 if `price(token1/token0) < 1` and vice versa)
-    /// @return The combined required collateral threshold of `tokenData0` and `tokenData1` in terms of (token0 if `price(token1/token0) < 1` and vice versa)
+    /// @return The combined collateral balance of `tokenData0` and `tokenData1` in terms of (currency0 if `price(currency1/currency0) < 1` and vice versa)
+    /// @return The combined required collateral threshold of `tokenData0` and `tokenData1` in terms of (currency0 if `price(currency1/currency0) < 1` and vice versa)
     function getCrossBalances(
         LeftRightUnsigned tokenData0,
         LeftRightUnsigned tokenData1,
         uint160 sqrtPriceX96
     ) internal pure returns (uint256, uint256) {
-        // convert values to the highest precision (lowest price) of the two tokens (token0 if price token1/token0 < 1 and vice versa)
+        // convert values to the highest precision (lowest price) of the two tokens (currency0 if price currency1/currency0 < 1 and vice versa)
         if (sqrtPriceX96 < Constants.FP96) {
             return (
                 tokenData0.rightSlot() +
@@ -696,7 +697,7 @@ library PanopticMath {
 
         bool isShort = tokenId.isLong(legIndex) == 0;
 
-        // if token0
+        // if currency0
         if (tokenId.tokenType(legIndex) == 0) {
             if (isShort) {
                 // if option is short, increment shorts by contracts
@@ -721,8 +722,8 @@ library PanopticMath {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
-    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
-    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
+    /// @param tokenData0 LeftRight encoded word with balance of currency0 in the right slot, and required balance in left slot
+    /// @param tokenData1 LeftRight encoded word with balance of currency1 in the right slot, and required balance in left slot
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
     /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
     /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
@@ -740,7 +741,7 @@ library PanopticMath {
         unchecked {
             // compute bonus as min(collateralBalance/2, required-collateralBalance)
             {
-                // compute the ratio of token0 to total collateral requirements
+                // compute the ratio of currency0 to total collateral requirements
                 // evaluate at TWAP price to maintain consistency with solvency calculations
                 (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
                     tokenData0,
@@ -752,7 +753,7 @@ library PanopticMath {
 
                 // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
                 if (atSqrtPriceX96 < Constants.FP96) {
-                    // required0 / (required0 + token0(required1))
+                    // required0 / (required0 + currency0(required1))
                     uint256 requiredRatioX128 = Math.mulDiv(
                         tokenData0.leftSlot(),
                         2 ** 128,
@@ -768,7 +769,7 @@ library PanopticMath {
                         )
                     );
                 } else {
-                    // required1 / (token1(required0) + required1)
+                    // required1 / (currency1(required0) + required1)
                     uint256 requiredRatioX128 = Math.mulDiv(
                         tokenData1.leftSlot(),
                         2 ** 128,
@@ -802,13 +803,13 @@ library PanopticMath {
             if (!(paid0 > balance0 && paid1 > balance1)) {
                 // liquidatee cannot pay back the liquidator fully in either token, so no protocol loss can be avoided
                 if ((paid0 > balance0)) {
-                    // liquidatee has insufficient token0 but some token1 left over, so we use what they have left to mitigate token0 losses
-                    // we do this by substituting an equivalent value of token1 in our refund to the liquidator, plus a bonus, for the token0 we convert
+                    // liquidatee has insufficient currency0 but some currency1 left over, so we use what they have left to mitigate currency0 losses
+                    // we do this by substituting an equivalent value of currency1 in our refund to the liquidator, plus a bonus, for the currency0 we convert
                     // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
-                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token1 balance: balance1 - paid1
-                    // and paid0 - balance0 is the amount of token0 that the liquidatee is missing, i.e the protocol loss
-                    // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
-                    // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
+                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess currency1 balance: balance1 - paid1
+                    // and paid0 - balance0 is the amount of currency0 that the liquidatee is missing, i.e the protocol loss
+                    // if the protocol loss is lower than the excess currency1 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                    // if the protocol loss is higher than the excess currency1 balance, we can only mitigate part of the loss, so we should convert only the excess currency1 balance
                     // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
                     bonus1 += Math.min(
                         balance1 - paid1,
@@ -820,13 +821,13 @@ library PanopticMath {
                     );
                 }
                 if ((paid1 > balance1)) {
-                    // liquidatee has insufficient token1 but some token0 left over, so we use what they have left to mitigate token1 losses
-                    // we do this by substituting an equivalent value of token0 in our refund to the liquidator, plus a bonus, for the token1 we convert
+                    // liquidatee has insufficient currency1 but some currency0 left over, so we use what they have left to mitigate currency1 losses
+                    // we do this by substituting an equivalent value of currency0 in our refund to the liquidator, plus a bonus, for the currency1 we convert
                     // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
-                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token0 balance: balance0 - paid0
-                    // and paid1 - balance1 is the amount of token1 that the liquidatee is missing, i.e the protocol loss
-                    // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
-                    // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
+                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess currency0 balance: balance0 - paid0
+                    // and paid1 - balance1 is the amount of currency1 that the liquidatee is missing, i.e the protocol loss
+                    // if the protocol loss is lower than the excess currency0 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                    // if the protocol loss is higher than the excess currency0 balance, we can only mitigate part of the loss, so we should convert only the excess currency0 balance
                     // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
                     bonus0 += Math.min(
                         balance0 - paid0,
@@ -857,8 +858,8 @@ library PanopticMath {
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
-    /// @param collateral0 The collateral tracker for token0
-    /// @param collateral1 The collateral tracker for token1
+    /// @param collateral0 The collateral tracker for currency0
+    /// @param collateral1 The collateral tracker for currency1
     /// @param settledTokens The per-chunk accumulator of settled tokens in storage from which to subtract the haircut premium
     /// @return The delta, if any, to apply to the existing liquidation bonus
     function haircutPremia(
@@ -1007,11 +1008,11 @@ library PanopticMath {
 
     /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
     /// @param exercisee The address of the user being exercised
-    /// @param exerciseFees Pre-adjustment exercise fees to debit from exercisor (rightSlot = token0 left = token1)
-    /// @param atTick The tick at which to convert between token0/token1 when redistributing the exercise fees
-    /// @param ct0 The collateral tracker for token0
-    /// @param ct1 The collateral tracker for token1
-    /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
+    /// @param exerciseFees Pre-adjustment exercise fees to debit from exercisor (rightSlot = currency0 left = currency1)
+    /// @param atTick The tick at which to convert between currency0/currency1 when redistributing the exercise fees
+    /// @param ct0 The collateral tracker for currency0
+    /// @param ct1 The collateral tracker for currency1
+    /// @return The LeftRight-packed deltas for currency0/currency1 to move from the exercisor to the exercisee
     function getExerciseDeltas(
         address exercisee,
         LeftRightSigned exerciseFees,
@@ -1021,7 +1022,7 @@ library PanopticMath {
     ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
-            // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
+            // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the exercisor cover the difference in exchange for currency1 (and vice versa)
 
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
                 int256(ct0.balanceOf(exercisee)) -

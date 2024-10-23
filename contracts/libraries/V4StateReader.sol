@@ -47,8 +47,8 @@ library V4StateReader {
     /// @param currentTick The current price tick in the AMM
     /// @param tickLower The lower tick of the option position leg (a liquidity chunk)
     /// @param tickUpper The upper tick of the option position leg (a liquidity chunk)
-    /// @return feeGrowthInside0X128 The fee growth in the AMM for token0
-    /// @return feeGrowthInside1X128 The fee growth in the AMM for token1
+    /// @return feeGrowthInside0X128 The fee growth in the AMM for currency0
+    /// @return feeGrowthInside1X128 The fee growth in the AMM for currency1
     function getFeeGrowthInside(
         IPoolManager manager,
         PoolId idV4,
@@ -57,10 +57,10 @@ library V4StateReader {
         int24 tickUpper
     ) internal view returns (uint256 feeGrowthInside0X128, uint256 feeGrowthInside1X128) {
         // Get feesGrowths from the option position's lower+upper ticks
-        // lowerOut0: For token0: fee growth per unit of liquidity on the _other_ side of tickLower (relative to currentTick)
+        // lowerOut0: For currency0: fee growth per unit of liquidity on the _other_ side of tickLower (relative to currentTick)
         // only has relative meaning, not absolute — the value depends on when the tick is initialized
         // (...)
-        // upperOut1: For token1: fee growth on the _other_ side of tickUpper (again: relative to currentTick)
+        // upperOut1: For currency1: fee growth on the _other_ side of tickUpper (again: relative to currentTick)
         // the point is: the range covered by lowerOut0 changes depending on where currentTick is.
         (uint256 lowerOut0, uint256 lowerOut1) = StateLibrary.getTickFeeGrowthOutside(
             manager,
@@ -77,10 +77,10 @@ library V4StateReader {
         unchecked {
             if (currentTick < tickLower) {
                 /**
-                  Diagrams shown for token0, and applies for token1 the same
+                  Diagrams shown for currency0, and applies for currency1 the same
                   L = lowerTick, U = upperTick
 
-                    liquidity         lowerOut0 (all fees collected in this price tick range for token0)
+                    liquidity         lowerOut0 (all fees collected in this price tick range for currency0)
                         ▲            ◄──────────────^v───► (to MAX_TICK)
                         │
                         │                      upperOut0
@@ -146,8 +146,8 @@ library V4StateReader {
     /// @param manager The Uniswap V4 pool manager contract
     /// @param poolId The ID of the Uniswap V4 pool
     /// @param positionId The ID of the position, which is a hash of the owner, tickLower, tickUpper, and salt.
-    /// @return feeGrowthInside0LastX128 The fee growth inside the position for token0
-    /// @return feeGrowthInside1LastX128 The fee growth inside the position for token1
+    /// @return feeGrowthInside0LastX128 The fee growth inside the position for currency0
+    /// @return feeGrowthInside1LastX128 The fee growth inside the position for currency1
     function getFeeGrowthInsideLast(
         IPoolManager manager,
         PoolId poolId,

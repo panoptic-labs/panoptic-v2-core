@@ -65,7 +65,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
     // whether the current instance is token 0
     function underlyingIsToken0() external pure returns (bool) {
-        return _underlyingIsToken0();
+        return _underlyingIsCurrency0();
     }
 
     function _inAMM() external view returns (uint256) {
