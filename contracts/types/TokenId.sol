@@ -24,10 +24,10 @@ using TokenIdLibrary for TokenId global;
 // (0) idV4             48bits     0bits      : least significant 48 bits of the Uniswap V4 pool ID, plus a pseudorandom number in the event of a collision
 // (1) tickSpacing      16bits     48bits     : tickSpacing for the pool corresponding to `idV4`. Up to 16 bits
 // ===== 4 times (one for each leg) ==============================================================
-// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
+// (2) asset             1bit      0bits      : Specifies the asset (0: currency0, 1: currency1)
 // (3) optionRatio       7bits     1bits      : number of contracts per leg
 // (4) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
-// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
+// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> currency0, 1 -> currency1)
 // (6) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
 // (7) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
 // (8) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
@@ -100,11 +100,11 @@ library TokenIdLibrary {
     }
 
     /// @notice Get the asset basis for this TokenId.
-    /// @dev Which token is the asset - can be token0 (return 0) or token1 (return 1).
+    /// @dev Which token is the asset - can be currency0 (return 0) or currency1 (return 1).
     /// @param self The TokenId to extract `asset` from
     /// @param legIndex The leg index of this position (in {0,1,2,3}) to extract `asset` from
     /// @dev Occupies the leftmost bit of the optionRatio 4 bits slot.
-    /// @return 0 if asset is token0, 1 if asset is token1
+    /// @return 0 if asset is currency0, 1 if asset is currency1
     function asset(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48)) % 2);
@@ -134,7 +134,7 @@ library TokenIdLibrary {
     /// @notice Get the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
     /// @param self The TokenId to extract `tokenType` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
-    /// @return 1 if the token moved is token1 or 0 if the token moved is token0
+    /// @return 1 if the token moved is currency1 or 0 if the token moved is currency0
     function tokenType(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 9)) % 2);

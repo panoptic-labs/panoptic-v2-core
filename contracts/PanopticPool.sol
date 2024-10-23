@@ -59,7 +59,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`).
     /// @param user Address of the owner of the settled position
     /// @param tokenId TokenId of the settled position
-    /// @param settledAmounts LeftRight encoding for the amount of premium settled for token0 (right slot) and token1 (left slot)
+    /// @param settledAmounts LeftRight encoding for the amount of premium settled for currency0 (right slot) and currency1 (left slot)
     event PremiumSettled(
         address indexed user,
         TokenId indexed tokenId,
@@ -70,7 +70,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param recipient User that burnt the option
     /// @param positionSize The number of contracts burnt, expressed in terms of the asset
     /// @param tokenId TokenId of the burnt option
-    /// @param premia LeftRight packing for the amount of premia collected for token0 (right) and token1 (left)
+    /// @param premia LeftRight packing for the amount of premia collected for currency0 (right) and currency1 (left)
     event OptionBurnt(
         address indexed recipient,
         uint128 positionSize,
@@ -83,7 +83,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param tokenId TokenId of the created option
     /// @param poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
+    /// right 64bits for currency0 and left 64bits for currency1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     event OptionMinted(
         address indexed recipient,
@@ -207,13 +207,13 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @notice Per-chunk `last` value that gives the aggregate amount of premium owed to all sellers when multiplied by the total amount of liquidity `totalLiquidity`.
     /// @dev `totalGrossPremium = totalLiquidity * (grossPremium(perLiquidityX64) - lastGrossPremium(perLiquidityX64)) / 2**64`
     /// @dev Used to compute the denominator for the fraction of premium available to sellers to collect.
-    /// @dev LeftRight - right slot is token0, left slot is token1.
+    /// @dev LeftRight - right slot is currency0, left slot is currency1.
     mapping(bytes32 chunkKey => LeftRightUnsigned lastGrossPremium) internal s_grossPremiumLast;
 
     /// @notice Per-chunk accumulator for tokens owed to sellers that have been settled and are now available.
     /// @dev This number increases when buyers pay long premium and when tokens are collected from Uniswap.
     /// @dev It decreases when sellers close positions and collect the premium they are owed.
-    /// @dev LeftRight - right slot is token0, left slot is token1.
+    /// @dev LeftRight - right slot is currency0, left slot is currency1.
     mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) internal s_settledTokens;
 
     /// @notice Tracks the position size of a tokenId for a given user, and the pool utilizations and oracle tick values at the time of last mint.
@@ -244,14 +244,14 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     //        |<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 256 bits ---->|<---- 1280 bits ---->|
     //           collateralToken0     collateralToken1      oracleContract           poolId               poolKey
 
-    /// @notice Get the collateral token corresponding to token0 of the Uniswap pool.
-    /// @return Collateral token corresponding to token0 in Uniswap
+    /// @notice Get the collateral token corresponding to currency0 of the Uniswap pool.
+    /// @return Collateral token corresponding to currency0 in Uniswap
     function collateralToken0() public pure returns (CollateralTracker) {
         return CollateralTracker(_getArgAddress(0));
     }
 
-    /// @notice Get the collateral token corresponding to token1 of the Uniswap pool.
-    /// @return Collateral token corresponding to token1 in Uniswap
+    /// @notice Get the collateral token corresponding to currency1 of the Uniswap pool.
+    /// @return Collateral token corresponding to currency1 in Uniswap
     function collateralToken1() public pure returns (CollateralTracker) {
         return CollateralTracker(_getArgAddress(20));
     }
@@ -320,8 +320,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
     /// @notice Reverts if the caller has a lower collateral balance than required to meet the provided `minValue0` and `minValue1`.
     /// @dev Can be used for composable slippage checks with `multicall` (such as for a force exercise or liquidation).
-    /// @param minValue0 The minimum acceptable `token0` value of collateral
-    /// @param minValue1 The minimum acceptable `token1` value of collateral
+    /// @param minValue0 The minimum acceptable `currency0` value of collateral
+    /// @param minValue1 The minimum acceptable `currency1` value of collateral
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
         CollateralTracker ct0 = collateralToken0();
         CollateralTracker ct1 = collateralToken1();
@@ -348,8 +348,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param user Address of the user that owns the positions
     /// @param positionIdList List of positions. Written as `[tokenId1, tokenId2, ...]`
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
-    /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (currency0: right slot, currency1: left slot)
+    /// @return The total amount of premium owed by the long legs in `positionIdList` (currency0: right slot, currency1: left slot)
     /// @return A list of `PositionBalance` data (balance and pool utilization/oracle ticks at last mint) for each position, of the form `[[tokenId0, PositionBalance_0], [tokenId1, PositionBalance_1], ...]`
     function getAccumulatedFeesAndPositionsData(
         address user,
@@ -376,8 +376,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @param atTick The current tick of the Uniswap pool
-    /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
-    /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (currency0: right slot, currency1: left slot)
+    /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (currency0: right slot, currency1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
     function _calculateAccumulatedPremia(
         address user,
@@ -646,7 +646,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens
+    /// right 64bits for currency0 and left 64bits for currency1. When safeMode is active, it returns 100% pool utilization for both tokens
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
@@ -693,7 +693,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param totalSwapped The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
-    /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
+    /// right 64bits for currency0 and left 64bits for currency1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
     function _payCommissionAndWriteData(
         TokenId tokenId,
@@ -1083,7 +1083,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
-        // native currency is represented as address(0), so it will always be token0 alphanumerically
+        // native currency is represented as address(0), so it will always be currency0 alphanumerically
         collateralToken0().settleLiquidation{value: msg.value}(
             msg.sender,
             liquidatee,
@@ -1397,8 +1397,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @return Fast oracle tick at mint
     /// @return Slow oracle tick at mint
     /// @return Last observed tick at mint
-    /// @return Utilization of token0 at mint
-    /// @return Utilization of token1 at mint
+    /// @return Utilization of currency0 at mint
+    /// @return Utilization of currency1 at mint
     /// @return Size of the position
     function positionData(
         address user,
@@ -1729,7 +1729,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param grossPremiumLast The `last` values used with `premiumAccumulators` to compute the total premium owed to sellers
     /// @param premiumOwed The amount of premium owed to sellers in the chunk
     /// @param premiumAccumulators The current values of the premium accumulators for the chunk
-    /// @return The amount of token0/token1 premium available for withdrawal
+    /// @return The amount of currency0/currency1 premium available for withdrawal
     function _getAvailablePremium(
         uint256 totalLiquidity,
         LeftRightUnsigned settledTokens,
