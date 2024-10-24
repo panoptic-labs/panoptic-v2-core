@@ -144,10 +144,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     // The parameters will be encoded at `_getImmutableArgsOffset()` in calldata as follows:
-    // abi.encodePacked(address panopticPool, bool underlyingIsCurrency0, address underlyingToken, address currency0, address currency1, uint24 poolFee)
+    // abi.encodePacked(address panopticPool, bool underlyingIsCurrency0, address underlyingAsset, address currency0, address currency1, uint24 poolFee)
     // bytes: 0                    20                 21                   41                   61                   81
     //        |<---- 160 bits ---->|<---- 8 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 24 bits ---->|
-    //             panopticPool     underlyingIsCurrency0    underlyingToken          currency0               currency1              poolFee
+    //             panopticPool     underlyingIsCurrency0    underlyingAsset          currency0               currency1              poolFee
 
     /// @notice Retrieve the Panoptic Pool that this collateral token belongs to.
     /// @return The Panoptic Pool associated with this collateral token
@@ -167,7 +167,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
     /// @notice Retrieve the address of the underlying asset.
     /// @return The address of the underlying asset
-    function _underlyingToken() internal pure returns (address) {
+    function _underlyingAsset() internal pure returns (address) {
         return _getArgAddress(21);
     }
 
@@ -287,14 +287,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @return The symbol of the token
     function symbol() external view returns (string memory) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
-        return InteractionHelper.computeSymbol(_underlyingToken(), TICKER_PREFIX);
+        return InteractionHelper.computeSymbol(_underlyingAsset(), TICKER_PREFIX);
     }
 
     /// @notice Returns decimals of underlying asset (0 if not present).
     /// @return The decimals of the token
     function decimals() external view returns (uint8) {
         // this logic requires multiple external calls and error handling, so we do it in a delegatecall to a library to save bytecode size
-        return InteractionHelper.computeDecimals(_underlyingToken());
+        return InteractionHelper.computeDecimals(_underlyingAsset());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -345,7 +345,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @notice Initiates the unlock callback to wrap/unwrap `delta` amount of the underlying asset and transfer to/from the Panoptic Pool.
     /// @param account The address of the account to transfer the underlying asset to/from
     /// @param delta The amount of the underlying asset to wrap/unwrap and transfer
-    function _settleTokenDelta(address account, int256 delta) internal {
+    function _settleCurrencyDelta(address account, int256 delta) internal {
         POOL_MANAGER_V4.unlock(abi.encode(account, delta, msg.value));
     }
 
@@ -362,17 +362,17 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             (address, int256, uint256)
         );
 
-        address underlyingToken = _underlyingToken();
+        address underlyingAsset = _underlyingAsset();
         if (delta > 0) {
-            if (Currency.wrap(underlyingToken).isAddressZero()) {
+            if (Currency.wrap(underlyingAsset).isAddressZero()) {
                 POOL_MANAGER_V4.settle{value: uint256(delta)}();
 
                 uint256 surplus = valueOrigin - uint256(delta);
                 if (surplus > 0) SafeTransferLib.safeTransferETH(account, surplus);
             } else {
-                POOL_MANAGER_V4.sync(Currency.wrap(underlyingToken));
+                POOL_MANAGER_V4.sync(Currency.wrap(underlyingAsset));
                 SafeTransferLib.safeTransferFrom(
-                    underlyingToken,
+                    underlyingAsset,
                     account,
                     address(POOL_MANAGER_V4),
                     uint256(delta)
@@ -382,7 +382,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
             POOL_MANAGER_V4.mint(
                 address(_panopticPool()),
-                uint160(underlyingToken),
+                uint160(underlyingAsset),
                 uint256(delta)
             );
         } else if (delta < 0) {
@@ -391,10 +391,10 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
             }
             POOL_MANAGER_V4.burn(
                 address(_panopticPool()),
-                uint160(underlyingToken),
+                uint160(underlyingAsset),
                 uint256(delta)
             );
-            POOL_MANAGER_V4.take(Currency.wrap(underlyingToken), account, uint256(delta));
+            POOL_MANAGER_V4.take(Currency.wrap(underlyingAsset), account, uint256(delta));
         }
 
         return "";
@@ -407,7 +407,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     /// @notice Get the address of the underlying asset being managed (`address(0)` = native asset).
     /// @return assetTokenAddress The address of the underlying asset
     function asset() external pure returns (address assetTokenAddress) {
-        return _underlyingToken();
+        return _underlyingAsset();
     }
 
     /// @notice Get the total amount of assets managed by the CollateralTracker vault.
@@ -470,7 +470,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // transfer assets from the user/the LP to the PanopticPool
         // in return for the shares to be minted
-        _settleTokenDelta(msg.sender, int256(assets));
+        _settleCurrencyDelta(msg.sender, int256(assets));
 
         _mint(receiver, shares);
 
@@ -521,7 +521,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // transfer assets from the user/the LP to the PanopticPool
         // in return for the shares to be minted
-        _settleTokenDelta(msg.sender, int256(assets));
+        _settleCurrencyDelta(msg.sender, int256(assets));
 
         _mint(receiver, shares);
 
@@ -586,7 +586,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // transfer assets from the PanopticPool to the LP
         unchecked {
-            _settleTokenDelta(receiver, -int256(assets));
+            _settleCurrencyDelta(receiver, -int256(assets));
         }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
@@ -625,7 +625,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // transfer assets from the PanopticPool to the LP
         unchecked {
-            _settleTokenDelta(receiver, -int256(assets));
+            _settleCurrencyDelta(receiver, -int256(assets));
         }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
@@ -682,7 +682,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         // transfer assets from the PanopticPool to the LP
         unchecked {
-            _settleTokenDelta(receiver, -int256(assets));
+            _settleCurrencyDelta(receiver, -int256(assets));
         }
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
@@ -764,7 +764,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     );
                 }
 
-                // reverse any token deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
+                // reverse any deltas between the current and oracle prices for the chunk the exercisee had to mint in Uniswap
                 // the outcome of current price crossing a long chunk will always be less favorable than the status quo, i.e.,
                 // if the current price is moved downward such that some part of the chunk is between the current and market prices,
                 // the chunk composition will swap currency1 for currency0 at a price (currency0/currency1) more favorable than market (currency1/currency0),
@@ -943,7 +943,7 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 bonusAbs = uint256(-bonus);
             }
 
-            _settleTokenDelta(liquidator, int256(bonusAbs));
+            _settleCurrencyDelta(liquidator, int256(bonusAbs));
 
             _mint(liquidatee, convertToShares(bonusAbs));
 
