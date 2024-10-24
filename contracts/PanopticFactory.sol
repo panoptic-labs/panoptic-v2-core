@@ -117,6 +117,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint24 fee,
         uint96 salt
     ) external returns (PanopticPool newPoolContract) {
+        // sort the tokens, if necessary:
+        (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
+
         IUniswapV3Pool v3Pool = IUniswapV3Pool(UNIV3_FACTORY.getPool(token0, token1, fee));
         if (address(v3Pool) == address(0)) revert Errors.UniswapPoolNotInitialized();
 

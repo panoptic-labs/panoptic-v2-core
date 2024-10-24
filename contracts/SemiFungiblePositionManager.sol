@@ -341,6 +341,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param token1 The contract address of token1 of the pool
     /// @param fee The fee level of the of the underlying Uniswap V3 pool, denominated in hundredths of bips
     function initializeAMMPool(address token0, address token1, uint24 fee) external {
+        // sort the tokens, if necessary:
+        (token0, token1) = token0 < token1 ? (token0, token1) : (token1, token0);
+
         // compute the address of the Uniswap V3 pool for the given token0, token1, and fee tier
         address univ3pool = FACTORY.getPool(token0, token1, fee);
 
