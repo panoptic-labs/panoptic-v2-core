@@ -943,8 +943,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                 bonusAbs = uint256(-bonus);
             }
 
-            _settleCurrencyDelta(liquidator, int256(bonusAbs));
-
             _mint(liquidatee, convertToShares(bonusAbs));
 
             s_poolAssets += uint128(bonusAbs);
@@ -961,6 +959,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
                     balanceOf[liquidatee] = liquidateeBalance - type(uint248).max;
                 }
             }
+
+            _settleCurrencyDelta(liquidator, int256(bonusAbs));
         } else {
             // refund liquidator if they attached value expecting to settle a negative bonus in the native currency
             if (msg.value > 0) SafeTransferLib.safeTransferETH(liquidator, msg.value);
