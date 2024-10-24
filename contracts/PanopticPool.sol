@@ -721,7 +721,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @param positionIdList The list of option positions to close
     /// @return netPaid The net amount of tokens paid after closing the positions
-    /// @return premiasByLeg The amount of premia paid by the user for each leg of the position
+    /// @return premiasByLeg The amount of premia settled by the user for each leg of the position
     function _burnAllOptionsFrom(
         address owner,
         int24 tickLimitLow,
@@ -753,7 +753,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @return paidAmounts The net amount of tokens paid after closing the position
-    /// @return premiaByLeg The amount of premia paid by the user for each leg of the position
+    /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _burnOptions(
         bool commitLongSettled,
         TokenId tokenId,
@@ -763,9 +763,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
 
-        LeftRightSigned premiaOwed;
         // burn position and do exercise checks
-        (premiaOwed, premiaByLeg, paidAmounts) = _burnAndHandleExercise(
+        (premiaByLeg, paidAmounts) = _burnAndHandleExercise(
             commitLongSettled,
             tickLimitLow,
             tickLimitHigh,
@@ -863,8 +862,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position to burn
     /// @param positionSize The size of the option position, expressed in terms of the asset
     /// @param owner The owner of the option position
-    /// @return realizedPremia The net premia paid/received from the option position
-    /// @return premiaByLeg The premia paid by the user for each leg of the option position
+    /// @return premiaByLeg The premia settled by the user for each leg of the option position
     /// @return paidAmounts The net amount of tokens paid after closing the position
     function _burnAndHandleExercise(
         bool commitLongSettled,
@@ -873,14 +871,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner
-    )
-        internal
-        returns (
-            LeftRightSigned realizedPremia,
-            LeftRightSigned[4] memory premiaByLeg,
-            LeftRightSigned paidAmounts
-        )
-    {
+    ) internal returns (LeftRightSigned[4] memory premiaByLeg, LeftRightSigned paidAmounts) {
         // if safeMode, enforce covered at assignment
         if (isSafeMode()) {
             if (tickLimitLow > tickLimitHigh) {
@@ -891,6 +882,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
+        LeftRightSigned realizedPremia;
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
             owner,
             tokenId,
@@ -1797,8 +1789,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
-    /// @return realizedPremia The amount of premia owed to the user
-    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
+    /// @return realizedPremia The amount of premia settled by the user
+    /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _updateSettlementPostBurn(
         address owner,
         TokenId tokenId,
