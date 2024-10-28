@@ -774,14 +774,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
         {
-        // collat 0 emit
-        emit AssetsShares(0, s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
-        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken0.getPoolData();
+            // collat 0 emit
+            emit AssetsShares(
+                0,
+                s_collateralToken0.totalAssets(),
+                s_collateralToken0.totalSupply()
+            );
+            (
+                uint256 poolAssets,
+                uint256 insideAMM,
+                uint256 currentPoolUtilization
+            ) = s_collateralToken0.getPoolData();
 
-        // collat 1 emit
-        // emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
-        // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
-        emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
+            // collat 1 emit
+            // emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
+            // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
+            emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
         }
     }
 
@@ -947,16 +955,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address liquidatee,
         TokenId[] calldata positionIdList
     ) external {
-      {
-        // collat 0 emit
-        emit AssetsShares(0, s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
-        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken0.getPoolData();
+        {
+            // collat 0 emit
+            emit AssetsShares(
+                0,
+                s_collateralToken0.totalAssets(),
+                s_collateralToken0.totalSupply()
+            );
+            (
+                uint256 poolAssets,
+                uint256 insideAMM,
+                uint256 currentPoolUtilization
+            ) = s_collateralToken0.getPoolData();
 
-        // collat 1 emit
-        // emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
-        // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
-        emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
-      }
+            // collat 1 emit
+            // emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
+            // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
+            emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
+        }
 
         _validatePositionList(liquidatee, positionIdList, 0);
 
@@ -1092,14 +1108,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
         {
-        // collat 0 emit
-        emit AssetsShares(0, s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
-        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken0.getPoolData();
+            // collat 0 emit
+            emit AssetsShares(
+                0,
+                s_collateralToken0.totalAssets(),
+                s_collateralToken0.totalSupply()
+            );
+            (
+                uint256 poolAssets,
+                uint256 insideAMM,
+                uint256 currentPoolUtilization
+            ) = s_collateralToken0.getPoolData();
 
-        // collat 1 emit
-        // emit AssetsShares(1, s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
-        // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
-        emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
+            // collat 1 emit
+            // emit AssetsShares(1, s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
+            // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
+            emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
         }
     }
 

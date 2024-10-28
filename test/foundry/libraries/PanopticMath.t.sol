@@ -433,30 +433,32 @@ contract PanopticMathTest is Test, PositionUtils {
 
     ////////
     function test_computeExercisedAmounts() public {
-      TokenId tokenId = TokenId.wrap(76059085891365452713996105970879);
-      uint128 positionSize = 1000000000000000000;
-      (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness.computeExercisedAmounts(tokenId, positionSize);
-      console2.log("returnedLongs: ");
-      console2.log(LeftRightSigned.unwrap(returnedLongs));
+        TokenId tokenId = TokenId.wrap(76059085891365452713996105970879);
+        uint128 positionSize = 1000000000000000000;
+        (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
+            .computeExercisedAmounts(tokenId, positionSize);
+        console2.log("returnedLongs: ");
+        console2.log(LeftRightSigned.unwrap(returnedLongs));
 
-      console2.log("returnedShorts: ");
-      int128 token0Short = int128(LeftRightSigned.unwrap(returnedShorts)); // right slot
-      int128 token1Short = int128(LeftRightSigned.unwrap(returnedShorts) >> 128); // left slot
-      console2.log('token0Short', token0Short);
-      console2.log('token1Short', token1Short);
+        console2.log("returnedShorts: ");
+        int128 token0Short = int128(LeftRightSigned.unwrap(returnedShorts)); // right slot
+        int128 token1Short = int128(LeftRightSigned.unwrap(returnedShorts) >> 128); // left slot
+        console2.log("token0Short", token0Short);
+        console2.log("token1Short", token1Short);
 
-      int256 premiuma = 20082437215307095221926430989320152526852617001138999339;
-      int128 premium0a = int128(premiuma);
-      int128 premium1a = int128(premiuma >> 128);
-      console2.log('premium0a', premium0a);
-      console2.log('premium1a', premium1a);
+        int256 premiuma = 20082437215307095221926430989320152526852617001138999339;
+        int128 premium0a = int128(premiuma);
+        int128 premium1a = int128(premiuma >> 128);
+        console2.log("premium0a", premium0a);
+        console2.log("premium1a", premium1a);
 
-      int256 premiumb = 372225246334527962459821195675092804391543632268731141;
-      int128 premium0b = int128(premiumb);
-      int128 premium1b = int128(premiumb >> 128);
-      console2.log('premium0b', premium0b);
-      console2.log('premium1b', premium1b);
+        int256 premiumb = 372225246334527962459821195675092804391543632268731141;
+        int128 premium0b = int128(premiumb);
+        int128 premium1b = int128(premiumb >> 128);
+        console2.log("premium0b", premium0b);
+        console2.log("premium1b", premium1b);
     }
+
     ///////////
 
     function test_Success_numberOfLeadingHexZeros(address addr) public {
