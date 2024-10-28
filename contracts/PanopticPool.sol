@@ -39,7 +39,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightSigned bonusAmounts
     );
 
-    event AssetsShares(uint256 totalAssets, uint256 totalSupply);
+    event AssetsShares(uint index, uint256 totalAssets, uint256 totalSupply);
+    event PoolData(uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization);
 
     /// @notice Emitted when a position is force exercised.
     /// @param exercisor Address of the account that forces the exercise of the position
@@ -771,9 +772,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
             owner
         );
 
-        emit AssetsShares(s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
-        emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
         emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
+        {
+        // collat 0 emit
+        emit AssetsShares(0, s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
+        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken0.getPoolData();
+
+        // collat 1 emit
+        // emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
+        // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
+        emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
+        }
     }
 
     /// @notice Validates the solvency of `user`.
@@ -938,6 +947,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
         address liquidatee,
         TokenId[] calldata positionIdList
     ) external {
+      {
+        // collat 0 emit
+        emit AssetsShares(0, s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
+        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken0.getPoolData();
+
+        // collat 1 emit
+        // emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
+        // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
+        emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
+      }
+
         _validatePositionList(liquidatee, positionIdList, 0);
 
         // Assert the account we are liquidating is actually insolvent
@@ -1070,9 +1090,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, NO_BUFFER);
 
-        emit AssetsShares(s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
-        emit AssetsShares(s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
+        {
+        // collat 0 emit
+        emit AssetsShares(0, s_collateralToken0.totalAssets(), s_collateralToken0.totalSupply());
+        (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken0.getPoolData();
+
+        // collat 1 emit
+        // emit AssetsShares(1, s_collateralToken1.totalAssets(), s_collateralToken1.totalSupply());
+        // (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = s_collateralToken1.getPoolData();
+        emit PoolData(poolAssets, insideAMM, currentPoolUtilization);
+        }
     }
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
