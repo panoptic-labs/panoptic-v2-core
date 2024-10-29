@@ -726,7 +726,7 @@ contract Misctest is Test, PositionUtils {
         PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
 
         vm.startPrank(Bob);
-        pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
+        pp.forceExercise(Alice, $posIdList[0], new TokenId[](0), new TokenId[](0));
     }
 
     function test_parity_maxmint_previewmint() public {

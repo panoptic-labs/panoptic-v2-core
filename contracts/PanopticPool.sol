@@ -59,10 +59,12 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @notice Emitted when premium is settled independent of a mint/burn (e.g. during `settleLongPremium`).
     /// @param user Address of the owner of the settled position
     /// @param tokenId TokenId of the settled position
+    /// @param legIndex The leg index of `tokenId` that the premium was settled for
     /// @param settledAmounts LeftRight encoding for the amount of premium settled for currency0 (right slot) and currency1 (left slot)
     event PremiumSettled(
         address indexed user,
         TokenId indexed tokenId,
+        uint256 legIndex,
         LeftRightSigned settledAmounts
     );
 
@@ -70,12 +72,12 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param recipient User that burnt the option
     /// @param positionSize The number of contracts burnt, expressed in terms of the asset
     /// @param tokenId TokenId of the burnt option
-    /// @param premia LeftRight packing for the amount of premia collected for currency0 (right) and currency1 (left)
+    /// @param premiaByLeg LeftRight packing for the amount of premia collected for currency0 (right) and currency1 (left) for each leg of `tokenId`
     event OptionBurnt(
         address indexed recipient,
         uint128 positionSize,
         TokenId indexed tokenId,
-        LeftRightSigned premia
+        LeftRightSigned[4] premiaByLeg
     );
 
     /// @notice Emitted when an option is minted.
@@ -739,7 +741,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @param positionIdList The list of option positions to close
     /// @return netPaid The net amount of tokens paid after closing the positions
-    /// @return premiasByLeg The amount of premia owed to the user for each leg of the position
+    /// @return premiasByLeg The amount of premia settled by the user for each leg of the position
     function _burnAllOptionsFrom(
         address owner,
         int24 tickLimitLow,
@@ -771,7 +773,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @return paidAmounts The net amount of tokens paid after closing the position
-    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
+    /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _burnOptions(
         bool commitLongSettled,
         TokenId tokenId,
@@ -781,9 +783,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
 
-        LeftRightSigned premiaOwed;
         // burn position and do exercise checks
-        (premiaOwed, premiaByLeg, paidAmounts) = _burnAndHandleExercise(
+        (premiaByLeg, paidAmounts) = _burnAndHandleExercise(
             commitLongSettled,
             tickLimitLow,
             tickLimitHigh,
@@ -792,7 +793,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             owner
         );
 
-        emit OptionBurnt(owner, positionSize, tokenId, premiaOwed);
+        emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
     }
 
     /// @notice Validates the solvency of `user`.
@@ -882,8 +883,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param tokenId The option position to burn
     /// @param positionSize The size of the option position, expressed in terms of the asset
     /// @param owner The owner of the option position
-    /// @return realizedPremia The net premia paid/received from the option position
-    /// @return premiaByLeg The premia owed to the user for each leg of the option position
+    /// @return premiaByLeg The premia settled by the user for each leg of the option position
     /// @return paidAmounts The net amount of tokens paid after closing the position
     function _burnAndHandleExercise(
         bool commitLongSettled,
@@ -892,14 +892,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner
-    )
-        internal
-        returns (
-            LeftRightSigned realizedPremia,
-            LeftRightSigned[4] memory premiaByLeg,
-            LeftRightSigned paidAmounts
-        )
-    {
+    ) internal returns (LeftRightSigned[4] memory premiaByLeg, LeftRightSigned paidAmounts) {
         // if safeMode, enforce covered at assignment
         if (isSafeMode()) {
             if (tickLimitLow > tickLimitHigh) {
@@ -910,6 +903,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(poolKey(), tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
+        LeftRightSigned realizedPremia;
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
             owner,
             tokenId,
@@ -1101,34 +1095,29 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
     /// @notice Force the exercise of a single position. Exercisor will have to pay a fee to the force exercisee.
     /// @param account Address of the distressed account
-    /// @param touchedId List of position to be force exercised. Can only contain one tokenId, written as `[tokenId]`
+    /// @param tokenId The position to be force exercised; this position must contain at least one out-of-range long leg
     /// @param positionIdListExercisee Post-burn list of open positions in the exercisee's (`account`) account
     /// @param positionIdListExercisor List of open positions in the exercisor's (`msg.sender`) account
     function forceExercise(
         address account,
-        TokenId[] calldata touchedId,
+        TokenId tokenId,
         TokenId[] calldata positionIdListExercisee,
         TokenId[] calldata positionIdListExercisor
     ) external {
-        // revert if multiple positions are specified
-        // the reason why the singular touchedId is an array is so it composes well with the rest of the system
-        // `_calculateAccumulatedPremia` expects a list of positions to be touched, and this is the only way to pass a single position
-        if (touchedId.length != 1) revert Errors.InputListFail();
-
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
         int24 twapTick = getOracleTWAP();
 
         // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-        touchedId[0].validateIsExercisable(twapTick);
+        tokenId.validateIsExercisable(twapTick);
 
         LeftRightSigned exerciseFees;
         {
-            uint128 positionSize = s_positionBalance[account][touchedId[0]].positionSize();
+            uint128 positionSize = s_positionBalance[account][tokenId].positionSize();
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
-                touchedId[0],
+                tokenId,
                 positionSize
             );
 
@@ -1137,7 +1126,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
             exerciseFees = collateralToken0().exerciseCost(
                 V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId()),
                 twapTick,
-                touchedId[0],
+                tokenId,
                 positionSize,
                 longAmounts
             );
@@ -1149,7 +1138,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
-        _burnAllOptionsFrom(account, MIN_SWAP_TICK, MAX_SWAP_TICK, COMMIT_LONG_SETTLED, touchedId);
+        _burnOptions(COMMIT_LONG_SETTLED, tokenId, account, MIN_SWAP_TICK, MAX_SWAP_TICK);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
@@ -1177,7 +1166,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         if (positionIdListExercisor.length > 0)
             _validateSolvency(msg.sender, positionIdListExercisor, BP_DECREASE_BUFFER);
 
-        emit ForcedExercised(msg.sender, account, touchedId[0], exerciseFees);
+        emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1606,7 +1595,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
                 LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
             );
 
-            emit PremiumSettled(owner, tokenId, realizedPremia);
+            emit PremiumSettled(owner, tokenId, legIndex, realizedPremia);
         }
 
         // ensure the owner is solvent (insolvent accounts are not permitted to pay premium unless they are being liquidated)
@@ -1811,8 +1800,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage
-    /// @return realizedPremia The amount of premia owed to the user
-    /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
+    /// @return realizedPremia The amount of premia settled by the user
+    /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _updateSettlementPostBurn(
         address owner,
         TokenId tokenId,
@@ -1889,6 +1878,11 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
                 // add available premium to amount that should be settled
                 realizedPremia = realizedPremia.add(
                     LeftRightSigned.wrap(int256(LeftRightUnsigned.unwrap(availablePremium)))
+                );
+
+                // update the base `premiaByLeg` value to reflect the amount of premium that will actually be settled
+                premiaByLeg[leg] = LeftRightSigned.wrap(
+                    int256(LeftRightUnsigned.unwrap(availablePremium))
                 );
 
                 // We need to adjust the grossPremiumLast value such that the result of
