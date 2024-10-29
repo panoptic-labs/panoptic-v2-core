@@ -1238,7 +1238,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // If the current feesBase is close or identical to the stored one, the amountToCollect can be negative.
         // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
         // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
-        LeftRightSigned amountToCollect = _getFeesBase(
+        LeftRightUnsigned amountToCollect = _getFeesBase(
             univ3pool,
             startingLiquidity,
             liquidityChunk,
@@ -1246,10 +1246,18 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         ).subRect(s_accountFeesBase[positionKey]);
 
         if (isLong == 1) {
-            amountToCollect = amountToCollect.sub(movedInLeg);
+            amountToCollect = LeftRightUnsigned.wrap(
+                uint256(
+                    LeftRightSigned.unwrap(
+                        LeftRightSigned.wrap(int256(LeftRightUnsigned.unwrap(amountToCollect))).sub(
+                            movedInLeg
+                        )
+                    )
+                )
+            );
         }
 
-        if (LeftRightSigned.unwrap(amountToCollect) != 0) {
+        if (LeftRightUnsigned.unwrap(amountToCollect) != 0) {
             // first collect amounts from Uniswap corresponding to this position
             // Collect only if there was existing startingLiquidity=liquidities.rightSlot() at that position: collect all fees
 
@@ -1258,8 +1266,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 msg.sender,
                 liquidityChunk.tickLower(),
                 liquidityChunk.tickUpper(),
-                uint128(amountToCollect.rightSlot()),
-                uint128(amountToCollect.leftSlot())
+                amountToCollect.rightSlot(),
+                amountToCollect.leftSlot()
             );
 
             // moved will be negative if the leg was long (funds left the caller, don't count it in collected fees)
@@ -1456,11 +1464,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 // This is because the stored feesBase is rounded up, and the current feesBase is rounded down.
                 // When this is the case, we want to behave as if there are 0 fees, so we just rectify the values.
                 // Guaranteed to be positive, so swap to unsigned type
-                amountToCollect = LeftRightUnsigned.wrap(
-                    uint256(
-                        LeftRightSigned.unwrap(feesBase.subRect(s_accountFeesBase[positionKey]))
-                    )
-                );
+                amountToCollect = feesBase.subRect(s_accountFeesBase[positionKey]);
             }
 
             (LeftRightUnsigned premiumOwed, LeftRightUnsigned premiumGross) = _getPremiaDeltas(

@@ -319,7 +319,7 @@ contract LeftRightTest is Test {
                 harness.subRect(x, xx);
             } else {
                 // normal case
-                LeftRightSigned other = harness.subRect(x, xx);
+                LeftRightUnsigned other = harness.subRect(x, xx);
                 assertEq(int128(harness.leftSlot(other)), y - u > 0 ? y - u : int128(0));
                 assertEq(int128(harness.rightSlot(other)), z - v > 0 ? z - v : int128(0));
             }
