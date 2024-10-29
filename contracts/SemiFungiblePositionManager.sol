@@ -514,7 +514,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Uniswap V4 unlock callback implementation.
-    /// @dev Parameters are `(PoolKey key, int24 tickLimitLow, int24 tickLimitHigh, uint128 positionSize, TokenId tokenId, bool isBurn)`.
+    /// @dev Parameters are `(address account, PoolKey key, int24 tickLimitLow, int24 tickLimitHigh, uint128 positionSize, TokenId tokenId, bool isBurn)`.
     /// @dev Executes the corresponding operations and state updates required to mint `tokenId` of `positionSize` in `key`
     /// @dev (shorts/longs are reversed before calling this function at burn)
     /// @param data The encoded data containing the input parameters
