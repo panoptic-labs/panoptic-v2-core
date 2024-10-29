@@ -72,7 +72,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                                 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mapping from keccak256(Uniswap V4 pool id, oracle contract address) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
+    /// @notice Mapping from hash(Uniswap V4 pool key, oracle contract address) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
     mapping(bytes32 panopticPoolKey => PanopticPool panopticPool) internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
