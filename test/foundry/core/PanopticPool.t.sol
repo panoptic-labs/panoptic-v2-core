@@ -30,7 +30,7 @@ import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
+    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
@@ -342,7 +342,7 @@ contract PanopticPoolTest is PositionUtils {
 
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool));
+        poolId = PanopticMath.getPoolId(address(_pool), _pool.tickSpacing());
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -359,7 +359,6 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
-            WETH,
             sfpm,
             V3FACTORY,
             poolReference,
@@ -375,16 +374,7 @@ contract PanopticPoolTest is PositionUtils {
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(
-                factory.deployNewPool(
-                    token0,
-                    token1,
-                    fee,
-                    uint96(block.timestamp),
-                    type(uint256).max,
-                    type(uint256).max
-                )
-            )
+            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
         );
 
         ct0 = pp.collateralToken0();
@@ -1337,6 +1327,41 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Swapper);
 
         swapSize = bound(swapSize, 10 ** 18, 10 ** 20);
+        for (uint256 i = 0; i < 10; ++i) {
+            router.exactInputSingle(
+                ISwapRouter.ExactInputSingleParams(
+                    isWETH == 0 ? token0 : token1,
+                    isWETH == 1 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    swapSize,
+                    0,
+                    0
+                )
+            );
+
+            router.exactOutputSingle(
+                ISwapRouter.ExactOutputSingleParams(
+                    isWETH == 1 ? token0 : token1,
+                    isWETH == 0 ? token0 : token1,
+                    fee,
+                    Bob,
+                    block.timestamp,
+                    (swapSize * (1_000_000 - fee)) / 1_000_000,
+                    type(uint256).max,
+                    0
+                )
+            );
+        }
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+    }
+
+    function twoWaySwapBig() public {
+        vm.startPrank(Swapper);
+
+        uint256 swapSize = 10 ** 21;
         for (uint256 i = 0; i < 10; ++i) {
             router.exactInputSingle(
                 ISwapRouter.ExactInputSingleParams(
@@ -5314,7 +5339,7 @@ contract PanopticPoolTest is PositionUtils {
         exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
         exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
 
-        pp.forceExercise(Alice, posIdList, new TokenId[](0), new TokenId[](0));
+        pp.forceExercise(Alice, posIdList[0], new TokenId[](0), new TokenId[](0));
 
         assertApproxEqAbs(
             int256(ct0.balanceOf(Bob)) - int256(uint256(type(uint104).max)),
@@ -5653,7 +5678,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 snap = vm.snapshot();
 
             vm.startPrank(Bob);
-            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], $posIdLists[0]);
+            pp.forceExercise(Alice, $posIdLists[2][0], $posIdLists[3], $posIdLists[0]);
 
             int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
                 int256(lastCollateralBalance0[Alice]);
@@ -5720,7 +5745,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
 
         vm.expectRevert();
-        pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], $posIdLists[0]);
+        pp.forceExercise(Alice, $posIdLists[2][0], $posIdLists[3], $posIdLists[0]);
     }
 
     function test_Fail_forceExercise_ExerciseeNotSolvent(
@@ -5864,7 +5889,7 @@ contract PanopticPoolTest is PositionUtils {
             uint256 snap = vm.snapshot();
 
             vm.startPrank(Bob);
-            pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new TokenId[](0));
+            pp.forceExercise(Alice, $posIdLists[2][0], $posIdLists[3], new TokenId[](0));
 
             int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
                 int256(lastCollateralBalance0[Alice]);
@@ -5930,7 +5955,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
 
         vm.expectRevert();
-        pp.forceExercise(Alice, $posIdLists[2], $posIdLists[3], new TokenId[](0));
+        pp.forceExercise(Alice, $posIdLists[2][0], $posIdLists[3], new TokenId[](0));
     }
 
     function test_Fail_forceExercise_InvalidExerciseeList(
@@ -6028,48 +6053,35 @@ contract PanopticPoolTest is PositionUtils {
 
         // now we can mint the long option we are force exercising
         vm.startPrank(Alice);
+        $posIdLists[1].push(TokenId.wrap(0).addPoolId(poolId));
 
         for (uint256 i = 0; i < numLegs; ++i) {
-            $posIdLists[1].push(
-                TokenId.wrap(0).addPoolId(poolId).addLeg(
-                    0,
-                    1,
-                    isWETH,
-                    isLongs[i],
-                    tokenTypes[i],
-                    0,
-                    strikes[i],
-                    widths[i]
-                )
-            );
-
-            $posIdLists[3].push($posIdLists[1][$posIdLists[1].length - 1]);
-
-            if (
-                (TWAPtick < (numLegs == 1 ? tickLower : tickLowers[i]) ||
-                    TWAPtick >= (numLegs == 1 ? tickUpper : tickUppers[i])) &&
-                isLongs[i] == 1 &&
-                $posIdLists[2].length == 0
-            ) {
-                $posIdLists[2].push($posIdLists[1][$posIdLists[1].length - 1]);
-                $posIdLists[3].pop();
-            }
-
-            pp.mintOptions(
-                $posIdLists[1],
-                positionSize,
-                type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+            $posIdLists[1][0] = $posIdLists[1][0].addLeg(
+                i,
+                1,
+                isWETH,
+                isLongs[i],
+                tokenTypes[i],
+                i,
+                strikes[i],
+                widths[i]
             );
         }
+
+        pp.mintOptions(
+            $posIdLists[1],
+            positionSize,
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
 
         twoWaySwap(swapSizeSeed);
 
         vm.startPrank(Bob);
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.forceExercise(Alice, new TokenId[](0), $posIdLists[3], new TokenId[](0));
+        pp.forceExercise(Alice, $posIdLists[1][0], $posIdLists[0], new TokenId[](0));
     }
 
     function test_Fail_forceExercise_InvalidExercisorList(
@@ -6151,20 +6163,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId2;
 
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.forceExercise(Alice, new TokenId[](1), new TokenId[](0), posIdList);
-    }
-
-    function test_Fail_forceExercise_1PositionNotSpecified(
-        uint256 x,
-        TokenId[] memory touchedIds
-    ) public {
-        _initPool(x);
-
-        vm.assume(touchedIds.length != 1);
-
-        vm.expectRevert(Errors.InputListFail.selector);
-
-        pp.forceExercise(Alice, touchedIds, new TokenId[](0), new TokenId[](0));
+        pp.forceExercise(Alice, TokenId.wrap(0), new TokenId[](0), posIdList);
     }
 
     function test_Fail_forceExercise_PositionNotExercisable(uint256 x) public {
@@ -6204,7 +6203,7 @@ contract PanopticPoolTest is PositionUtils {
         vm.startPrank(Bob);
 
         vm.expectRevert(Errors.NoLegsExercisable.selector);
-        pp.forceExercise(Alice, touchedIds, touchedIds, new TokenId[](0));
+        pp.forceExercise(Alice, touchedIds[0], touchedIds, new TokenId[](0));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -7594,7 +7593,13 @@ contract PanopticPoolTest is PositionUtils {
                 int256(Constants.MAX_V3POOL_TICK) - int256(currentTick)
             )
         );
-        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 953);
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 20);
+        twoWaySwapBig();
+
+        vm.assume(Math.abs((int256(currentTick) + tickDelta) - pp.getUniV3TWAP_()) > 513);
+
         vm.store(
             address(pool),
             bytes32(0),

@@ -3,11 +3,11 @@ pragma solidity ^0.8.24;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
-import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -46,10 +46,10 @@ library PanopticMath {
     //        poolId      = 0x003c8ad599c3A0ff
     //
     /// @param univ3pool The address of the Uniswap V3 pool to get the ID of
+    /// @param tickSpacing The tick spacing of `univ3pool`
     /// @return A uint64 representing a fingerprint of the Uniswap V3 pool address
-    function getPoolId(address univ3pool) internal view returns (uint64) {
+    function getPoolId(address univ3pool, int24 tickSpacing) internal pure returns (uint64) {
         unchecked {
-            int24 tickSpacing = IUniswapV3Pool(univ3pool).tickSpacing();
             uint64 poolId = uint64(uint160(univ3pool) >> 112);
             poolId += uint64(uint24(tickSpacing)) << 48;
             return poolId;
@@ -422,36 +422,21 @@ library PanopticMath {
         }
     }
 
-    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`, if valid.
+    /// @notice Extract the tick range specified by `strike` and `width` for the given `tickSpacing`.
     /// @param strike The strike price of the option
     /// @param width The width of the option
     /// @param tickSpacing The tick spacing of the underlying Uniswap V3 pool
-    /// @return tickLower The lower tick of the liquidity chunk
-    /// @return tickUpper The upper tick of the liquidity chunk
+    /// @return The lower tick of the liquidity chunk
+    /// @return The upper tick of the liquidity chunk
     function getTicks(
         int24 strike,
         int24 width,
         int24 tickSpacing
-    ) internal pure returns (int24 tickLower, int24 tickUpper) {
+    ) internal pure returns (int24, int24) {
+        (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
+
         unchecked {
-            // The max/min ticks that can be initialized are the closest multiple of tickSpacing to the actual max/min tick abs()=887272
-            // Dividing and multiplying by tickSpacing rounds down and forces the tick to be a multiple of tickSpacing
-            int24 minTick = (Constants.MIN_V3POOL_TICK / tickSpacing) * tickSpacing;
-            int24 maxTick = (Constants.MAX_V3POOL_TICK / tickSpacing) * tickSpacing;
-
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(width, tickSpacing);
-
-            (tickLower, tickUpper) = (strike - rangeDown, strike + rangeUp);
-
-            // Revert if the upper/lower ticks are not multiples of tickSpacing
-            // Revert if the tick range extends from the strike outside of the valid tick range
-            // These are invalid states, and would revert silently later in `univ3Pool.mint`
-            if (
-                tickLower % tickSpacing != 0 ||
-                tickUpper % tickSpacing != 0 ||
-                tickLower < minTick ||
-                tickUpper > maxTick
-            ) revert Errors.TicksNotInitializable();
+            return (strike - rangeDown, strike + rangeUp);
         }
     }
 
@@ -900,8 +885,7 @@ library PanopticMath {
             // Ignore any surplus collateral - the liquidatee is either solvent or it converts to <1 unit of the other token
             int256 collateralDelta0 = -Math.min(collateralRemaining.rightSlot(), 0);
             int256 collateralDelta1 = -Math.min(collateralRemaining.leftSlot(), 0);
-            int256 haircut0;
-            int256 haircut1;
+            LeftRightSigned haircutBase;
 
             // if the premium in the same token is not enough to cover the loss and there is a surplus of the other token,
             // the liquidator will provide the tokens (reflected in the bonus amount) & receive compensation in the other token
@@ -927,8 +911,9 @@ library PanopticMath {
                     )
                 );
 
-                haircut0 = longPremium.rightSlot();
-                haircut1 = protocolLoss1 + collateralDelta1;
+                haircutBase = LeftRightSigned.wrap(longPremium.rightSlot()).toLeftSlot(
+                    int128(protocolLoss1 + collateralDelta1)
+                );
             } else if (
                 longPremium.leftSlot() < collateralDelta1 &&
                 longPremium.rightSlot() > collateralDelta0
@@ -951,39 +936,64 @@ library PanopticMath {
                     )
                 );
 
-                haircut0 = collateralDelta0 + protocolLoss0;
-                haircut1 = longPremium.leftSlot();
+                haircutBase = LeftRightSigned
+                    .wrap(int128(protocolLoss0 + collateralDelta0))
+                    .toLeftSlot(longPremium.leftSlot());
             } else {
                 // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
-                haircut0 = Math.min(collateralDelta0, longPremium.rightSlot());
-                haircut1 = Math.min(collateralDelta1, longPremium.leftSlot());
+                haircutBase = LeftRightSigned
+                    .wrap(int128(Math.min(collateralDelta0, longPremium.rightSlot())))
+                    .toLeftSlot(int128(Math.min(collateralDelta1, longPremium.leftSlot())));
 
                 collateralDelta0 = 0;
                 collateralDelta1 = 0;
             }
 
-            {
-                address _liquidatee = liquidatee;
-                if (haircut0 != 0) collateral0.exercise(_liquidatee, 0, 0, 0, int128(haircut0));
-                if (haircut1 != 0) collateral1.exercise(_liquidatee, 0, 0, 0, int128(haircut1));
-            }
-
+            // total haircut after rounding up prorated haircut amounts for each leg
+            LeftRightUnsigned haircutTotal;
+            address _liquidatee = liquidatee;
             for (uint256 i = 0; i < positionIdList.length; i++) {
                 TokenId tokenId = positionIdList[i];
                 LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
                 for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
-                    if (tokenId.isLong(leg) == 1) {
-                        mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens)
-                            storage _settledTokens = settledTokens;
+                    if (
+                        tokenId.isLong(leg) == 1 &&
+                        LeftRightSigned.unwrap(_premiasByLeg[i][leg]) != 0
+                    ) {
+                        // calculate prorated haircut amounts to revoke from settled and subtract from haircut req
+                        LeftRightSigned haircutAmounts = LeftRightSigned
+                            .wrap(
+                                int128(
+                                    uint128(
+                                        Math.unsafeDivRoundingUp(
+                                            uint128(-_premiasByLeg[i][leg].rightSlot()) *
+                                                uint256(uint128(haircutBase.rightSlot())),
+                                            uint128(longPremium.rightSlot())
+                                        )
+                                    )
+                                )
+                            )
+                            .toLeftSlot(
+                                int128(
+                                    uint128(
+                                        Math.unsafeDivRoundingUp(
+                                            uint128(-_premiasByLeg[i][leg].leftSlot()) *
+                                                uint256(uint128(haircutBase.leftSlot())),
+                                            uint128(longPremium.leftSlot())
+                                        )
+                                    )
+                                )
+                            );
 
-                        // calculate amounts to revoke from settled and subtract from haircut req
-                        uint256 settled0 = Math.unsafeDivRoundingUp(
-                            uint128(-_premiasByLeg[i][leg].rightSlot()) * uint256(haircut0),
-                            uint128(longPremium.rightSlot())
+                        haircutTotal = haircutTotal.add(
+                            LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(haircutAmounts)))
                         );
-                        uint256 settled1 = Math.unsafeDivRoundingUp(
-                            uint128(-_premiasByLeg[i][leg].leftSlot()) * uint256(haircut1),
-                            uint128(longPremium.leftSlot())
+
+                        emit PanopticPool.PremiumSettled(
+                            _liquidatee,
+                            tokenId,
+                            leg,
+                            LeftRightSigned.wrap(0).sub(haircutAmounts)
                         );
 
                         bytes32 chunkKey = keccak256(
@@ -996,21 +1006,19 @@ library PanopticMath {
 
                         // The long premium is not commited to storage during the liquidation, so we add the entire adjusted amount
                         // for the haircut directly to the accumulator
-                        settled0 = Math.max(
-                            0,
-                            uint128(-_premiasByLeg[i][leg].rightSlot()) - settled0
-                        );
-                        settled1 = Math.max(
-                            0,
-                            uint128(-_premiasByLeg[i][leg].leftSlot()) - settled1
-                        );
-
-                        _settledTokens[chunkKey] = _settledTokens[chunkKey].add(
-                            LeftRightUnsigned.wrap(uint128(settled0)).toLeftSlot(uint128(settled1))
+                        settledTokens[chunkKey] = settledTokens[chunkKey].add(
+                            (LeftRightSigned.wrap(0).sub(_premiasByLeg[i][leg])).subRect(
+                                haircutAmounts
+                            )
                         );
                     }
                 }
             }
+
+            if (haircutTotal.rightSlot() != 0)
+                collateral0.exercise(_liquidatee, 0, 0, 0, int128(haircutTotal.rightSlot()));
+            if (haircutTotal.leftSlot() != 0)
+                collateral1.exercise(_liquidatee, 0, 0, 0, int128(haircutTotal.leftSlot()));
 
             return
                 LeftRightSigned.wrap(0).toRightSlot(int128(collateralDelta0)).toLeftSlot(
