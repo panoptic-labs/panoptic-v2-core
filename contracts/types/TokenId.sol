@@ -131,10 +131,10 @@ library TokenIdLibrary {
         }
     }
 
-    /// @notice Get the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
+    /// @notice Get the type of currency moved for a given leg (implies a call or put). Either currency0 or currency1.
     /// @param self The TokenId to extract `tokenType` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
-    /// @return 1 if the token moved is currency1 or 0 if the token moved is currency0
+    /// @return 1 if the currency moved is currency1 or 0 if the currency moved is currency0
     function tokenType(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 9)) % 2);
@@ -247,7 +247,7 @@ library TokenIdLibrary {
         }
     }
 
-    /// @notice Add the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
+    /// @notice Add the type of currency moved for a given leg (implies a call or put). Either currency0 or currency1.
     /// @param self The TokenId to add `_tokenType` to
     /// @param _tokenType The tokenType to add to the TokenType slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})

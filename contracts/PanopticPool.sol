@@ -36,7 +36,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @dev Need to unpack bonusAmounts to get raw numbers, which are always positive.
     /// @param liquidator Address of the caller liquidating the distressed account
     /// @param liquidatee Address of the distressed/liquidatable account
-    /// @param bonusAmounts LeftRight encoding for the the bonus paid for token 0 (right slot) and 1 (left slot) from the Panoptic Pool to the liquidator
+    /// @param bonusAmounts LeftRight encoding for the the bonus paid for currency 0 (right slot) and 1 (left slot) from the Panoptic Pool to the liquidator
     event AccountLiquidated(
         address indexed liquidator,
         address indexed liquidatee,
@@ -48,7 +48,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     /// @param user Address of the owner of the liquidated position
     /// @param tokenId TokenId of the liquidated position
     /// @param exerciseFee LeftRight encoding for the cost paid by the exercisor to force the exercise of the token;
-    /// the cost for token 0 (right slot) and 1 (left slot) is represented as negative
+    /// the cost for currency 0 (right slot) and 1 (left slot) is represented as negative
     event ForcedExercised(
         address indexed exercisor,
         address indexed user,

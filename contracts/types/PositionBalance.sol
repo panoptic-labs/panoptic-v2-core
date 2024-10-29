@@ -160,7 +160,7 @@ library PositionBalanceLibrary {
 
     /// @notice Get both currency0 and currency1 utilizations of `self`.
     /// @param self The PositionBalance to retrieve the utilizations from
-    /// @return The token utilizations, stored in bips
+    /// @return The currency utilizations, stored in bips
     function utilizations(PositionBalance self) internal pure returns (uint32) {
         unchecked {
             return uint32(PositionBalance.unwrap(self) >> 128);

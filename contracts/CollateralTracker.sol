@@ -468,14 +468,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         shares = previewDeposit(assets);
 
-        // transfer assets from the user/the LP to the PanopticPool
-        // in return for the shares to be minted
-        _settleCurrencyDelta(msg.sender, int256(assets));
-
         _mint(receiver, shares);
 
         // update tracked asset balance
         s_poolAssets += uint128(assets);
+
+        // transfer assets from the user/the LP to the PanopticPool
+        // in return for the shares to be minted
+        _settleCurrencyDelta(msg.sender, int256(assets));
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }
@@ -519,14 +519,14 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
 
-        // transfer assets from the user/the LP to the PanopticPool
-        // in return for the shares to be minted
-        _settleCurrencyDelta(msg.sender, int256(assets));
-
         _mint(receiver, shares);
 
         // update tracked asset balance
         s_poolAssets += uint128(assets);
+
+        // transfer assets from the user/the LP to the PanopticPool
+        // in return for the shares to be minted
+        _settleCurrencyDelta(msg.sender, int256(assets));
 
         emit Deposit(msg.sender, receiver, assets, shares);
     }

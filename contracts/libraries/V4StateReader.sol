@@ -119,7 +119,7 @@ library V4StateReader {
 
                      liquidity
                         ▲        feeGrowthGlobal0X128 = global fee growth
-                        │                             = (all fees collected for the entire price range for token 0)
+                        │                             = (all fees collected for the entire price range for currency0)
                         │
                         │
                         │     lowerOut0  ┌──────────────┐ upperOut0
