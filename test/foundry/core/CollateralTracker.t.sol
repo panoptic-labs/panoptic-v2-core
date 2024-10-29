@@ -65,7 +65,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
     // whether the current instance is token 0
     function underlyingIsToken0() external pure returns (bool) {
-        return _underlyingIsToken0();
+        return _underlyingIsCurrency0();
     }
 
     function _inAMM() external view returns (uint256) {
@@ -156,7 +156,7 @@ contract PanopticPoolHarness is PanopticPool {
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IPoolManager _manager) SemiFungiblePositionManager(_manager) {}
+    constructor(IPoolManager _manager) SemiFungiblePositionManager(_manager, 10 ** 13, 0) {}
 
     function accountLiquidity(
         bytes32 positionKey
@@ -410,7 +410,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function _deployCustomPanopticPool() internal {
-        manager = new PoolManager();
+        manager = new PoolManager(address(0));
         routerV4 = new V4RouterSimple(manager);
 
         vm.startPrank(Swapper);

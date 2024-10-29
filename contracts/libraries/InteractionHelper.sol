@@ -16,44 +16,44 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 /// @author Axicon Labs Limited
 library InteractionHelper {
     /// @notice Function that performs approvals on behalf of the PanopticPool for CollateralTracker and SemiFungiblePositionManager.
-    /// @param sfpm The SemiFungiblePositionManager being approved for both token0 and token1
-    /// @param ct0 The CollateralTracker (token0) being approved for token0
-    /// @param ct1 The CollateralTracker (token1) being approved for token1
-    /// @param token0 The token0 (in Uniswap) being approved for
-    /// @param token1 The token1 (in Uniswap) being approved for
+    /// @param sfpm The SemiFungiblePositionManager being approved for both currency0 and currency1
+    /// @param ct0 The CollateralTracker (currency0) being approved for currency0
+    /// @param ct1 The CollateralTracker (currency1) being approved for currency1
+    /// @param currency0 The currency0 (in Uniswap) being approved for
+    /// @param currency1 The currency1 (in Uniswap) being approved for
     function doApprovals(
         SemiFungiblePositionManager sfpm,
         CollateralTracker ct0,
         CollateralTracker ct1,
-        address token0,
-        address token1
+        address currency0,
+        address currency1
     ) external {
         // Approve transfers of Panoptic Pool funds by SFPM
-        IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
-        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+        IERC20Partial(currency0).approve(address(sfpm), type(uint256).max);
+        IERC20Partial(currency1).approve(address(sfpm), type(uint256).max);
 
         // Approve transfers of Panoptic Pool funds by Collateral token
-        IERC20Partial(token0).approve(address(ct0), type(uint256).max);
-        IERC20Partial(token1).approve(address(ct1), type(uint256).max);
+        IERC20Partial(currency0).approve(address(ct0), type(uint256).max);
+        IERC20Partial(currency1).approve(address(ct1), type(uint256).max);
     }
 
     /// @notice Computes the name of a CollateralTracker based on the token composition and fee of the underlying Uniswap Pool.
     /// @dev Some tokens do not have proper symbols so error handling is required - this logic takes up significant bytecode size, which is why it is in a library.
-    /// @param token0 The token0 of the Uniswap Pool
-    /// @param token1 The token1 of the Uniswap Pool
-    /// @param isToken0 Whether the collateral token computing the name is for token0 or token1
+    /// @param currency0 The currency0 of the Uniswap Pool
+    /// @param currency1 The currency1 of the Uniswap Pool
+    /// @param isToken0 Whether the collateral token computing the name is for currency0 or currency1
     /// @param fee The fee of the Uniswap pool in hundredths of basis points
     /// @param prefix A constant string appended to the start of the token name
     /// @return The complete name of the collateral token calling this function
     function computeName(
-        address token0,
-        address token1,
+        address currency0,
+        address currency1,
         bool isToken0,
         uint24 fee,
         string memory prefix
     ) external view returns (string memory) {
-        string memory symbol0 = PanopticMath.safeERC20Symbol(token0);
-        string memory symbol1 = PanopticMath.safeERC20Symbol(token1);
+        string memory symbol0 = PanopticMath.safeERC20Symbol(currency0);
+        string memory symbol1 = PanopticMath.safeERC20Symbol(currency1);
 
         unchecked {
             return
@@ -71,9 +71,9 @@ library InteractionHelper {
         }
     }
 
-    /// @notice Returns collateral token symbol as `prefix` + `underlying token symbol`.
-    /// @param token The address of the underlying token used to compute the symbol
-    /// @param prefix A constant string prepended to the symbol of the underlying token to create the final symbol
+    /// @notice Returns collateral token symbol as `prefix` + `underlying asset symbol`.
+    /// @param token The address of the underlying asset used to compute the symbol (`address(0)` = native asset)
+    /// @param prefix A constant string prepended to the symbol of the underlying asset to create the final symbol
     /// @return The symbol of the collateral token
     function computeSymbol(
         address token,
@@ -82,8 +82,8 @@ library InteractionHelper {
         return string.concat(prefix, PanopticMath.safeERC20Symbol(token));
     }
 
-    /// @notice Returns decimals of underlying token (0 if not present).
-    /// @param token The address of the underlying token used to compute the decimals
+    /// @notice Returns decimals of underlying asset (0 if not present).
+    /// @param token The address of the underlying asset used to compute the decimals (`address(0)` = native asset)
     /// @return The decimals of the token
     function computeDecimals(address token) external view returns (uint8) {
         // not guaranteed that token supports metadata extension

@@ -235,11 +235,11 @@ contract Misctest is Test, PositionUtils {
     function setUp() public {
         vm.startPrank(Deployer);
 
-        manager = IPoolManager(address(new PoolManager()));
+        manager = IPoolManager(address(new PoolManager(address(0))));
 
         routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager);
+        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 0);
 
         ph = new PanopticHelper(sfpm);
 
@@ -293,6 +293,8 @@ contract Misctest is Test, PositionUtils {
         _createPanopticPool();
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        routerV4.modifyLiquidity(address(0), poolKey, -887270, 887270, 1);
 
         vm.startPrank(Alice);
 
@@ -372,7 +374,6 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
-            address(token1),
             sfpm,
             manager,
             poolReference,
@@ -392,9 +393,7 @@ contract Misctest is Test, PositionUtils {
                 factory.deployNewPool(
                     IV3CompatibleOracle(address(uniPool)),
                     poolKey,
-                    uint96(block.timestamp),
-                    type(uint256).max,
-                    type(uint256).max
+                    uint96(block.timestamp)
                 )
             )
         );
@@ -727,7 +726,7 @@ contract Misctest is Test, PositionUtils {
         PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
 
         vm.startPrank(Bob);
-        pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
+        pp.forceExercise(Alice, $posIdList[0], new TokenId[](0), new TokenId[](0));
     }
 
     function test_parity_maxmint_previewmint() public {
