@@ -827,7 +827,6 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
 
         uint256 min_sell_ratio = SELLER_COLLATERAL_RATIO;
         /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
-        /// at 0% utilization, strangle legs do not compound efficiency
         if (utilization < 0) {
             unchecked {
                 min_sell_ratio /= 2;
