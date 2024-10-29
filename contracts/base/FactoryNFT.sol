@@ -52,8 +52,8 @@ contract FactoryNFT is MetadataStore, ERC721 {
 
     /// @notice Returns the metadata URI for a given set of characteristics.
     /// @param panopticPool The displayed address used to determine the rarity (leading zeros) and lastCharVal (last 4 bits)
-    /// @param symbol0 The symbol of `token0` in the Uniswap pool
-    /// @param symbol1 The symbol of `token1` in the Uniswap pool
+    /// @param symbol0 The symbol of `currency0` in the Uniswap pool
+    /// @param symbol1 The symbol of `currency1` in the Uniswap pool
     /// @param fee The fee of the Uniswap pool (in hundredths of basis points)
     /// @return The metadata URI for the given characteristics
     function constructMetadata(
@@ -148,8 +148,8 @@ contract FactoryNFT is MetadataStore, ERC721 {
     /// @param svgIn The SVG artwork to complete
     /// @param panopticPool The address of the Panoptic Pool
     /// @param rarity The rarity of the NFT
-    /// @param symbol0 The symbol of `token0` in the Uniswap pool
-    /// @param symbol1 The symbol of `token1` in the Uniswap pool
+    /// @param symbol0 The symbol of `currency0` in the Uniswap pool
+    /// @param symbol1 The symbol of `currency1` in the Uniswap pool
     /// @return The final SVG artwork with the pool/rarity specific text fields filled in
     function generateSVGInfo(
         string memory svgIn,

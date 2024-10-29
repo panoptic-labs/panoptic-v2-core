@@ -33,8 +33,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param poolAddress Address of the deployed Panoptic pool
     /// @param oracleContract The external oracle contract used by the newly deployed Panoptic Pool
     /// @param poolKey The Uniswap V4 pool key associated with the Panoptic Pool
-    /// @param collateralTracker0 Address of the collateral tracker contract for token0
-    /// @param collateralTracker1 Address of the collateral tracker contract for token1
+    /// @param collateralTracker0 Address of the collateral tracker contract for currency0
+    /// @param collateralTracker1 Address of the collateral tracker contract for currency1
     event PoolDeployed(
         PanopticPool indexed poolAddress,
         IV3CompatibleOracle indexed oracleContract,
@@ -106,9 +106,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
                             POOL DEPLOYMENT
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified uniquely by the incoming parameters.
+    /// @notice Create a new Panoptic Pool linked to the given Uniswap pool identified by the incoming parameters.
     /// @dev There is a 1:1 mapping between a Panoptic Pool and a Uniswap Pool.
-    /// @dev A Uniswap pool is uniquely identified by its tokens and the fee.
     /// @dev Salt used in PanopticPool creation is `[leading 20 msg.sender chars][uint80(uint256(keccak256(abi.encode(V4PoolKey, oracleContractAddress))))][salt]`.
     /// @param oracleContract The external oracle contract to be used by the newly deployed Panoptic Pool
     /// @param key The Uniswap V4 pool key

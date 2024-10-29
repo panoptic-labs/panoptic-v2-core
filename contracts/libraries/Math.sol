@@ -125,14 +125,14 @@ library Math {
                                TICK MATH
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Computes a tick that will require approximately `amount` of token0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick` in Uniswap.
+    /// @notice Computes a tick that will require approximately `amount` of currency0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick` in Uniswap.
     /// @dev This function can have a maximum of two ticks of error from one of the ticks with `amount(tickA) < amount < amount(tickA + 1 = tickB)`.
     /// @dev `tickSpacing is assumed to be within the range (0, 32768)
     /// @dev `maxLiquidityPerTick` for `s=tickSpacing` should be defined by `(2^128 - 1) / ((887272/s) - (-887272/s) + 1)`
-    /// @param amount The desired amount of token0 required to fill the returned tick
+    /// @param amount The desired amount of currency0 required to fill the returned tick
     /// @param tickSpacing The spacing between initializable ticks in the Uniswap pool
     /// @param maxLiquidityPerTick The maximum liquidity that can reference any given tick in the Uniswap pool
-    /// @return A tick that will require approximately `amount` of token0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick`
+    /// @return A tick that will require approximately `amount` of currency0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickLower = tick`
     function getApproxTickWithMaxAmount(
         uint256 amount,
         int24 tickSpacing,
@@ -284,9 +284,9 @@ library Math {
                     LIQUIDITY AMOUNTS (STRIKE+WIDTH)
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
+    /// @notice Calculates the amount of currency0 received for a given LiquidityChunk.
     /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
-    /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
+    /// @return The amount of currency0 represented by `liquidityChunk` when `currentTick < tickLower`
     function getAmount0ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
@@ -300,9 +300,9 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token1 received for a given LiquidityChunk.
+    /// @notice Calculates the amount of currency1 received for a given LiquidityChunk.
     /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
-    /// @return The amount of token1 represented by `liquidityChunk` when `currentTick > tickUpper`
+    /// @return The amount of currency1 represented by `liquidityChunk` when `currentTick > tickUpper`
     function getAmount1ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
@@ -312,11 +312,11 @@ library Math {
         }
     }
 
-    /// @notice Calculates the amount of token0 and token1 received for a given LiquidityChunk at the provided `currentTick`.
+    /// @notice Calculates the amount of currency0 and currency1 received for a given LiquidityChunk at the provided `currentTick`.
     /// @param currentTick The tick at which to evaluate `liquidityChunk`
     /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
-    /// @return amount0 The amount of token0 represented by `liquidityChunk` at `currentTick`
-    /// @return amount1 The amount of token1 represented by `liquidityChunk` at `currentTick`
+    /// @return amount0 The amount of currency0 represented by `liquidityChunk` at `currentTick`
+    /// @return amount1 The amount of currency1 represented by `liquidityChunk` at `currentTick`
     function getAmountsForLiquidity(
         int24 currentTick,
         LiquidityChunk liquidityChunk
@@ -334,7 +334,7 @@ library Math {
     /// @notice Returns a LiquidityChunk at the provided tick range with `liquidity` corresponding to `amount0`.
     /// @param tickLower The lower tick of the chunk
     /// @param tickUpper The upper tick of the chunk
-    /// @param amount0 The amount of token0
+    /// @param amount0 The amount of currency0
     /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity for `amount0`
     function getLiquidityForAmount0(
         int24 tickLower,
@@ -363,7 +363,7 @@ library Math {
     /// @notice Returns a LiquidityChunk at the provided tick range with `liquidity` corresponding to `amount1`.
     /// @param tickLower The lower tick of the chunk
     /// @param tickUpper The upper tick of the chunk
-    /// @param amount1 The amount of token1
+    /// @param amount1 The amount of currency1
     /// @return A LiquidityChunk with `tickLower`, `tickUpper`, and the calculated amount of liquidity for `amount1`
     function getLiquidityForAmount1(
         int24 tickLower,
