@@ -1002,20 +1002,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
-    /// @return utilization The final utilization of the collateral vault
+    /// @return The final utilization of the collateral vault
+    /// @return The total amount of commission (base rate + ITM spread) paid
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) external onlyPanopticPool returns (uint32 utilization) {
+    ) external onlyPanopticPool returns (uint32, uint128) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
-            // constrict premium to only assets not belonging to PLPs (i.e premium paid by sellers or collected from the pool earlier)
-            int256 tokenToPay = _getExchangedAmount(
+            (int256 tokenToPay, uint128 commission) = _getExchangedAmount(
                 longAmount,
                 shortAmount,
                 swappedAmount,
@@ -1045,7 +1045,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint256(updatedAssets).toUint128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
-            utilization = uint32(_poolUtilization());
+            return (uint32(_poolUtilization()), commission);
         }
     }
 
@@ -1102,39 +1102,32 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shortAmount The amount of short options held
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
-    /// @return exchangedAmount The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
+    /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
+    /// @return The total commission (base rate + ITM spread) paid for minting the option
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) internal view returns (int256 exchangedAmount) {
-        // If amount swapped is positive, the amount of tokens to pay is the ITM amount
-
+    ) internal view returns (int256, uint128) {
         unchecked {
-            // intrinsic value is the amount that need to be exchanged due to minting in-the-money
             int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
-            if (intrinsicValue != 0) {
-                // the swap commission is paid on the intrinsic value (if a swap occured -- users who mint covered options with their own collateral do not pay this fee)
-                uint256 swapCommission = isCovered
-                    ? 0
-                    : Math.unsafeDivRoundingUp(
-                        s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
-                        DECIMALS * 100
-                    );
+            // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
+            uint256 commission = Math.unsafeDivRoundingUp(
+                uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
+                DECIMALS
+            ) +
+                (
+                    intrinsicValue == 0 || isCovered
+                        ? 0
+                        : Math.unsafeDivRoundingUp(
+                            s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
+                            DECIMALS * 100
+                        )
+                );
 
-                // set the exchanged amount to the sum of the intrinsic value and swapCommission
-                exchangedAmount = intrinsicValue + int256(swapCommission);
-            }
-
-            // compute total commission amount = commission rate + spread fee
-            exchangedAmount += int256(
-                Math.unsafeDivRoundingUp(
-                    uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                    DECIMALS
-                )
-            );
+            return (intrinsicValue + int256(commission), uint128(commission));
         }
     }
 
