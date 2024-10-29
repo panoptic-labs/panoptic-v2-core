@@ -31,9 +31,6 @@ library Errors {
     /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
     error InvalidTick();
 
-    /// @notice The result of a notional value conversion is too small (=0) or too large (>2^128-1)
-    error InvalidNotionalValue();
-
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
