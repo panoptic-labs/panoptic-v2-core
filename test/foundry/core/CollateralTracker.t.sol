@@ -410,7 +410,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     }
 
     function _deployCustomPanopticPool() internal {
-        manager = new PoolManager();
+        manager = new PoolManager(address(0));
         routerV4 = new V4RouterSimple(manager);
 
         vm.startPrank(Swapper);

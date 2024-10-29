@@ -85,7 +85,7 @@ contract POC_Test is Test, PositionUtils {
     function setUp() public {
         vm.startPrank(Deployer);
 
-        manager = IPoolManager(address(new PoolManager()));
+        manager = IPoolManager(address(new PoolManager(address(0))));
 
         routerV4 = new V4RouterSimple(manager);
 

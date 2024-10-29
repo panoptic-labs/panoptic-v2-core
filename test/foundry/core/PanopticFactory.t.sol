@@ -81,7 +81,7 @@ contract PanopticFactoryTest is Test {
     // Mainnet factory address
     IUniswapV3Factory V3FACTORY = IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
 
-    IPoolManager manager = IPoolManager(address(new PoolManager()));
+    IPoolManager manager = IPoolManager(address(new PoolManager(address(0))));
 
     V4RouterSimple routerV4 = new V4RouterSimple(manager);
 

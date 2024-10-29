@@ -504,7 +504,7 @@ contract PanopticPoolTest is PositionUtils {
     }
 
     function setUp() public {
-        manager = new PoolManager();
+        manager = new PoolManager(address(0));
         routerV4 = new V4RouterSimple(manager);
         sfpm = new SemiFungiblePositionManagerHarness(manager);
 
