@@ -143,9 +143,12 @@ library Math {
             return
                 int24(
                     Math.log_Sqrt1p0001(
-                        (amount * 2 ** 96) /
+                        Math.mulDiv(
+                            amount,
+                            2 ** 224,
                             (maxLiquidityPerTick *
-                                (2 ** 96 - 2 ** 192 / Math.getSqrtRatioAtTick(tickSpacing))),
+                                (2 ** 96 - 2 ** 192 / Math.getSqrtRatioAtTick(tickSpacing)))
+                        ),
                         13
                     )
                 );
