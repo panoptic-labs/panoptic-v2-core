@@ -18,6 +18,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
 import {Pointer} from "@types/Pointer.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
@@ -32,13 +33,13 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Emitted when a Panoptic Pool is created.
     /// @param poolAddress Address of the deployed Panoptic pool
     /// @param oracleContract The external oracle contract used by the newly deployed Panoptic Pool
-    /// @param poolKey The Uniswap V4 pool key associated with the Panoptic Pool
+    /// @param idV4 The Uniswap V4 pool identifier (hash of `poolKey`) associated with the Panoptic Pool
     /// @param collateralTracker0 Address of the collateral tracker contract for currency0
     /// @param collateralTracker1 Address of the collateral tracker contract for currency1
     event PoolDeployed(
         PanopticPool indexed poolAddress,
         IV3CompatibleOracle indexed oracleContract,
-        PoolKey poolKey,
+        PoolId indexed idV4,
         CollateralTracker collateralTracker0,
         CollateralTracker collateralTracker1
     );
@@ -118,9 +119,11 @@ contract PanopticFactory is FactoryNFT, Multicall {
         PoolKey calldata key,
         uint96 salt
     ) external returns (PanopticPool newPoolContract) {
+        PoolId idV4 = key.toId();
+
         bytes32 panopticPoolKey = keccak256(abi.encode(key, oracleContract));
 
-        if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, key.toId()) == 0)
+        if (V4StateReader.getSqrtPriceX96(POOL_MANAGER_V4, idV4) == 0)
             revert Errors.UniswapPoolNotInitialized();
 
         if (address(s_getPanopticPool[panopticPoolKey]) != address(0))
@@ -177,7 +180,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
                     collateralTracker0,
                     collateralTracker1,
                     oracleContract,
-                    key.toId(),
+                    idV4,
                     abi.encode(key)
                 ),
                 salt32
@@ -201,7 +204,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         emit PoolDeployed(
             newPoolContract,
             oracleContract,
-            key,
+            idV4,
             collateralTracker0,
             collateralTracker1
         );
