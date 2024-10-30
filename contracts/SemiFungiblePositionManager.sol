@@ -90,10 +90,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
     /// @notice Emitted when the enforced tick range is expanded for a given `poolId`.
     /// @dev Will be emitted on any `expandEnforcedTickRange` call, even if the enforced ticks are not actually changed.
-    /// @param poolId The SFPM's pool identifier for the pool, including the 16-bit tick spacing and 48-bit pool pattern
+    /// @param uniswapPool Address of the underlying Uniswap V3 pool
     /// @param minEnforcedTick The new minimum enforced tick for the pool
     /// @param maxEnforcedTick The new maximum enforced tick for the pool
-    event EnforcedTicksUpdated(uint64 indexed poolId, int24 minEnforcedTick, int24 maxEnforcedTick);
+    event EnforcedTicksUpdated(
+        address indexed uniswapPool,
+        int24 minEnforcedTick,
+        int24 maxEnforcedTick
+    );
 
     /// @notice Emitted when a position is destroyed/burned.
     /// @param recipient The address of the user who burned the position
@@ -468,7 +472,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         s_poolIdToPoolData[poolId] = PoolData(dataOld.pool, minEnforcedTick, maxEnforcedTick);
 
-        emit EnforcedTicksUpdated(poolId, minEnforcedTick, maxEnforcedTick);
+        emit EnforcedTicksUpdated(address(dataOld.pool), minEnforcedTick, maxEnforcedTick);
     }
 
     /*//////////////////////////////////////////////////////////////
