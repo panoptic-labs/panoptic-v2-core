@@ -386,7 +386,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     Math.max(
                         MIN_ENFORCED_TICKFILL_COST,
                         (Math.min(
-                            IERC20Partial(Currency.unwrap(key.currency0)).totalSupply(),
+                            IERC20Partial(Currency.unwrap(key.currency1)).totalSupply(),
                             uint128(type(int128).max)
                         ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                     ),
