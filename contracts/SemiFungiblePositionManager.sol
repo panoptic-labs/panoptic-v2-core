@@ -79,23 +79,23 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emitted when a Uniswap V4 pool is initialized in the SFPM.
-    /// @param poolKeyV4 The Uniswap V4 pool key
+    /// @param idV4 The Uniswap V4 pool identifier (hash of `poolKey`)
     /// @param poolId The SFPM's pool identifier for the pool, including the 16-bit tick spacing and 48-bit pool pattern
     /// @param minEnforcedTick The initial minimum enforced tick for the pool
     /// @param maxEnforcedTick The initial maximum enforced tick for the pool
     event PoolInitialized(
-        PoolKey indexed poolKeyV4,
+        PoolId indexed idV4,
         uint64 poolId,
         int24 minEnforcedTick,
         int24 maxEnforcedTick
     );
 
-    /// @notice Emitted when the enforced tick range is expanded for a given `poolId`.
+    /// @notice Emitted when the enforced tick range is expanded for a given Uniswap `idV4`.
     /// @dev Will be emitted on any `expandEnforcedTickRange` call, even if the enforced ticks are not actually changed.
-    /// @param poolId The SFPM's pool identifier for the pool, including the 16-bit tick spacing and 48-bit pool pattern
+    /// @param idV4 The Uniswap V4 pool identifier (hash of `poolKey`)
     /// @param minEnforcedTick The new minimum enforced tick for the pool
     /// @param maxEnforcedTick The new maximum enforced tick for the pool
-    event EnforcedTicksUpdated(uint64 indexed poolId, int24 minEnforcedTick, int24 maxEnforcedTick);
+    event EnforcedTicksUpdated(PoolId indexed idV4, int24 minEnforcedTick, int24 maxEnforcedTick);
 
     /// @notice Emitted when a position is destroyed/burned.
     /// @param recipient The address of the user who burned the position
@@ -404,7 +404,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             true
         );
 
-        emit PoolInitialized(key, poolId, minEnforcedTick, maxEnforcedTick);
+        emit PoolInitialized(idV4, poolId, minEnforcedTick, maxEnforcedTick);
     }
 
     /// @notice Recomputes and decreases `minEnforcedTick` and/or increases `maxEnforcedTick` for a given `poolId` if certain conditions are met.
@@ -472,7 +472,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             dataOld.initialized
         );
 
-        emit EnforcedTicksUpdated(dataOld.poolId, minEnforcedTick, maxEnforcedTick);
+        emit EnforcedTicksUpdated(idV4, minEnforcedTick, maxEnforcedTick);
     }
 
     /*//////////////////////////////////////////////////////////////
