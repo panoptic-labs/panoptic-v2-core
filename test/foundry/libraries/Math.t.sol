@@ -200,6 +200,18 @@ contract MathTest is Test {
         harness.mulDiv192(input, input);
     }
 
+    function test_Success_mulDivCapped(uint256 a, uint256 b, uint256 c, uint256 power) public {
+        power = bound(power, 0, 255);
+        vm.assume(c != 0);
+
+        try harness.mulDiv(a, b, c) returns (uint256 res) {
+            assertEq(Math.min(2 ** power - 1, res), Math.mulDivCapped(a, b, c, power));
+        } catch {
+            console2.log("A");
+            assertEq(Math.mulDivCapped(a, b, c, power), 2 ** power - 1);
+        }
+    }
+
     function test_Success_unsafeDivRoundingUp(uint256 a, uint256 b) public {
         uint256 divRes;
         uint256 modRes;
@@ -227,6 +239,28 @@ contract MathTest is Test {
         assertEq(uniV3Result, returnedResult);
     }
 
+    function test_getApproxTickWithMaxAmount(uint256 amount, uint256 ts_seed) public {
+        int24 ts = int24(int256(bound(ts_seed, 1, 32767)));
+
+        amount = bound(amount, 2_100 * 10 ** 18, 10 ** 26);
+
+        uint128 lMax = Math.getMaxLiquidityPerTick(ts);
+        int24 res = Math.getApproxTickWithMaxAmount(amount, ts, lMax);
+
+        assertGt(
+            amount,
+            Math.getAmount0ForLiquidity(
+                LiquidityChunkLibrary.createChunk(res + 2 - ts, res + 2, lMax)
+            )
+        );
+        assertLt(
+            amount,
+            Math.getAmount0ForLiquidity(
+                LiquidityChunkLibrary.createChunk(res - 2 - ts, res - 2, lMax)
+            )
+        );
+    }
+
     function test_Success_getMaxLiquidityPerTick(int256 x) public {
         x = bound(x, 1, 32767);
         console2.log("Math act", Math.getMaxLiquidityPerTick(int24(x)));
@@ -236,13 +270,13 @@ contract MathTest is Test {
         );
     }
 
-    function test_Success_log_Sqrt1p0001(uint256 x) public {
-        x = bound(x, TickMath.MIN_SQRT_RATIO, TickMath.MAX_SQRT_RATIO - 1);
+    function test_Success_log_Sqrt1p0001MantissaRect(uint256 x) public {
+        x = bound(x, TickMath.MIN_SQRT_RATIO, 2 ** 96 - 1);
 
         // abs(max_error) ≈ 1.70234
         assertApproxEqAbs(
-            Math.log_Sqrt1p0001(x << 32, 13),
-            TickMath.getTickAtSqrtRatio(uint160(x)),
+            int256(Math.log_Sqrt1p0001MantissaRect(x << 32, 13)),
+            -TickMath.getTickAtSqrtRatio(uint160(x)),
             2
         );
     }
