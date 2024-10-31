@@ -369,26 +369,22 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 maxEnforcedTick;
         unchecked {
             minEnforcedTick = int24(
-                Math.getApproxTickWithMaxAmount(
+                -Math.getApproxTickWithMaxAmount(
                     Math.max(
                         MIN_ENFORCED_TICKFILL_COST,
-                        (Math.min(
-                            IERC20Partial(Currency.unwrap(key.currency0)).totalSupply(),
-                            uint128(type(int128).max)
-                        ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
+                        (IERC20Partial(Currency.unwrap(key.currency1)).totalSupply() *
+                            SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                     ),
                     key.tickSpacing,
                     maxLiquidityPerTick
                 )
             );
             maxEnforcedTick = int24(
-                -Math.getApproxTickWithMaxAmount(
+                Math.getApproxTickWithMaxAmount(
                     Math.max(
                         MIN_ENFORCED_TICKFILL_COST,
-                        (Math.min(
-                            IERC20Partial(Currency.unwrap(key.currency1)).totalSupply(),
-                            uint128(type(int128).max)
-                        ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
+                        (IERC20Partial(Currency.unwrap(key.currency0)).totalSupply() *
+                            SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                     ),
                     key.tickSpacing,
                     maxLiquidityPerTick
@@ -436,10 +432,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     Math.getApproxTickWithMaxAmount(
                         Math.max(
                             MIN_ENFORCED_TICKFILL_COST,
-                            (Math.min(
-                                IERC20Partial(Currency.unwrap(key.currency0)).totalSupply(),
-                                uint128(type(int128).max)
-                            ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
+                            (IERC20Partial(Currency.unwrap(key.currency1)).totalSupply() *
+                                SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                         ),
                         tickSpacing,
                         maxLiquidityPerTick
@@ -452,10 +446,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     -Math.getApproxTickWithMaxAmount(
                         Math.max(
                             MIN_ENFORCED_TICKFILL_COST,
-                            (Math.min(
-                                IERC20Partial(Currency.unwrap(key.currency1)).totalSupply(),
-                                uint128(type(int128).max)
-                            ) * SUPPLY_MULTIPLIER_TICKFILL) / 10_000
+                            (IERC20Partial(Currency.unwrap(key.currency1)).totalSupply() *
+                                SUPPLY_MULTIPLIER_TICKFILL) / 10_000
                         ),
                         tickSpacing,
                         maxLiquidityPerTick
