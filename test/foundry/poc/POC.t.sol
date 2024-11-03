@@ -89,7 +89,7 @@ contract POC_Test is Test, PositionUtils {
 
         routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
 
         ph = new PanopticHelper(sfpm);
 

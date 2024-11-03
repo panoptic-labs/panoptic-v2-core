@@ -76,7 +76,12 @@ contract DeployProtocol is Script {
         }
 
         IPoolManager _manager = manager;
-        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(_manager, 10 ** 13, 0);
+        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(
+            _manager,
+            10 ** 13,
+            10 ** 13,
+            0
+        );
         new PanopticFactory(
             sfpm,
             _manager,

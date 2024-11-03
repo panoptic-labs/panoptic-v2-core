@@ -239,8 +239,8 @@ library Math {
         }
     }
 
-    /// @notice Approximates the absolute value of log base `sqrt(1.0001)` for a number in [0, 1) (`argX128/2^128`) with `precision` bits of precision.
-    /// @param argX128 The Q128.128 fixed-point number in the range [0, 1) to calculate the log of
+    /// @notice Approximates the absolute value of log base `sqrt(1.0001)` for a number in (0, 1) (`argX128/2^128`) with `precision` bits of precision.
+    /// @param argX128 The Q128.128 fixed-point number in the range (0, 1) to calculate the log of
     /// @param precision The bits of precision with which to compute the result, max 63 (`err <≈ 2^-precision * log₂(√1.0001)⁻¹`)
     /// @return The absolute value of log with base `sqrt(1.0001)` for `argX128/2^128`
     function log_Sqrt1p0001MantissaRect(

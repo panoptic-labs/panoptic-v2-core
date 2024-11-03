@@ -162,6 +162,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice The approximate minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks.
     uint256 internal immutable MIN_ENFORCED_TICKFILL_COST;
 
+    /// @notice The approximate minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the maximum enforced tick for native-token pools.
+    uint256 internal immutable NATIVE_ENFORCED_TICKFILL_COST;
+
     /// @notice The multiplier, in basis points, to apply to the token supply and set as the minimum enforced tick fill cost if greater than `MIN_ENFORCED_TICKFILL_COST`.
     uint256 internal immutable SUPPLY_MULTIPLIER_TICKFILL;
 
@@ -323,14 +326,17 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Set the canonical Uniswap V4 pool manager address and tick fill parameters.
     /// @param poolManager The canonical Uniswap V4 pool manager address
     /// @param _minEnforcedTickFillCost The minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks
+    /// @param _nativeEnforcedTickFillCost The minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the maximum enforced tick for native-token pools
     /// @param _supplyMultiplierTickFill The multiplier, in basis points, to apply to the token supply and set as the minimum enforced tick fill cost if greater than `MIN_ENFORCED_TICKFILL_COST`
     constructor(
         IPoolManager poolManager,
         uint256 _minEnforcedTickFillCost,
+        uint256 _nativeEnforcedTickFillCost,
         uint256 _supplyMultiplierTickFill
     ) {
         POOL_MANAGER_V4 = poolManager;
         MIN_ENFORCED_TICKFILL_COST = _minEnforcedTickFillCost;
+        NATIVE_ENFORCED_TICKFILL_COST = _nativeEnforcedTickFillCost;
         SUPPLY_MULTIPLIER_TICKFILL = _supplyMultiplierTickFill;
     }
 
@@ -381,11 +387,13 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
             maxEnforcedTick = int24(
                 Math.getApproxTickWithMaxAmount(
-                    Math.max(
-                        MIN_ENFORCED_TICKFILL_COST,
-                        (IERC20Partial(Currency.unwrap(key.currency0)).totalSupply() *
-                            SUPPLY_MULTIPLIER_TICKFILL) / 10_000
-                    ),
+                    Currency.unwrap(key.currency0) == address(0)
+                        ? NATIVE_ENFORCED_TICKFILL_COST
+                        : Math.max(
+                            MIN_ENFORCED_TICKFILL_COST,
+                            (IERC20Partial(Currency.unwrap(key.currency0)).totalSupply() *
+                                SUPPLY_MULTIPLIER_TICKFILL) / 10_000
+                        ),
                     key.tickSpacing,
                     maxLiquidityPerTick
                 )
@@ -429,7 +437,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             minEnforcedTick = int24(
                 Math.min(
                     dataOld.minEnforcedTick,
-                    Math.getApproxTickWithMaxAmount(
+                    -Math.getApproxTickWithMaxAmount(
                         Math.max(
                             MIN_ENFORCED_TICKFILL_COST,
                             (IERC20Partial(Currency.unwrap(key.currency1)).totalSupply() *
@@ -443,12 +451,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             maxEnforcedTick = int24(
                 Math.max(
                     dataOld.maxEnforcedTick,
-                    -Math.getApproxTickWithMaxAmount(
-                        Math.max(
-                            MIN_ENFORCED_TICKFILL_COST,
-                            (IERC20Partial(Currency.unwrap(key.currency1)).totalSupply() *
-                                SUPPLY_MULTIPLIER_TICKFILL) / 10_000
-                        ),
+                    Math.getApproxTickWithMaxAmount(
+                        Currency.unwrap(key.currency0) == address(0)
+                            ? NATIVE_ENFORCED_TICKFILL_COST
+                            : Math.max(
+                                MIN_ENFORCED_TICKFILL_COST,
+                                (IERC20Partial(Currency.unwrap(key.currency0)).totalSupply() *
+                                    SUPPLY_MULTIPLIER_TICKFILL) / 10_000
+                            ),
                         tickSpacing,
                         maxLiquidityPerTick
                     )
@@ -1304,7 +1314,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return The minimum enforced tick for chunks created in the pool corresponding to `idV4`
     /// @return The maximum enforced tick for chunks created in the pool corresponding to `idV4`
     function getEnforcedTickLimits(PoolId idV4) external view returns (int24, int24) {
-        return (s_V4toSFPMIdData[idV4].minEnforcedTick, s_V4toSFPMIdData[idV4].maxEnforcedTick);
+        PoolIdData memory poolIdData = s_V4toSFPMIdData[idV4];
+        return (poolIdData.minEnforcedTick, poolIdData.maxEnforcedTick);
     }
 
     /// @notice Returns the SFPM `poolId` for a given Uniswap V4 `PoolId`.

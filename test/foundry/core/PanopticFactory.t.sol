@@ -86,7 +86,8 @@ contract PanopticFactoryTest is Test {
     V4RouterSimple routerV4 = new V4RouterSimple(manager);
 
     // deploy the semiFungiblePositionManager
-    SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 0);
+    SemiFungiblePositionManager sfpm =
+        new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
 
     address Deployer = makeAddr("Deployer");
 
