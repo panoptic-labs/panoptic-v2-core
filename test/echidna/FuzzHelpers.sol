@@ -681,7 +681,6 @@ contract FuzzHelpers is PropertiesAsserts {
     uint256 $sizeMultiplierDenominator;
 
     address $exercisee;
-    TokenId[] $touchedId;
     TokenId[] $positionListExercisor;
     TokenId[] $positionListExercisee;
 
@@ -1350,7 +1349,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function _write_liquidation_solvency_revert(address sUser) internal {
         ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-            .calculateAccumulatedFeesBatch(sUser, false, userPositions[sUser]);
+            .getAccumulatedFeesAndPositionsData(sUser, false, userPositions[sUser]);
 
         uint256 insolventTicks;
         for (uint256 i = 0; i < $colTicks.length; i++) {
@@ -1799,7 +1798,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
     function _calculate_margins_and_premia(address who, int24 tick) internal {
         uint256[2][] memory posBal;
-        ($shortPremium, $longPremium, posBal) = panopticPool.calculateAccumulatedFeesBatch(
+        ($shortPremium, $longPremium, posBal) = panopticPool.getAccumulatedFeesAndPositionsData(
             who,
             false,
             userPositions[who]
@@ -2034,14 +2033,8 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
                 ) *
                     13_333 *
                     $ratios[i]) / 10_000);
@@ -2125,14 +2118,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
+                            ? PanopticMath.convert0to1(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                     ) *
                         13_333 *
                         $ratios[i]) / 10_000);
@@ -2301,7 +2294,7 @@ contract FuzzHelpers is PropertiesAsserts {
         }
 
         ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-            .calculateAccumulatedFeesBatch(acc, false, posList);
+            .getAccumulatedFeesAndPositionsData(acc, false, posList);
 
         revert PpfeesCollectedSimRes($shortPremium, $longPremium, $posBalanceArray);
     }
@@ -2518,7 +2511,7 @@ contract FuzzHelpers is PropertiesAsserts {
             )
         {
             ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-                .calculateAccumulatedFeesBatch($caller, false, userPositions[$caller]);
+                .getAccumulatedFeesAndPositionsData($caller, false, userPositions[$caller]);
             revert FeeQuotePostBurnSimResError($shortPremium, $longPremium, $posBalanceArray);
         } catch {
             revert FeeQuotePostBurnSimResError(
