@@ -40,7 +40,10 @@ contract CollateralActions is SFPMActions {
         address depositor
     ) internal {
         uint256 depositorBalBefore = IERC20(collToken.asset()).balanceOf(depositor);
-        uint256 poolBalBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 poolBalBefore = manager.balanceOf(
+            address(panopticPool),
+            uint160(collToken.asset())
+        );
         uint256 sharesBefore = collToken.balanceOf(depositor);
 
         assets = bound(assets, 1, MAX_DEPOSIT);
@@ -61,7 +64,7 @@ contract CollateralActions is SFPMActions {
             collToken.deposit(assets, depositor);
         }
 
-        uint256 poolBalAfter = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 poolBalAfter = manager.balanceOf(address(panopticPool), uint160(collToken.asset()));
         assertWithMsg(
             poolBalAfter - poolBalBefore == assets,
             "Pool token balance incorrect after deposit"
@@ -134,7 +137,10 @@ contract CollateralActions is SFPMActions {
         }
 
         uint256 receiverAssetsBefore = IERC20(collToken.asset()).balanceOf(receiver);
-        uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 poolAssetsBefore = manager.balanceOf(
+            address(panopticPool),
+            uint160(collToken.asset())
+        );
         uint256 ownerSharesBefore = collToken.balanceOf(owner);
 
         require(_max_assets_withdrawable(collToken, collToken.balanceOf(owner)) > 0);
@@ -155,8 +161,9 @@ contract CollateralActions is SFPMActions {
 
         if (viaRedeem) {
             try collToken.redeem(sharesToWithdraw, receiver, owner) {
-                uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
-                    address(panopticPool)
+                uint256 poolAssetsAfter = manager.balanceOf(
+                    address(panopticPool),
+                    uint160(collToken.asset())
                 );
                 uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
                 uint256 ownerSharesAfter = collToken.balanceOf(owner);
@@ -177,8 +184,9 @@ contract CollateralActions is SFPMActions {
             }
         } else {
             try collToken.withdraw(assetsToWithdraw, receiver, owner) {
-                uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(
-                    address(panopticPool)
+                uint256 poolAssetsAfter = manager.balanceOf(
+                    address(panopticPool),
+                    uint160(collToken.asset())
                 );
                 uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
                 uint256 ownerSharesAfter = collToken.balanceOf(owner);
@@ -711,13 +719,15 @@ contract CollateralActions is SFPMActions {
     function assertion_invariant_never_overcount_underlying_token() public canonicalTimeState {
         (uint256 ct0_s_poolAssets, , ) = collToken0.getPoolData();
         assertWithMsg(
-            ct0_s_poolAssets <= IERC20(collToken0.asset()).balanceOf(address(panopticPool)) + 1,
+            ct0_s_poolAssets <=
+                manager.balanceOf(address(panopticPool), uint160(collToken0.asset())) + 1,
             "CollateralTrackerWrapper0 has overcounted its token0 assets"
         );
 
         (uint256 ct1_s_poolAssets, , ) = collToken1.getPoolData();
         assertWithMsg(
-            ct1_s_poolAssets <= IERC20(collToken1.asset()).balanceOf(address(panopticPool)) + 1,
+            ct1_s_poolAssets <=
+                manager.balanceOf(address(panopticPool), uint160(collToken1.asset())) + 1,
             "CollateralTrackerWrapper1 has overcounted its token1 assets"
         );
     }
@@ -900,7 +910,10 @@ contract CollateralActions is SFPMActions {
 
         // attempt withdrawal, and assert assets & shares were deducted/incremented appropriately
         uint256 receiverAssetsBefore = IERC20(collToken.asset()).balanceOf(receiver);
-        uint256 poolAssetsBefore = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+        uint256 poolAssetsBefore = manager.balanceOf(
+            address(panopticPool),
+            uint160(collToken.asset())
+        );
         uint256 ownerSharesBefore = collToken.balanceOf(owner);
 
         require(_max_assets_withdrawable(collToken, ownerSharesBefore) > 0);
@@ -923,7 +936,10 @@ contract CollateralActions is SFPMActions {
 
         try collToken.withdraw(assetsToWithdraw, receiver, owner, ownersOpenPositions) {
             // assert assets & shares were deducted/incremented appropriately:
-            uint256 poolAssetsAfter = IERC20(collToken.asset()).balanceOf(address(panopticPool));
+            uint256 poolAssetsAfter = manager.balanceOf(
+                address(panopticPool),
+                uint160(collToken.asset())
+            );
             uint256 receiverAssetsAfter = IERC20(collToken.asset()).balanceOf(receiver);
             uint256 ownerSharesAfter = collToken.balanceOf(owner);
             assertWithMsg(

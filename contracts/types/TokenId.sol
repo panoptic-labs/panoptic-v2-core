@@ -21,13 +21,13 @@ using TokenIdLibrary for TokenId global;
 // From the LSB to the MSB:
 // ===== 1 time (same for all legs) ==============================================================
 //      Property         Size      Offset      Comment
-// (0) univ3pool        48bits     0bits      : first 6 bytes of the Uniswap V3 pool address (first 48 bits; little-endian), plus a pseudorandom number in the event of a collision
-// (1) tickSpacing      16bits     48bits     : tickSpacing for the univ3pool. Up to 16 bits
+// (0) idV4             48bits     0bits      : least significant 48 bits of the Uniswap V4 pool ID, plus a pseudorandom number in the event of a collision
+// (1) tickSpacing      16bits     48bits     : tickSpacing for the pool corresponding to `idV4`. Up to 16 bits
 // ===== 4 times (one for each leg) ==============================================================
-// (2) asset             1bit      0bits      : Specifies the asset (0: token0, 1: token1)
+// (2) asset             1bit      0bits      : Specifies the asset (0: currency0, 1: currency1)
 // (3) optionRatio       7bits     1bits      : number of contracts per leg
 // (4) isLong            1bit      8bits      : long==1 means liquidity is removed, long==0 -> liquidity is added
-// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> token0, 1 -> token1)
+// (5) tokenType         1bit      9bits      : put/call: which token is moved when deployed (0 -> currency0, 1 -> currency1)
 // (6) riskPartner       2bits     10bits     : normally its own index. Partner in defined risk position otherwise
 // (7) strike           24bits     12bits     : strike price; defined as (tickUpper + tickLower) / 2
 // (8) width            12bits     36bits     : width; defined as (tickUpper - tickLower) / tickSpacing
@@ -39,9 +39,9 @@ using TokenIdLibrary for TokenId global;
 //                        (strike price tick of the 3rd leg)
 //                            |             (width of the 2nd leg)
 //                            |                   |
-// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)        (1)           (0)
-//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->   <- 48 bits ->
-//         Leg 4                  Leg 3                  Leg 2                   Leg 1           tickSpacing Uniswap Pool Address
+// (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)  (8)(7)(6)(5)(4)(3)(2)   (8)(7)(6)(5)(4)(3)(2)       (1)              (0)
+//  <---- 48 bits ---->    <---- 48 bits ---->    <---- 48 bits ---->     <---- 48 bits ---->   <- 16 bits ->     <- 48 bits ->
+//         Leg 4                  Leg 3                  Leg 2                   Leg 1           tickSpacing          idV4
 //
 //  <--- most significant bit                                                                             least significant bit --->
 //
@@ -55,7 +55,7 @@ using TokenIdLibrary for TokenId global;
 //  We also refer to the legs via their index, so leg number 2 has leg index 1 (legIndex) (counting from zero), and in general leg number N has leg index N-1.
 //  - the underlying strike price of the 2nd leg (leg index = 1) in this option position starts at bit index  (64 + 12 + 48 * (leg index=1))=123
 //  - the tokenType of the 4th leg in this option position starts at bit index 64+9+48*3=217
-//  - the Uniswap V3 pool id starts at bit index 0 and ends at bit index 63 (and thus takes up 64 bits).
+//  - the Uniswap V4 pool id starts at bit index 0 and ends at bit index 63 (and thus takes up 64 bits).
 //  - the width of the 3rd leg in this option position starts at bit index 64+36+48*2=196
 library TokenIdLibrary {
     /// @notice AND mask to extract all `isLong` bits for each leg from a TokenId.
@@ -83,7 +83,7 @@ library TokenIdLibrary {
 
     /// @notice The full poolId (Uniswap pool identifier + pool pattern) of this option position.
     /// @param self The TokenId to extract `poolId` from
-    /// @return The `poolId` (Panoptic's pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap V3 pool
+    /// @return The `poolId` (Panoptic's pool fingerprint, contains the whole 64 bit sequence with the tickSpacing) of the Uniswap V4 pool
     function poolId(TokenId self) internal pure returns (uint64) {
         unchecked {
             return uint64(TokenId.unwrap(self));
@@ -92,7 +92,7 @@ library TokenIdLibrary {
 
     /// @notice The tickSpacing of this option position.
     /// @param self The TokenId to extract `tickSpacing` from
-    /// @return The `tickSpacing` of the Uniswap V3 pool
+    /// @return The `tickSpacing` of the Uniswap V4 pool
     function tickSpacing(TokenId self) internal pure returns (int24) {
         unchecked {
             return int24(uint24((TokenId.unwrap(self) >> 48) % 2 ** 16));
@@ -100,11 +100,11 @@ library TokenIdLibrary {
     }
 
     /// @notice Get the asset basis for this TokenId.
-    /// @dev Which token is the asset - can be token0 (return 0) or token1 (return 1).
+    /// @dev Which token is the asset - can be currency0 (return 0) or currency1 (return 1).
     /// @param self The TokenId to extract `asset` from
     /// @param legIndex The leg index of this position (in {0,1,2,3}) to extract `asset` from
     /// @dev Occupies the leftmost bit of the optionRatio 4 bits slot.
-    /// @return 0 if asset is token0, 1 if asset is token1
+    /// @return 0 if asset is currency0, 1 if asset is currency1
     function asset(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48)) % 2);
@@ -131,10 +131,10 @@ library TokenIdLibrary {
         }
     }
 
-    /// @notice Get the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
+    /// @notice Get the type of currency moved for a given leg (implies a call or put). Either currency0 or currency1.
     /// @param self The TokenId to extract `tokenType` at `legIndex` from
     /// @param legIndex The leg index of this position (in {0,1,2,3})
-    /// @return 1 if the token moved is token1 or 0 if the token moved is token0
+    /// @return 1 if the currency moved is currency1 or 0 if the currency moved is currency0
     function tokenType(TokenId self, uint256 legIndex) internal pure returns (uint256) {
         unchecked {
             return uint256((TokenId.unwrap(self) >> (64 + legIndex * 48 + 9)) % 2);
@@ -176,7 +176,7 @@ library TokenIdLibrary {
                                 ENCODING
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Add the Uniswap V3 Pool pointed to by this option position (contains the entropy and tickSpacing).
+    /// @notice Add the Uniswap V4 Pool pointed to by this option position (contains the entropy and tickSpacing).
     /// @param self The TokenId to add `_poolId` to
     /// @param _poolId The PoolID to add to `self`
     /// @return `self` with `_poolId` added to the PoolID slot
@@ -247,7 +247,7 @@ library TokenIdLibrary {
         }
     }
 
-    /// @notice Add the type of token moved for a given leg (implies a call or put). Either Token0 or Token1.
+    /// @notice Add the type of currency moved for a given leg (implies a call or put). Either currency0 or currency1.
     /// @param self The TokenId to add `_tokenType` to
     /// @param _tokenType The tokenType to add to the TokenType slot in `self` for `legIndex`
     /// @param legIndex the leg index of this position (in {0,1,2,3})
@@ -528,8 +528,8 @@ library TokenIdLibrary {
                 if ((self.width(i) == 0)) revert Errors.InvalidTokenIdParameter(5);
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (
-                    (self.strike(i) == Constants.MIN_V3POOL_TICK) ||
-                    (self.strike(i) == Constants.MAX_V3POOL_TICK)
+                    (self.strike(i) == Constants.MIN_V4POOL_TICK) ||
+                    (self.strike(i) == Constants.MAX_V4POOL_TICK)
                 ) revert Errors.InvalidTokenIdParameter(4);
 
                 // In the following, we check whether the risk partner of this leg is itself
@@ -574,7 +574,7 @@ library TokenIdLibrary {
     /// @dev At least one long leg must be far-out-of-the-money (i.e. price is outside its range).
     /// @dev Reverts if the position is not exercisable.
     /// @param self The TokenId to validate for exercisability
-    /// @param currentTick The current tick corresponding to the current price in the Uniswap V3 pool
+    /// @param currentTick The current tick corresponding to the current price in the Uniswap V4 pool
     function validateIsExercisable(TokenId self, int24 currentTick) internal pure {
         unchecked {
             uint256 numLegs = self.countLegs();

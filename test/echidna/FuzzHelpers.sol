@@ -20,11 +20,25 @@ import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
-import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {Math} from "@libraries/Math.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Errors} from "@libraries/Errors.sol";
+import {SqrtPriceMath} from "v3-core/libraries/SqrtPriceMath.sol";
+// V4 types
+import {Pool} from "v4-core/libraries/Pool.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {V4StateReader} from "@libraries/V4StateReader.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {PoolManager} from "v4-core/PoolManager.sol";
+import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import {V4RouterSimple} from "../foundry/testUtils/V4RouterSimple.sol";
+import {SafeCast} from "v4-core/libraries/SafeCast.sol";
+import {IV3CompatibleOracle} from "@contracts/interfaces/IV3CompatibleOracle.sol";
 
 import {FixedPointMathLib} from "lib/solady/src/utils/FixedPointMathLib.sol";
 
@@ -59,7 +73,16 @@ interface IHevm {
 
 // Copy of test/foundry/core/Misc.t.sol:SwapperC
 contract SwapperC {
-    event LogUint256(string, uint256);
+    struct PoolFeatures {
+        address token0;
+        address token1;
+        uint24 fee;
+    }
+
+    struct CallbackData {
+        PoolFeatures poolFeatures;
+        address payer;
+    }
 
     function uniswapV3SwapCallback(
         int256 amount0Delta,
@@ -67,7 +90,7 @@ contract SwapperC {
         bytes calldata data
     ) external {
         // Decode the swap callback data, checks that the UniswapV3Pool has the correct address.
-        CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
+        CallbackData memory decoded = abi.decode(data, (CallbackData));
 
         // Extract the address of the token to be sent (amount0 -> token0, amount1 -> token1)
         address token = amount0Delta > 0
@@ -89,7 +112,7 @@ contract SwapperC {
         bytes calldata data
     ) external {
         // Decode the mint callback data
-        CallbackLib.CallbackData memory decoded = abi.decode(data, (CallbackLib.CallbackData));
+        CallbackData memory decoded = abi.decode(data, (CallbackData));
 
         // Sends the amount0Owed and amount1Owed quantities provided
         if (amount0Owed > 0)
@@ -115,8 +138,8 @@ contract SwapperC {
             tickUpper,
             liquidity,
             abi.encode(
-                CallbackLib.CallbackData({
-                    poolFeatures: CallbackLib.PoolFeatures({
+                CallbackData({
+                    poolFeatures: PoolFeatures({
                         token0: pool.token0(),
                         token1: pool.token1(),
                         fee: pool.fee()
@@ -136,19 +159,14 @@ contract SwapperC {
 
         if (sqrtPriceX96Before == sqrtPriceX96) return;
 
-        emit LogUint256("price before", sqrtPriceX96Before);
-        emit LogUint256("price target", sqrtPriceX96);
-
         pool.swap(
             msg.sender,
             sqrtPriceX96Before > sqrtPriceX96 ? true : false,
-            sqrtPriceX96Before > sqrtPriceX96
-                ? int256(IERC20(pool.token0()).balanceOf(msg.sender))
-                : int256(IERC20(pool.token1()).balanceOf(msg.sender)),
+            type(int128).max,
             sqrtPriceX96,
             abi.encode(
-                CallbackLib.CallbackData({
-                    poolFeatures: CallbackLib.PoolFeatures({
+                CallbackData({
+                    poolFeatures: PoolFeatures({
                         token0: pool.token0(),
                         token1: pool.token1(),
                         fee: pool.fee()
@@ -176,28 +194,8 @@ contract PanopticPoolWrapper is PanopticPool {
         return s_settledTokens[chunk];
     }
 
-    function setSettledTokens(bytes32 chunk, LeftRightUnsigned settled) external {
-        s_settledTokens[chunk] = settled;
-    }
-
-    function calculateAccumulatedPremia(
-        address user,
-        bool computeAllPremia,
-        bool includePendingPremium,
-        TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
-        // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
-        // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
-        return
-            _calculateAccumulatedPremia(
-                user,
-                positionIdList,
-                computeAllPremia,
-                includePendingPremium,
-                currentTick
-            );
+    function addSettledTokens(bytes32 chunk, LeftRightUnsigned settled) external {
+        s_settledTokens[chunk] = s_settledTokens[chunk].add(settled);
     }
 
     function burnAllOptionsFrom_noCommit(
@@ -287,11 +285,14 @@ contract PanopticPoolWrapper is PanopticPool {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) public view {
+    ) public {
         _validateSolvency(user, positionIdList, buffer);
     }
 
-    constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
+    constructor(
+        SemiFungiblePositionManager _sfpm,
+        IPoolManager _manager
+    ) PanopticPool(_sfpm, _manager) {}
 }
 
 contract CollateralTrackerWrapper is CollateralTracker {
@@ -302,7 +303,8 @@ contract CollateralTrackerWrapper is CollateralTracker {
         int256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization,
-        uint256 _ITMSpreadMultiplier
+        uint256 _ITMSpreadMultiplier,
+        IPoolManager _manager
     )
         CollateralTracker(
             _commissionFee,
@@ -311,7 +313,8 @@ contract CollateralTrackerWrapper is CollateralTracker {
             _forceExerciseCost,
             _targetPoolUtilization,
             _saturatedPoolUtilization,
-            _ITMSpreadMultiplier
+            _ITMSpreadMultiplier,
+            _manager
         )
     {}
 
@@ -469,15 +472,6 @@ contract FuzzHelpers is PropertiesAsserts {
     uint128[4] uniLiquidityBefore;
     uint128[4] uniLiquidityAfter;
 
-    int128[4] $oldFeesBase0;
-    int128[4] $oldFeesBase1;
-    int128[4] $newFeesBase0;
-    int128[4] $newFeesBase1;
-    int128[4] $newFeesBaseRoundDown0;
-    int128[4] $newFeesBaseRoundDown1;
-    int128[4] $newFeesBaseRoundUp0;
-    int128[4] $newFeesBaseRoundUp1;
-
     uint256[4] $feeGrowthInside0LastX128Before;
     uint256[4] $feeGrowthInside1LastX128Before;
     uint256[4] $feeGrowthInside0LastX128After;
@@ -512,16 +506,6 @@ contract FuzzHelpers is PropertiesAsserts {
 
     uint256[4] $accountPremiumGrossCalculated0;
     uint256[4] $accountPremiumGrossCalculated1;
-
-    int128[4] $recipientFeesBaseBefore0;
-    int128[4] $recipientFeesBaseBefore1;
-    int128[4] $senderFeesBaseBefore0;
-    int128[4] $senderFeesBaseBefore1;
-
-    int128[4] $recipientFeesBaseAfter0;
-    int128[4] $recipientFeesBaseAfter1;
-    int128[4] $senderFeesBaseAfter0;
-    int128[4] $senderFeesBaseAfter1;
 
     bytes32[4] positionKey_from;
     bytes32[4] positionKey_to;
@@ -784,6 +768,16 @@ contract FuzzHelpers is PropertiesAsserts {
 
     IUniswapV3Pool[4] pools;
 
+    PoolKey[4] poolKeys;
+
+    PoolKey cyclingPoolKey;
+
+    IPoolManager manager;
+
+    V4RouterSimple routerV4;
+
+    PoolKey poolKey;
+
     IERC20 USDC;
     IERC20 WETH;
 
@@ -822,6 +816,15 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 absB = abs(b);
 
         return (absDelta * 1e18) / absB;
+    }
+
+    function assertApproxEqAbs(int256 a, int256 b, uint256 maxDelta, string memory err) internal {
+        if (abs(a - b) > maxDelta) {
+            emit LogUint256("assertApproxEqAbs failed with tol:", maxDelta);
+            emit LogInt256("a:", a);
+            emit LogInt256("b:", b);
+            assertWithMsg(false, err);
+        }
     }
 
     function assertApproxEqRel(
@@ -954,7 +957,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int256 itm1
     ) internal view returns (int256 swapAmount, bool zeroForOne) {
         if ((itm0 != 0) && (itm1 != 0)) {
-            (uint160 sqrtPriceX96, , , , , , ) = cyclingPool.slot0();
+            uint160 sqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, cyclingPoolKey.toId());
 
             int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
 
@@ -970,234 +973,49 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function quote_uni_CollectAndBurn() internal {
-        try this.uniswap_CollectAndBurn_sim() {} catch (bytes memory results) {
-            emit LogBytes("r", results);
-            assembly ("memory-safe") {
-                results := add(results, 0x04)
-            }
-            bool sRevert;
-            (
-                $amountBurned0[$activeLegIndex],
-                $amountBurned1[$activeLegIndex],
-                $recievedAmount0[$activeLegIndex],
-                $recievedAmount1[$activeLegIndex],
-                sRevert
-            ) = abi.decode(results, (int256, int256, uint128, uint128, bool));
-
-            $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
-        }
-    }
-
-    function uniswap_CollectAndBurn_sim() external {
+    function simulate_swap(bool zeroForOne, int256 amountSpecified) external {
         require(msg.sender == address(this));
-
-        int256 burned0;
-        int256 burned1;
-
-        hevm.prank(address(sfpm));
-        try cyclingPool.burn($tickLowerActive, $tickUpperActive, $LiqAmountActive) returns (
-            uint256 amount0,
-            uint256 amount1
-        ) {
-            burned0 = int256(amount0);
-            burned1 = int256(amount1);
-        } catch {
-            revert UniBurnAndCollectSimulationResults(0, 0, 0, 0, true);
-        }
-
-        hevm.prank(address(sfpm));
-        try
-            cyclingPool.collect(
-                $activeUser, //recipient
-                $tickLowerActive,
-                $tickUpperActive,
-                uint128($amountToCollect0[$activeLegIndex] + int128(burned0)),
-                uint128($amountToCollect1[$activeLegIndex] + int128(burned1))
-            )
-        returns (uint128 received0, uint128 received1) {
-            revert UniBurnAndCollectSimulationResults(
-                uint256(burned0),
-                uint256(burned1),
-                received0,
-                received1,
-                false
-            );
-        } catch {
-            revert UniBurnAndCollectSimulationResults(0, 0, 0, 0, true);
-        }
-    }
-
-    function quote_uni_CollectAndMint() internal {
-        try this.uniswap_CollectAndMint_sim() {} catch (bytes memory results) {
-            emit LogBytes("r", results);
-            assembly ("memory-safe") {
-                results := add(results, 0x04)
-            }
-
-            bool sRevert;
-            (
-                $amountMinted0[$activeLegIndex],
-                $amountMinted1[$activeLegIndex],
-                $recievedAmount0[$activeLegIndex],
-                $recievedAmount1[$activeLegIndex],
-                sRevert
-            ) = abi.decode(results, (uint256, uint256, uint128, uint128, bool));
-
-            $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
-        }
-    }
-
-    function uniswap_CollectAndMint_sim() external {
-        require(msg.sender == address(this));
-
-        bytes memory mintdata = abi.encode(
-            CallbackLib.CallbackData({
-                // compute by reading values from univ3pool every time
-                poolFeatures: CallbackLib.PoolFeatures({
-                    token0: cyclingPool.token0(),
-                    token1: cyclingPool.token1(),
-                    fee: cyclingPool.fee()
-                }),
-                payer: $activeUser
-            })
-        );
-
-        uint256 minted0;
-        uint256 minted1;
-
-        hevm.prank(address(sfpm));
-        try
-            cyclingPool.mint(
-                $activeUser, //recipient
-                $tickLowerActive,
-                $tickUpperActive,
-                $LiqAmountActive,
-                mintdata
-            )
-        returns (uint256 amount0, uint256 amount1) {
-            minted0 = amount0;
-            minted1 = amount1;
-        } catch {
-            revert UniMintAndCollectSimulationResults(0, 0, 0, 0, true);
-        }
-
-        //
-        hevm.prank(address(sfpm));
-        try
-            cyclingPool.collect(
-                $activeUser, //recipient
-                $tickLowerActive,
-                $tickUpperActive,
-                uint128($amountToCollect0[$activeLegIndex]),
-                uint128($amountToCollect1[$activeLegIndex])
-            )
-        returns (uint128 received0, uint128 received1) {
-            revert UniMintAndCollectSimulationResults(
-                minted0,
-                minted1,
-                received0,
-                received1,
-                false
-            );
-        } catch {
-            revert UniMintAndCollectSimulationResults(0, 0, 0, 0, true);
-        }
-    }
-
-    function quote_uni_mint() internal {
-        try this.uniswap_mint_sim() {} catch (bytes memory results) {
-            emit LogBytes("r", results);
-            assembly ("memory-safe") {
-                results := add(results, 0x04)
-            }
-            bool sRevert;
-            ($amountMinted0[$activeLegIndex], $amountMinted1[$activeLegIndex], sRevert) = abi
-                .decode(results, (uint256, uint256, bool));
-
-            $shouldRevertSFPM = $shouldRevertSFPM || sRevert;
-        }
-    }
-
-    function uniswap_mint_sim() external {
-        require(msg.sender == address(this));
-
-        bytes memory mintdata = abi.encode(
-            CallbackLib.CallbackData({
-                // compute by reading values from univ3pool every time
-                poolFeatures: CallbackLib.PoolFeatures({
-                    token0: cyclingPool.token0(),
-                    token1: cyclingPool.token1(),
-                    fee: cyclingPool.fee()
-                }),
-                payer: msg.sender
-            })
-        );
-
-        hevm.prank(address(sfpm));
-        try
-            cyclingPool.mint(
-                msg.sender, //recipient
-                $tickLowerActive,
-                $tickUpperActive,
-                $LiqAmountActive,
-                mintdata
-            )
-        returns (uint256 amount0, uint256 amount1) {
-            revert UniMintSimulationResults(amount0, amount1, false);
-        } catch {
-            revert UniMintSimulationResults(0, 0, false);
-        }
-    }
-
-    function simulate_swap(address recipient, bool zeroForOne, int256 amountSpecified) external {
-        require(msg.sender == address(this));
-
-        hevm.prank(recipient);
-        IERC20(USDC).approve(address(sfpm), type(uint256).max);
-        hevm.prank(recipient);
-        IERC20(WETH).approve(address(sfpm), type(uint256).max);
 
         int256 swap0;
         int256 swap1;
 
         if (amountSpecified != 0) {
-            hevm.prank(address(sfpm));
-            (int256 amt0, int256 amt1) = cyclingPool.swap(
-                recipient,
-                zeroForOne,
+            for (uint256 i = 0; i < $activeTokenId.countLegs(); ++i) {
+                (int24 tickLower, int24 tickUpper) = $activeTokenId.asTicks(i);
+
+                hevm.prank(address(pool_manipulator));
+                routerV4.modifyLiquidity(
+                    address(0),
+                    cyclingPoolKey,
+                    tickLower,
+                    tickUpper,
+                    int128(
+                        PanopticMath.getLiquidityChunk($activeTokenId, i, $positionSize).liquidity()
+                    )
+                );
+            }
+            hevm.prank(address(pool_manipulator));
+            (int256 amt0, int256 amt1) = routerV4.swap(
+                address(0),
+                cyclingPoolKey,
                 amountSpecified,
                 zeroForOne
-                    ? Constants.MIN_V3POOL_SQRT_RATIO + 1
-                    : Constants.MAX_V3POOL_SQRT_RATIO - 1,
-                abi.encode(
-                    CallbackLib.CallbackData({
-                        poolFeatures: CallbackLib.PoolFeatures({
-                            token0: token0,
-                            token1: token1,
-                            fee: poolFee
-                        }),
-                        payer: recipient
-                    })
-                )
             );
 
-            swap0 = amt0;
-            swap1 = amt1;
+            swap0 = -amt0;
+            swap1 = -amt1;
         }
 
-        // get current tick after swap
-        (, int24 tickAfterSwap, , , , , ) = cyclingPool.slot0();
+        int24 tickAfterSwap = V4StateReader.getTick(manager, cyclingPoolKey.toId());
 
         revert SwapSimulationResults(swap0, swap1, tickAfterSwap);
     }
 
     function _execute_swap_simulation(
-        address recipient,
         bool zeroForOne,
         int256 amountSpecified
     ) internal returns (int256 swap0, int256 swap1, int24 tickAfterSwap) {
-        try this.simulate_swap(recipient, zeroForOne, amountSpecified) {
+        try this.simulate_swap(zeroForOne, amountSpecified) {
             assertWithMsg(false, "swap succeeded ??");
         } catch (bytes memory results) {
             bytes4 selector = bytes4(results);
@@ -1214,10 +1032,49 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
+    function _getAmountsForLiquidity(
+        uint160 sqrtPriceCurrent,
+        uint160 sqrtPriceAX96,
+        uint160 sqrtPriceBX96,
+        uint128 liquidityDelta,
+        bool roundUp
+    ) internal pure returns (uint256 amount0, uint256 amount1) {
+        if (sqrtPriceCurrent < sqrtPriceAX96) {
+            amount0 = SqrtPriceMath.getAmount0Delta(
+                sqrtPriceAX96,
+                sqrtPriceBX96,
+                liquidityDelta,
+                roundUp
+            );
+        } else if (sqrtPriceCurrent < sqrtPriceBX96) {
+            amount0 = SqrtPriceMath.getAmount0Delta(
+                sqrtPriceCurrent,
+                sqrtPriceBX96,
+                liquidityDelta,
+                roundUp
+            );
+
+            amount1 = SqrtPriceMath.getAmount1Delta(
+                sqrtPriceAX96,
+                sqrtPriceCurrent,
+                liquidityDelta,
+                roundUp
+            );
+        } else {
+            amount1 = SqrtPriceMath.getAmount1Delta(
+                sqrtPriceAX96,
+                sqrtPriceBX96,
+                liquidityDelta,
+                roundUp
+            );
+        }
+    }
+
     // for multiple legs
     function _calculate_moved_amounts(
         TokenId tokenId,
-        uint128 positionSize
+        uint128 positionSize,
+        bool roundUp
     ) internal returns (int256, int256) {
         //
         int256 moved0;
@@ -1227,7 +1084,8 @@ contract FuzzHelpers is PropertiesAsserts {
         TokenId _tokenId = tokenId;
 
         // update to latest current tick
-        (, currentTick, , , , , ) = cyclingPool.slot0();
+        currentTick = V4StateReader.getTick(manager, cyclingPoolKey.toId());
+        currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, cyclingPoolKey.toId());
 
         //
         uint256 numLegs = _tokenId.countLegs();
@@ -1244,11 +1102,23 @@ contract FuzzHelpers is PropertiesAsserts {
             // current tick
             emit LogInt256("current tick", currentTick);
 
-            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
-                currentTick,
-                currChunk
+            emit LogUint256("current sqrt price x96", currentSqrtPriceX96);
+            emit LogUint256(
+                "sqrt ratio at tick lower",
+                Math.getSqrtRatioAtTick(currChunk.tickLower())
             );
-
+            emit LogUint256(
+                "sqrt ratio at tick upper",
+                Math.getSqrtRatioAtTick(currChunk.tickUpper())
+            );
+            bool _roundUp = roundUp;
+            (uint256 amount0, uint256 amount1) = _getAmountsForLiquidity(
+                currentSqrtPriceX96,
+                Math.getSqrtRatioAtTick(currChunk.tickLower()),
+                Math.getSqrtRatioAtTick(currChunk.tickUpper()),
+                currChunk.liquidity(),
+                _roundUp
+            );
             // actual moved amounts when minting rounds up (round down when burning)
 
             if (_tokenId.isLong(leg) == 1) {
@@ -1292,18 +1162,34 @@ contract FuzzHelpers is PropertiesAsserts {
         TokenId _tokenId = tokenId;
 
         // update to latest current tick
-        (, currentTick, , , , , ) = cyclingPool.slot0();
+        currentTick = V4StateReader.getTick(manager, cyclingPoolKey.toId());
+        currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, cyclingPoolKey.toId());
 
-        //
         uint256 numLegs = _tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; leg++) {
             //create liquidity chunk object
             LiquidityChunk currChunk = PanopticMath.getLiquidityChunk(_tokenId, leg, _positionSize);
 
-            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
-                currentTick,
-                currChunk
+            emit LogUint256("current sqrt price x96", currentSqrtPriceX96);
+            emit LogUint256(
+                "sqrt ratio at tick lower",
+                Math.getSqrtRatioAtTick(currChunk.tickLower())
             );
+            emit LogUint256(
+                "sqrt ratio at tick upper",
+                Math.getSqrtRatioAtTick(currChunk.tickUpper())
+            );
+            emit LogUint256("liquidity", currChunk.liquidity());
+            (uint256 amount0, uint256 amount1) = _getAmountsForLiquidity(
+                currentSqrtPriceX96,
+                Math.getSqrtRatioAtTick(currChunk.tickLower()),
+                Math.getSqrtRatioAtTick(currChunk.tickUpper()),
+                currChunk.liquidity(),
+                true
+            );
+
+            emit LogUint256("movedLeg0", amount0);
+            emit LogUint256("movedLeg1", amount1);
 
             if (_tokenId.isLong(leg) == 1) {
                 moved0 -= int256(amount0);
@@ -1427,11 +1313,11 @@ contract FuzzHelpers is PropertiesAsserts {
         uint256 newGross1 = premiumGross1 + deltaPremiumGross1;
 
         // assign final values and check for cap / overflow
-        owed0 = newOwed0 > MAX_UINT128 ? MAX_UINT128 : newOwed0;
-        owed1 = newOwed1 > MAX_UINT128 ? MAX_UINT128 : newOwed1;
+        owed0 = (newOwed0 >= MAX_UINT128 || newGross0 >= MAX_UINT128) ? premiumOwed0 : newOwed0;
+        owed1 = (newOwed1 >= MAX_UINT128 || newGross1 >= MAX_UINT128) ? premiumOwed1 : newOwed1;
         //
-        gross0 = newGross0 > MAX_UINT128 ? MAX_UINT128 : newGross0;
-        gross1 = newGross1 > MAX_UINT128 ? MAX_UINT128 : newGross1;
+        gross0 = (newOwed0 >= MAX_UINT128 || newGross0 >= MAX_UINT128) ? premiumGross0 : newGross0;
+        gross1 = (newOwed1 >= MAX_UINT128 || newGross1 >= MAX_UINT128) ? premiumGross1 : newGross1;
     }
 
     function _getSolvencyBalances(
@@ -1605,7 +1491,7 @@ contract FuzzHelpers is PropertiesAsserts {
         int24 tickUpper
     ) internal view returns (uint64 effectiveLiquidityFactorX32) {
         LeftRightUnsigned accountLiquidities = sfpm.getAccountLiquidity(
-            address(pool),
+            poolKey.toId(),
             address(panopticPool),
             legTokenType,
             tickLower,
@@ -1776,7 +1662,7 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function simulate_burning(address who) external {
+    function simulate_burning(address who, address liquidator) external {
         require(msg.sender == address(this));
 
         delete burnSimResults;
@@ -1814,12 +1700,48 @@ contract FuzzHelpers is PropertiesAsserts {
         returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
             premiasByLeg = _premiasByLeg;
             burnSimResults.netExchanged = _netExchanged;
+
+            ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(liquidator, false, userPositions[liquidator]);
+
+            int24[4] memory liquidatorTicks;
+            liquidatorTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
+            (, liquidatorTicks[1], liquidatorTicks[2], liquidatorTicks[3], ) = panopticPool
+                .getOracleTicks();
+            for (uint256 i = 0; i < liquidatorTicks.length; ++i) {
+                if (
+                    liquidator != who &&
+                    collToken0
+                        .getAccountMarginDetails(
+                            liquidator,
+                            liquidatorTicks[i],
+                            $posBalanceArray,
+                            $shortPremium.rightSlot(),
+                            $longPremium.rightSlot()
+                        )
+                        .rightSlot() >
+                    (2 ** 104 - 1) * 5_000
+                ) revert();
+                if (
+                    liquidator != who &&
+                    collToken1
+                        .getAccountMarginDetails(
+                            liquidator,
+                            liquidatorTicks[i],
+                            $posBalanceArray,
+                            $shortPremium.leftSlot(),
+                            $longPremium.leftSlot()
+                        )
+                        .rightSlot() >
+                    (2 ** 104 - 1) * 5_000
+                ) revert();
+            }
         } catch {
             $shouldBurnRevert = true;
         }
 
         currentTickOld = currentTick;
-        (, currentTick, , , , , ) = pool.slot0();
+        currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
         shareDeltasLiquidatee = [
             int256(collToken0.balanceOf(who)) - shareDeltasLiquidatee[0],
@@ -1861,8 +1783,8 @@ contract FuzzHelpers is PropertiesAsserts {
         revert LiqBurnSimResults(burnSimResults);
     }
 
-    function _execute_burn_simulation(address liquidatee) internal {
-        try this.simulate_burning(liquidatee) {} catch (bytes memory results) {
+    function _execute_burn_simulation(address liquidatee, address liquidator) internal {
+        try this.simulate_burning(liquidatee, liquidator) {} catch (bytes memory results) {
             bytes4 selector = bytes4(results);
             require(selector == LiqBurnSimResults.selector);
             emit LogBytes("r", results);
@@ -2127,7 +2049,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
                 $netLiquidity = sfpm
                     .getAccountLiquidity(
-                        address(pool),
+                        poolKey.toId(),
                         address(panopticPool),
                         $tokenTypes[i],
                         $tickLower,
@@ -2168,13 +2090,13 @@ contract FuzzHelpers is PropertiesAsserts {
                         ? Math.getSqrtRatioAtTick(
                             Math.max24(
                                 2 * ($fastOracleTick - $strikes[i]),
-                                Constants.MIN_V3POOL_TICK
+                                Constants.MIN_V4POOL_TICK
                             )
                         )
                         : Math.getSqrtRatioAtTick(
                             Math.max24(
                                 2 * ($strikes[i] - $fastOracleTick),
-                                Constants.MIN_V3POOL_TICK
+                                Constants.MIN_V4POOL_TICK
                             )
                         );
 
@@ -2257,6 +2179,7 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function write_mintburn_transfer_amts() internal {
+        currentSqrtPriceX96 = V4StateReader.getSqrtPriceX96(manager, poolKey.toId());
         for (uint256 i = 0; i < $tokenIdActive.countLegs(); ++i) {
             LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 $tokenIdActive,
@@ -2272,9 +2195,12 @@ contract FuzzHelpers is PropertiesAsserts {
             $tickLower = liquidityChunk.tickLower();
             $tickUpper = liquidityChunk.tickUpper();
 
-            (uint256 amount0, uint256 amount1) = Math.getAmountsForLiquidity(
-                currentTick,
-                liquidityChunk
+            (uint256 amount0, uint256 amount1) = _getAmountsForLiquidity(
+                currentSqrtPriceX96,
+                Math.getSqrtRatioAtTick(liquidityChunk.tickLower()),
+                Math.getSqrtRatioAtTick(liquidityChunk.tickUpper()),
+                liquidityChunk.liquidity(),
+                false
             );
 
             emit LogUint256("amount0", amount0);
@@ -2282,7 +2208,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $netLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(pool),
+                    poolKey.toId(),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2292,7 +2218,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             $removedLiquidity = sfpm
                 .getAccountLiquidity(
-                    address(pool),
+                    poolKey.toId(),
                     address(panopticPool),
                     $tokenTypes[i],
                     $tickLower,
@@ -2371,7 +2297,7 @@ contract FuzzHelpers is PropertiesAsserts {
                 abi.encodePacked(tokenIdAct.strike(i), tokenIdAct.width(i), tokenIdAct.tokenType(i))
             );
 
-            panopticPool.setSettledTokens(chunkKey, collectedByLeg[i]);
+            panopticPool.addSettledTokens(chunkKey, collectedByLeg[i]);
         }
 
         ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
@@ -2515,12 +2441,13 @@ contract FuzzHelpers is PropertiesAsserts {
 
         delete $burnManySimResults;
         for (uint256 i = 0; i < $numOptions; i++) {
-            (, currentTick, observationIndex, observationCardinality, , , ) = pool.slot0();
+            (, , observationIndex, observationCardinality, , , ) = pool.slot0();
+            currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
             ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
                 60,
                 uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-                pool
+                IV3CompatibleOracle(address(pool))
             );
 
             $tokenIdActive = userPositions[$caller][0];
@@ -2609,6 +2536,7 @@ contract FuzzHelpers is PropertiesAsserts {
         hevm.prank(address(panopticPool));
         try
             sfpm.mintTokenizedPosition(
+                poolKey,
                 $tokenIdActive,
                 $positionSizeActive,
                 $tickLimitLow,
@@ -2616,11 +2544,11 @@ contract FuzzHelpers is PropertiesAsserts {
             )
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             int24[4] memory __colTicks;
-            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
-                .getOracleTicks(
-                    pool,
-                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
-                );
+            (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
+                IV3CompatibleOracle(address(pool)),
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+            );
+            __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
             revert SFPMMintResError(collectedByLeg, totalSwapped, __colTicks, false);
         } catch {
@@ -2628,11 +2556,11 @@ contract FuzzHelpers is PropertiesAsserts {
             LeftRightSigned totalSwapped;
 
             int24[4] memory __colTicks;
-            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
-                .getOracleTicks(
-                    pool,
-                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
-                );
+            (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
+                IV3CompatibleOracle(address(pool)),
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+            );
+            __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
             revert SFPMMintResError(collectedByLeg, totalSwapped, __colTicks, true);
         }
@@ -2645,6 +2573,7 @@ contract FuzzHelpers is PropertiesAsserts {
         hevm.prank(address(panopticPool));
         try
             sfpm.burnTokenizedPosition(
+                poolKey,
                 $tokenIdActive,
                 $positionSizeActive,
                 $tickLimitLow,
@@ -2652,11 +2581,11 @@ contract FuzzHelpers is PropertiesAsserts {
             )
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             int24[4] memory __colTicks;
-            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
-                .getOracleTicks(
-                    pool,
-                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
-                );
+            (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
+                IV3CompatibleOracle(address(pool)),
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+            );
+            __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
             revert SFPMBurnResError(collectedByLeg, totalSwapped, __colTicks, false);
         } catch {
@@ -2664,11 +2593,11 @@ contract FuzzHelpers is PropertiesAsserts {
             LeftRightSigned totalSwapped;
 
             int24[4] memory __colTicks;
-            (__colTicks[0], __colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath
-                .getOracleTicks(
-                    pool,
-                    uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
-                );
+            (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
+                IV3CompatibleOracle(address(pool)),
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+            );
+            __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
             revert SFPMBurnResError(collectedByLeg, totalSwapped, __colTicks, true);
         }
@@ -2678,83 +2607,6 @@ contract FuzzHelpers is PropertiesAsserts {
         // prevent fuzzer from calling this directly with weird out-of-bounds numbers
         require(msg.sender == address(this));
         eid.validateIsExercisable(tickEat);
-    }
-
-    function _perform_swap_with_delay(uint160 target_sqrt_price, uint256 delay) internal {
-        // bound the price between 10 and 500000
-        target_sqrt_price = uint160(
-            bound(
-                target_sqrt_price,
-                112028621795169773357271145775104,
-                25054084147398268684193622782902272
-            )
-        );
-
-        uint160 price;
-
-        (price, currentTick, , , , , ) = cyclingPool.slot0();
-
-        emit LogInt256("tick before swap", currentTick);
-        emit LogUint256("price before swap", uint256(price));
-
-        uint256 delay_on = (delay % 2 == 0) ? 1 : 0;
-        uint256 delay_block = bound(delay, 0, 150);
-
-        emit LogUint256("number of block delayed", delay_block);
-
-        hevm.prank(pool_manipulator);
-        swapperc.swapTo(cyclingPool, target_sqrt_price);
-        hevm.warp(block.timestamp + delay_on * delay_block * 12);
-        hevm.roll(block.number + delay_on * delay_block);
-
-        // Do another random mint+burn
-        delay_on = ((delay >> 4) % 2) == 0 ? 1 : 0;
-        if (delay_on == 1) {
-            hevm.prank(pool_manipulator);
-            swapperc.mint(cyclingPool, -300_000, 300_000, 100);
-            hevm.prank(pool_manipulator);
-            swapperc.burn(cyclingPool, -300_000, 300_000, 100);
-        }
-
-        (price, currentTick, , , , , ) = cyclingPool.slot0();
-        emit LogInt256("tick after swap", currentTick);
-        emit LogUint256("price after swap", uint256(price));
-    }
-
-    function editCollateral(
-        CollateralTrackerWrapper ct,
-        address owner,
-        uint256 newShares
-    ) internal {
-        int256 shareDelta = int256(newShares) - int256(ct.balanceOf(owner));
-        int256 assetDelta = convertToAssets(ct, shareDelta);
-        hevm.store(
-            address(ct),
-            bytes32(uint256(7)),
-            bytes32(
-                uint256(
-                    LeftRightSigned.unwrap(
-                        LeftRightSigned
-                            .wrap(int256(uint256(hevm.load(address(ct), bytes32(uint256(7))))))
-                            .add(LeftRightSigned.wrap(assetDelta))
-                    )
-                )
-            )
-        );
-
-        if (ct.asset() == address(USDC)) {
-            alter_USDC(
-                address(ct),
-                uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta)
-            );
-        } else {
-            alter_WETH(
-                address(ct),
-                uint256(int256(IERC20(ct.asset()).balanceOf(address(ct))) + assetDelta)
-            );
-        }
-
-        deal_Generic(address(ct), 1, owner, newShares, true, 0); // deal(address(ct), owner, newShares, true);
     }
 
     ////////////////////////////////////////////////////
