@@ -1916,9 +1916,7 @@ contract PanopticPoolActions is CollateralActions {
         log_burn_simulation_results();
         log_liquidation_results();
 
-        try
-            panopticPool.validateCollateralWithdrawable(liquidator, userPositions[liquidator])
-        {} catch {
+        try panopticPool.validateSolvency(msg.sender, $positionListExercisor, 10_000) {} catch {
             assertWithMsg(false, "Liquidate: Liquidator left insolvent after liquidation");
         }
 
