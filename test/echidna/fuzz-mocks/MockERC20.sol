@@ -57,4 +57,8 @@ contract MockERC20 {
         emit Transfer(sender, recipient, amount);
         return true;
     }
+
+    function totalSupply() external pure returns (uint256) {
+        return 2100 * 10 ** 18;
+    }
 }

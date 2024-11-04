@@ -311,9 +311,13 @@ contract PanopticPoolActions is CollateralActions {
 
         // ITM spread + commission
         $commission0 = int256(
-            Math.unsafeDivRoundingUp(
-                (uint256(Math.abs($colDelta0)) * pool.fee() * 2),
-                (10_000 * 100)
+            (
+                $tickLimitLow > $tickLimitHigh
+                    ? Math.unsafeDivRoundingUp(
+                        (uint256(Math.abs($colDelta0)) * pool.fee() * 2),
+                        (10_000 * 100)
+                    )
+                    : 0
             ) +
                 Math.unsafeDivRoundingUp(
                     (uint256(uint128($shortAmounts.rightSlot())) +
@@ -322,9 +326,13 @@ contract PanopticPoolActions is CollateralActions {
                 )
         );
         $commission1 = int256(
-            Math.unsafeDivRoundingUp(
-                (uint256(Math.abs($colDelta1)) * pool.fee() * 2),
-                (10_000 * 100)
+            (
+                $tickLimitLow > $tickLimitHigh
+                    ? Math.unsafeDivRoundingUp(
+                        (uint256(Math.abs($colDelta1)) * pool.fee() * 2),
+                        (10_000 * 100)
+                    )
+                    : 0
             ) +
                 Math.unsafeDivRoundingUp(
                     (uint256(uint128($shortAmounts.leftSlot())) +
@@ -1337,7 +1345,7 @@ contract PanopticPoolActions is CollateralActions {
             $balance1ExpectedP = collToken1.convertToAssets(collToken1.balanceOf($settlee));
 
             ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-                .calculateAccumulatedFeesBatch($settlee, false, userPositions[$settlee]);
+                .getAccumulatedFeesAndPositionsData($settlee, false, userPositions[$settlee]);
 
             _write_revert_due_solvency($settlee, 10_000);
 
@@ -1482,7 +1490,6 @@ contract PanopticPoolActions is CollateralActions {
             $tokenIdActive
         );
 
-        $touchedId = [$tokenIdActive];
         $positionListExercisor = userPositions[msg.sender];
         $positionListExercisee = _get_list_without_tokenid(
             userPositions[$exercisee],
@@ -1517,7 +1524,7 @@ contract PanopticPoolActions is CollateralActions {
         try
             panopticPool.forceExercise(
                 $exercisee,
-                $touchedId,
+                $tokenIdActive,
                 $positionListExercisee,
                 $positionListExercisor
             )
@@ -1549,7 +1556,7 @@ contract PanopticPoolActions is CollateralActions {
                 try
                     panopticPool.forceExercise(
                         $exercisee,
-                        $touchedId,
+                        $tokenIdActive,
                         $positionListExercisee,
                         $positionListExercisor
                     )
@@ -1789,7 +1796,7 @@ contract PanopticPoolActions is CollateralActions {
                 TickMath.getSqrtRatioAtTick(TWAPtick)
             );
 
-        (liqResults.shortPremium, , ) = panopticPool.calculateAccumulatedFeesBatch(
+        (liqResults.shortPremium, , ) = panopticPool.getAccumulatedFeesAndPositionsData(
             liquidatee,
             false,
             liquidated_positions
@@ -2135,7 +2142,7 @@ contract PanopticPoolActions is CollateralActions {
             emit LogUint256("Balance in token0 to assets", bal0);
             emit LogUint256("Balance in token1 to assets", bal1);
 
-            ($shortPremium, , ) = panopticPool.calculateAccumulatedFeesBatch(
+            ($shortPremium, , ) = panopticPool.getAccumulatedFeesAndPositionsData(
                 msg.sender,
                 true,
                 userPositions[msg.sender]
@@ -2153,13 +2160,13 @@ contract PanopticPoolActions is CollateralActions {
     /// @custom:precondition The user has a position open
     function assertion_invariant_unsettled_premium() public canonicalTimeState {
         // Owed premia
-        ($shortPremiumIdeal, , ) = panopticPool.calculateAccumulatedFeesBatch(
+        ($shortPremiumIdeal, , ) = panopticPool.getAccumulatedFeesAndPositionsData(
             msg.sender,
             true,
             userPositions[msg.sender]
         );
         // Available premia
-        ($shortPremium, , ) = panopticPool.calculateAccumulatedFeesBatch(
+        ($shortPremium, , ) = panopticPool.getAccumulatedFeesAndPositionsData(
             msg.sender,
             false,
             userPositions[msg.sender]
