@@ -16,6 +16,7 @@ import {Base64} from "solady/utils/Base64.sol";
 /// @title FactoryNFT: ERC721 contract for Panoptic Factory NFTs.
 /// @notice Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks.
 /// @dev Pointers to metadata are provided at deployment time.
+/// @author Axicon Labs Limited
 contract FactoryNFT is MetadataStore, ERC721 {
     using LibString for string;
 
@@ -29,7 +30,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         Pointer[][] memory pointers
     )
         MetadataStore(properties, indices, pointers)
-        ERC721("Panoptic Factory Deployer NFTs", "PANOPTIC-NFT")
+        ERC721("Panoptic V1 Factory Deployer NFTs", "PANOPTIC-NFT")
     {}
 
     /// @notice Returns the metadata URI for a given `tokenId`.
@@ -123,11 +124,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         uint256 rarity
     ) internal view returns (string memory svgOut) {
         svgOut = metadata[bytes32("frames")][
-            rarity < 18
-                ? rarity / 3
-                : rarity < 23
-                    ? 23 - rarity
-                    : 0
+            rarity < 18 ? rarity / 3 : rarity < 23 ? 23 - rarity : 0
         ].decompressedDataStr();
         svgOut = svgOut.replace(
             "<!-- LABEL -->",

@@ -28,11 +28,7 @@ import {UniPoolPriceMock} from "../testUtils/PriceMocks.sol";
 import {ReenterMint, ReenterBurn, Reenter1155Initialize, ReenterTransferSingle, ReenterTransferBatch} from "../testUtils/ReentrancyMocks.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory) {}
-
-    function poolIdToAddr(uint64 poolId) public view returns (IUniswapV3Pool) {
-        return s_poolIdToAddr[poolId];
-    }
+    constructor(IUniswapV3Factory _factory) SemiFungiblePositionManager(_factory, 10 ** 13, 0) {}
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
@@ -221,7 +217,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     /// @notice Populate world state with data from a given pool
     function _cacheWorldState(IUniswapV3Pool _pool) internal {
         pool = _pool;
-        poolId = PanopticMath.getPoolId(address(_pool));
+        poolId = PanopticMath.getPoolId(address(_pool), _pool.tickSpacing());
         token0 = _pool.token0();
         token1 = _pool.token1();
         isWETH = token0 == address(WETH) ? 0 : 1;
@@ -891,12 +887,19 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         _initPool(x);
 
         // Check that the pool address is set correctly
-        assertEq(address(sfpm.poolIdToAddr(PanopticMath.getPoolId(address(pool)))), address(pool));
+        assertEq(
+            address(
+                sfpm.getUniswapV3PoolFromId(
+                    PanopticMath.getPoolId(address(pool), pool.tickSpacing())
+                )
+            ),
+            address(pool)
+        );
 
         // Check that the pool ID is set correctly
         assertEq(
             sfpm.addrToPoolId(address(pool)),
-            PanopticMath.getPoolId(address(pool)) + 2 ** 255
+            PanopticMath.getPoolId(address(pool), pool.tickSpacing()) + 2 ** 255
         );
     }
 
@@ -908,14 +911,18 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // Check that the pool address is set correctly
             assertEq(
-                address(sfpm.poolIdToAddr(PanopticMath.getPoolId(address(pool)))),
+                address(
+                    sfpm.getUniswapV3PoolFromId(
+                        PanopticMath.getPoolId(address(pool), pool.tickSpacing())
+                    )
+                ),
                 address(pool)
             );
 
             // Check that the pool ID is set correctly
             assertEq(
                 sfpm.addrToPoolId(address(pool)),
-                PanopticMath.getPoolId(address(pool)) + 2 ** 255
+                PanopticMath.getPoolId(address(pool), pool.tickSpacing()) + 2 ** 255
             );
         }
     }
@@ -936,6 +943,8 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             vm.etch(address((i + 1) << 24), address(pm).code);
 
+            token0 = USDC_WETH_5.token0();
+            token1 = USDC_WETH_5.token1();
             pm = UniPoolPriceMock(address((i + 1) << 24));
             pm.construct(
                 UniPoolPriceMock.Slot0({
@@ -962,7 +971,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             }
 
             // Check that the pool address is set correctly
-            assertEq(address(sfpm_t.poolIdToAddr(poolIdNew)), address((i + 1) << 24));
+            assertEq(address(sfpm_t.getUniswapV3PoolFromId(poolIdNew)), address((i + 1) << 24));
 
             // Check that the pool ID is set correctly
             // Addresses output from the factory mock start at 1 to avoid errors so we need to add that to the address
@@ -2291,7 +2300,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MIN_TICK + 1
         );
 
-        // poke uniswap pool to update tokens owed - needed because swap happens after mint
+        // poke Uniswap pool to update tokens owed - needed because swap happens after mint
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
@@ -3193,7 +3202,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         (, currentTick, , , , , ) = pool.slot0();
 
-        // poke uniswap pool
+        // poke Uniswap pool
         vm.startPrank(address(sfpm));
         pool.burn(tickLower, tickUpper, 0);
         vm.startPrank(Alice);
@@ -4139,7 +4148,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // if net0 is negative, then the protocol has a net surplus of token0
         zeroForOne = net0 < 0;
 
-        //compute the swap amount, set as positive (exact input)
+        // compute the swap amount, set as positive (exact input)
         swapAmount = -net0;
 
         (int256 d0, int256 d1) = evalSwapFixed(swapAmount, zeroForOne, int256(price));

@@ -12,7 +12,7 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 /// @title InteractionHelper - contains helper functions for internal interactions such as approvals.
 /// @notice Used to delegate logic with multiple internal calls.
 /// @dev Generally employed when there is a need to save or reuse bytecode size
-/// on a core contract (calls take a significant amount of logic).
+/// on a core contract.
 /// @author Axicon Labs Limited
 library InteractionHelper {
     /// @notice Function that performs approvals on behalf of the PanopticPool for CollateralTracker and SemiFungiblePositionManager.
@@ -39,8 +39,8 @@ library InteractionHelper {
 
     /// @notice Computes the name of a CollateralTracker based on the token composition and fee of the underlying Uniswap Pool.
     /// @dev Some tokens do not have proper symbols so error handling is required - this logic takes up significant bytecode size, which is why it is in a library.
-    /// @param token0 The token0 in the Uniswap Pool
-    /// @param token1 The token1 in the Uniswap Pool
+    /// @param token0 The token0 of the Uniswap Pool
+    /// @param token1 The token1 of the Uniswap Pool
     /// @param isToken0 Whether the collateral token computing the name is for token0 or token1
     /// @param fee The fee of the Uniswap pool in hundredths of basis points
     /// @param prefix A constant string appended to the start of the token name
@@ -71,10 +71,10 @@ library InteractionHelper {
         }
     }
 
-    /// @notice Returns symbol as prefixed symbol of underlying token.
+    /// @notice Returns collateral token symbol as `prefix` + `underlying token symbol`.
     /// @param token The address of the underlying token used to compute the symbol
-    /// @param prefix A constant string appended to the symbol of the underlying token to create the final symbol
-    /// @return The symbol of the token
+    /// @param prefix A constant string prepended to the symbol of the underlying token to create the final symbol
+    /// @return The symbol of the collateral token
     function computeSymbol(
         address token,
         string memory prefix
@@ -86,7 +86,7 @@ library InteractionHelper {
     /// @param token The address of the underlying token used to compute the decimals
     /// @return The decimals of the token
     function computeDecimals(address token) internal view returns (uint8) {
-        // not guaranteed that token supports metadada extension
+        // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
         try IERC20Metadata(token).decimals() returns (uint8 _decimals) {
             return _decimals;

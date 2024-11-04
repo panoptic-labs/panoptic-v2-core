@@ -25,7 +25,7 @@ using PositionBalanceLibrary for PositionBalance global;
 //
 //           (7)             (6)            (5)             (4)             (3)             (2)             (1)
 //    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
-//  lastObservedTick   slowOracleTick  fastOracleTick   currentTick    utilization0     utilization1    positionSize
+//   lastObservedTick  slowOracleTick  fastOracleTick   currentTick     utilization1    utilization0    positionSize
 //
 //    <--- most significant bit                                                             least significant bit --->
 //
