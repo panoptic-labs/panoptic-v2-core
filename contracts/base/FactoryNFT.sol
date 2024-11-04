@@ -16,6 +16,7 @@ import {Base64} from "solady/utils/Base64.sol";
 /// @title FactoryNFT: ERC721 contract for Panoptic Factory NFTs.
 /// @notice Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks.
 /// @dev Pointers to metadata are provided at deployment time.
+/// @author Axicon Labs Limited
 contract FactoryNFT is MetadataStore, ERC721 {
     using LibString for string;
 
@@ -29,7 +30,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         Pointer[][] memory pointers
     )
         MetadataStore(properties, indices, pointers)
-        ERC721("Panoptic Factory Deployer NFTs", "PANOPTIC-NFT")
+        ERC721("Panoptic V1.1 Factory Deployer NFTs", "PANOPTIC-NFT")
     {}
 
     /// @notice Returns the metadata URI for a given `tokenId`.
@@ -43,16 +44,16 @@ contract FactoryNFT is MetadataStore, ERC721 {
         return
             constructMetadata(
                 panopticPool,
-                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).univ3pool().token0()),
-                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).univ3pool().token1()),
-                PanopticPool(panopticPool).univ3pool().fee()
+                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).collateralToken0().asset()),
+                PanopticMath.safeERC20Symbol(PanopticPool(panopticPool).collateralToken1().asset()),
+                PanopticPool(panopticPool).poolKey().fee
             );
     }
 
     /// @notice Returns the metadata URI for a given set of characteristics.
     /// @param panopticPool The displayed address used to determine the rarity (leading zeros) and lastCharVal (last 4 bits)
-    /// @param symbol0 The symbol of `token0` in the Uniswap pool
-    /// @param symbol1 The symbol of `token1` in the Uniswap pool
+    /// @param symbol0 The symbol of `currency0` in the Uniswap pool
+    /// @param symbol1 The symbol of `currency1` in the Uniswap pool
     /// @param fee The fee of the Uniswap pool (in hundredths of basis points)
     /// @return The metadata URI for the given characteristics
     function constructMetadata(
@@ -123,11 +124,7 @@ contract FactoryNFT is MetadataStore, ERC721 {
         uint256 rarity
     ) internal view returns (string memory svgOut) {
         svgOut = metadata[bytes32("frames")][
-            rarity < 18
-                ? rarity / 3
-                : rarity < 23
-                    ? 23 - rarity
-                    : 0
+            rarity < 18 ? rarity / 3 : rarity < 23 ? 23 - rarity : 0
         ].decompressedDataStr();
         svgOut = svgOut.replace(
             "<!-- LABEL -->",
@@ -151,8 +148,8 @@ contract FactoryNFT is MetadataStore, ERC721 {
     /// @param svgIn The SVG artwork to complete
     /// @param panopticPool The address of the Panoptic Pool
     /// @param rarity The rarity of the NFT
-    /// @param symbol0 The symbol of `token0` in the Uniswap pool
-    /// @param symbol1 The symbol of `token1` in the Uniswap pool
+    /// @param symbol0 The symbol of `currency0` in the Uniswap pool
+    /// @param symbol1 The symbol of `currency1` in the Uniswap pool
     /// @return The final SVG artwork with the pool/rarity specific text fields filled in
     function generateSVGInfo(
         string memory svgIn,

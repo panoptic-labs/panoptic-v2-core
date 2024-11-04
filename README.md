@@ -32,7 +32,7 @@ Panoptic has been presented at conferences and was conceived with the first Pano
 
 ## Codebase Walkthrough
 
-<a href="https://www.youtube.com/watch?v=tOfImvHouUw"> <img src="assets/codewalkthrough.jpg" width="500" title="Panoptic Codebase Walkthrough"></img></a>
+TBA
 
 ## Core Contracts
 
@@ -53,7 +53,7 @@ The Panoptic Pool exposes the core functionality of the protocol. If the SFPM is
 Each instance of the Panoptic protocol on a Uniswap pool contains:
 
 - One PanopticPool that orchestrates all interactions in the protocol
-- Two CollateralTrackers, one for each constituent token0/token1 in the Uniswap pool
+- Two CollateralTrackers, one for each constituent currency0/currency1 in the Uniswap pool
 - A canonical SFPM - the SFPM manages liquidity across every Panoptic Pool
 
 There are five primary roles assumed by actors in this Panoptic Ecosystem:
@@ -93,32 +93,34 @@ Meanwhile, force exercisers and liquidators can perform their respective roles w
 
 ```ml
 contracts/
-├── CollateralTracker — "ERC4626 vault where token liquidity from Panoptic Liquidity Providers (PLPs) and collateral for option positions are deposited and collateral requirements are computed"
-├── PanopticFactory — "Handles deployment of new Panoptic instances on top of Uniswap pools, initial liquidity deployments, and NFT rewards for deployers"
-├── PanopticPool — "Coordinates all options trading activity - minting, burning, force exercises, liquidations"
-├── SemiFungiblePositionManager — "The 'engine' of Panoptic - manages all Uniswap V3 positions in the protocol as well as being a more advanced, gas-efficient alternative to NFPM for Uniswap LPs"
+├── CollateralTracker - "ERC4626 vault where token liquidity from Panoptic Liquidity Providers (PLPs) and collateral for option positions are deposited and collateral requirements are computed"
+├── PanopticFactory - "Handles deployment of new Panoptic instances on top of Uniswap pools, initial liquidity deployments, and NFT rewards for deployers"
+├── PanopticPool - "Coordinates all options trading activity - minting, burning, force exercises, liquidations"
+├── SemiFungiblePositionManager - "The 'engine' of Panoptic - manages all Uniswap V3 positions in the protocol as well as being a more advanced, gas-efficient alternative to NFPM for Uniswap LPs"
+├── base
+│   ├── FactoryNFT - "Constructs dynamic SVG art and metadata for Panoptic Factory NFTs from a set of building blocks"
+│   ├── MetadataStore - "Base contract that can store two-deep objects with large value sizes at deployment time"
+│   └── Multicall - "Adds a function to inheriting contracts that allows for multiple calls to be executed in a single transaction"
 ├── tokens
-│   ├── ERC1155Minimal — "A minimalist implementation of the ERC1155 token standard without metadata"
-│   ├── ERC20Minimal — "A minimalist implementation of the ERC20 token standard without metadata"
+│   ├── ERC1155Minimal - "A minimalist implementation of the ERC1155 token standard without metadata"
+│   ├── ERC20Minimal - "A minimalist implementation of the ERC20 token standard without metadata"
 │   └── interfaces
-│       └── IERC20Partial — "An incomplete ERC20 interface containing functions used in Panoptic with some return values omitted to support noncompliant tokens such as USDT"
+│       └── IERC20Partial - "An incomplete ERC20 interface containing functions used in Panoptic with some return values omitted to support noncompliant tokens such as USDT"
 ├── types
-│   ├── LeftRight — "Implementation for a set of custom data types that can hold two 128-bit numbers"
-│   ├── LiquidityChunk — "Implementation for a custom data type that can represent a liquidity chunk of a given size in Uniswap - containing a tickLower, tickUpper, and liquidity"
-│   └── TokenId — "Implementation for the custom data type used in the SFPM and Panoptic to encode position data in 256-bit ERC1155 tokenIds - holds a pool identifier and up to four full position legs"
-├── libraries
-│   ├── CallbackLib — "Library for verifying and decoding Uniswap callbacks"
-│   ├── Constants — "Library of Constants used in Panoptic"
-│   ├── Errors — "Contains all custom errors used in Panoptic's core contracts"
-│   ├── FeesCalc — "Utility to calculate up-to-date swap fees for liquidity chunks"
-│   ├── InteractionHelper — "Helpers to perform bytecode-size-heavy interactions with external contracts like batch approvals and metadata queries"
-│   ├── Math — "Library of generic math functions like abs(), mulDiv, etc"
-│   ├── PanopticMath — "Library containing advanced Panoptic/Uniswap-specific functionality such as our TWAP, price conversions, and position sizing math"
-│   └── SafeTransferLib — "Safe ERC20 transfer library that gracefully handles missing return values"
-├── multicall
-│   └── Multicall — "Adds a function to inheriting contracts that allows for multiple calls to be executed in a single transaction"
-└── periphery
-    └── PanopticHelper — "Contains useful position construction and query functions, including collateral checks and account liquidation price finders"
+│   ├── LeftRight - "Implementation for a set of custom data types that can hold two 128-bit numbers"
+│   ├── LiquidityChunk - "Implementation for a custom data type that can represent a liquidity chunk of a given size in Uniswap - containing a tickLower, tickUpper, and liquidity"
+│   ├── Pointer - "Implementation for a custom data type that represents a pointer to a slice of contract code at an address"
+│   ├── PositionBalance - "Implementation for a custom data type that holds a position size, the pool utilizations at mint, and the current/fastOracle/slowOracle/latestObserved ticks at mint"
+│   └── TokenId - "Implementation for the custom data type used in the SFPM and Panoptic to encode position data in 256-bit ERC1155 tokenIds - holds a pool identifier and up to four full position legs"
+└── libraries
+    ├── CallbackLib - "Library for verifying and decoding Uniswap callbacks"
+    ├── Constants - "Library of Constants used in Panoptic"
+    ├── Errors - "Contains all custom errors used in Panoptic's core contracts"
+    ├── FeesCalc - "Utility to calculate up-to-date swap fees for liquidity chunks"
+    ├── InteractionHelper - "Helpers to perform bytecode-size-heavy interactions with external contracts like batch approvals and metadata queries"
+    ├── Math - "Library of generic math functions like abs(), mulDiv, etc"
+    ├── PanopticMath - "Library containing advanced Panoptic/Uniswap-specific functionality such as our TWAP, price conversions, and position sizing math"
+    └── SafeTransferLib - "Safe ERC20 transfer library that gracefully handles missing return values"
 ```
 
 ## Installation

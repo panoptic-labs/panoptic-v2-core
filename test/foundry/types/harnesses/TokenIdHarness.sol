@@ -32,7 +32,7 @@ contract TokenIdHarness {
     /**
      * @notice The Uniswap v3 Pool pointed to by this option position.
      * @param self the option position Id.
-     * @return the poolId (Panoptic's uni v3 pool fingerprint) of the Uniswap v3 pool
+     * @return the poolId (Panoptic's Uniswap V3 pool fingerprint) of the Uniswap v3 pool
      */
     function poolId(TokenId self) public pure returns (uint64) {
         uint64 r = TokenIdLibrary.poolId(self);

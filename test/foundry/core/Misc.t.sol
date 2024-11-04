@@ -18,11 +18,14 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
 import {Math} from "@libraries/Math.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {Pointer} from "@types/Pointer.sol";
-import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC20S} from "../testUtils/ERC20S.sol";
+import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
+import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmutableArgs.sol";
 // V4 types
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
@@ -34,18 +37,6 @@ import {Currency} from "v4-core/types/Currency.sol";
 import {PoolManager} from "v4-core/PoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
-
-contract ERC20S is ERC20 {
-    constructor(
-        string memory name,
-        string memory symbol,
-        uint8 decimals
-    ) ERC20(name, symbol, decimals) {}
-
-    function mint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
 
 contract SwapperC {
     struct PoolFeatures {
@@ -233,18 +224,18 @@ contract Misctest is Test, PositionUtils {
     function setUp() public {
         vm.startPrank(Deployer);
 
-        manager = IPoolManager(address(new PoolManager()));
+        manager = IPoolManager(address(new PoolManager(address(0))));
 
         routerV4 = new V4RouterSimple(manager);
 
-        sfpm = new SemiFungiblePositionManager(manager);
+        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
 
         ph = new PanopticHelper(sfpm);
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(sfpm, manager));
         collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, manager)
+            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20, manager)
         );
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
@@ -284,13 +275,15 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, 10 ** 17 * 2 ** 96);
 
-        manager.initialize(poolKey, 10 ** 17 * 2 ** 96, "");
+        manager.initialize(poolKey, 10 ** 17 * 2 ** 96);
 
         swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
 
         _createPanopticPool();
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+
+        routerV4.modifyLiquidity(address(0), poolKey, -887270, 887270, 1);
 
         vm.startPrank(Alice);
 
@@ -370,9 +363,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Deployer);
 
         factory = new PanopticFactory(
-            address(token1),
             sfpm,
-            V3FACTORY,
             manager,
             poolReference,
             collateralReference,
@@ -389,11 +380,9 @@ contract Misctest is Test, PositionUtils {
         pp = PanopticPool(
             address(
                 factory.deployNewPool(
-                    uniPool,
+                    IV3CompatibleOracle(address(uniPool)),
                     poolKey,
-                    uint96(block.timestamp),
-                    type(uint256).max,
-                    type(uint256).max
+                    uint96(block.timestamp)
                 )
             )
         );
@@ -427,6 +416,636 @@ contract Misctest is Test, PositionUtils {
         ct1 = pp.collateralToken1();
     }
 
+    function test_TickLimits_Initial(
+        uint256 token0Supply,
+        uint256 token1Supply,
+        uint256 tickSpacingSeed
+    ) public {
+        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+
+        token0 = new ERC20S("token0", "T0", 18);
+        token1 = new ERC20S("token1", "T1", 18);
+
+        token0Supply = bound(token0Supply, 0, type(uint256).max / 10_000);
+        token1Supply = bound(token1Supply, 0, type(uint256).max / 10_000);
+
+        token0.editSupply(token0Supply);
+        token1.editSupply(token1Supply);
+
+        int24 tickSpacing = int24(uint24(bound(tickSpacingSeed, 1, 32767)));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            500,
+            tickSpacing,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        sfpm.initializeAMMPool(poolKey);
+
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(routerV4), type(uint128).max);
+        token1.approve(address(routerV4), type(uint128).max);
+
+        vm.startPrank(Alice);
+        token0.mint(Alice, uint256(type(uint104).max) * 2);
+        token1.mint(Alice, uint256(type(uint104).max) * 2);
+        token0.approve(address(routerV4), type(uint256).max);
+        token1.approve(address(routerV4), type(uint256).max);
+        routerV4.mintCurrency(address(0), Currency.wrap(address(token0)), type(uint104).max);
+        routerV4.mintCurrency(address(0), Currency.wrap(address(token1)), type(uint104).max);
+        manager.setOperator(address(sfpm), true);
+
+        uint256 expectedDOSCost = Math.max(2100 * 10 ** 18, token0Supply);
+
+        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolKey.toId());
+
+        (uint256 maxDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                -tickSpacing,
+                0,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitUpper - tickSpacing + 2,
+                tickLimitUpper + 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        assertLt(actualDOSCost, expectedDOSCost);
+
+        (actualDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitUpper - tickSpacing - 2,
+                tickLimitUpper - 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        console2.log("maxDOSCost", maxDOSCost);
+        console2.log("expectedDOSCost", expectedDOSCost);
+        console2.log("tickLimitUpper", tickLimitUpper);
+        console2.log("tickSpacing", tickSpacing);
+
+        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
+        else assertGt(actualDOSCost, expectedDOSCost);
+
+        expectedDOSCost = Math.max(2100 * 10 ** 18, token1Supply);
+
+        (, actualDOSCost) = Math.getAmountsForLiquidity(
+            100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitLower - 2,
+                tickLimitLower + tickSpacing - 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        assertLt(actualDOSCost, expectedDOSCost);
+
+        (, actualDOSCost) = Math.getAmountsForLiquidity(
+            100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitLower + 2,
+                tickLimitLower + tickSpacing + 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
+        else assertGt(actualDOSCost, expectedDOSCost);
+
+        vm.startPrank(Swapper);
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (-887272 / tickSpacing) * tickSpacing,
+            (887272 / tickSpacing) * tickSpacing,
+            10 ** 18
+        );
+
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100_000));
+
+        vm.startPrank(Alice);
+
+        TokenId tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing +
+                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            1
+        );
+
+        vm.expectRevert(Errors.InvalidTickBound.selector);
+        sfpm.mintTokenizedPosition(
+            poolKey,
+            tickPosition,
+            1_000_000,
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
+        );
+
+        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            1
+        );
+
+        if (
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing -
+                (tickLimitLower / tickSpacing) *
+                tickSpacing >=
+            tickSpacing
+        )
+            sfpm.mintTokenizedPosition(
+                poolKey,
+                tickPosition,
+                1_000_000,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+
+        vm.startPrank(Swapper);
+
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100_000));
+
+        vm.startPrank(Alice);
+
+        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / tickSpacing) *
+                tickSpacing -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            1
+        );
+
+        vm.expectRevert(Errors.InvalidTickBound.selector);
+        sfpm.mintTokenizedPosition(
+            poolKey,
+            tickPosition,
+            1_000_000,
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
+        );
+
+        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
+            1
+        );
+
+        if (
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing -
+                (tickLimitLower / tickSpacing) *
+                tickSpacing >=
+            tickSpacing
+        )
+            sfpm.mintTokenizedPosition(
+                poolKey,
+                tickPosition,
+                1_000_000,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+    }
+
+    function test_TickLimits_Expanded(
+        uint256 token0SupplyOrig,
+        uint256 token1SupplyOrig,
+        uint256 token0Supply,
+        uint256 token1Supply,
+        uint256 tickSpacingSeed
+    ) public {
+        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 2100 * 10 ** 18, 10_000);
+
+        token0 = new ERC20S("token0", "T0", 18);
+        token1 = new ERC20S("token1", "T1", 18);
+
+        token0SupplyOrig = bound(token0SupplyOrig, 0, type(uint256).max / 10_000);
+        token1SupplyOrig = bound(token1SupplyOrig, 0, type(uint256).max / 10_000);
+
+        token0.editSupply(token0SupplyOrig);
+        token1.editSupply(token1SupplyOrig);
+
+        int24 tickSpacing = int24(uint24(bound(tickSpacingSeed, 1, 32767)));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            500,
+            tickSpacing,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        sfpm.initializeAMMPool(poolKey);
+
+        token0Supply = bound(token0Supply, 0, type(uint256).max / 10_000);
+        token1Supply = bound(token1Supply, 0, type(uint256).max / 10_000);
+
+        token0.editSupply(token0Supply);
+        token1.editSupply(token1Supply);
+
+        sfpm.expandEnforcedTickRange(poolKey);
+
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(routerV4), type(uint128).max);
+        token1.approve(address(routerV4), type(uint128).max);
+
+        vm.startPrank(Alice);
+        token0.mint(Alice, uint256(type(uint104).max) * 2);
+        token1.mint(Alice, uint256(type(uint104).max) * 2);
+        token0.approve(address(routerV4), type(uint256).max);
+        token1.approve(address(routerV4), type(uint256).max);
+        routerV4.mintCurrency(address(0), Currency.wrap(address(token0)), type(uint104).max);
+        routerV4.mintCurrency(address(0), Currency.wrap(address(token1)), type(uint104).max);
+        manager.setOperator(address(sfpm), true);
+
+        uint256 expectedDOSCost = Math.max(
+            2100 * 10 ** 18,
+            Math.min(token0Supply, token0SupplyOrig)
+        );
+
+        (int24 tickLimitLower, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolKey.toId());
+
+        (uint256 maxDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                -tickSpacing,
+                0,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitUpper - tickSpacing + 2,
+                tickLimitUpper + 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        assertLt(actualDOSCost, expectedDOSCost);
+
+        (actualDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitUpper - tickSpacing - 2,
+                tickLimitUpper - 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitUpper, 1);
+        else assertGt(actualDOSCost, expectedDOSCost);
+
+        expectedDOSCost = Math.max(2100 * 10 ** 18, Math.min(token1Supply, token1SupplyOrig));
+
+        (, actualDOSCost) = Math.getAmountsForLiquidity(
+            100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitLower - 2,
+                tickLimitLower + tickSpacing - 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        assertLt(actualDOSCost, expectedDOSCost);
+
+        (, actualDOSCost) = Math.getAmountsForLiquidity(
+            100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitLower + 2,
+                tickLimitLower + tickSpacing + 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        if (maxDOSCost <= expectedDOSCost) assertEq(tickLimitLower, -1);
+        else assertGt(actualDOSCost, expectedDOSCost);
+
+        vm.startPrank(Swapper);
+        routerV4.modifyLiquidity(
+            address(0),
+            poolKey,
+            (-887272 / tickSpacing) * tickSpacing,
+            (887272 / tickSpacing) * tickSpacing,
+            10 ** 18
+        );
+
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(-100_000));
+
+        vm.startPrank(Alice);
+
+        TokenId tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing +
+                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            1
+        );
+
+        vm.expectRevert(Errors.InvalidTickBound.selector);
+        sfpm.mintTokenizedPosition(
+            poolKey,
+            tickPosition,
+            1_000_000,
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
+        );
+
+        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            1
+        );
+
+        if (
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing -
+                (tickLimitLower / tickSpacing) *
+                tickSpacing >=
+            tickSpacing
+        )
+            sfpm.mintTokenizedPosition(
+                poolKey,
+                tickPosition,
+                1_000_000,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+
+        vm.startPrank(Swapper);
+
+        routerV4.swapTo(address(0), poolKey, TickMath.getSqrtRatioAtTick(100_000));
+
+        vm.startPrank(Alice);
+
+        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / tickSpacing) *
+                tickSpacing -
+                int24(int256(Math.unsafeDivRoundingUp(uint24(tickSpacing), 2))),
+            1
+        );
+
+        vm.expectRevert(Errors.InvalidTickBound.selector);
+        sfpm.mintTokenizedPosition(
+            poolKey,
+            tickPosition,
+            1_000_000,
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
+        );
+
+        tickPosition = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg(
+            0,
+            1,
+            1,
+            0,
+            0,
+            0,
+            (tickLimitLower / tickSpacing) * tickSpacing + tickSpacing / 2,
+            1
+        );
+
+        if (
+            (tickLimitUpper / tickSpacing) *
+                tickSpacing -
+                (tickLimitLower / tickSpacing) *
+                tickSpacing >=
+            tickSpacing
+        )
+            sfpm.mintTokenizedPosition(
+                poolKey,
+                tickPosition,
+                1_000_000,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+    }
+
+    function test_TickLimits_native(uint256 tickSpacingSeed) public {
+        sfpm = new SemiFungiblePositionManager(manager, 2100 * 10 ** 18, 21_000 * 10 ** 18, 10_000);
+
+        token0 = ERC20S(address(0));
+        token1 = new ERC20S("token1", "T1", 18);
+
+        int24 tickSpacing = int24(uint24(bound(tickSpacingSeed, 1, 32767)));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            500,
+            tickSpacing,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        sfpm.initializeAMMPool(poolKey);
+
+        (, int24 tickLimitUpper) = sfpm.getEnforcedTickLimits(poolKey.toId());
+
+        (uint256 actualDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitUpper - tickSpacing + 2,
+                tickLimitUpper + 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        assertLt(actualDOSCost, 21_000 * 10 ** 18);
+
+        (actualDOSCost, ) = Math.getAmountsForLiquidity(
+            -100_000,
+            LiquidityChunkLibrary.createChunk(
+                tickLimitUpper - tickSpacing - 2,
+                tickLimitUpper - 2,
+                Math.getMaxLiquidityPerTick(tickSpacing)
+            )
+        );
+
+        assertGt(actualDOSCost, 21_000 * 10 ** 18);
+    }
+
+    function test_CollateralLogic_native(uint256 nativeSeed, uint256 liqNativeSeed) public {
+        token0 = ERC20S(address(0));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            100,
+            1,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        pp = PanopticPool(
+            address(
+                factory.deployNewPool(
+                    IV3CompatibleOracle(address(uniPool)),
+                    poolKey,
+                    uint96(block.timestamp)
+                )
+            )
+        );
+
+        ct0 = pp.collateralToken0();
+        ct1 = pp.collateralToken1();
+
+        nativeSeed = bound(nativeSeed, 100 ether, type(uint128).max);
+
+        vm.deal(Alice, nativeSeed);
+
+        vm.startPrank(Alice);
+
+        ct0.deposit{value: nativeSeed}(100 ether, Alice);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 100 ether - 1);
+        assertEq(manager.balanceOf(address(pp), 0), 100 ether);
+        assertEq(Alice.balance, nativeSeed - 100 ether);
+
+        vm.deal(Alice, nativeSeed);
+
+        ct0.mint{value: nativeSeed}((ct0.convertToShares(100 ether) * 9_990) / 10_000, Alice);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 200 ether - 1);
+        assertEq(manager.balanceOf(address(pp), 0), 200 ether);
+        assertEq(Alice.balance, nativeSeed - 100 ether);
+
+        vm.deal(Alice, 0);
+
+        ct0.withdraw(100 ether, Alice, Alice);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 100 ether - 1);
+        assertEq(manager.balanceOf(address(pp), 0), 100 ether);
+        assertEq(Alice.balance, 100 ether);
+
+        ct0.redeem(ct0.balanceOf(Alice), Alice, Alice);
+
+        assertEq(ct0.balanceOf(Alice), 0);
+        assertEq(manager.balanceOf(address(pp), 0), 1);
+        assertEq(Alice.balance, 200 ether - 1);
+
+        vm.deal(Alice, 100 ether);
+
+        ct0.deposit{value: 100 ether}(100 ether, Alice);
+
+        token1.mint(Alice, 100 ether);
+
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct1.deposit(100 ether, Alice);
+
+        vm.startPrank(Bob);
+
+        token1.mint(Bob, 3.1 ether);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct1.deposit(3.1 ether, Bob);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey.toId())).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                -10,
+                1
+            )
+        );
+
+        pp.mintOptions(
+            $posIdList,
+            3 ether,
+            0,
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
+        );
+
+        editCollateral(ct0, Bob, 0);
+
+        uint256 balancePrev = ct0.convertToAssets(ct0.balanceOf(Alice));
+
+        vm.startPrank(Charlie);
+
+        liqNativeSeed = bound(liqNativeSeed, 3 ether, type(uint128).max);
+
+        vm.deal(Charlie, liqNativeSeed);
+
+        pp.liquidate{value: Charlie.balance}(new TokenId[](0), Bob, $posIdList);
+
+        assertEq(Charlie.balance, liqNativeSeed - 3 ether);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Bob)), 0);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), balancePrev);
+
+        assertEq(manager.balanceOf(address(pp), 0), 103 ether + 1);
+    }
+
     // Test that risk-partnered positions can be minted/burned succesfully
     function test_success_MintBurnStraddle() public {
         swapperc = new SwapperC();
@@ -451,15 +1070,15 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -486,15 +1105,15 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -515,14 +1134,14 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(Errors.ZeroLiquidity.selector);
-        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V4POOL_TICK, Constants.MAX_V4POOL_TICK);
 
         pp.mintOptions(
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
         );
 
         vm.startPrank(Alice);
@@ -538,7 +1157,7 @@ contract Misctest is Test, PositionUtils {
         );
 
         vm.expectRevert(Errors.ZeroLiquidity.selector);
-        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V3POOL_TICK, Constants.MAX_V3POOL_TICK);
+        pp.mintOptions($posIdList, 537, 0, Constants.MIN_V4POOL_TICK, Constants.MAX_V4POOL_TICK);
     }
 
     function test_success_MintBurnCallSpread() public {
@@ -568,8 +1187,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // mint OTM position
@@ -585,15 +1204,15 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -624,8 +1243,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // mint OTM position
@@ -641,15 +1260,15 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -681,8 +1300,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
         );
 
         $posIdList[0] = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey.toId())).addLeg(
@@ -701,15 +1320,15 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MIN_V3POOL_TICK,
-            Constants.MAX_V3POOL_TICK
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
         );
 
         editCollateral(ct1, Alice, 0);
 
         vm.startPrank(Swapper);
 
-        PanopticMath.twapFilter(uniPool, 600);
+        PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
 
         vm.warp(block.timestamp + 600);
         vm.roll(block.number + 1);
@@ -723,44 +1342,10 @@ contract Misctest is Test, PositionUtils {
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
 
-        PanopticMath.twapFilter(uniPool, 600);
+        PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
 
         vm.startPrank(Bob);
-        pp.forceExercise(Alice, $posIdList, new TokenId[](0), new TokenId[](0));
-    }
-
-    function test_success_ITMspreadfee_0_01bp() public {
-        CollateralTracker(collateralReference).startToken(
-            true,
-            address(token0),
-            address(token1),
-            1,
-            pp
-        );
-
-        vm.startPrank(Bob);
-        token0.mint(Bob, type(uint104).max);
-        token0.approve(collateralReference, type(uint104).max);
-        CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
-
-        vm.startPrank(Alice);
-        token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        CollateralTracker(collateralReference).deposit(
-            (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
-            Alice
-        );
-
-        vm.startPrank(address(pp));
-        CollateralTracker(collateralReference).takeCommissionAddData(Alice, 0, 0, 1_000_000_000);
-        assertEq(
-            1_000_000_000_000_000 -
-                1 -
-                CollateralTracker(collateralReference).convertToAssets(
-                    CollateralTracker(collateralReference).balanceOf(Alice)
-                ),
-            1_000_000_000 + 2000
-        );
+        pp.forceExercise(Alice, $posIdList[0], new TokenId[](0), new TokenId[](0));
     }
 
     function test_parity_maxmint_previewmint() public view {
@@ -807,8 +1392,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Bob);
@@ -818,8 +1403,8 @@ contract Misctest is Test, PositionUtils {
             $tempIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -851,8 +1436,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         TokenId[] memory longPositionList = new TokenId[](257);
@@ -864,8 +1449,8 @@ contract Misctest is Test, PositionUtils {
             longPositionList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -959,8 +1544,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Bob);
@@ -968,16 +1553,16 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         pp.mintOptions(
             $tempIdList,
             900_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Swapper);
@@ -1002,15 +1587,15 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 250_000_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             pp.burnOptions(
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1018,8 +1603,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         uint256 delta0 = ct0.convertToAssets(ct0.balanceOf(Alice)) - assetsBefore0;
@@ -1030,8 +1615,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // there is a small amount of error in token0 -- this is the commissions from Charlie
@@ -1075,8 +1660,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         $posIdList.push(
@@ -1101,8 +1686,8 @@ contract Misctest is Test, PositionUtils {
                 $tempIdList,
                 250_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             vm.startPrank(Bob);
@@ -1110,8 +1695,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 250_000,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             vm.startPrank(Swapper);
@@ -1133,16 +1718,16 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions(
                 $posIdList[1],
                 $tempIdList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             vm.startPrank(Alice);
             pp.burnOptions(
                 $posIdList[1],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1151,8 +1736,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -1186,8 +1771,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         $posIdList.push(
@@ -1210,8 +1795,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdList,
                 499_999,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
             vm.startPrank(Swapper);
             routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(10) + 1);
@@ -1230,8 +1815,8 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions(
                 $posIdList[1],
                 $tempIdList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1239,8 +1824,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -1277,8 +1862,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             500_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Bob);
@@ -1287,8 +1872,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             250_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Charlie);
@@ -1297,8 +1882,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[0],
             250_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // sell unrelated, non-overlapping, dummy chunk (to buy for match testing)
@@ -1321,8 +1906,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[1],
             1_000_000_000 - 9_884_444 * 3,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // position type A: 1-leg long primary
@@ -1345,8 +1930,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1365,8 +1950,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1385,8 +1970,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 9_884_444,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1410,8 +1995,8 @@ contract Misctest is Test, PositionUtils {
                 $posIdLists[2],
                 19_768_888,
                 type(uint64).max,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
         }
 
@@ -1617,8 +2202,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assertEq(
@@ -1652,8 +2237,8 @@ contract Misctest is Test, PositionUtils {
             $posIdLists[1],
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assetsBefore0Arr.push(ct0.convertToAssets(ct0.balanceOf(Buyers[0])));
@@ -1716,8 +2301,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assertEq(
@@ -1842,8 +2427,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdLists[0][0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assertEq(
@@ -1890,8 +2475,8 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions(
                 $posIdLists[2],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             // the positive premium is from the dummy short chunk
@@ -1947,8 +2532,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Bob);
@@ -1957,8 +2542,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             250_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Charlie);
@@ -1967,8 +2552,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             250_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         $posIdList.push(
@@ -1991,8 +2576,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             44_468,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Bob);
@@ -2002,8 +2587,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             44_468,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Swapper);
@@ -2035,8 +2620,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assertEq(
@@ -2057,8 +2642,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         $tempIdList[0] = $posIdList[1];
@@ -2068,8 +2653,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Alice);
@@ -2082,8 +2667,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[1],
             $tempIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assertEq(
@@ -2101,8 +2686,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Charlie);
@@ -2114,8 +2699,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[1],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         assertEq(
@@ -2158,8 +2743,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(266263));
@@ -2196,8 +2781,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
@@ -2234,8 +2819,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(266262));
@@ -2273,8 +2858,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
@@ -2332,7 +2917,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum
-        ct0.deposit(100_200, Bob);
+        ct0.deposit(100_300, Bob);
         ct1.deposit(0, Bob);
 
         // mint fails
@@ -2342,8 +2927,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -2395,7 +2980,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum - covered
         ct0.deposit(0, Bob);
-        ct1.deposit(100_200, Bob);
+        ct1.deposit(100_300, Bob);
 
         // mint fails
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -2403,8 +2988,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -2460,15 +3045,15 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
-        ct1.deposit(17_818, Bob);
+        ct1.deposit(17_828, Bob);
 
         // mint succeeds
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -2542,15 +3127,15 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for covered mints
-        ct0.deposit(150504, Bob);
+        ct0.deposit(150905, Bob);
         ct1.deposit(0, Bob);
 
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -2631,15 +3216,15 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         ct0.deposit(0, Bob);
-        ct1.deposit(17_820, Bob);
+        ct1.deposit(17_830, Bob);
 
         // mint succeeds
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
         (uint256 totalCollateralBalance0, uint256 totalCollateralRequired0) = ph.checkCollateral(
             pp,
@@ -2712,14 +3297,14 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for covered mints
         ct0.deposit(0, Bob);
-        ct1.deposit(150466, Bob);
+        ct1.deposit(150766, Bob);
 
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -2776,8 +3361,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
@@ -2801,7 +3386,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
@@ -2810,7 +3395,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
     }
@@ -2829,7 +3414,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
@@ -2838,7 +3423,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
     }
@@ -2867,7 +3452,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -2915,7 +3500,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(!pp.isSafeMode(), "not in safe mode");
@@ -2953,8 +3538,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.revertTo(snap);
@@ -2963,7 +3548,7 @@ contract Misctest is Test, PositionUtils {
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(-955));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         console2.log("currentTick", currentTick);
         console2.log("slowOracleTick", slowOracleTick);
@@ -2983,8 +3568,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -3022,7 +3607,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -3059,8 +3644,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
@@ -3068,15 +3653,15 @@ contract Misctest is Test, PositionUtils {
 
         // deposit only token1
         ct0.deposit(0, Bob);
-        ct1.deposit(181_183, Bob); //
+        ct1.deposit(181_583, Bob); //
 
         // can mint covered positions
         pp.mintOptions(
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         (uint128 balance, uint64 utilization0, uint64 utilization1) = ph.optionPositionInfo(
@@ -3139,8 +3724,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             100_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Swapper);
@@ -3148,7 +3733,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (slowOracleTick, , , ) = pp.getOracleTicks();
+        (, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
         assertTrue(pp.isSafeMode(), "in safe mode");
@@ -3160,8 +3745,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         uint256 before0 = ct0.convertToAssets(ct0.balanceOf(Bob));
@@ -3173,8 +3758,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         uint256 after0 = ct0.convertToAssets(ct0.balanceOf(Bob));
@@ -3201,7 +3786,7 @@ contract Misctest is Test, PositionUtils {
         }
         routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
-        (, slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3232,18 +3817,18 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
-        (, int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
         assertEq(medianData, medianDataStale, "no slow oracle update");
@@ -3255,11 +3840,11 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3268,7 +3853,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3277,7 +3862,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3286,7 +3871,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "Slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
@@ -3310,7 +3895,7 @@ contract Misctest is Test, PositionUtils {
         }
         routerV4.modifyLiquidity(address(0), poolKey, -10, 10, 10 ** 18);
 
-        (, slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -3341,11 +3926,11 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             500_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
-        (, int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
         assertEq(medianData, medianDataStale, "no slow oracle update");
@@ -3356,11 +3941,11 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             $posIdList[0],
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3369,7 +3954,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3378,7 +3963,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3387,7 +3972,7 @@ contract Misctest is Test, PositionUtils {
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
@@ -3418,7 +4003,7 @@ contract Misctest is Test, PositionUtils {
 
         pp.mintOptions($posIdList, 2 ** 95, 0, int24(887272), int24(-887272));
 
-        (, , uint256[2][] memory positionBalanceArray) = pp.calculateAccumulatedFeesBatch(
+        (, , uint256[2][] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
             Bob,
             false,
             $posIdList
@@ -3477,7 +4062,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
         // mint 1 liquidity unit of wideish centered position
-        pp.mintOptions(posIdList, 3, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        pp.mintOptions(posIdList, 3, 0, Constants.MAX_V4POOL_TICK, Constants.MIN_V4POOL_TICK);
 
         vm.startPrank(Swapper);
         routerV4.modifyLiquidity(address(0), poolKey, -10, 10, -(10 ** 18));
@@ -3496,8 +4081,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             tokenId,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         uint256 balanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
@@ -3510,8 +4095,8 @@ contract Misctest is Test, PositionUtils {
             posIdList,
             1_000_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Swapper);
@@ -3545,8 +4130,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             tokenId,
             new TokenId[](0),
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // make sure Alice earns no fees on token 0 (her delta is slightly negative due to commission fees/precision etc)
@@ -3554,7 +4139,7 @@ contract Misctest is Test, PositionUtils {
         // she could have still earned some fees, but now the accumulation is frozen forever.
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -1244790
+            -1558763
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -3606,8 +4191,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // long put = 1.5, short put 1.25, short call 0.75, long call 0.5
@@ -3628,8 +4213,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // 0.25, 0.6, 0.9, 1.1, 1.4, 1.6
@@ -3645,8 +4230,8 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions(
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             console2.log(
@@ -3711,8 +4296,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // long call = 1.25, short call = 1.5, short call = 1.75, long call = 2
@@ -3733,8 +4318,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // 1.3, 1.6, 1.8, 2.1
@@ -3750,8 +4335,8 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions(
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             console2.log(
@@ -3795,8 +4380,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             2_000_000,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // long put = 0.25, short put = 0.5, short put = 0.75, short call = 0.9
@@ -3817,8 +4402,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_000_000,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         // 0.2, 0.4, 0.6, 0.8, 1.1
@@ -3834,8 +4419,8 @@ contract Misctest is Test, PositionUtils {
             pp.burnOptions(
                 $posIdList[0],
                 new TokenId[](0),
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             console2.log(
@@ -3899,8 +4484,8 @@ contract Misctest is Test, PositionUtils {
             $posIdList,
             1_003_003,
             0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
 
         vm.startPrank(Swapper);
@@ -3968,8 +4553,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -4099,7 +4684,7 @@ contract Misctest is Test, PositionUtils {
         posIdList[0] = tokenId;
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
@@ -4115,7 +4700,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         assertTrue(!pp.isSafeMode(), "not in safe mode");
 
@@ -4142,7 +4727,7 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Bob);
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V4POOL_TICK, Constants.MIN_V4POOL_TICK);
     }
 
     function test_Fail_DivergentSolvencyCheck_burn() public {
@@ -4185,7 +4770,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V4POOL_TICK, Constants.MIN_V4POOL_TICK);
 
         TokenId[] memory posIdList2 = new TokenId[](2);
 
@@ -4205,11 +4790,11 @@ contract Misctest is Test, PositionUtils {
         posIdList2[1] = tokenId2;
 
         // mint second option
-        pp.mintOptions(posIdList2, 10, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        pp.mintOptions(posIdList2, 10, 0, Constants.MAX_V4POOL_TICK, Constants.MIN_V4POOL_TICK);
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         vm.startPrank(Swapper);
         routerV4.swapTo(address(0), poolKey, Math.getSqrtRatioAtTick(int24(currentTick) + 950));
@@ -4227,7 +4812,7 @@ contract Misctest is Test, PositionUtils {
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        (fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
         assertTrue(!pp.isSafeMode(), "not in safe mode");
 
@@ -4246,8 +4831,8 @@ contract Misctest is Test, PositionUtils {
         pp.burnOptions(
             posIdList2[1],
             posIdList,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MAX_V4POOL_TICK,
+            Constants.MIN_V4POOL_TICK
         );
     }
 
@@ -4291,7 +4876,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
         }
 
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V4POOL_TICK, Constants.MIN_V4POOL_TICK);
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -4335,7 +4920,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        twapTick = PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -4352,7 +4937,7 @@ contract Misctest is Test, PositionUtils {
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        (fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
+        (, fastOracleTick, , lastObservedTick, ) = pp.getOracleTicks();
 
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
@@ -4432,7 +5017,7 @@ contract Misctest is Test, PositionUtils {
             ct1.deposit(1000, Bob);
         }
 
-        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V3POOL_TICK, Constants.MIN_V3POOL_TICK);
+        pp.mintOptions(posIdList, 3000, 0, Constants.MAX_V4POOL_TICK, Constants.MIN_V4POOL_TICK);
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -4476,7 +5061,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -887200, 887200, 10 ** 18);
         }
 
-        twapTick = PanopticMath.twapFilter(uniPool, 600);
+        twapTick = PanopticMath.twapFilter(IV3CompatibleOracle(address(uniPool)), 600);
         {
             (totalCollateralBalance0, totalCollateralRequired0) = ph.checkCollateral(
                 pp,
@@ -4575,8 +5160,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -4670,8 +5255,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -4772,8 +5357,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -4870,8 +5455,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -4968,8 +5553,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5068,8 +5653,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5154,8 +5739,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5252,8 +5837,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5342,8 +5927,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5431,8 +6016,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 3000,
                 0,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5500,8 +6085,8 @@ contract Misctest is Test, PositionUtils {
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MAX_V4POOL_TICK,
+                    Constants.MIN_V4POOL_TICK
                 );
 
                 // create spread tokenId
@@ -5547,8 +6132,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5618,8 +6203,8 @@ contract Misctest is Test, PositionUtils {
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MAX_V4POOL_TICK,
+                    Constants.MIN_V4POOL_TICK
                 );
 
                 // create spread tokenId
@@ -5665,8 +6250,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());
@@ -5735,8 +6320,8 @@ contract Misctest is Test, PositionUtils {
                     posIdList,
                     1_000_000,
                     0,
-                    Constants.MAX_V3POOL_TICK,
-                    Constants.MIN_V3POOL_TICK
+                    Constants.MAX_V4POOL_TICK,
+                    Constants.MIN_V4POOL_TICK
                 );
 
                 // create spread tokenId
@@ -5782,8 +6367,8 @@ contract Misctest is Test, PositionUtils {
                 posIdList,
                 10_000,
                 2 ** 30,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MAX_V4POOL_TICK,
+                Constants.MIN_V4POOL_TICK
             );
 
             currentTick = V4StateReader.getTick(manager, poolKey.toId());

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Libraries
@@ -58,7 +58,7 @@ contract PanopticHelper {
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
             uint256[2][] memory positionBalanceArray
-        ) = pool.calculateAccumulatedFeesBatch(account, false, positionIdList);
+        ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
         // Query the current and required collateral amounts for the two tokens
         LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
@@ -95,7 +95,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) external returns (int256 value0, int256 value1) {
         // Compute premia for all options (includes short+long premium)
-        (, , uint256[2][] memory positionBalanceArray) = pool.calculateAccumulatedFeesBatch(
+        (, , uint256[2][] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
             account,
             false,
             positionIdList
@@ -153,7 +153,7 @@ contract PanopticHelper {
         TokenId[] memory tokenIdList = new TokenId[](1);
         tokenIdList[0] = tokenId;
 
-        (, , uint256[2][] memory positionBalanceArray) = pool.calculateAccumulatedFeesBatch(
+        (, , uint256[2][] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
             account,
             false,
             tokenIdList
@@ -174,7 +174,7 @@ contract PanopticHelper {
 
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
     /// @dev Used when we need a manipulation-resistant TWAP price.
-    /// @dev Uniswap observations snapshot the closing price of the last block before the first interaction of a given block.
+    /// @dev oracle observations snapshot the closing price of the last block before the first interaction of a given block.
     /// @dev The maximum frequency of observations is 1 per block, but there is no guarantee that the pool will be observed at every block.
     /// @dev Each period has a minimum length of blocktime * period, but may be longer if the Uniswap pool is relatively inactive.
     /// @dev The final price used in the array (of length `cardinality`) is the average of all observations comprising `period` (which is itself a number of observations).
@@ -184,7 +184,7 @@ contract PanopticHelper {
     /// @param period The number of observations to average to compute one entry in the median price array
     /// @return The median of `cardinality` observations spaced by `period` in the Uniswap pool
     function computeMedianObservedPrice(
-        IUniswapV3Pool univ3pool,
+        IV3CompatibleOracle univ3pool,
         uint256 cardinality,
         uint256 period
     ) external view returns (int24) {
@@ -201,7 +201,7 @@ contract PanopticHelper {
     }
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
-    /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
+    /// @dev Also inserts the latest oracle observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
     /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
     /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
@@ -210,7 +210,7 @@ contract PanopticHelper {
     function computeInternalMedian(
         uint256 period,
         uint256 medianData,
-        IUniswapV3Pool univ3pool
+        IV3CompatibleOracle univ3pool
     ) external view returns (int24, uint256) {
         (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
 
@@ -230,7 +230,10 @@ contract PanopticHelper {
     /// @param univ3pool The Uniswap pool from which to compute the TWAP.
     /// @param twapWindow The time window to compute the TWAP over.
     /// @return The final calculated TWAP tick.
-    function twapFilter(IUniswapV3Pool univ3pool, uint32 twapWindow) external view returns (int24) {
+    function twapFilter(
+        IV3CompatibleOracle univ3pool,
+        uint32 twapWindow
+    ) external view returns (int24) {
         return PanopticMath.twapFilter(univ3pool, twapWindow);
     }
 
@@ -298,7 +301,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        (, int24 currentTick, , , , , ) = PanopticPool(pool).oracleContract().slot0();
         int24 x0 = currentTick - 10000;
         int24 x1 = currentTick;
         int24 tol = 100000;
@@ -322,7 +325,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, return MIN_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MIN_V3POOL_TICK;
+                return Constants.MIN_V4POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (
@@ -346,7 +349,7 @@ contract PanopticHelper {
         TokenId[] calldata positionIdList
     ) public returns (int24 liquidationTick) {
         // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
+        (, int24 currentTick, , , , , ) = PanopticPool(pool).oracleContract().slot0();
         int24 x0 = currentTick;
         int24 x1 = currentTick + 10000;
         int24 tol = 100000;
@@ -370,7 +373,7 @@ contract PanopticHelper {
             );
             // if price is not within a 100000 tick range of current price, stop + return MAX_TICK
             if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MAX_V3POOL_TICK;
+                return Constants.MAX_V4POOL_TICK;
             }
             // stop if price is within 0.01% (1 tick) of LP
             if (

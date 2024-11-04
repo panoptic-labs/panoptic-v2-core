@@ -10,13 +10,13 @@ pragma solidity ^0.8.24;
 /// @author Axicon Labs Limited
 interface IERC20Partial {
     /// @notice Returns the amount of tokens owned by `account`.
-    /// @dev This function is unchanged from the EIP
+    /// @dev This function is unchanged from the EIP.
     /// @param account The address to query the balance of
     /// @return The amount of tokens owned by `account`
     function balanceOf(address account) external view returns (uint256);
 
     /// @notice Sets `amount` as the allowance of `spender` over the caller's tokens.
-    /// @dev While this function is specified to return a boolean value in the EIP, this interface does not expect one
+    /// @dev While this function is specified to return a boolean value in the EIP, this interface does not expect one.
     /// @param spender The address which will spend the funds
     /// @param amount The amount of tokens allowed to be spent
     function approve(address spender, uint256 amount) external;
@@ -25,4 +25,7 @@ interface IERC20Partial {
     /// @param to The user to transfer tokens to
     /// @param amount The amount of tokens to transfer
     function transfer(address to, uint256 amount) external;
+
+    /// @notice Returns the amount of tokens in existence.
+    function totalSupply() external view returns (uint256);
 }

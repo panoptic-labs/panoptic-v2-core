@@ -1124,7 +1124,6 @@ contract PositionUtils is Test {
 
         uint256 min_sell_ratio = 2000;
         /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
-        /// at 0% utilization, strangle legs do not compound efficiency
         if (utilization < 0) {
             unchecked {
                 min_sell_ratio /= 2;
@@ -1162,23 +1161,24 @@ contract PositionUtils is Test {
         int256 assetDelta = convertToAssets(ct, shareDelta);
         vm.store(
             address(ct),
-            bytes32(uint256(7)),
+            bytes32(uint256(3)),
             bytes32(
                 uint256(
                     LeftRightSigned.unwrap(
                         LeftRightSigned
-                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(7))))))
+                            .wrap(int256(uint256(vm.load(address(ct), bytes32(uint256(3))))))
                             .add(LeftRightSigned.wrap(int256(uint256(uint128(int128(assetDelta))))))
                     )
                 )
             )
         );
 
-        deal(
-            ct.asset(),
-            address(ct),
-            uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
-        );
+        if (ct.asset() != address(0))
+            deal(
+                ct.asset(),
+                address(ct),
+                uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
+            );
 
         deal(address(ct), owner, newShares, true);
     }

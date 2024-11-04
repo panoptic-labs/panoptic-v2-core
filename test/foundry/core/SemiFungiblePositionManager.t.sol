@@ -39,9 +39,11 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../testUtils/V4RouterSimple.sol";
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
-    constructor(IPoolManager _manager) SemiFungiblePositionManager(_manager) {}
+    constructor(
+        IPoolManager _manager
+    ) SemiFungiblePositionManager(_manager, 10 ** 13, 10 ** 13, 0) {}
 
-    function getPoolIdWithInitBit(PoolId poolId) external view returns (uint256) {
+    function getPoolIdData(PoolId poolId) external view returns (PoolIdData memory) {
         return s_V4toSFPMIdData[poolId];
     }
 }
@@ -224,7 +226,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         IERC20Partial(token0).approve(address(routerV4), type(uint256).max);
         IERC20Partial(token1).approve(address(routerV4), type(uint256).max);
 
-        manager.initialize(poolKey, currentSqrtPriceX96, "");
+        manager.initialize(poolKey, currentSqrtPriceX96);
 
         routerV4.modifyLiquidity(
             address(0),
@@ -267,11 +269,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             tickSpacing,
             IHooks(address(0))
         );
-        poolId = PanopticMath.getPoolId(poolKey, poolKey.toId());
+        poolId = PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing);
     }
 
     function setUp() public {
-        manager = new PoolManager();
+        manager = new PoolManager(address(0));
         routerV4 = new V4RouterSimple(manager);
 
         sfpm = new SemiFungiblePositionManagerHarness(manager);
@@ -985,9 +987,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
         // Check that the pool ID is set correctly
         assertEq(
-            sfpm.getPoolIdWithInitBit(poolKey.toId()),
-            PanopticMath.getPoolId(poolKey, poolKey.toId()) + 2 ** 255
+            uint256(sfpm.getPoolIdData(poolKey.toId()).poolId),
+            PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing)
         );
+
+        assertTrue(sfpm.getPoolIdData(poolKey.toId()).initialized);
     }
 
     function test_Success_initializeAMMPool_Multiple() public {
@@ -995,7 +999,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         for (uint256 i = 0; i < pools.length; i++) {
             _cacheWorldState(pools[i]);
 
-            manager.initialize(poolKey, currentSqrtPriceX96, "");
+            manager.initialize(poolKey, currentSqrtPriceX96);
 
             sfpm.initializeAMMPool(poolKey);
 
@@ -1007,9 +1011,11 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
 
             // Check that the pool ID is set correctly
             assertEq(
-                sfpm.getPoolIdWithInitBit(poolKey.toId()),
-                PanopticMath.getPoolId(poolKey, poolKey.toId()) + 2 ** 255
+                uint256(sfpm.getPoolIdData(poolKey.toId()).poolId),
+                PanopticMath.getPoolId(poolKey.toId(), poolKey.tickSpacing)
             );
+
+            assertTrue(sfpm.getPoolIdData(poolKey.toId()).initialized);
         }
     }
 
@@ -2178,7 +2184,39 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+
+        sfpm.mintTokenizedPosition(
+            poolKey,
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+    }
+
+    function test_Fail_mintTokenizedPosition_PoolIdMismatch(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        // we call _initWorld here instead of _initPool so that the initializeAMMPool call is skipped and this fails
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        TokenId tokenId = TokenId.wrap(0).addPoolId(1).addLeg(0, 1, isWETH, 0, 0, 0, strike, width);
+
+        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
 
         sfpm.mintTokenizedPosition(
             poolKey,
@@ -3825,7 +3863,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         // if net0 is negative, then the protocol has a net surplus of token0
         zeroForOne = net0 < 0;
 
-        //compute the swap amount, set as positive (exact input)
+        // compute the swap amount, set as positive (exact input)
         swapAmount = -net0;
 
         (int256 d0, int256 d1) = evalSwapFixed(swapAmount, zeroForOne, int256(price));

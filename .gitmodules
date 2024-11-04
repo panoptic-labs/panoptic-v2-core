@@ -19,3 +19,6 @@
 [submodule "lib/v4-core"]
 	path = lib/v4-core
 	url = https://github.com/Uniswap/v4-core.git
+[submodule "lib/clones-with-immutable-args"]
+	path = lib/clones-with-immutable-args
+	url = https://github.com/wighawag/clones-with-immutable-args

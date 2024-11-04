@@ -264,7 +264,7 @@ library LeftRightLibrary {
     function subRect(
         LeftRightSigned x,
         LeftRightSigned y
-    ) internal pure returns (LeftRightSigned z) {
+    ) internal pure returns (LeftRightUnsigned z) {
         unchecked {
             int256 left256 = int256(x.leftSlot()) - y.leftSlot();
             int128 left128 = int128(left256);
@@ -275,8 +275,8 @@ library LeftRightLibrary {
             if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
 
             return
-                z.toRightSlot(int128(Math.max(right128, 0))).toLeftSlot(
-                    int128(Math.max(left128, 0))
+                z.toRightSlot(uint128(uint256((Math.max(right128, 0))))).toLeftSlot(
+                    uint128(uint256((Math.max(left128, 0))))
                 );
         }
     }
