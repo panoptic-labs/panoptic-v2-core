@@ -38,6 +38,7 @@ import {PoolManager} from "v4-core/PoolManager.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
 import {V4RouterSimple} from "../foundry/testUtils/V4RouterSimple.sol";
 import {SafeCast} from "v4-core/libraries/SafeCast.sol";
+import {IV3CompatibleOracle} from "@contracts/interfaces/IV3CompatibleOracle.sol";
 
 import {FixedPointMathLib} from "lib/solady/src/utils/FixedPointMathLib.sol";
 
@@ -1701,11 +1702,11 @@ contract FuzzHelpers is PropertiesAsserts {
             burnSimResults.netExchanged = _netExchanged;
 
             ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
-                .calculateAccumulatedFeesBatch(liquidator, false, userPositions[liquidator]);
+                .getAccumulatedFeesAndPositionsData(liquidator, false, userPositions[liquidator]);
 
             int24[4] memory liquidatorTicks;
             liquidatorTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
-            (liquidatorTicks[1], liquidatorTicks[2], liquidatorTicks[3], ) = panopticPool
+            (, liquidatorTicks[1], liquidatorTicks[2], liquidatorTicks[3], ) = panopticPool
                 .getOracleTicks();
             for (uint256 i = 0; i < liquidatorTicks.length; ++i) {
                 if (
@@ -2033,14 +2034,8 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
                 ) *
                     13_333 *
                     $ratios[i]) / 10_000);
@@ -2089,13 +2084,13 @@ contract FuzzHelpers is PropertiesAsserts {
                         ? Math.getSqrtRatioAtTick(
                             Math.max24(
                                 2 * ($fastOracleTick - $strikes[i]),
-                                Constants.MIN_V3POOL_TICK
+                                Constants.MIN_V4POOL_TICK
                             )
                         )
                         : Math.getSqrtRatioAtTick(
                             Math.max24(
                                 2 * ($strikes[i] - $fastOracleTick),
-                                Constants.MIN_V3POOL_TICK
+                                Constants.MIN_V4POOL_TICK
                             )
                         );
 
@@ -2124,14 +2119,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
+                            ? PanopticMath.convert0to1(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                     ) *
                         13_333 *
                         $ratios[i]) / 10_000);
@@ -2446,7 +2441,7 @@ contract FuzzHelpers is PropertiesAsserts {
             ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
                 60,
                 uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-                pool
+                IV3CompatibleOracle(address(pool))
             );
 
             $tokenIdActive = userPositions[$caller][0];
@@ -2544,7 +2539,7 @@ contract FuzzHelpers is PropertiesAsserts {
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
@@ -2556,7 +2551,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
@@ -2581,7 +2576,7 @@ contract FuzzHelpers is PropertiesAsserts {
         returns (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) {
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
@@ -2593,7 +2588,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
-                pool,
+                IV3CompatibleOracle(address(pool)),
                 uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());

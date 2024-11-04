@@ -1,11 +1,11 @@
 {
   "fuzzing": {
-    "workers": 32,
+    "workers": 8,
     "workerResetLimit": 50,
     "timeout": 0,
     "testLimit": 0,
     "shrinkLimit": 0,
-    "callSequenceLength": 2500,
+    "callSequenceLength": 500,
     "corpusDirectory": "test/echidna/medusa_corpus",
     "coverageEnabled": true,
     "targetContracts": ["EchidnaWrapper"],

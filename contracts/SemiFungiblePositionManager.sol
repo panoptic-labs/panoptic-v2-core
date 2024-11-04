@@ -853,9 +853,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             }
         }
 
-        emit LogInt256("totalMoved.rs", totalMoved.rightSlot());
-        emit LogInt256("totalMoved.ls", totalMoved.leftSlot());
-
         // Ensure upper bound on amount of tokens contained across all legs of the position on any given tick does not exceed a maximum of (2**127-1).
         // This is the maximum value of the `int128` type we frequently use to hold token amounts, so a given position's size should be guaranteed to
         // fit within that limit at all times.
@@ -958,10 +955,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             uint128 startingLiquidity = currentLiquidity.rightSlot();
             uint128 removedLiquidity = currentLiquidity.leftSlot();
             uint128 chunkLiquidity = liquidityChunk.liquidity();
-
-            emit LogInt256("startingLiquidity", int256(uint256(startingLiquidity)));
-            emit LogInt256("removedLiquidity", int256(uint256(removedLiquidity)));
-            emit LogInt256("chunkLiquidity", int256(uint256(chunkLiquidity)));
 
             // 0-liquidity interactions are asymmetrical in Uniswap (burning 0 liquidity is permitted and functions as a poke, but minting is prohibited)
             // thus, we prohibit all 0-liquidity chunks to prevent users from creating positions that cannot be closed
@@ -1106,11 +1099,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 removedLiquidity = currentLiquidity.leftSlot();
         uint256 netLiquidity = currentLiquidity.rightSlot();
 
-        emit LogInt256("removedLiquidity", int256(removedLiquidity));
-        emit LogInt256("netLiquidity", int256(netLiquidity));
-        emit LogInt256("collectedAmounts.rs", int256(uint256(collectedAmounts.rightSlot())));
-        emit LogInt256("collectedAmounts.ls", int256(uint256(collectedAmounts.leftSlot())));
-
         // premia spread equations are graphed and documented here: https://www.desmos.com/calculator/mdeqob2m04
         // explains how we get from the premium per liquidity (calculated here) to the total premia collected and the multiplier
         // as well as how the value of VEGOID affects the premia
@@ -1183,11 +1171,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 }
             }
         }
-
-        emit LogInt256("deltaPremiumOwed.rs", int256(uint256(deltaPremiumOwed.rightSlot())));
-        emit LogInt256("deltaPremiumOwed.ls", int256(uint256(deltaPremiumOwed.leftSlot())));
-        emit LogInt256("deltaPremiumGross.rs", int256(uint256(deltaPremiumGross.rightSlot())));
-        emit LogInt256("deltaPremiumGross.ls", int256(uint256(deltaPremiumGross.leftSlot())));
     }
 
     /*//////////////////////////////////////////////////////////////

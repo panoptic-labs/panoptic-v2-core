@@ -29,7 +29,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         pools = deployer.getPools();
 
-        manager = new PoolManager();
+        manager = new PoolManager(address(0));
 
         routerV4 = new V4RouterSimple(manager);
 
@@ -60,7 +60,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
             (uint160 sqrtPriceX96Pool, , , , , , ) = pools[i].slot0();
 
-            manager.initialize(poolKeys[i], sqrtPriceX96Pool, "");
+            manager.initialize(poolKeys[i], sqrtPriceX96Pool);
 
             hevm.prank(pool_manipulator);
             routerV4.modifyLiquidity(
@@ -81,7 +81,7 @@ contract EchidnaWrapper is PanopticPoolActions {
         univ3factory = IUniswapV3Factory(deployer.factory());
         emit LogAddress("UniV3 Factory", address(univ3factory));
 
-        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
         emit LogAddress("Panoptic SFPM", address(sfpm));
 
         panopticHelper = new PanopticHelper(sfpm);
@@ -99,7 +99,6 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         panopticFactory = new PanopticFactory(
             sfpm,
-            univ3factory,
             manager,
             poolReference,
             collateralReference,
@@ -183,7 +182,13 @@ contract EchidnaWrapper is PanopticPoolActions {
         sfpmPoolId = poolId;
 
         panopticPool = PanopticPoolWrapper(
-            address(panopticFactory.deployNewPool(pool, poolKey, uint96(0)))
+            address(
+                panopticFactory.deployNewPool(
+                    IV3CompatibleOracle(address(pool)),
+                    poolKey,
+                    uint96(0)
+                )
+            )
         );
 
         collToken0 = CollateralTrackerWrapper(address(panopticPool.collateralToken0()));

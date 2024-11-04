@@ -234,8 +234,6 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     //  |<---------------------- 256 bits ------------------------------>|
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
-    PoolKey internal s_poolKey;
-
     /*//////////////////////////////////////////////////////////////
                    POOL-SPECIFIC IMMUTABLE PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -808,7 +806,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256) {
+    ) internal returns (uint256) {
         (
             int24 fastOracleTick,
             int24 slowOracleTick,

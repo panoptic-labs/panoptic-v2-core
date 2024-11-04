@@ -80,7 +80,7 @@ library PanopticMath {
     /// @notice Returns ERC20 symbol of `asset`.
     /// @param asset The address of the asset to get the symbol of (`address(0)` = native asset)
     /// @return The symbol of `asset` or "???" if not supported
-    function safeERC20Symbol(address token) internal view returns (string memory) {
+    function safeERC20Symbol(address asset) internal view returns (string memory) {
         if (asset == address(0)) return "ETH";
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not

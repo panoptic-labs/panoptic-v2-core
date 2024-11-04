@@ -35,11 +35,11 @@ contract PanopticPoolActions is CollateralActions {
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
             uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-            pool
+            IV3CompatibleOracle(address(pool))
         );
 
         $fastOracleTick = panopticHelper.computeMedianObservedPrice(
-            pool,
+            IV3CompatibleOracle(address(pool)),
             Constants.FAST_ORACLE_CARDINALITY,
             Constants.FAST_ORACLE_PERIOD
         );
@@ -646,7 +646,7 @@ contract PanopticPoolActions is CollateralActions {
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
             uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-            pool
+            IV3CompatibleOracle(address(pool))
         );
 
         $safeMode = Math.abs($slowOracleTick - currentTick) > 953;
@@ -1171,7 +1171,7 @@ contract PanopticPoolActions is CollateralActions {
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
             uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
-            pool
+            IV3CompatibleOracle(address(pool))
         );
 
         $safeMode = Math.abs($slowOracleTick - currentTick) > 953;
@@ -1348,7 +1348,7 @@ contract PanopticPoolActions is CollateralActions {
                 Math.mulDivRoundingUp(premium1, $totalSupply1, $totalAssets1) >
                 collToken1.balanceOf($settlee))
         ) {
-            ($colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
+            (, $colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
 
             $colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -1512,7 +1512,7 @@ contract PanopticPoolActions is CollateralActions {
 
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
-        $twapTick = PanopticMath.twapFilter(pool, 600);
+        $twapTick = PanopticMath.twapFilter(IV3CompatibleOracle(address(pool)), 600);
 
         $shouldRevert = false;
 
@@ -1761,7 +1761,7 @@ contract PanopticPoolActions is CollateralActions {
         emit LogAddress("liquidator", liquidator);
         emit LogAddress("liquidated", liquidatee);
 
-        int24 TWAPtick = PanopticMath.twapFilter(pool, 600);
+        int24 TWAPtick = PanopticMath.twapFilter(IV3CompatibleOracle(address(pool)), 600);
         $twapTick = TWAPtick;
         currentTick = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -1775,7 +1775,7 @@ contract PanopticPoolActions is CollateralActions {
         // log_account_collaterals(liquidatee);
         // log_trackers_status();
         $colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
-        ($colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
+        (, $colTicks[1], $colTicks[2], $colTicks[3], ) = panopticPool.getOracleTicks();
 
         // replace slow oracle tick with TWAP tick
         $colTicks[2] = TWAPtick;
