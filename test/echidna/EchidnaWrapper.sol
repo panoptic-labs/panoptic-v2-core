@@ -38,7 +38,7 @@ contract EchidnaWrapper is PanopticPoolActions {
         univ3factory = IUniswapV3Factory(deployer.factory());
         emit LogAddress("UniV3 Factory", address(univ3factory));
 
-        sfpm = new SemiFungiblePositionManager(univ3factory, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManager(univ3factory, 500_000_000, 0);
         emit LogAddress("Panoptic SFPM", address(sfpm));
 
         panopticHelper = new PanopticHelper(sfpm);
