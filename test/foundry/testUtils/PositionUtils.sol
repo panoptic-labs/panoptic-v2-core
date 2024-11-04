@@ -1173,11 +1173,12 @@ contract PositionUtils is Test {
             )
         );
 
-        deal(
-            ct.asset(),
-            address(ct),
-            uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
-        );
+        if (ct.asset() != address(0))
+            deal(
+                ct.asset(),
+                address(ct),
+                uint256(int256(IERC20Partial(ct.asset()).balanceOf(address(ct))) + assetDelta)
+            );
 
         deal(address(ct), owner, newShares, true);
     }

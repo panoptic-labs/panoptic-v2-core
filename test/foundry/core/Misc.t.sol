@@ -927,6 +927,125 @@ contract Misctest is Test, PositionUtils {
         assertGt(actualDOSCost, 21_000 * 10 ** 18);
     }
 
+    function test_CollateralLogic_native(uint256 nativeSeed, uint256 liqNativeSeed) public {
+        token0 = ERC20S(address(0));
+
+        poolKey = PoolKey(
+            Currency.wrap(address(token0)),
+            Currency.wrap(address(token1)),
+            100,
+            1,
+            IHooks(address(0))
+        );
+
+        manager.initialize(poolKey, 2 ** 96);
+
+        pp = PanopticPool(
+            address(
+                factory.deployNewPool(
+                    IV3CompatibleOracle(address(uniPool)),
+                    poolKey,
+                    uint96(block.timestamp)
+                )
+            )
+        );
+
+        ct0 = pp.collateralToken0();
+        ct1 = pp.collateralToken1();
+
+        nativeSeed = bound(nativeSeed, 100 ether, type(uint128).max);
+
+        vm.deal(Alice, nativeSeed);
+
+        vm.startPrank(Alice);
+
+        ct0.deposit{value: nativeSeed}(100 ether, Alice);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 100 ether - 1);
+        assertEq(manager.balanceOf(address(pp), 0), 100 ether);
+        assertEq(Alice.balance, nativeSeed - 100 ether);
+
+        vm.deal(Alice, nativeSeed);
+
+        ct0.mint{value: nativeSeed}((ct0.convertToShares(100 ether) * 9_990) / 10_000, Alice);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 200 ether - 1);
+        assertEq(manager.balanceOf(address(pp), 0), 200 ether);
+        assertEq(Alice.balance, nativeSeed - 100 ether);
+
+        vm.deal(Alice, 0);
+
+        ct0.withdraw(100 ether, Alice, Alice);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), 100 ether - 1);
+        assertEq(manager.balanceOf(address(pp), 0), 100 ether);
+        assertEq(Alice.balance, 100 ether);
+
+        ct0.redeem(ct0.balanceOf(Alice), Alice, Alice);
+
+        assertEq(ct0.balanceOf(Alice), 0);
+        assertEq(manager.balanceOf(address(pp), 0), 1);
+        assertEq(Alice.balance, 200 ether - 1);
+
+        vm.deal(Alice, 100 ether);
+
+        ct0.deposit{value: 100 ether}(100 ether, Alice);
+
+        token1.mint(Alice, 100 ether);
+
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct1.deposit(100 ether, Alice);
+
+        vm.startPrank(Bob);
+
+        token1.mint(Bob, 3.1 ether);
+        token1.approve(address(ct1), type(uint104).max);
+
+        ct1.deposit(3.1 ether, Bob);
+
+        $posIdList.push(
+            TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey.toId())).addLeg(
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                -10,
+                1
+            )
+        );
+
+        pp.mintOptions(
+            $posIdList,
+            3 ether,
+            0,
+            Constants.MIN_V4POOL_TICK,
+            Constants.MAX_V4POOL_TICK
+        );
+
+        editCollateral(ct0, Bob, 0);
+
+        uint256 balancePrev = ct0.convertToAssets(ct0.balanceOf(Alice));
+
+        vm.startPrank(Charlie);
+
+        liqNativeSeed = bound(liqNativeSeed, 3 ether, type(uint128).max);
+
+        vm.deal(Charlie, liqNativeSeed);
+
+        pp.liquidate{value: Charlie.balance}(new TokenId[](0), Bob, $posIdList);
+
+        assertEq(Charlie.balance, liqNativeSeed - 3 ether);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Bob)), 0);
+
+        assertEq(ct0.convertToAssets(ct0.balanceOf(Alice)), balancePrev);
+
+        assertEq(manager.balanceOf(address(pp), 0), 103 ether + 1);
+    }
+
     // Test that risk-partnered positions can be minted/burned succesfully
     function test_success_MintBurnStraddle() public {
         swapperc = new SwapperC();
