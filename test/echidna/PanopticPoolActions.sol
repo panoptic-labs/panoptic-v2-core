@@ -34,7 +34,7 @@ contract PanopticPoolActions is CollateralActions {
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
-            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(0)))),
             IV3CompatibleOracle(address(pool))
         );
 
@@ -315,10 +315,7 @@ contract PanopticPoolActions is CollateralActions {
         $commission0 = int256(
             (
                 $tickLimitLow > $tickLimitHigh
-                    ? Math.unsafeDivRoundingUp(
-                        (uint256(Math.abs($colDelta0)) * pool.fee() * 2),
-                        (10_000 * 100)
-                    )
+                    ? Math.unsafeDivRoundingUp((uint256(Math.abs($colDelta0)) * 20), (10_000))
                     : 0
             ) +
                 Math.unsafeDivRoundingUp(
@@ -330,10 +327,7 @@ contract PanopticPoolActions is CollateralActions {
         $commission1 = int256(
             (
                 $tickLimitLow > $tickLimitHigh
-                    ? Math.unsafeDivRoundingUp(
-                        (uint256(Math.abs($colDelta1)) * pool.fee() * 2),
-                        (10_000 * 100)
-                    )
+                    ? Math.unsafeDivRoundingUp((uint256(Math.abs($colDelta1)) * 20), (10_000))
                     : 0
             ) +
                 Math.unsafeDivRoundingUp(
@@ -645,7 +639,7 @@ contract PanopticPoolActions is CollateralActions {
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
-            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(0)))),
             IV3CompatibleOracle(address(pool))
         );
 
@@ -1170,7 +1164,7 @@ contract PanopticPoolActions is CollateralActions {
 
         ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
             60,
-            uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+            uint256(hevm.load(address(panopticPool), bytes32(uint256(0)))),
             IV3CompatibleOracle(address(pool))
         );
 

@@ -303,7 +303,7 @@ contract CollateralTrackerWrapper is CollateralTracker {
         int256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization,
-        uint256 _ITMSpreadMultiplier,
+        uint256 _ITMSpreadFee,
         IPoolManager _manager
     )
         CollateralTracker(
@@ -313,7 +313,7 @@ contract CollateralTrackerWrapper is CollateralTracker {
             _forceExerciseCost,
             _targetPoolUtilization,
             _saturatedPoolUtilization,
-            _ITMSpreadMultiplier,
+            _ITMSpreadFee,
             _manager
         )
     {}
@@ -1383,8 +1383,11 @@ contract FuzzHelpers is PropertiesAsserts {
     }
 
     function _write_revert_due_solvency(address sUser, uint256 buffer) internal {
+        // current - fast
+        // fast - slow
+        // latest - slow
         if (
-            int256($colTicks[0] - $colTicks[1]) ** 2 +
+            int256($colTicks[0] - $colTicks[2]) ** 2 +
                 int256($colTicks[1] - $colTicks[2]) ** 2 +
                 int256($colTicks[3] - $colTicks[2]) ** 2 >
             953 ** 2
@@ -2440,7 +2443,7 @@ contract FuzzHelpers is PropertiesAsserts {
 
             ($slowOracleTick, ) = panopticHelper.computeInternalMedian(
                 60,
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1)))),
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(0)))),
                 IV3CompatibleOracle(address(pool))
             );
 
@@ -2540,7 +2543,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
                 IV3CompatibleOracle(address(pool)),
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(0))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -2552,7 +2555,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
                 IV3CompatibleOracle(address(pool)),
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(0))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -2577,7 +2580,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
                 IV3CompatibleOracle(address(pool)),
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(0))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 
@@ -2589,7 +2592,7 @@ contract FuzzHelpers is PropertiesAsserts {
             int24[4] memory __colTicks;
             (__colTicks[1], __colTicks[2], __colTicks[3], ) = PanopticMath.getOracleTicks(
                 IV3CompatibleOracle(address(pool)),
-                uint256(hevm.load(address(panopticPool), bytes32(uint256(1))))
+                uint256(hevm.load(address(panopticPool), bytes32(uint256(0))))
             );
             __colTicks[0] = V4StateReader.getTick(manager, poolKey.toId());
 

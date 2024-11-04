@@ -81,7 +81,7 @@ contract EchidnaWrapper is PanopticPoolActions {
         univ3factory = IUniswapV3Factory(deployer.factory());
         emit LogAddress("UniV3 Factory", address(univ3factory));
 
-        sfpm = new SemiFungiblePositionManager(manager, 10 ** 13, 10 ** 13, 0);
+        sfpm = new SemiFungiblePositionManager(manager, 500_000_000, 500_000_000, 0);
         emit LogAddress("Panoptic SFPM", address(sfpm));
 
         panopticHelper = new PanopticHelper(sfpm);
@@ -93,7 +93,7 @@ contract EchidnaWrapper is PanopticPoolActions {
 
         // Import the Collateral Tracker reference (for cloning)
         collateralReference = address(
-            new CollateralTrackerWrapper(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000, manager)
+            new CollateralTrackerWrapper(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20, manager)
         );
         emit LogAddress("Panoptic Collateral reference", address(collateralReference));
 
