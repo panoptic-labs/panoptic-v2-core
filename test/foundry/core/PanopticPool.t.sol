@@ -1968,7 +1968,7 @@ contract PanopticPoolTest is PositionUtils {
                 pp.positionsHash(Alice),
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2087,7 +2087,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2221,7 +2221,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2314,7 +2314,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2408,7 +2408,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2516,7 +2516,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2620,7 +2620,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 1);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -2789,7 +2789,7 @@ contract PanopticPoolTest is PositionUtils {
                     uint248(uint256(keccak256(abi.encodePacked(tokenId))))
                 );
 
-                assertEq(pp.numberOfPositions(Alice), 1);
+                assertEq(pp.numberOfLegs(Alice), 2);
 
                 (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                     .optionPositionInfo(pp, Alice, tokenId);
@@ -2946,7 +2946,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 2);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -3203,7 +3203,7 @@ contract PanopticPoolTest is PositionUtils {
                     uint248(uint256(keccak256(abi.encodePacked(tokenId))))
                 );
 
-                assertEq(pp.numberOfPositions(Alice), 1);
+                assertEq(pp.numberOfLegs(Alice), 2);
 
                 TokenId _tokenId = tokenId;
 
@@ -3398,7 +3398,7 @@ contract PanopticPoolTest is PositionUtils {
                 uint248(uint256(keccak256(abi.encodePacked(tokenId))))
             );
 
-            assertEq(pp.numberOfPositions(Alice), 1);
+            assertEq(pp.numberOfLegs(Alice), 2);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -3750,49 +3750,40 @@ contract PanopticPoolTest is PositionUtils {
         );
     }
 
-    function test_Fail_mintOptions_TooManyPositionsOpen() public {
+    function test_Fail_mintOptions_TooManyLegsOpen(uint256 legSeed) public {
         _initPool(0);
 
-        (int24 width, int24 strike) = PositionUtils.getOTMSW(
-            0,
-            0,
-            uint24(tickSpacing),
-            currentTick,
-            0
-        );
-
-        populatePositionData(width, strike, 0);
-
         uint248 positionsHash;
-        for (uint256 i = 0; i < 33; i++) {
-            tokenIds.push(
-                TokenId.wrap(0).addPoolId(poolId).addLeg(
-                    0,
-                    i + 1, // increment the options ratio as an easy way to get unique tokenIds
-                    isWETH,
-                    0,
-                    0,
-                    0,
-                    strike,
-                    width
-                )
-            );
-            if (i == 32) vm.expectRevert(Errors.TooManyPositionsOpen.selector);
+        uint256 i;
+        while (true) {
+            uint256 numLegs = bound(legSeed, 1, 4);
+            TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
+
+            for (uint256 j = 0; j < numLegs; j++) {
+                tokenId = tokenId.addLeg(j, 1, isWETH, 0, 0, j, 0, int24(uint24(2 * (i + j + 1))));
+            }
+            tokenIds.push(tokenId);
+
+            i += numLegs;
+
+            if (i > 35) vm.expectRevert(Errors.TooManyLegsOpen.selector);
             pp.mintOptions(
                 tokenIds,
-                positionSize,
+                1_000_000,
                 0,
                 Constants.MAX_V4POOL_TICK,
                 Constants.MIN_V4POOL_TICK
             );
 
-            if (i < 32) {
-                positionsHash =
-                    positionsHash ^
-                    uint248(uint256(keccak256(abi.encodePacked(tokenIds[i]))));
-                assertEq(pp.positionsHash(Alice), positionsHash);
-                assertEq(pp.numberOfPositions(Alice), i + 1);
-            }
+            if (i > 35) break;
+
+            positionsHash =
+                positionsHash ^
+                uint248(uint256(keccak256(abi.encodePacked(tokenIds[tokenIds.length - 1]))));
+            assertEq(pp.positionsHash(Alice), positionsHash);
+            assertEq(pp.numberOfLegs(Alice), i);
+
+            legSeed = uint256(keccak256(abi.encode(legSeed)));
         }
     }
 
@@ -3855,7 +3846,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             assertEq(pp.positionsHash(Alice), 0);
 
-            assertEq(pp.numberOfPositions(Alice), 0);
+            assertEq(pp.numberOfLegs(Alice), 0);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -3983,7 +3974,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         {
             assertEq(pp.positionsHash(Alice), 0);
-            assertEq(pp.numberOfPositions(Alice), 0);
+            assertEq(pp.numberOfLegs(Alice), 0);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -4143,7 +4134,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         {
             assertEq(pp.positionsHash(Alice), 0);
-            assertEq(pp.numberOfPositions(Alice), 0);
+            assertEq(pp.numberOfLegs(Alice), 0);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
@@ -5394,7 +5385,7 @@ contract PanopticPoolTest is PositionUtils {
         {
             assertEq(pp.positionsHash(Alice), 0);
 
-            assertEq(pp.numberOfPositions(Alice), 0);
+            assertEq(pp.numberOfLegs(Alice), 0);
 
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);

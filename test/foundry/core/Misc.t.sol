@@ -416,8 +416,8 @@ contract Misctest is Test, PositionUtils {
         ct1 = pp.collateralToken1();
     }
 
-    function test_gas_MaxPositions_shortWithHaircut() public {
-        uint256 positionCount = 10;
+    function test_gas_MaxPositions_short_packed() public {
+        uint256 positionCount = 9;
 
         for (uint256 i = 0; i < positionCount; i++) {
             TokenId posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
@@ -450,16 +450,17 @@ contract Misctest is Test, PositionUtils {
                 _strike: 0,
                 _width: int24(uint24(2 * (4 * i + 3)))
             });
-            posId = posId.addLeg({
-                legIndex: 3,
-                _optionRatio: 1,
-                _asset: 0,
-                _isLong: 0,
-                _tokenType: 1,
-                _riskPartner: 3,
-                _strike: 0,
-                _width: int24(uint24(2 * (4 * i + 4)))
-            });
+            if (i != positionCount - 1)
+                posId = posId.addLeg({
+                    legIndex: 3,
+                    _optionRatio: 1,
+                    _asset: 0,
+                    _isLong: 0,
+                    _tokenType: 1,
+                    _riskPartner: 3,
+                    _strike: 0,
+                    _width: int24(uint24(2 * (4 * i + 4)))
+                });
 
             $posIdList.push(posId);
 
@@ -504,16 +505,16 @@ contract Misctest is Test, PositionUtils {
                     _strike: 0,
                     _width: int24(uint24(2 * (4 * i + 3)))
                 });
-                posId = posId.addLeg({
-                    legIndex: 3,
-                    _optionRatio: 1,
-                    _asset: 0,
-                    _isLong: 0,
-                    _tokenType: 1,
-                    _riskPartner: 3,
-                    _strike: 0,
-                    _width: int24(uint24(2 * (4 * i + 4)))
-                });
+                // posId = posId.addLeg({
+                //     legIndex: 3,
+                //     _optionRatio: 1,
+                //     _asset: 0,
+                //     _isLong: 0,
+                //     _tokenType: 1,
+                //     _riskPartner: 3,
+                //     _strike: 0,
+                //     _width: int24(uint24(2 * (4 * i + 4)))
+                // });
 
                 $posIdList[positionCount - 1] = posId;
             }
@@ -551,8 +552,82 @@ contract Misctest is Test, PositionUtils {
         console.log("Gas used: %d Liquidation", gasBefore - gasleft());
     }
 
-    function test_gas_MaxPositions_longWithHaircut() public {
-        uint256 positionCount = 10;
+    function test_gas_MaxPositions_short_soloLeg() public {
+        uint256 positionCount = 35;
+
+        for (uint256 i = 0; i < positionCount; i++) {
+            TokenId posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (i + 1)))
+            });
+
+            $posIdList.push(posId);
+
+            vm.startPrank(Bob);
+
+            pp.mintOptions(
+                $posIdList,
+                2_000_000,
+                0,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+
+            if (i == positionCount - 1) {
+                posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
+                    legIndex: 0,
+                    _optionRatio: 1,
+                    _asset: 1,
+                    _isLong: 0,
+                    _tokenType: 0,
+                    _riskPartner: 0,
+                    _strike: 0,
+                    _width: int24(uint24(2 * (i + 1)))
+                });
+                $posIdList[positionCount - 1] = posId;
+            }
+
+            vm.startPrank(Alice);
+            pp.mintOptions(
+                $posIdList,
+                1_000_000,
+                type(uint64).max,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+        }
+
+        vm.startPrank(Eve);
+
+        token0.mint(Eve, type(uint104).max);
+        token1.mint(Eve, type(uint104).max);
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            10_000_000,
+            20_000_000
+        );
+
+        editCollateral(ct0, Alice, 0);
+        editCollateral(ct1, Alice, 0);
+
+        uint256 gasBefore = gasleft();
+        pp.liquidate(new TokenId[](0), Alice, $posIdList);
+        console.log("Gas used: %d Liquidation", gasBefore - gasleft());
+    }
+
+    function test_gas_MaxPositions_long_packed() public {
+        uint256 positionCount = 9;
 
         for (uint256 i = 0; i < positionCount; i++) {
             TokenId posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
@@ -585,16 +660,17 @@ contract Misctest is Test, PositionUtils {
                 _strike: 0,
                 _width: int24(uint24(2 * (4 * i + 3)))
             });
-            posId = posId.addLeg({
-                legIndex: 3,
-                _optionRatio: 1,
-                _asset: 0,
-                _isLong: 0,
-                _tokenType: 1,
-                _riskPartner: 3,
-                _strike: 0,
-                _width: int24(uint24(2 * (4 * i + 4)))
-            });
+            if (i != 0)
+                posId = posId.addLeg({
+                    legIndex: 3,
+                    _optionRatio: 1,
+                    _asset: 0,
+                    _isLong: 0,
+                    _tokenType: 1,
+                    _riskPartner: 3,
+                    _strike: 0,
+                    _width: int24(uint24(2 * (4 * i + 4)))
+                });
 
             $setupIdList.push(posId);
 
@@ -680,15 +756,101 @@ contract Misctest is Test, PositionUtils {
                     _strike: 0,
                     _width: int24(uint24(2 * (4 * i + 3)))
                 });
-                posId = posId.addLeg({
-                    legIndex: 3,
+                // posId = posId.addLeg({
+                //     legIndex: 3,
+                //     _optionRatio: 1,
+                //     _asset: 0,
+                //     _isLong: 1,
+                //     _tokenType: 1,
+                //     _riskPartner: 3,
+                //     _strike: 0,
+                //     _width: int24(uint24(2 * (4 * i + 4)))
+                // });
+            }
+
+            $posIdList.push(posId);
+
+            vm.startPrank(Alice);
+            pp.mintOptions(
+                $posIdList,
+                1_000_000,
+                type(uint64).max,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+        }
+
+        vm.startPrank(Eve);
+
+        token0.mint(Eve, type(uint104).max);
+        token1.mint(Eve, type(uint104).max);
+        token0.approve(address(ct0), type(uint104).max);
+        token1.approve(address(ct1), type(uint104).max);
+
+        accruePoolFeesInRange(
+            manager,
+            poolKey,
+            StateLibrary.getLiquidity(manager, poolKey.toId()) - 1,
+            10_000_000,
+            20_000_000
+        );
+
+        editCollateral(ct0, Alice, 0);
+        editCollateral(ct1, Alice, 0);
+
+        uint256 gasBefore = gasleft();
+        pp.liquidate(new TokenId[](0), Alice, $posIdList);
+        console.log("Gas used: %d Liquidation", gasBefore - gasleft());
+    }
+
+    function test_gas_MaxPositions_long_soloLeg() public {
+        uint256 positionCount = 35;
+
+        for (uint256 i = 0; i < positionCount; i++) {
+            TokenId posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 0,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (i + 1)))
+            });
+
+            $setupIdList.push(posId);
+
+            vm.startPrank(Bob);
+
+            pp.mintOptions(
+                $setupIdList,
+                2_000_000,
+                0,
+                Constants.MIN_V4POOL_TICK,
+                Constants.MAX_V4POOL_TICK
+            );
+
+            posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
+                legIndex: 0,
+                _optionRatio: 1,
+                _asset: 1,
+                _isLong: 1,
+                _tokenType: 0,
+                _riskPartner: 0,
+                _strike: 0,
+                _width: int24(uint24(2 * (i + 1)))
+            });
+
+            if (i == 0) {
+                posId = TokenId.wrap(0).addPoolId(sfpm.getPoolId(poolKey)).addLeg({
+                    legIndex: 0,
                     _optionRatio: 1,
-                    _asset: 0,
-                    _isLong: 1,
-                    _tokenType: 1,
-                    _riskPartner: 3,
+                    _asset: 1,
+                    _isLong: 0,
+                    _tokenType: 0,
+                    _riskPartner: 0,
                     _strike: 0,
-                    _width: int24(uint24(2 * (4 * i + 4)))
+                    _width: int24(uint24(2 * (i + 1)))
                 });
             }
 
@@ -1659,7 +1821,7 @@ contract Misctest is Test, PositionUtils {
         pp.forceExercise(Alice, $posIdList[0], new TokenId[](0), new TokenId[](0));
     }
 
-    function test_parity_maxmint_previewmint() public {
+    function test_parity_maxmint_previewmint() public view {
         assertEq(ct0.previewMint(ct0.maxMint(Alice)), type(uint104).max);
     }
 

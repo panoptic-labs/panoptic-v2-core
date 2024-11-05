@@ -75,8 +75,8 @@ library Errors {
     /// @dev This is a safeguard against price manipulation during option mints, burns, and liquidations
     error StaleTWAP();
 
-    /// @notice PanopticPool: An account has reached the maximum number of open positions and cannnot mint another
-    error TooManyPositionsOpen();
+    /// @notice PanopticPool: The position being minted would increase the total amount of legs open for the account above the maximum
+    error TooManyLegsOpen();
 
     /// @notice ERC20 or SFPM (ERC1155) token transfer did not complete successfully
     error TransferFailed();

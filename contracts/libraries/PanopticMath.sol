@@ -134,8 +134,8 @@ library PanopticMath {
 
         // increment the upper 8 bits (position counter) if addflag=true, decrement otherwise
         uint256 newPositionCount = addFlag
-            ? uint8(existingHash >> 248) + 1
-            : uint8(existingHash >> 248) - 1;
+            ? uint8(existingHash >> 248) + uint8(tokenId.countLegs())
+            : uint8(existingHash >> 248) - tokenId.countLegs();
 
         unchecked {
             return uint256(updatedHash) + (newPositionCount << 248);
