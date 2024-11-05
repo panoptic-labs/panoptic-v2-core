@@ -136,8 +136,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
 
-    /// @notice The maximum allowed number of opened positions for a user.
-    uint64 internal constant MAX_POSITIONS = 32;
+    /// @notice The maximum allowed number of legs across all open positions for a user.
+    uint64 internal constant MAX_OPEN_LEGS = 35;
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     uint256 internal constant BP_DECREASE_BUFFER = 13_333;
@@ -1315,7 +1315,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenId,
             addFlag
         );
-        if ((newHash >> 248) > MAX_POSITIONS) revert Errors.TooManyPositionsOpen();
+        if ((newHash >> 248) > MAX_OPEN_LEGS) revert Errors.TooManyLegsOpen();
         s_positionsHash[account] = newHash;
     }
 
@@ -1363,10 +1363,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         medianData = s_miniMedian;
     }
 
-    /// @notice Get the current number of open positions for an account.
+    /// @notice Get the current number of legs across all open positions for an account.
     /// @param user The account to query
-    /// @return Number of open positions for `user`
-    function numberOfPositions(address user) external view returns (uint256) {
+    /// @return Number of legs across the open positions of `user`
+    function numberOfLegs(address user) external view returns (uint256) {
         return s_positionsHash[user] >> 248;
     }
 

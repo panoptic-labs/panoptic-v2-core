@@ -5855,7 +5855,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 actualValue1 = collateralToken1.maxRedeem(Bob);
 
         // if there are option positions this should return 0
-        if (panopticPool.numberOfPositions(Bob) != 0) {
+        if (panopticPool.numberOfLegs(Bob) != 0) {
             assertEq(0, actualValue0);
             assertEq(0, actualValue1);
             // if available is greater than the user balance
@@ -5916,7 +5916,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 actualValue1 = collateralToken1.maxWithdraw(Bob);
 
         // if there are option positions this should return 0
-        if (panopticPool.numberOfPositions(Bob) != 0) {
+        if (panopticPool.numberOfLegs(Bob) != 0) {
             assertEq(0, actualValue0, "with open positions 0");
             assertEq(0, actualValue1, "with open positions 1");
             // if available is greater than the user balance

@@ -312,7 +312,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
 
-        if (s_panopticPool.numberOfPositions(msg.sender) != 0) revert Errors.PositionCountNotZero();
+        if (s_panopticPool.numberOfLegs(msg.sender) != 0) revert Errors.PositionCountNotZero();
 
         return ERC20Minimal.transfer(recipient, amount);
     }
@@ -331,7 +331,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
 
-        if (s_panopticPool.numberOfPositions(from) != 0) revert Errors.PositionCountNotZero();
+        if (s_panopticPool.numberOfLegs(from) != 0) revert Errors.PositionCountNotZero();
 
         return ERC20Minimal.transferFrom(from, to, amount);
     }
@@ -489,7 +489,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             uint256 available = poolAssets > 0 ? poolAssets - 1 : 0;
             uint256 balance = convertToAssets(balanceOf[owner]);
-            return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+            return s_panopticPool.numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
         }
     }
 
@@ -596,7 +596,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             uint256 available = convertToShares(poolAssets > 0 ? poolAssets - 1 : 0);
             uint256 balance = balanceOf[owner];
-            return s_panopticPool.numberOfPositions(owner) == 0 ? Math.min(available, balance) : 0;
+            return s_panopticPool.numberOfLegs(owner) == 0 ? Math.min(available, balance) : 0;
         }
     }
 
