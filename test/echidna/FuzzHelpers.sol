@@ -1779,7 +1779,7 @@ contract FuzzHelpers is PropertiesAsserts {
         }
     }
 
-    function simulate_burning(address who) external {
+    function simulate_burning(address who, address liquidator) external {
         require(msg.sender == address(this));
 
         delete burnSimResults;
@@ -1817,6 +1817,47 @@ contract FuzzHelpers is PropertiesAsserts {
         returns (LeftRightSigned[4][] memory _premiasByLeg, LeftRightSigned _netExchanged) {
             premiasByLeg = _premiasByLeg;
             burnSimResults.netExchanged = _netExchanged;
+
+            ($shortPremium, $longPremium, $posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(liquidator, false, userPositions[liquidator]);
+
+            int24[4] memory liquidatorTicks;
+            (
+                liquidatorTicks[0],
+                liquidatorTicks[1],
+                liquidatorTicks[2],
+                liquidatorTicks[3],
+
+            ) = panopticPool.getOracleTicks();
+
+            for (uint256 i = 0; i < liquidatorTicks.length; ++i) {
+                if (
+                    liquidator != who &&
+                    collToken0
+                        .getAccountMarginDetails(
+                            liquidator,
+                            liquidatorTicks[i],
+                            $posBalanceArray,
+                            $shortPremium.rightSlot(),
+                            $longPremium.rightSlot()
+                        )
+                        .rightSlot() >
+                    (2 ** 104 - 1) * 5_000
+                ) revert();
+                if (
+                    liquidator != who &&
+                    collToken1
+                        .getAccountMarginDetails(
+                            liquidator,
+                            liquidatorTicks[i],
+                            $posBalanceArray,
+                            $shortPremium.leftSlot(),
+                            $longPremium.leftSlot()
+                        )
+                        .rightSlot() >
+                    (2 ** 104 - 1) * 5_000
+                ) revert();
+            }
         } catch {
             $shouldBurnRevert = true;
         }
@@ -1864,8 +1905,8 @@ contract FuzzHelpers is PropertiesAsserts {
         revert LiqBurnSimResults(burnSimResults);
     }
 
-    function _execute_burn_simulation(address liquidatee) internal {
-        try this.simulate_burning(liquidatee) {} catch (bytes memory results) {
+    function _execute_burn_simulation(address liquidatee, address liquidator) internal {
+        try this.simulate_burning(liquidatee, liquidator) {} catch (bytes memory results) {
             bytes4 selector = bytes4(results);
             require(selector == LiqBurnSimResults.selector);
             emit LogBytes("r", results);
@@ -2115,14 +2156,8 @@ contract FuzzHelpers is PropertiesAsserts {
                         ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                         ? baseCR
                         : $tokenTypes[i] == 0
-                            ? PanopticMath.convert0to1(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
-                            : PanopticMath.convert1to0(
-                                baseCR,
-                                Math.getSqrtRatioAtTick($fastOracleTick)
-                            )
+                        ? PanopticMath.convert0to1(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
+                        : PanopticMath.convert1to0(baseCR, Math.getSqrtRatioAtTick($fastOracleTick))
                 ) *
                     13_333 *
                     $ratios[i]) / 10_000);
@@ -2206,14 +2241,14 @@ contract FuzzHelpers is PropertiesAsserts {
                             ($tokenTypes[i] == 1 && $fastOracleTick <= 0))
                             ? ITMCR
                             : $tokenTypes[i] == 0
-                                ? PanopticMath.convert0to1(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
-                                : PanopticMath.convert1to0(
-                                    ITMCR,
-                                    Math.getSqrtRatioAtTick($fastOracleTick)
-                                )
+                            ? PanopticMath.convert0to1(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
+                            : PanopticMath.convert1to0(
+                                ITMCR,
+                                Math.getSqrtRatioAtTick($fastOracleTick)
+                            )
                     ) *
                         13_333 *
                         $ratios[i]) / 10_000);

@@ -1776,7 +1776,7 @@ contract PanopticPoolActions is CollateralActions {
         liqResults.sharesD1 = int256(collToken1.balanceOf(liquidatee));
 
         emit LogBool("revert due to non-burn simulation", $shouldRevert);
-        _execute_burn_simulation(liquidatee);
+        _execute_burn_simulation(liquidatee, liquidator);
         emit LogBool("revert due to burn simulation", $shouldRevert);
 
         liqResults.liquidatorValueBefore0 = _get_assets_in_token0(liquidator, TWAPtick);
@@ -1905,7 +1905,7 @@ contract PanopticPoolActions is CollateralActions {
         log_burn_simulation_results();
         log_liquidation_results();
 
-        try panopticPool.validateSolvency(msg.sender, $positionListExercisor, 10_000) {} catch {
+        try panopticPool.validateSolvency(msg.sender, userPositions[liquidator], 10_000) {} catch {
             assertWithMsg(false, "Liquidate: Liquidator left insolvent after liquidation");
         }
 
@@ -1983,9 +1983,17 @@ contract PanopticPoolActions is CollateralActions {
             emit LogInt256("Assets", assets);
             emit LogInt256("Bonus combined", liqResults.bonusCombined0);
 
+            // both positive *and* negative bonuses are rounded down, so if one of the bonuses are negative we need to add a tolerance of token0(negativeBonusAmount)
+            int256 negBonusTol = 0;
+            if (liqResults.bonus0 < 0) negBonusTol += 1;
+            if (liqResults.bonus1 < 0)
+                negBonusTol += int256(
+                    PanopticMath.convert1to0RoundingUp(1, TickMath.getSqrtRatioAtTick(TWAPtick))
+                );
+
             if (liquidatee != liquidator)
                 assertWithMsg(
-                    assets <= liqResults.bonusCombined0,
+                    assets <= liqResults.bonusCombined0 + negBonusTol,
                     "Liquidatee was debited incorrectly high bonus value (no funds leftover)"
                 );
 

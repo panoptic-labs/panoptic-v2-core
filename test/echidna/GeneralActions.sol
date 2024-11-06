@@ -9,6 +9,14 @@ contract GeneralActions is FuzzHelpers {
         hevm.warp(canonicalTimestamp);
         hevm.roll(canonicalBlock);
         _;
+
+        // We can break the Uniswap V3/Panoptic token supply invariant, but still need to make sure those tokens don't enter the system
+        if (USDC.balanceOf(address(panopticPool)) >= 2 ** 127 - 1) revert();
+        if (WETH.balanceOf(address(panopticPool)) >= 2 ** 127 - 1) revert();
+
+        if (collToken0.totalSupply() >= type(uint224).max) revert();
+        if (collToken1.totalSupply() >= type(uint224).max) revert();
+        _;
     }
 
     function impulseCanonicalTime(uint256 blockSeed, uint256 timeSeed) public canonicalTimeState {
