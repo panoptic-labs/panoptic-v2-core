@@ -13,6 +13,9 @@ contract GeneralActions is FuzzHelpers {
         if (USDC.balanceOf(address(manager)) >= 2 ** 127 - 1) revert();
         if (WETH.balanceOf(address(manager)) >= 2 ** 127 - 1) revert();
         _;
+
+        if (collToken0.totalSupply() >= type(uint224).max) revert();
+        if (collToken1.totalSupply() >= type(uint224).max) revert();
     }
 
     function impulseCanonicalTime(uint256 blockSeed, uint256 timeSeed) public canonicalTimeState {

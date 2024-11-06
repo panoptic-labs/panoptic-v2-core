@@ -92,6 +92,7 @@ contract CollateralActions is SFPMActions {
         address receiver
     ) public canonicalTimeState {
         require(receiver != address(panopticPool));
+        require(receiver != address(manager));
         uint256 numOfPositions = panopticPool.numberOfPositions(owner);
         if (numOfPositions > 0) {
             if (token0) {
@@ -757,6 +758,7 @@ contract CollateralActions is SFPMActions {
         bool depositToSelf
     ) public canonicalTimeState {
         require(receiver != address(panopticPool));
+        require(receiver != address(manager));
 
         _attempt_overdeposit(true, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
         _attempt_overdeposit(false, msg.sender, receiver, tooLargeDepositAmount, depositToSelf);
@@ -770,23 +772,19 @@ contract CollateralActions is SFPMActions {
         bool depositToSelf
     ) internal {
         require(receiver != address(panopticPool));
+        require(receiver != address(manager));
 
         CollateralTrackerWrapper collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxDeposit = type(uint104).max;
-        require(maxDeposit + 1 < type(uint224).max);
-        tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint224).max);
+        tooLargeDepositAmount = bound(tooLargeDepositAmount, maxDeposit + 1, type(uint256).max);
 
         if (depositToSelf) {
             receiver = depositor;
         }
 
-        uint256 depositorBalance = IERC20(collToken.asset()).balanceOf(depositor);
-        uint256 shortfallForDeposit = uint256(
-            Math.max(int256(tooLargeDepositAmount) - int256(depositorBalance), 1)
-        );
         isToken0
-            ? deal_USDC(depositor, shortfallForDeposit)
-            : deal_WETH(depositor, shortfallForDeposit);
+            ? deal_USDC(depositor, type(uint128).max)
+            : deal_WETH(depositor, type(uint128).max);
         hevm.prank(depositor);
         IERC20(collToken.asset()).approve(address(collToken), type(uint256).max);
 
@@ -808,6 +806,7 @@ contract CollateralActions is SFPMActions {
         bool mintToSelf
     ) public canonicalTimeState {
         require(receiver != address(panopticPool));
+        require(receiver != address(manager));
 
         _attempt_overmint(true, minter, receiver, tooLargeMintAmount, mintToSelf);
         _attempt_overmint(false, minter, receiver, tooLargeMintAmount, mintToSelf);
@@ -822,21 +821,14 @@ contract CollateralActions is SFPMActions {
     ) internal {
         CollateralTrackerWrapper collToken = isToken0 ? collToken0 : collToken1;
         uint256 maxMint = collToken.previewDeposit(type(uint104).max);
-        require(maxMint + 1 < type(uint224).max);
-        tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint224).max);
+        require(maxMint < type(uint256).max);
+        tooLargeMintAmount = bound(tooLargeMintAmount, maxMint + 1, type(uint256).max);
 
         if (mintToSelf) {
             receiver = minter;
         }
 
-        uint256 minterBalance = IERC20(collToken.asset()).balanceOf(minter);
-        uint256 shortfallForMint = uint256(
-            Math.max(
-                1,
-                int256(collToken.previewDeposit(tooLargeMintAmount)) - int256(minterBalance)
-            )
-        );
-        isToken0 ? deal_USDC(minter, shortfallForMint) : deal_WETH(minter, shortfallForMint);
+        isToken0 ? deal_USDC(minter, type(uint128).max) : deal_WETH(minter, type(uint128).max);
 
         hevm.prank(minter);
         IERC20(collToken.asset()).approve(address(collToken), type(uint256).max);
@@ -857,6 +849,7 @@ contract CollateralActions is SFPMActions {
         bool viaMint
     ) public canonicalTimeState {
         require(receiver != address(panopticPool));
+        require(receiver != address(manager));
 
         _attempt_deposit_over_balance(collToken0, msg.sender, receiver, amountOver, viaMint);
         _attempt_deposit_over_balance(collToken1, msg.sender, receiver, amountOver, viaMint);

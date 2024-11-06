@@ -826,6 +826,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         return medianData;
     }
 
+    event LogInt256(string name, int256 value);
+
     /// @notice Validates the solvency of `user` from tickData.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
@@ -854,6 +856,10 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
         // This approach is more conservative than checking each tick difference individually,
         // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
+        emit LogInt256("currentTick~", currentTick);
+        emit LogInt256("fastOracleTick~", fastOracleTick);
+        emit LogInt256("slowOracleTick~", slowOracleTick);
+        emit LogInt256("lastObservedTick~", lastObservedTick);
         unchecked {
             if (
                 int256(fastOracleTick - slowOracleTick) ** 2 +
