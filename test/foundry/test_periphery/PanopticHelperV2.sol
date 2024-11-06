@@ -95,7 +95,7 @@ contract PanopticHelperV2 {
         )
     {
         if (positionIdList.length == 0) {
-          return (0,0,0,0);
+            return (0, 0, 0, 0);
         }
 
         // Compute premia for all options (includes short+long premium)
