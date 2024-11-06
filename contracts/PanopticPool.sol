@@ -1079,13 +1079,13 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         }
 
         // revoke delegated virtual shares and settle any bonus deltas with the liquidator
+        collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
         // native currency is represented as address(0), so it will always be currency0 alphanumerically
         collateralToken0().settleLiquidation{value: msg.value}(
             msg.sender,
             liquidatee,
             bonusAmounts.rightSlot()
         );
-        collateralToken1().settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         // ensure the liquidator is still solvent after the liquidation
         _validateSolvency(msg.sender, positionIdListLiquidator, NO_BUFFER);
