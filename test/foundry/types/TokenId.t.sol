@@ -58,7 +58,7 @@ contract TokenIdTest is Test, PositionUtils {
         harness = new TokenIdHarness();
     }
 
-    function test_Success_AddPoolId(address y) public {
+    function test_Success_AddPoolId(address y) public view {
         TokenId tokenId;
 
         tokenId = harness.addPoolId(tokenId, uint64(uint160(y)));
@@ -66,7 +66,7 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(harness.poolId(tokenId), uint64(uint160(y)));
     }
 
-    function test_Success_AddTickSpacing(int24 y) public {
+    function test_Success_AddTickSpacing(int24 y) public view {
         TokenId tokenId;
 
         y = int24(bound(y, int24(0), int24(2 ** 16 - 1)));
@@ -78,7 +78,7 @@ contract TokenIdTest is Test, PositionUtils {
     /*//////////////////////////////////////////////////////////////
                             ADD WIDTH
     //////////////////////////////////////////////////////////////*/
-    function test_Success_AddWidth(int24 y, int24 z, int24 u, int24 v) public {
+    function test_Success_AddWidth(int24 y, int24 z, int24 u, int24 v) public view {
         TokenId tokenId;
 
         unchecked {
@@ -123,7 +123,7 @@ contract TokenIdTest is Test, PositionUtils {
     /*//////////////////////////////////////////////////////////////
                             ADD OPTION RATIO
     //////////////////////////////////////////////////////////////*/
-    function test_Success_AddOptionRatio(uint16 y, uint16 z, uint16 u, uint16 v) public {
+    function test_Success_AddOptionRatio(uint16 y, uint16 z, uint16 u, uint16 v) public view {
         TokenId tokenId;
 
         // the optionRatio is 7 bits so mask it:
@@ -161,7 +161,7 @@ contract TokenIdTest is Test, PositionUtils {
     /*//////////////////////////////////////////////////////////////
                             ADD NUMERAIRE
     //////////////////////////////////////////////////////////////*/
-    function test_Success_AddAsset(uint16 y, uint16 z, uint16 u, uint16 v) public {
+    function test_Success_AddAsset(uint16 y, uint16 z, uint16 u, uint16 v) public view {
         TokenId tokenId;
 
         // the asset is 1 bit so mask it:
@@ -199,7 +199,7 @@ contract TokenIdTest is Test, PositionUtils {
     /*//////////////////////////////////////////////////////////////
                             ADD STRIKE
     //////////////////////////////////////////////////////////////*/
-    function test_Success_AddStrike(int24 y, int24 z, int24 u, int24 v) public {
+    function test_Success_AddStrike(int24 y, int24 z, int24 u, int24 v) public view {
         TokenId tokenId;
 
         tokenId = harness.addStrike(tokenId, y, 0);
@@ -231,7 +231,7 @@ contract TokenIdTest is Test, PositionUtils {
                             ADD IS LONG
     //////////////////////////////////////////////////////////////*/
 
-    function test_Success_AddIsLong(uint16 y, uint16 z, uint16 u, uint16 v) public {
+    function test_Success_AddIsLong(uint16 y, uint16 z, uint16 u, uint16 v) public view {
         TokenId tokenId;
 
         uint256 numLongs; // also test the long counter
@@ -285,7 +285,7 @@ contract TokenIdTest is Test, PositionUtils {
     /*//////////////////////////////////////////////////////////////
                             ADD RISK PARTNER
     //////////////////////////////////////////////////////////////*/
-    function test_Success_AddRiskPartner(uint16 y, uint16 z, uint16 u, uint16 v) public {
+    function test_Success_AddRiskPartner(uint16 y, uint16 z, uint16 u, uint16 v) public view {
         TokenId tokenId;
 
         // the riskPartner is 2 bits so mask it:
@@ -323,7 +323,7 @@ contract TokenIdTest is Test, PositionUtils {
     /*//////////////////////////////////////////////////////////////
                             ADD TOKEN TYPE
     //////////////////////////////////////////////////////////////*/
-    function test_Success_AddTokenType(uint16 y, uint16 z, uint16 u, uint16 v) public {
+    function test_Success_AddTokenType(uint16 y, uint16 z, uint16 u, uint16 v) public view {
         TokenId tokenId;
 
         // the tokenType is 1 bit so mask it:
@@ -370,7 +370,7 @@ contract TokenIdTest is Test, PositionUtils {
         uint16 riskPartner,
         int24 strike,
         int24 width
-    ) public {
+    ) public view {
         TokenId tokenId;
 
         /// do validations
@@ -586,7 +586,7 @@ contract TokenIdTest is Test, PositionUtils {
         assertEq(TokenId.unwrap(expectedToken), TokenId.unwrap(returnedToken));
     }
 
-    function test_Success_flipToBurnToken_emptyLegs() public {
+    function test_Success_flipToBurnToken_emptyLegs() public view {
         TokenId tokenId;
 
         // expected data

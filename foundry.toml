@@ -1,7 +1,7 @@
 [profile.default]
 src = 'contracts'
-test = 'test/foundry'
-script = 'script'
+# also includes invariant tests; refrain from using Foundry keywords there
+test = 'test/echidna'
 out = 'out'
 libs = ['lib']
 no_match_path = "contracts/*"

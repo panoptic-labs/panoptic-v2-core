@@ -1094,11 +1094,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function _getPremiaDeltas(
         LeftRightUnsigned currentLiquidity,
         LeftRightUnsigned collectedAmounts
-    )
-        private
-        pure
-        returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross)
-    {
+    ) private returns (LeftRightUnsigned deltaPremiumOwed, LeftRightUnsigned deltaPremiumGross) {
         // extract liquidity values
         uint256 removedLiquidity = currentLiquidity.leftSlot();
         uint256 netLiquidity = currentLiquidity.rightSlot();
@@ -1223,7 +1219,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         int24 tickUpper,
         int24 atTick,
         uint256 isLong
-    ) external view returns (uint128, uint128) {
+    ) external returns (uint128, uint128) {
         bytes32 positionKey = keccak256(
             abi.encodePacked(idV4, owner, tokenType, tickLower, tickUpper)
         );

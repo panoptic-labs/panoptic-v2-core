@@ -340,7 +340,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     function validateCollateralWithdrawable(
         address user,
         TokenId[] calldata positionIdList
-    ) external view {
+    ) external {
         _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
     }
 
@@ -355,7 +355,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         address user,
         bool includePendingPremium,
         TokenId[] calldata positionIdList
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
+    ) external returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
         int24 currentTick = V4StateReader.getTick(POOL_MANAGER_V4, _V4PoolId());
 
@@ -387,7 +387,6 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
-        view
         returns (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -807,7 +806,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer
-    ) internal view returns (uint256) {
+    ) internal returns (uint256) {
         (
             int24 fastOracleTick,
             int24 slowOracleTick,
@@ -827,6 +826,8 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         return medianData;
     }
 
+    event LogInt256(string name, int256 value);
+
     /// @notice Validates the solvency of `user` from tickData.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
@@ -837,7 +838,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         TokenId[] calldata positionIdList,
         uint96 tickData,
         uint256 buffer
-    ) internal view {
+    ) internal {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
 
@@ -855,6 +856,10 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
         // This approach is more conservative than checking each tick difference individually,
         // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
+        emit LogInt256("currentTick~", currentTick);
+        emit LogInt256("fastOracleTick~", fastOracleTick);
+        emit LogInt256("slowOracleTick~", slowOracleTick);
+        emit LogInt256("lastObservedTick~", lastObservedTick);
         unchecked {
             if (
                 int256(fastOracleTick - slowOracleTick) ** 2 +
@@ -1188,7 +1193,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         int24[] memory atTicks,
         uint256 buffer,
         bool expectedSolvent
-    ) internal view {
+    ) internal {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -1454,7 +1459,6 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
         int24 atTick
     )
         internal
-        view
         returns (
             LeftRightSigned[4] memory premiaByLeg,
             uint256[2][4] memory premiumAccumulatorsByLeg

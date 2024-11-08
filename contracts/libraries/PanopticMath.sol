@@ -71,7 +71,7 @@ library PanopticMath {
     //
     /// @param addr The address to get the number of leading zero hex characters for
     /// @return The number of leading zero hex characters in the address
-    function numberOfLeadingHexZeros(address addr) external pure returns (uint256) {
+    function numberOfLeadingHexZeros(address addr) internal pure returns (uint256) {
         unchecked {
             return addr == address(0) ? 40 : 39 - Math.mostSignificantNibble(uint160(addr));
         }
@@ -80,7 +80,7 @@ library PanopticMath {
     /// @notice Returns ERC20 symbol of `asset`.
     /// @param asset The address of the asset to get the symbol of (`address(0)` = native asset)
     /// @return The symbol of `asset` or "???" if not supported
-    function safeERC20Symbol(address asset) external view returns (string memory) {
+    function safeERC20Symbol(address asset) internal view returns (string memory) {
         if (asset == address(0)) return "ETH";
         // not guaranteed that token supports metadata extension
         // so we need to let call fail and return placeholder if not
@@ -157,7 +157,7 @@ library PanopticMath {
         IV3CompatibleOracle oracleContract,
         uint256 miniMedian
     )
-        external
+        internal
         view
         returns (
             int24 fastOracleTick,
@@ -261,7 +261,7 @@ library PanopticMath {
         uint256 period,
         uint256 medianData,
         IV3CompatibleOracle oracleContract
-    ) public view returns (int24 medianTick, uint256 updatedMedianData) {
+    ) internal view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick =
@@ -334,7 +334,7 @@ library PanopticMath {
     function twapFilter(
         IV3CompatibleOracle oracleContract,
         uint32 twapWindow
-    ) external view returns (int24) {
+    ) internal view returns (int24) {
         uint32[] memory secondsAgos = new uint32[](20);
 
         int256[] memory twapMeasurement = new int256[](19);
@@ -736,7 +736,7 @@ library PanopticMath {
         uint160 atSqrtPriceX96,
         LeftRightSigned netPaid,
         LeftRightUnsigned shortPremium
-    ) external pure returns (LeftRightSigned, LeftRightSigned) {
+    ) internal pure returns (LeftRightSigned, LeftRightSigned) {
         int256 bonus0;
         int256 bonus1;
         unchecked {
@@ -872,7 +872,7 @@ library PanopticMath {
         CollateralTracker collateral1,
         uint160 atSqrtPriceX96,
         mapping(bytes32 chunkKey => LeftRightUnsigned settledTokens) storage settledTokens
-    ) external returns (LeftRightSigned) {
+    ) internal returns (LeftRightSigned) {
         unchecked {
             // get the amount of premium paid by the liquidatee
             LeftRightSigned longPremium;
@@ -1043,7 +1043,7 @@ library PanopticMath {
         int24 atTick,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) external view returns (LeftRightSigned) {
+    ) internal view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
             // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the exercisor cover the difference in exchange for currency1 (and vice versa)
