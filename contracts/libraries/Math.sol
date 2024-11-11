@@ -5,7 +5,6 @@ pragma solidity ^0.8.24;
 import {Errors} from "@libraries/Errors.sol";
 import {Constants} from "@libraries/Constants.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-
 // Custom types
 import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 
@@ -68,7 +67,7 @@ library Math {
         return a > b ? a : b;
     }
 
-    /// @notice Compute the absolute value of an integer (int256).
+    /// @notice Compute the absolute value of an integer.
     /// @param x The incoming *signed* integer to take the absolute value of
     /// @dev Does not support `type(int256).min` and will revert (`type(int256).max = abs(type(int256).min) - 1`).
     /// @return The absolute value of `x`, e.g. abs(-4) = 4
@@ -76,7 +75,7 @@ library Math {
         return x > 0 ? x : -x;
     }
 
-    /// @notice Compute the absolute value of an integer (int256).
+    /// @notice Compute the absolute value of an integer.
     /// @param x The incoming *signed* integer to take the absolute value of
     /// @dev Supports `type(int256).min` because the corresponding value can fit in a uint (unlike `type(int256).max`).
     /// @return The absolute value of `x`, e.g. abs(-4) = 4
@@ -123,8 +122,8 @@ library Math {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Computes a tick that will require approximately `amount` of token0 to create a `tickSpacing`-wide position with `maxLiquidityPerTick` at `tickUpper = tick` in Uniswap.
-    /// @dev This function can have a maximum of two ticks of error from one of the ticks with `amount(tickA) < amount < amount(tickA + 1 = tickB)`.
-    /// @dev `tickSpacing is assumed to be within the range (0, 32768)
+    /// @dev This function can have a maximum of two ticks of error from one of the ticks with `amount(tickRes + 2) < amount < amount(tickRes - 2)`.
+    /// @dev `tickSpacing` is assumed to be within the range (0, 32768)
     /// @dev `maxLiquidityPerTick` for `s=tickSpacing` should be defined by `(2^128 - 1) / ((887272/s) - (-887272/s) + 1)`
     /// @param amount The desired amount of token0 required to fill the returned tick
     /// @param tickSpacing The spacing between initializable ticks in the Uniswap pool
@@ -276,7 +275,7 @@ library Math {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    LIQUIDITY AMOUNTS (STRIKE+WIDTH)
+                           LIQUIDITY AMOUNTS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
@@ -406,7 +405,7 @@ library Math {
     }
 
     /// @notice Cast an int256 to an int128, revert on overflow or underflow.
-    /// @param toCast the int256 to be downcasted
+    /// @param toCast The int256 to be downcasted
     /// @return downcastedInt `toCast` downcasted to int128
     function toInt128(int256 toCast) internal pure returns (int128 downcastedInt) {
         if (!((downcastedInt = int128(toCast)) == toCast)) revert Errors.CastingError();
@@ -421,7 +420,7 @@ library Math {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           MULDIV ALGORITHMS
+                                 MULDIV
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Calculates `floor(a×b÷denominator)` with full precision. Throws if result overflows a uint256 or `denominator == 0`.
@@ -429,7 +428,7 @@ library Math {
     /// @param b The multiplier
     /// @param denominator The divisor
     /// @return result The 256-bit result
-    /// @dev Credit to Remco Bloemen under MIT license https://xn--2-umb.com/21/muldiv for this and all following `mulDiv` functions
+    /// @dev Credit to Remco Bloemen under MIT license https://xn--2-umb.com/21/muldiv for this and all following `mulDiv` functions.
     function mulDiv(
         uint256 a,
         uint256 b,

@@ -29,10 +29,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emitted when an account is liquidated.
-    /// @dev Need to unpack bonusAmounts to get raw numbers, which are always positive.
     /// @param liquidator Address of the caller liquidating the distressed account
     /// @param liquidatee Address of the distressed/liquidatable account
-    /// @param bonusAmounts LeftRight encoding for the the bonus paid for token 0 (right slot) and 1 (left slot) from the Panoptic Pool to the liquidator
+    /// @param bonusAmounts LeftRight encoding for the the bonus paid for token 0 (right slot) and 1 (left slot) to the liquidator
     event AccountLiquidated(
         address indexed liquidator,
         address indexed liquidatee,
@@ -229,13 +228,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         internal s_positionBalance;
 
     /// @notice Tracks the position list hash (i.e `keccak256(XORs of abi.encodePacked(positionIdList))`).
-    /// @dev The order and content of this list (the preimage for the hash) is emitted in an event every time it is changed.
-    /// @dev A component of this hash also tracks the total number of positions (i.e. makes sure the length of the provided positionIdList matches).
+    /// @dev A component of this hash also tracks the total number of legs across all positions (i.e. makes sure the length of the provided positionIdList matches).
     /// @dev The purpose of this system is to reduce storage usage when a user has more than one active position.
     /// @dev Instead of having to manage an unwieldy storage array and do lots of loads, we just store a hash of the array.
     /// @dev This hash can be cheaply verified on every operation with a user provided positionIdList - which can then be used for operations
     /// without having to every load any other data from storage.
-    //    numPositions (32 positions max)    user positions hash
+    //      numLegs                   user positions hash
     //  |<-- 8 bits -->|<------------------ 248 bits ------------------->|
     //  |<---------------------- 256 bits ------------------------------>|
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
@@ -671,7 +669,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param totalSwapped The amount of tokens moved during creation of the option position
-    /// @param isCovered Whether the option was minted as covered (no swap occured if ITM)
+    /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
@@ -701,7 +699,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             isCovered
         );
 
-        // return pool utilizations as two uint16 (pool Utilization is always < 10000)
+        // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
             return (
                 utilization0 + (utilization1 << 16),
@@ -1178,7 +1176,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 numberOfTicks = atTicks.length;
 
-        // must combine solvency checks as uint because bool would automatically return false for (false && _check),
         uint8 solvent;
         for (uint256 i; i < numberOfTicks; ) {
             unchecked {
@@ -1255,7 +1252,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
             ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
 
-            // If ticks have recently deviated more than +/- 10%, enforce covered mints
+            // If ticks have recently deviated more than +/- ~10%, enforce covered mints
             return Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA;
         }
     }
@@ -1344,9 +1341,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Computes and returns all oracle ticks.
     /// @return currentTick The current tick in the Uniswap pool
     /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return slowOracleTick The slow oracle tick (either composed of Uniswap observations or tracked by `s_miniMedian`)
+    /// @return slowOracleTick The slow oracle tick (either composed of observations retrieved from Uniswap or observations stored in `s_miniMedian`)
     /// @return latestObservation The latest observation from the Uniswap pool
-    /// @return medianData The updated value for `s_miniMedian` (0 if `MEDIAN_PERIOD` not elapsed) if `pokeMedian` is called at the current state
+    /// @return medianData The current value of the 8-slot internal observation queue (`s_miniMedian`)
     function getOracleTicks()
         external
         view
