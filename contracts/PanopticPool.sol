@@ -138,7 +138,7 @@ contract PanopticPool is Clone, ERC1155Holder, Multicall {
     uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
 
     /// @notice The maximum allowed number of legs across all open positions for a user.
-    uint64 internal constant MAX_OPEN_LEGS = 35;
+    uint64 internal constant MAX_OPEN_LEGS = 25;
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
     uint256 internal constant BP_DECREASE_BUFFER = 13_333;
