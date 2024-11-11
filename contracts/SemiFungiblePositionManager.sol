@@ -145,7 +145,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Flag used to indicate a regular position mint.
     bool internal constant MINT = false;
 
-    /// @notice Flag used to indicate that a position burn (with a burnTokenId) is occuring.
+    /// @notice Flag used to indicate that a position burn (with a burnTokenId) is occurring.
     bool internal constant BURN = true;
 
     /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
@@ -723,7 +723,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     );
 
                 zeroForOne = net0 < 0;
-
                 swapAmount = net0;
             } else if (itm0 != 0) {
                 zeroForOne = itm0 < 0;
@@ -764,7 +763,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @param positionSize The size of the option position
     /// @param tokenId The option position
-    /// @param isBurn Whether a position is being minted (true) or burned (false)
+    /// @param isBurn Whether a position is being minted (false) or burned (true)
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of currency0 and currency1 collected as fees for each leg
     /// @return totalMoved The net amount of funds moved to/from Uniswap
     function _createPositionInAMM(
@@ -947,8 +946,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 isLong = tokenId.isLong(leg);
         LeftRightUnsigned currentLiquidity = s_accountLiquidity[positionKey];
         {
-            // did we have liquidity already deployed in Uniswap for this chunk range from some past mint?
-
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
             // the left slot represents the amount of liquidity currently bought (removed) that has been removed from the AMM - the user owes it to a seller
             // the reason why it is called "removedLiquidity" is because long options are created by removing - ie. short selling LP positions
@@ -1107,7 +1104,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // explains how we get from the premium per liquidity (calculated here) to the total premia collected and the multiplier
         // as well as how the value of VEGOID affects the premia
         // note that the "base" premium is just a common factor shared between the owed (long) and gross (short)
-        // premia, and is only seperated to simplify the calculation
+        // premia, and is only separated to simplify the calculation
         // (the graphed equations include this factor without separating it)
         unchecked {
             uint256 totalLiquidity = netLiquidity + removedLiquidity;
@@ -1178,7 +1175,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SFPM PROPERTIES
+                                QUERIES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the liquidity associated with a given liquidity chunk/tokenType for a user on a Uniswap pool.
@@ -1283,7 +1280,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
 
             // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
-            // (i.e if only currency0 (right slot) of the owed premium overflows, then stop accumulating  both currency0 owed premium and currency0 gross premium for the chunk)
+            // (i.e if only currency0 (right slot) of the owed premium overflows, then stop accumulating both currency0 owed premium and currency0 gross premium for the chunk)
             // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
             (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
                 s_accountPremiumOwed[positionKey],

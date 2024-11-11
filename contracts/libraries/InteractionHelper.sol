@@ -2,10 +2,7 @@
 pragma solidity ^0.8.24;
 
 // Interfaces
-import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
-import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 
@@ -15,28 +12,6 @@ import {PanopticMath} from "@libraries/PanopticMath.sol";
 /// on a core contract.
 /// @author Axicon Labs Limited
 library InteractionHelper {
-    /// @notice Function that performs approvals on behalf of the PanopticPool for CollateralTracker and SemiFungiblePositionManager.
-    /// @param sfpm The SemiFungiblePositionManager being approved for both currency0 and currency1
-    /// @param ct0 The CollateralTracker (currency0) being approved for currency0
-    /// @param ct1 The CollateralTracker (currency1) being approved for currency1
-    /// @param currency0 The currency0 (in Uniswap) being approved for
-    /// @param currency1 The currency1 (in Uniswap) being approved for
-    function doApprovals(
-        SemiFungiblePositionManager sfpm,
-        CollateralTracker ct0,
-        CollateralTracker ct1,
-        address currency0,
-        address currency1
-    ) external {
-        // Approve transfers of Panoptic Pool funds by SFPM
-        IERC20Partial(currency0).approve(address(sfpm), type(uint256).max);
-        IERC20Partial(currency1).approve(address(sfpm), type(uint256).max);
-
-        // Approve transfers of Panoptic Pool funds by Collateral token
-        IERC20Partial(currency0).approve(address(ct0), type(uint256).max);
-        IERC20Partial(currency1).approve(address(ct1), type(uint256).max);
-    }
-
     /// @notice Computes the name of a CollateralTracker based on the token composition and fee of the underlying Uniswap Pool.
     /// @dev Some tokens do not have proper symbols so error handling is required - this logic takes up significant bytecode size, which is why it is in a library.
     /// @param currency0 The currency0 of the Uniswap Pool
