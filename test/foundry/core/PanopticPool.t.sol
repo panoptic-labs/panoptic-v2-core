@@ -5427,6 +5427,8 @@ contract PanopticPoolTest is PositionUtils {
         uint256 balance1,
         int256 refund0,
         int256 refund1,
+        int256 netPaid0,
+        int256 netPaid1,
         int256 atTickSeed
     ) public {
         unchecked {

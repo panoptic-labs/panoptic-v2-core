@@ -18,6 +18,7 @@ import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
+import {PropertiesAsserts} from "../test/echidna/PropertiesHelper.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -1051,6 +1052,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
         unchecked {
+            emit PropertiesAsserts.LogUint256("s_poolAssets", s_poolAssets);
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
@@ -1058,6 +1060,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             int256 tokenToPay = int256(swappedAmount) -
                 (longAmount - shortAmount) -
                 realizedPremium;
+
+            emit PropertiesAsserts.LogInt256("tokenToPay", tokenToPay);
+            emit PropertiesAsserts.LogUint256("totalSupply", totalSupply);
+            emit PropertiesAsserts.LogUint256("totalAssets", totalAssets());
+            emit PropertiesAsserts.LogUint256("balanceOf[optionOwner]", balanceOf[optionOwner]);
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
