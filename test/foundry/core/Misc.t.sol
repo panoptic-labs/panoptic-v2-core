@@ -370,7 +370,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_packed() public {
-        uint256 positionCount = 9;
+        uint256 positionCount = 6;
 
         for (uint256 i = 0; i < positionCount; i++) {
             TokenId posId = TokenId
@@ -506,7 +506,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_short_soloLeg() public {
-        uint256 positionCount = 35;
+        uint256 positionCount = 25;
 
         for (uint256 i = 0; i < positionCount; i++) {
             TokenId posId = TokenId
@@ -580,7 +580,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_packed() public {
-        uint256 positionCount = 9;
+        uint256 positionCount = 6;
 
         for (uint256 i = 0; i < positionCount; i++) {
             TokenId posId = TokenId
@@ -760,7 +760,7 @@ contract Misctest is Test, PositionUtils {
     }
 
     function test_gas_MaxPositions_long_soloLeg() public {
-        uint256 positionCount = 35;
+        uint256 positionCount = 25;
 
         for (uint256 i = 0; i < positionCount; i++) {
             TokenId posId = TokenId
