@@ -10,7 +10,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
-// OpenZeppelin libraries
+// External libraries
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";

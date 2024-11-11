@@ -13,7 +13,7 @@ library CallbackLib {
     /// @notice Type defining characteristics of a Uniswap V3 pool.
     /// @param token0 The address of `token0` for the Uniswap pool
     /// @param token1 The address of `token1` for the Uniswap pool
-    /// @param fee The fee tier of the Uniswap pool (in hundredths of a basis points)
+    /// @param fee The fee tier of the Uniswap pool (in hundredths of basis points)
     struct PoolFeatures {
         address token0;
         address token1;

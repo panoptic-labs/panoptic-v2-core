@@ -143,7 +143,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Flag used to indicate a regular position mint.
     bool internal constant MINT = false;
 
-    /// @notice Flag used to indicate that a position burn (with a burnTokenId) is occuring.
+    /// @notice Flag used to indicate that a position burn (with a burnTokenId) is occurring.
     bool internal constant BURN = true;
 
     /// @notice Parameter used to modify the [equation](https://www.desmos.com/calculator/mdeqob2m04) of the utilization-based multiplier for long premium.
@@ -547,7 +547,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return The net amount of token0 and token1 moved to/from the Uniswap V3 pool
-
     function burnTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
@@ -575,7 +574,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param slippageTickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return The net amount of token0 and token1 moved to/from the Uniswap V3 pool
-
     function mintTokenizedPosition(
         TokenId tokenId,
         uint128 positionSize,
@@ -798,8 +796,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 int256 net0 = itm0 - PanopticMath.convert1to0(itm1, sqrtPriceX96);
 
                 zeroForOne = net0 < 0;
-
-                // compute the swap amount, set as positive (exact input)
                 swapAmount = -net0;
             } else if (itm0 != 0) {
                 zeroForOne = itm0 < 0;
@@ -838,7 +834,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @param positionSize The size of the option position
     /// @param tokenId The option position
-    /// @param isBurn Whether a position is being minted (true) or burned (false)
+    /// @param isBurn Whether a position is being minted (false) or burned (true)
     /// @return collectedByLeg An array of LeftRight encoded words containing the amount of token0 and token1 collected as fees for each leg
     /// @return totalMoved The net amount of funds moved to/from Uniswap
     function _createPositionInAMM(
@@ -888,7 +884,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             unchecked {
                 // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
                 amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
-
                 amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
             }
 
@@ -977,8 +972,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 isLong = tokenId.isLong(leg);
         LeftRightUnsigned currentLiquidity = s_accountLiquidity[positionKey];
         {
-            // did we have liquidity already deployed in Uniswap for this chunk range from some past mint?
-
             // s_accountLiquidity is a LeftRight. The right slot represents the liquidity currently sold (added) in the AMM owned by the user
             // the left slot represents the amount of liquidity currently bought (removed) that has been removed from the AMM - the user owes it to a seller
             // the reason why it is called "removedLiquidity" is because long options are created by removing - ie. short selling LP positions
@@ -1055,7 +1048,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         */
         moved = isLong == 0
             ? _mintLiquidity(liquidityChunk, univ3pool)
-            : _burnLiquidity(liquidityChunk, univ3pool); // from msg.sender to Uniswap
+            : _burnLiquidity(liquidityChunk, univ3pool);
 
         // if there was liquidity at that tick before the transaction, collect any accumulated fees
         if (currentLiquidity.rightSlot() > 0) {
@@ -1160,14 +1153,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     ) internal returns (LeftRightSigned movedAmounts) {
         // build callback data
         bytes memory mintdata = abi.encode(
-            CallbackLib.CallbackData({ // compute by reading values from univ3pool every time
-                    poolFeatures: CallbackLib.PoolFeatures({
-                        token0: univ3pool.token0(),
-                        token1: univ3pool.token1(),
-                        fee: univ3pool.fee()
-                    }),
-                    payer: msg.sender
-                })
+            CallbackLib.CallbackData({
+                poolFeatures: CallbackLib.PoolFeatures({
+                    token0: univ3pool.token0(),
+                    token1: univ3pool.token1(),
+                    fee: univ3pool.fee()
+                }),
+                payer: msg.sender
+            })
         );
 
         // mint the required amount in the Uniswap pool
@@ -1220,7 +1213,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @param univ3pool The Uniswap pool where the position is deployed
     /// @param currentLiquidity The existing liquidity msg.sender owns in the AMM for this chunk before the SFPM was called
     /// @param positionKey The unique key to identify the liquidity chunk/tokenType pairing in this Uniswap pool
-    /// @param movedInLeg How much liquidity has been moved between msg.sender and Uniswap before this function call
+    /// @param movedInLeg How many tokens have been moved between msg.sender and Uniswap before this function call
     /// @param isLong Whether the leg in question is long (=1) or short (=0)
     /// @return collectedChunk The amount of tokens collected from Uniswap
     function _collectAndWritePositionData(
@@ -1244,6 +1237,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         ).subRect(s_accountFeesBase[positionKey]);
 
         if (isLong == 1) {
+            // movedInLeg deltas are always represented as negative during liquidity burns (for long positions), so the result here will always be positive
             amountToCollect = LeftRightUnsigned.wrap(
                 uint256(
                     LeftRightSigned.unwrap(
@@ -1256,9 +1250,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         }
 
         if (LeftRightUnsigned.unwrap(amountToCollect) != 0) {
-            // first collect amounts from Uniswap corresponding to this position
-            // Collect only if there was existing startingLiquidity=liquidities.rightSlot() at that position: collect all fees
-
             // Collects tokens owed to a liquidity chunk
             (uint128 receivedAmount0, uint128 receivedAmount1) = univ3pool.collect(
                 msg.sender,
@@ -1311,7 +1302,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // explains how we get from the premium per liquidity (calculated here) to the total premia collected and the multiplier
         // as well as how the value of VEGOID affects the premia
         // note that the "base" premium is just a common factor shared between the owed (long) and gross (short)
-        // premia, and is only seperated to simplify the calculation
+        // premia, and is only separated to simplify the calculation
         // (the graphed equations include this factor without separating it)
         unchecked {
             uint256 totalLiquidity = netLiquidity + removedLiquidity;
@@ -1382,7 +1373,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /*//////////////////////////////////////////////////////////////
-                            SFPM PROPERTIES
+                                QUERIES
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Return the liquidity associated with a given liquidity chunk/tokenType for a user on a Uniswap pool.
@@ -1471,7 +1462,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
 
             // add deltas to accumulators and freeze both accumulators (for a token) if one of them overflows
-            // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating  both token0 owed premium and token0 gross premium for the chunk)
+            // (i.e if only token0 (right slot) of the owed premium overflows, then stop accumulating both token0 owed premium and token0 gross premium for the chunk)
             // this prevents situations where the owed premium gets out of sync with the gross premium due to one of them overflowing
             (premiumOwed, premiumGross) = LeftRightLibrary.addCapped(
                 s_accountPremiumOwed[positionKey],
