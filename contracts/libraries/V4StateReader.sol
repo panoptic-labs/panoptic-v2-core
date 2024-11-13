@@ -145,7 +145,7 @@ library V4StateReader {
     /// @dev Corresponds to pools[poolId].positions[positionId] in `manager`.
     /// @param manager The Uniswap V4 pool manager contract
     /// @param poolId The ID of the Uniswap V4 pool
-    /// @param positionId The ID of the position, which is a hash of the owner, tickLower, tickUpper, and salt.
+    /// @param positionId The ID of the position, which is a hash of the owner, tickLower, tickUpper, and salt
     /// @return feeGrowthInside0LastX128 The fee growth inside the position for currency0
     /// @return feeGrowthInside1LastX128 The fee growth inside the position for currency1
     function getFeeGrowthInsideLast(

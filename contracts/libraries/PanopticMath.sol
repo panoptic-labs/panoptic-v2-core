@@ -14,8 +14,8 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {TokenId} from "@types/TokenId.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
+import {TokenId} from "@types/TokenId.sol";
 
 /// @title Compute general math quantities relevant to Panoptic and AMM pool management.
 /// @notice Contains Panoptic-specific helpers and math functions.
@@ -196,7 +196,7 @@ library PanopticMath {
 
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `oracleContract`.
     /// @dev Used when we need a manipulation-resistant TWAP price.
-    /// @dev oracle observations snapshot the closing price of the last block before the first interaction of a given block.
+    /// @dev Oracle observations snapshot the closing price of the last block before the first interaction of a given block.
     /// @dev The maximum frequency of observations is 1 per block, but there is no guarantee that the pool will be observed at every block.
     /// @dev Each period has a minimum length of `blocktime * period`, but may be longer if the Uniswap pool is relatively inactive.
     /// @dev The final price used in the array (of length `cardinality`) is the average of `cardinality` observations spaced by `period` (which is itself a number of observations).

@@ -6,8 +6,8 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 // Libraries
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 
-/// @title InteractionHelper - contains helper functions for external interactions such as approvals.
-/// @notice Used to delegate logic with multiple external calls.
+/// @title InteractionHelper - contains helper functions for select external interactions.
+/// @notice This library contains helper functions for select external interactions.
 /// @dev Generally employed when there is a need to save or reuse bytecode size
 /// on a core contract.
 /// @author Axicon Labs Limited

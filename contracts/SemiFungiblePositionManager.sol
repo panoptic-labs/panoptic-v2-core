@@ -15,14 +15,13 @@ import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
-import {LeftRightUnsigned, LeftRightSigned, LeftRightLibrary} from "@types/LeftRight.sol";
-import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {TokenId} from "@types/TokenId.sol";
-// V4 types
-import {PoolId} from "v4-core/types/PoolId.sol";
-import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {Currency} from "v4-core/types/Currency.sol";
+import {LeftRightUnsigned, LeftRightSigned, LeftRightLibrary} from "@types/LeftRight.sol";
+import {LiquidityChunk} from "@types/LiquidityChunk.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {PoolKey} from "v4-core/types/PoolKey.sol";
+import {TokenId} from "@types/TokenId.sol";
 
 //                                                                        ..........
 //                       ,.                                   .,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,.                                    ,,
@@ -72,7 +71,6 @@ import {Currency} from "v4-core/types/Currency.sol";
 /// @author Axicon Labs Limited
 /// @title Semi-Fungible Position Manager (ERC1155) - a gas-efficient Uniswap V4 position manager.
 /// @notice Wraps Uniswap V4 positions with up to 4 legs behind an ERC1155 token.
-/// @dev Replaces the NonfungiblePositionManager.sol (ERC721) from Uniswap Labs.
 contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -162,7 +160,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice The approximate minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks.
     uint256 internal immutable MIN_ENFORCED_TICKFILL_COST;
 
-    /// @notice The approximate minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the maximum enforced tick for native-token pools.
+    /// @notice The approximate minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks for native-token pools.
     uint256 internal immutable NATIVE_ENFORCED_TICKFILL_COST;
 
     /// @notice The multiplier, in basis points, to apply to the token supply and set as the minimum enforced tick fill cost if greater than `MIN_ENFORCED_TICKFILL_COST`.
@@ -326,7 +324,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @notice Set the canonical Uniswap V4 pool manager address and tick fill parameters.
     /// @param poolManager The canonical Uniswap V4 pool manager address
     /// @param _minEnforcedTickFillCost The minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks
-    /// @param _nativeEnforcedTickFillCost The minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the maximum enforced tick for native-token pools
+    /// @param _nativeEnforcedTickFillCost The minimum amount of tokens it should require to fill `maxLiquidityPerTick` at the minimum and maximum enforced ticks for native-token pools
     /// @param _supplyMultiplierTickFill The multiplier, in basis points, to apply to the token supply and set as the minimum enforced tick fill cost if greater than `MIN_ENFORCED_TICKFILL_COST`
     constructor(
         IPoolManager poolManager,
@@ -352,7 +350,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // return if the pool has already been initialized in SFPM
         // pools can be initialized from the Panoptic Factory or by calling initializeAMMPool directly, so reverting
         // could prevent a PanopticPool from being deployed on a previously initialized but otherwise valid pool
-        // if poolId == 0, we have a bit on the left set if it was initialized, so this will still return properly
         if (s_V4toSFPMIdData[idV4].initialized) return;
 
         // The base poolId is composed as follows:
@@ -411,10 +408,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         emit PoolInitialized(idV4, poolId, minEnforcedTick, maxEnforcedTick);
     }
 
-    /// @notice Recomputes and decreases `minEnforcedTick` and/or increases `maxEnforcedTick` for a given `poolId` if certain conditions are met.
-    /// @dev
+    /// @notice Recomputes and decreases `minEnforcedTick` and/or increases `maxEnforcedTick` for a given V4 pool `key` if certain conditions are met.
     /// @dev This function will only have an effect if both conditions are met:
-    /// - The token supply for one of the tokens was greater than MIN_ENFORCED_TICKFILL_COST at the last `initializeAMMPool` or `expandEnforcedTickRangeForPool` call for `poolId`
+    /// - The token supply for one of the (non-native) tokens was greater than MIN_ENFORCED_TICKFILL_COST at the last `initializeAMMPool` or `expandEnforcedTickRangeForPool` call for `poolId`
     /// - The token supply for one of the tokens meeting the first condition has *decreased* significantly since the last call
     /// @dev This function *cannot* decrease the absolute value of either enforced tick, i.e., it can only widen the range of possible ticks.
     /// @dev The purpose of this function is to prevent pools created while a large amount of one of the tokens was flash-minted from being stuck in a narrow tick range.
@@ -585,7 +581,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     }
 
     /// @notice Create a new position `tokenId` containing up to 4 legs.
-    /// @param key The Uniswap V4 pool key in which to `tokenId`
+    /// @param key The Uniswap V4 pool key in which to mint `tokenId`
     /// @param tokenId The tokenId of the minted position, which encodes information for up to 4 legs
     /// @param positionSize The number of contracts minted, expressed in terms of the asset
     /// @param slippageTickLimitLow The lower bound of an acceptable open interval for the ending price
@@ -804,9 +800,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     int24 tickLower = liquidityChunk.tickLower();
                     int24 tickUpper = liquidityChunk.tickUpper();
 
-                    // Revert if the upper/lower ticks are not multiples of tickSpacing
-                    // This is an invalid state, and would revert silently later in `univ3Pool.mint`
-                    // Revert if the tick range extends from the strike outside of the enforced tick range
                     if (
                         tickLower % tickSpacing != 0 ||
                         tickUpper % tickSpacing != 0 ||

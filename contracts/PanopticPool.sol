@@ -19,10 +19,10 @@ import {V4StateReader} from "@libraries/V4StateReader.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
-import {TokenId} from "@types/TokenId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
+import {TokenId} from "@types/TokenId.sol";
 
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited

@@ -27,7 +27,7 @@ interface IV3CompatibleOracle {
             bool
         );
 
-    /// @notice Returns data about a specific observation index
+    /// @notice Returns data about a specific observation index.
     /// @param index The element of the observations array to fetch
     /// @return blockTimestamp The timestamp of the observation
     /// @return tickCumulative The tick multiplied by seconds elapsed for the life of the pool as of the observation timestamp
@@ -45,7 +45,7 @@ interface IV3CompatibleOracle {
             bool initialized
         );
 
-    /// @notice Returns the cumulative tick and liquidity as of each timestamp `secondsAgo` from the current block timestamp
+    /// @notice Returns the cumulative tick and liquidity as of each timestamp `secondsAgo` from the current block timestamp.
     /// @dev To get a time weighted average tick or liquidity-in-range, you must call this with two values, one representing
     /// the beginning of the period and another for the end of the period. E.g., to get the last hour time-weighted average tick,
     /// you must call it with secondsAgos = [3600, 0].
@@ -65,7 +65,7 @@ interface IV3CompatibleOracle {
             uint160[] memory secondsPerLiquidityCumulativeX128s
         );
 
-    /// @notice Increase the maximum number of price and liquidity observations that this oracle will store
+    /// @notice Increase the maximum number of price and liquidity observations that this oracle will store.
     /// @param observationCardinalityNext The desired minimum number of observations for the oracle to store
     function increaseObservationCardinalityNext(uint16 observationCardinalityNext) external;
 }

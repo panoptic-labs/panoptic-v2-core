@@ -242,6 +242,10 @@ library LeftRightLibrary {
         }
     }
 
+    /// @notice Subtract two LeftRight-encoded words; revert on overflow or underflow.
+    /// @param x The minuend
+    /// @param y The subtrahend
+    /// @return z The difference `x - y`
     function sub(LeftRightSigned x, LeftRightUnsigned y) internal pure returns (LeftRightSigned z) {
         unchecked {
             int256 left256 = int256(x.leftSlot()) - int256(uint256(y.leftSlot()));

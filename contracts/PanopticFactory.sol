@@ -3,9 +3,10 @@ pragma solidity ^0.8.24;
 
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IV3CompatibleOracle} from "@interfaces/IV3CompatibleOracle.sol";
 // Inherited implementations
 import {Multicall} from "@base/Multicall.sol";
 import {FactoryNFT} from "@base/FactoryNFT.sol";
@@ -20,7 +21,6 @@ import {V4StateReader} from "@libraries/V4StateReader.sol";
 import {Pointer} from "@types/Pointer.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 /// @title Panoptic Factory which creates and registers Panoptic Pools.
 /// @author Axicon Labs Limited
@@ -218,6 +218,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev The rarity is defined in terms of how many leading zeros the Panoptic pool address has.
     /// @dev Note that the final salt may overflow if too many loops are given relative to the amount in `salt`.
     /// @param deployerAddress Address of the account that deploys the new PanopticPool
+    /// @param oracleContract The external oracle contract to be used by the newly deployed Panoptic Pool
+    /// @param key The Uniswap V4 pool key
     /// @param salt Salt value to start from, useful as a checkpoint across multiple calls
     /// @param loops The number of mining operations starting from `salt` in trying to find the highest rarity
     /// @param minTargetRarity The minimum target rarity to mine for. The internal loop stops when this is reached *or* when no more iterations

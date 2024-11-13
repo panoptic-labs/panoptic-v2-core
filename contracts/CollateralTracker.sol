@@ -6,6 +6,7 @@ import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
 import {Clone} from "clones-with-immutable-args/Clone.sol";
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -15,12 +16,11 @@ import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
+import {Currency} from "v4-core/types/Currency.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {PositionBalance} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
-import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
-import {Currency} from "v4-core/types/Currency.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
 /// @author Axicon Labs Limited
@@ -142,8 +142,8 @@ contract CollateralTracker is Clone, ERC20Minimal, Multicall {
     // The parameters will be encoded at `_getImmutableArgsOffset()` in calldata as follows:
     // abi.encodePacked(address panopticPool, bool underlyingIsCurrency0, address underlyingAsset, address currency0, address currency1, uint24 poolFee)
     // bytes: 0                    20                 21                   41                   61                   81
-    //        |<---- 160 bits ---->|<---- 8 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 24 bits ---->|
-    //             panopticPool     underlyingIsCurrency0    underlyingAsset          currency0               currency1              poolFee
+    //        |<----- 160 bits ---->|<---- 8 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 160 bits ---->|<---- 24 bits ---->|
+    //             panopticPool    underlyingIsCurrency0   underlyingAsset         currency0            currency1            poolFee
 
     /// @notice Retrieve the Panoptic Pool that this collateral token belongs to.
     /// @return The Panoptic Pool associated with this collateral token
