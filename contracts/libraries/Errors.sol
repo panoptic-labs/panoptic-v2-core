@@ -35,8 +35,8 @@ library Errors {
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
 
-    /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
-    error InvalidUniswapCallback();
+    /// @notice An unlock callback was attempted from an address other than the canonical Uniswap V4 pool manager
+    error UnauthorizedUniswapCallback();
 
     /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all either short or ATM long)
     error NoLegsExercisable();
@@ -55,6 +55,9 @@ library Errors {
 
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();
+
+    /// @notice SemiFungiblePositionManager: Tick range cannot be expanded on an an uninitialized pool
+    error PoolNotInitialized();
 
     /// @notice PanopticPool: A position with the given token ID has already been minted by the caller and is still open
     error PositionAlreadyMinted();

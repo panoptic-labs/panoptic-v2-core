@@ -53,7 +53,7 @@ The Panoptic Pool exposes the core functionality of the protocol. If the SFPM is
 Each instance of the Panoptic protocol on a Uniswap pool contains:
 
 - One PanopticPool that orchestrates all interactions in the protocol
-- Two CollateralTrackers, one for each constituent token0/token1 in the Uniswap pool
+- Two CollateralTrackers, one for each constituent currency0/currency1 in the Uniswap pool
 - A canonical SFPM - the SFPM manages liquidity across every Panoptic Pool
 
 There are five primary roles assumed by actors in this Panoptic Ecosystem:

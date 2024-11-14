@@ -7,10 +7,9 @@ import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
-import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
-import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 import {Pointer, PointerLibrary} from "@types/Pointer.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 contract DeployProtocol is Script {
     struct PointerInfo {
@@ -22,8 +21,7 @@ contract DeployProtocol is Script {
     function run() public {
         uint256 DEPLOYER_PRIVATE_KEY = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
-        // 0x0227628f3f023bb0b980b67d528571c95c6dac1c: sepolia
-        IUniswapV3Factory uniFactory = IUniswapV3Factory(vm.envAddress("UNIV3_FACTORY"));
+        IPoolManager manager = IPoolManager(vm.envAddress("POOL_MANAGER"));
 
         vm.startBroadcast(DEPLOYER_PRIVATE_KEY);
 
@@ -77,12 +75,18 @@ contract DeployProtocol is Script {
             }
         }
 
-        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory, 10 ** 13, 0);
+        IPoolManager _manager = manager;
+        SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(
+            _manager,
+            10 ** 13,
+            10 ** 13,
+            0
+        );
         new PanopticFactory(
             sfpm,
-            uniFactory,
-            address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20_000)),
+            _manager,
+            address(new PanopticPool(sfpm, _manager)),
+            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20, _manager)),
             props,
             indices,
             pointers

@@ -8,7 +8,7 @@ import {LiquidityChunk, LiquidityChunkLibrary} from "@types/LiquidityChunk.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
-import {Tick} from "v3-core/libraries/Tick.sol";
+import {Pool} from "v4-core/libraries/Pool.sol";
 import "forge-std/Test.sol";
 
 /**
@@ -265,7 +265,7 @@ contract MathTest is Test {
         x = bound(x, 1, 32767);
         console2.log("Math act", Math.getMaxLiquidityPerTick(int24(x)));
         assertEq(
-            Tick.tickSpacingToMaxLiquidityPerTick(int24(x)),
+            Pool.tickSpacingToMaxLiquidityPerTick(int24(x)),
             Math.getMaxLiquidityPerTick(int24(x))
         );
     }
