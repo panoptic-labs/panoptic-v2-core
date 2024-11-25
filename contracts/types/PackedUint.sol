@@ -12,6 +12,7 @@ import "forge-std/Test.sol";
 library PackedUintLibrary {
     uint256 constant TWO_POW_119 = 2 ** 119;
     using PackedUintLibrary for uint256;
+
     /*//////////////////////////////////////////////////////////////
                               PACKING
     //////////////////////////////////////////////////////////////*/
