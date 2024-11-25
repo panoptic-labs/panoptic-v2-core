@@ -541,13 +541,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets Amount of assets to be withdrawn
     /// @param receiver User to receive the assets
     /// @param owner User to burn the shares from
-    /// @param positionIdList The list of all option positions held by `owner`
+    /// @param positionData The list of all option positions held by `owner`
     /// @return shares The amount of shares burned to withdraw the desired amount of assets
     function withdraw(
         uint256 assets,
         address receiver,
         address owner,
-        TokenId[] calldata positionIdList
+        uint256[2][] calldata positionData
     ) external returns (uint256 shares) {
         shares = previewWithdraw(assets);
 
@@ -565,7 +565,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_poolAssets -= uint128(assets);
 
         // reverts if account is not solvent/eligible to withdraw
-        s_panopticPool.validateCollateralWithdrawable(owner, positionIdList);
+        s_panopticPool.validateCollateralWithdrawable(owner, positionData);
 
         // transfer assets (underlying token funds) from the PanopticPool to the LP
         SafeTransferLib.safeTransferFrom(
