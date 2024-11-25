@@ -70,10 +70,14 @@ contract PanopticMathHarness is Test {
 
     function updatePositionsHash(
         uint256 existingHash,
-        TokenId tokenId,
+        uint256[2] memory singlePositionData,
         bool addFlag
     ) public pure returns (uint256) {
-        uint256 newHash = PanopticMath.updatePositionsHash(existingHash, tokenId, addFlag);
+        uint256 newHash = PanopticMath.updatePositionsHash(
+            existingHash,
+            singlePositionData,
+            addFlag
+        );
         return newHash;
     }
 

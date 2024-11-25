@@ -43,34 +43,31 @@ contract PanopticHelper {
     /// @param pool The PanopticPool instance to check collateral on
     /// @param account Address of the user that owns the positions
     /// @param atTick At what price is the collateral requirement evaluated at
-    /// @param positionIdList List of positions. Written as [tokenId1, tokenId2, ...]
+    /// @param positionData List of positions. Written as [tokenId1, tokenId2, ...]
     /// @return collateralBalance the total combined balance of token0 and token1 for a user in terms of tokenType
     /// @return requiredCollateral The combined collateral requirement for a user in terms of tokenType
     function checkCollateral(
         PanopticPool pool,
         address account,
         int24 atTick,
-        TokenId[] calldata positionIdList
+        uint256[2][] calldata positionData
     ) public view returns (uint256, uint256) {
         // Compute premia for all options (includes short+long premium)
-        (
-            LeftRightUnsigned shortPremium,
-            LeftRightUnsigned longPremium,
-            uint256[2][] memory positionBalanceArray
-        ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
+        (LeftRightUnsigned shortPremium, LeftRightUnsigned longPremium) = pool
+            .getAccumulatedFeesAndPositionsData(account, false, positionData);
 
         // Query the current and required collateral amounts for the two tokens
         LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
             account,
             atTick,
-            positionBalanceArray,
+            positionData,
             shortPremium.rightSlot(),
             longPremium.rightSlot()
         );
         LeftRightUnsigned tokenData1 = pool.collateralToken1().getAccountMarginDetails(
             account,
             atTick,
-            positionBalanceArray,
+            positionData,
             shortPremium.leftSlot(),
             longPremium.leftSlot()
         );
@@ -84,25 +81,19 @@ contract PanopticHelper {
     /// @param pool The PanopticPool instance to check collateral on
     /// @param account Address of the user that owns the positions
     /// @param atTick The tick to calculate the value at
-    /// @param positionIdList A list of all positions the user holds on that pool
+    /// @param positionData A list of all positions the user holds on that pool
     /// @return value0 The amount of token0 owned by portfolio
     /// @return value1 The amount of token1 owned by portfolio
     function getPortfolioValue(
         PanopticPool pool,
         address account,
         int24 atTick,
-        TokenId[] calldata positionIdList
+        uint256[2][] calldata positionData
     ) external view returns (int256 value0, int256 value1) {
         // Compute premia for all options (includes short+long premium)
-        (, , uint256[2][] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
-            account,
-            false,
-            positionIdList
-        );
-
-        for (uint256 k = 0; k < positionIdList.length; ) {
-            TokenId tokenId = positionIdList[k];
-            uint128 positionSize = LeftRightUnsigned.wrap(positionBalanceArray[k][1]).rightSlot();
+        for (uint256 k = 0; k < positionData.length; ) {
+            TokenId tokenId = TokenId.wrap(positionData[k][0]);
+            uint128 positionSize = LeftRightUnsigned.wrap(positionData[k][1]).rightSlot();
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
@@ -136,35 +127,6 @@ contract PanopticHelper {
                 ++k;
             }
         }
-    }
-
-    /// @notice Returns the total number of contracts owned by `account` and the pool utilization at mint for a specified `tokenId.
-    /// @param pool The PanopticPool instance corresponding to the pool specified in `TokenId`
-    /// @param account The address of the account on which to retrieve `balance` and `poolUtilization`
-    /// @return balance Number of contracts of `tokenId` owned by the user
-    /// @return poolUtilization0 The utilization of token0 in the Panoptic pool at mint
-    /// @return poolUtilization1 The utilization of token1 in the Panoptic pool at mint
-    function optionPositionInfo(
-        PanopticPool pool,
-        address account,
-        TokenId tokenId
-    ) external view returns (uint128, uint16, uint16) {
-        TokenId[] memory tokenIdList = new TokenId[](1);
-        tokenIdList[0] = tokenId;
-
-        (, , uint256[2][] memory positionBalanceArray) = pool.getAccumulatedFeesAndPositionsData(
-            account,
-            false,
-            tokenIdList
-        );
-
-        PositionBalance balanceAndUtilization = PositionBalance.wrap(positionBalanceArray[0][1]);
-
-        return (
-            balanceAndUtilization.positionSize(),
-            uint16(balanceAndUtilization.utilizations()),
-            uint16(balanceAndUtilization.utilizations() >> 16)
-        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -238,19 +200,19 @@ contract PanopticHelper {
     /// @param pool address of the pool
     /// @param account address of the account
     /// @param tick tick to consider
-    /// @param positionIdList list of position IDs to consider
+    /// @param positionData list of position IDs to consider
     /// @return netEquity the net assets of `account` on `pool`
     function netEquity(
         address pool,
         address account,
         int24 tick,
-        TokenId[] calldata positionIdList
+        uint256[2][] calldata positionData
     ) internal view returns (int256) {
         (uint256 balanceCross, uint256 requiredCross) = checkCollateral(
             PanopticPool(pool),
             account,
             tick,
-            positionIdList
+            positionData
         );
 
         // convert to token0 to ensure consistent units
@@ -283,102 +245,6 @@ contract PanopticHelper {
             legs[i].width = tokenId.width(i);
         }
         return legs;
-    }
-
-    /// @notice Returns an estimate of the downside liquidation price for a given account on a given pool.
-    /// @dev returns MIN_TICK if the LP is more than 100000 ticks below the current tick.
-    /// @param pool address of the pool
-    /// @param account address of the account
-    /// @param positionIdList list of position IDs to consider
-    /// @return liquidationTick the downward liquidation price of `account` on `pool`, if any
-    function findLiquidationPriceDown(
-        address pool,
-        address account,
-        TokenId[] calldata positionIdList
-    ) public view returns (int24 liquidationTick) {
-        // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
-        int24 x0 = currentTick - 10000;
-        int24 x1 = currentTick;
-        int24 tol = 100000;
-        // use the secant method to find the root of the function netEquity(tick)
-        // stopping criterion are netEquity(tick+1) > 0 and netEquity(tick-1) < 0
-        // and tick is below currentTick - tol
-        // (we have limited ability to calculate collateral for very large tick gradients)
-        // in that case, we return the min tick
-        while (true) {
-            // perform an iteration of the secant method
-            (x0, x1) = (
-                x1,
-                int24(
-                    x1 -
-                        (int256(netEquity(pool, account, x1, positionIdList)) * (x1 - x0)) /
-                        int256(
-                            netEquity(pool, account, x1, positionIdList) -
-                                netEquity(pool, account, x0, positionIdList)
-                        )
-                )
-            );
-            // if price is not within a 100000 tick range of current price, return MIN_TICK
-            if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MIN_V3POOL_TICK;
-            }
-            // stop if price is within 0.01% (1 tick) of LP
-            if (
-                netEquity(pool, account, x1 + 1, positionIdList) >= 0 ==
-                netEquity(pool, account, x1 - 1, positionIdList) <= 0
-            ) {
-                return x1;
-            }
-        }
-    }
-
-    /// @notice Returns an estimate of the upside liquidation price for a given account on a given pool.
-    /// @dev returns MAX_TICK if the LP is more than 100000 ticks above current tick.
-    /// @param pool address of the pool
-    /// @param account address of the account
-    /// @param positionIdList list of position IDs to consider
-    /// @return liquidationTick the upward liquidation price of `account` on `pool`, if any
-    function findLiquidationPriceUp(
-        address pool,
-        address account,
-        TokenId[] calldata positionIdList
-    ) public view returns (int24 liquidationTick) {
-        // initialize right and left bounds from current tick
-        (, int24 currentTick, , , , , ) = PanopticPool(pool).univ3pool().slot0();
-        int24 x0 = currentTick;
-        int24 x1 = currentTick + 10000;
-        int24 tol = 100000;
-        // use the secant method to find the root of the function netEquity(tick)
-        // stopping criterion are netEquity(tick+1) > 0 and netEquity(tick-1) < 0
-        // and tick is within the range of currentTick +- tol
-        // (we have limited ability to calculate collateral for very large tick gradients)
-        // in that case, we return the corresponding max/min tick
-        while (true) {
-            // perform an iteration of the secant method
-            (x0, x1) = (
-                x1,
-                int24(
-                    x1 -
-                        (int256(netEquity(pool, account, x1, positionIdList)) * (x1 - x0)) /
-                        int256(
-                            netEquity(pool, account, x1, positionIdList) -
-                                netEquity(pool, account, x0, positionIdList)
-                        )
-                )
-            );
-            // if price is not within a 100000 tick range of current price, stop + return MAX_TICK
-            if (x1 > currentTick + tol || x1 < currentTick - tol) {
-                return Constants.MAX_V3POOL_TICK;
-            }
-            // stop if price is within 0.01% (1 tick) of LP
-            if (
-                netEquity(pool, account, x1 + 1, positionIdList) >= 0 ==
-                netEquity(pool, account, x1 - 1, positionIdList) <= 0
-            ) {
-                return x1;
-            }
-        }
     }
 
     /// @notice initializes a given leg in a tokenId as a call.

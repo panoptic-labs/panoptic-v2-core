@@ -116,17 +116,19 @@ library PanopticMath {
     /// @notice The positions hash contains a fingerprint of all open positions created by an account/user and a count of the legs across those positions.
     /// @dev The "fingerprint" portion of the hash is given by XORing the hashed `tokenId` of each position the user has open together.
     /// @param existingHash The existing position hash representing a list of positions and the count of the legs across those positions
-    /// @param tokenId The new position to modify the existing hash with: `existingHash = uint248(existingHash) ^ uint248(hashOf(tokenId))`
+    /// @param positionData The new position to modify the existing hash with: `existingHash = uint248(existingHash) ^ uint248(hashOf(tokenId))`
     /// @param addFlag Whether to mint (add) the tokenId to the count of positions or burn (subtract) it from the count `(existingHash >> 248) +/- tokenId.countLegs()`
     /// @return newHash The updated position hash with the new tokenId XORed in and the leg count incremented/decremented
     function updatePositionsHash(
         uint256 existingHash,
-        TokenId tokenId,
+        uint256[2] memory positionData,
         bool addFlag
     ) internal pure returns (uint256) {
+        TokenId tokenId = TokenId.wrap(positionData[0]);
+
         // update hash by taking the XOR of the existing hash with the new tokenId
         uint256 updatedHash = uint248(existingHash) ^
-            (uint248(uint256(keccak256(abi.encode(tokenId)))));
+            (uint248(uint256(keccak256(abi.encode(tokenId, positionData[1])))));
 
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
         uint256 newLegCount = addFlag
@@ -842,7 +844,7 @@ library PanopticMath {
     /// @notice Haircut/clawback any premium paid by `liquidatee` on `positionIdList` over the protocol loss threshold during a liquidation.
     /// @dev Note that the storage mapping provided as the `settledTokens` parameter WILL be modified on the caller by this function.
     /// @param liquidatee The address of the user being liquidated
-    /// @param positionIdList The list of position ids being liquidated
+    /// @param positionData The list of position ids being liquidated
     /// @param premiasByLeg The premium paid (or received) by the liquidatee for each leg of each position
     /// @param collateralRemaining The remaining collateral after the liquidation (negative if protocol loss)
     /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
@@ -852,7 +854,7 @@ library PanopticMath {
     /// @return The delta, if any, to apply to the existing liquidation bonus
     function haircutPremia(
         address liquidatee,
-        TokenId[] memory positionIdList,
+        uint256[2][] memory positionData,
         LeftRightSigned[4][] memory premiasByLeg,
         LeftRightSigned collateralRemaining,
         CollateralTracker collateral0,
@@ -863,8 +865,8 @@ library PanopticMath {
         unchecked {
             // get the amount of premium paid by the liquidatee
             LeftRightSigned longPremium;
-            for (uint256 i = 0; i < positionIdList.length; ++i) {
-                TokenId tokenId = positionIdList[i];
+            for (uint256 i = 0; i < positionData.length; ++i) {
+                TokenId tokenId = TokenId.wrap(positionData[i][0]);
                 uint256 numLegs = tokenId.countLegs();
                 for (uint256 leg = 0; leg < numLegs; ++leg) {
                     if (tokenId.isLong(leg) == 1) {
@@ -947,8 +949,8 @@ library PanopticMath {
             // total haircut after rounding up prorated haircut amounts for each leg
             LeftRightUnsigned haircutTotal;
             address _liquidatee = liquidatee;
-            for (uint256 i = 0; i < positionIdList.length; i++) {
-                TokenId tokenId = positionIdList[i];
+            for (uint256 i = 0; i < positionData.length; i++) {
+                TokenId tokenId = TokenId.wrap(positionData[i][0]);
                 LeftRightSigned[4][] memory _premiasByLeg = premiasByLeg;
                 for (uint256 leg = 0; leg < tokenId.countLegs(); ++leg) {
                     if (
