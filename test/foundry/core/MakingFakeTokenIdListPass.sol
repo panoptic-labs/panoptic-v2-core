@@ -19,8 +19,8 @@ contract MakingFakeTokenIdListPassTest is Test {
 
         // Fund the attacker with initial capital if needed
         // You might need some initial USDC/WETH to pay for flash loan fees
-        deal(USDC, address(attacker), 1000e6); // 1000 USDC for fees
-        deal(WETH, address(attacker), 1e18);   // 1 WETH for fees
+        /* deal(USDC, address(attacker), 1000e6); // 1000 USDC for fees */
+        /* deal(WETH, address(attacker), 1e18);   // 1 WETH for fees */
     }
 
     function testTakeFlashLoanAndAttack() public {
