@@ -1,12 +1,13 @@
 [profile.default]
 src = 'contracts'
 test = 'test/foundry'
+script = 'script'
 out = 'out'
 libs = ['lib']
-no_match_path = "contracts/*"
+# no_match_path = "contracts/*"
 evm_version = 'cancun'
 optimizer = true
-optimizer_runs = 9_999_999
+optimizer_runs = 1
 viaIR = false
 gas_limit = 9223372036854775807
 eth_rpc_url = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
@@ -20,7 +21,7 @@ script="DO_NOT_COMPILE"
 fork_block_number = 18963715
 
 [profile.ci_sizes]
-optimizer_runs = 833
+optimizer_runs = 1
 test = 'DO_NOT_COMPILE'
 
 [profile.ci_sizes_ir]
@@ -33,4 +34,5 @@ viaIR = true
 runs = 30
 max_test_rejects = 9_999_999
 [rpc_endpoints]
+mainnet = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
 sepolia = 'https://sepolia.infura.io/v3/c5fc9ed5bfae494f9cac22bce8fb3b47'
