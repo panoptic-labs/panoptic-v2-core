@@ -1,9 +1,10 @@
-pragma solidity >= 0.7.0;
-
+pragma solidity >=0.7.0;
 
 library Strings {
-
-    function concat(string memory _base, string memory _value) internal pure returns (string memory) {
+    function concat(
+        string memory _base,
+        string memory _value
+    ) internal pure returns (string memory) {
         bytes memory _baseBytes = bytes(_base);
         bytes memory _valueBytes = bytes(_value);
 
@@ -13,24 +14,20 @@ library Strings {
         uint i;
         uint j;
 
-        for(i=0; i<_baseBytes.length; i++) {
+        for (i = 0; i < _baseBytes.length; i++) {
             _newValue[j++] = _baseBytes[i];
         }
 
-        for(i=0; i<_valueBytes.length; i++) {
+        for (i = 0; i < _valueBytes.length; i++) {
             _newValue[j++] = _valueBytes[i];
         }
 
         return string(_newValue);
     }
-
 }
 
 library Pretty {
-
-
     uint8 constant DEFAULT_DECIMALS = 18;
-
 
     function toBitString(uint256 n) external pure returns (string memory) {
         return uintToBitString(n, 256);
@@ -40,24 +37,23 @@ library Pretty {
         return uintToBitString(n, decimals);
     }
 
-
     function pretty(uint256 n) external pure returns (string memory) {
-      return _pretty(n, DEFAULT_DECIMALS);
+        return _pretty(n, DEFAULT_DECIMALS);
     }
 
     function pretty(uint256 n, uint8 decimals) external pure returns (string memory) {
-      return _pretty(n, decimals);
+        return _pretty(n, decimals);
     }
 
     function pretty(int256 n) external pure returns (string memory) {
-      return _prettyInt(n, DEFAULT_DECIMALS);
+        return _prettyInt(n, DEFAULT_DECIMALS);
     }
 
     function pretty(int256 n, uint8 decimals) external pure returns (string memory) {
-      return _prettyInt(n, decimals);
+        return _prettyInt(n, decimals);
     }
 
-    function _pretty(uint256 n, uint8 decimals) internal pure returns (string memory){
+    function _pretty(uint256 n, uint8 decimals) internal pure returns (string memory) {
         bool pastDecimals = decimals == 0;
         uint256 place = 0;
         uint256 r; // remainder
@@ -68,7 +64,7 @@ library Pretty {
             n /= 10;
             place++;
             s = Strings.concat(toDigit(r), s);
-            if (pastDecimals && place % 3 == 0 && n!= 0) {
+            if (pastDecimals && place % 3 == 0 && n != 0) {
                 s = Strings.concat("_", s);
             }
             if (!pastDecimals && place == decimals) {
@@ -82,7 +78,7 @@ library Pretty {
         }
         if (!pastDecimals) {
             uint256 i;
-            uint256 upper = (decimals >= place  ? decimals - place : 0);
+            uint256 upper = (decimals >= place ? decimals - place : 0);
             for (i = 0; i < upper; ++i) {
                 s = Strings.concat("0", s);
             }
@@ -92,18 +88,18 @@ library Pretty {
     }
 
     function _prettyInt(int256 n, uint8 decimals) internal pure returns (string memory) {
-      bool isNegative = n < 0;
-      string memory s = "";
-      if (isNegative) {
-        s = "-";
-      }
-      return Strings.concat(s, _pretty(uint256(isNegative ? -n : n), decimals));
+        bool isNegative = n < 0;
+        string memory s = "";
+        if (isNegative) {
+            s = "-";
+        }
+        return Strings.concat(s, _pretty(uint256(isNegative ? -n : n), decimals));
     }
 
     function toDigit(uint256 n) internal pure returns (string memory) {
-        if      (n == 0) {
+        if (n == 0) {
             return "0";
-        } else if (n== 1) {
+        } else if (n == 1) {
             return "1";
         } else if (n == 2) {
             return "2";
@@ -130,14 +126,12 @@ library Pretty {
         string memory s = "";
         for (uint256 i; i < bits; i++) {
             if (n % 2 == 0) {
-                s = Strings.concat("0",s);
-            } else  {
-                s = Strings.concat("1",s);
+                s = Strings.concat("0", s);
+            } else {
+                s = Strings.concat("1", s);
             }
-            n = n/2;
+            n = n / 2;
         }
         return s;
     }
-
-
 }

@@ -12,7 +12,6 @@ contract MakingFakeTokenIdListPassTest is Test {
         // Fork mainnet at a specific block if needed
         // vm.createSelectFork("mainnet", BLOCK_NUMBER);
 
-
         // Or just fork latest mainnet
         vm.createSelectFork("mainnet");
 
