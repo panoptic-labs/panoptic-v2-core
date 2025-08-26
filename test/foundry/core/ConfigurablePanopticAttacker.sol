@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.13;
 
+// NOTE: Not using this for now, it gets a revert when trying to take the flash loan from Aave
+
 import { console } from "forge-std/Test.sol";
 
 import "./Interfaces.sol";
