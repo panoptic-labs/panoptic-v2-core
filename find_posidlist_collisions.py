@@ -2,6 +2,27 @@
 # Panoptic XOR preimage + leg-match PoC (real keccak, TokenId.countLegs, relations MITM)
 # pip install "eth-hash[pycryptodome]"
 
+# It will put its output into an arg-supplied file - you can then convert it into values useable in a foundry test like:
+"""
+(pypy_venv) root@ubuntu-s-1vcpu-1gb-35gb-intel-nyc1-01:~# python3 - <<'PY'
+import json
+d = json.load(open("F_ts60_4242.json"))
+vals = d.get("F_hex") or [hex(x) for x in d["F_dec"]]
+print("uint256[] memory fake_token_uints = [")
+for i,v in enumerate(vals):
+    sep = "," if i < len(vals)-1 else ""
+    print(f"    {v}{sep}")
+print("];")
+PY
+"""
+"""which outputs:
+uint256[] memory fake_token_uints = [
+    0x3c70d785e27fe5,
+    0x3c69c564e59916,
+    ...,
+];
+"""
+
 import argparse, os, random, json
 from typing import List, Optional, Tuple, Dict
 
