@@ -309,7 +309,6 @@ contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
         amounts[1] = (5 * poolAssets1) / 4; // borrow 125% of the pool assets
         modes[1] = 0;
 
-        // TODO: Why revert here?
         aavePool.flashLoan(address(this), addresses, amounts, modes, address(this), bytes(""), 0);
 
         console.log("----------- After paying back the flash loan -----------");
