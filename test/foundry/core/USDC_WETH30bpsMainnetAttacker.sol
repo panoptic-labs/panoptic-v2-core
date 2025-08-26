@@ -551,28 +551,29 @@ contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
         return a < b ? a : b;
     }
 
-    address private immutable deployer;
+    address private immutable withdrawer;
 
-    constructor() {
-      deployer = msg.sender;
+    constructor(address _withdrawer) {
+      withdrawer = _withdrawer;
     }
 
-    modifier onlyDeployer() {
-        require(msg.sender == deployer, "Only deployer can call this function");
+    modifier onlyWithdrawer() {
+        require(msg.sender == withdrawer, "Only constructor-supplied withdrawer can call this function");
         _;
     }
 
-    function withdraw(address tokenAddress, uint256 amount) external onlyDeployer {
+    function withdraw(address tokenAddress, uint256 amount) external onlyWithdrawer {
+        console.log('withdrawer', withdrawer);
         if (tokenAddress == address(0)) {
             // Withdraw ETH
             require(address(this).balance >= amount, "Insufficient ETH balance");
-            (bool success, ) = payable(deployer).call{value: amount}("");
+            (bool success, ) = payable(withdrawer).call{value: amount}("");
             require(success, "ETH transfer failed");
         } else {
             // Withdraw ERC20 token
             IERC20Partial token = IERC20Partial(tokenAddress);
             require(token.balanceOf(address(this)) >= amount, "Insufficient token balance");
-            token.transfer(deployer, amount); // revert if token transfer fails
+            token.transfer(withdrawer, amount); // revert if token transfer fails
         }
     }
 }

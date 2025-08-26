@@ -4,7 +4,7 @@ pragma solidity ^0.8.13;
 import "forge-std/Test.sol";
 /* import {USDC_WETH30bpsMainnetAttacker} from "./USDC_WETH30bpsMainnetAttacker.sol"; */
 import {ETH_USDC5bpsBaseAttacker} from "./ETH_USDC5bpsBaseAttacker.sol";
-import {Attacker} from "./Attacker.sol";
+import {ConfigurablePanopticAttacker} from "./ConfigurablePanopticAttacker.sol";
 
 // NOTE: Couldnt get this to work, weird revert in aave.flashLoan
 
@@ -270,7 +270,7 @@ contract MakingFakeTokenIdListPassTest is Test {
         0x004000000c000040000008000040000004000040000000000001f90000000001
     ];
 
-    function testTakeFlashLoanAndAttack_USDC_WETH30bpsMainnetAttacker() public {
+    function testTakeFlashLoanAndAttack_USDC_WETH30bpsMainnet_for_ConfigurablePanopticAttacker() public {
         vm.createSelectFork("mainnet", 23222695);
 
         console.log("block num", block.number);
@@ -320,7 +320,7 @@ contract MakingFakeTokenIdListPassTest is Test {
         twoRealPositions[0] = pos0;
         twoRealPositions[1] = pos1;
 
-        Attacker attacker = new Attacker{salt: salt}(
+        ConfigurablePanopticAttacker attacker = new ConfigurablePanopticAttacker{salt: salt}(
             WETH,
             USDC,
             UNI_POOL,
