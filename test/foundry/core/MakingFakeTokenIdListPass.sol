@@ -12,32 +12,16 @@ contract MakingFakeTokenIdListPassTest is Test {
     function testTakeFlashLoanAndAttack_USDC_WETH30bpsMainnetAttacker() public {
         vm.createSelectFork("mainnet");
 
-        // Deploy with CREATE2 for deterministic address
         bytes32 salt = bytes32(uint256(0x123));
-
-        USDC_WETH30bpsMainnetAttacker template;
-        USDC_WETH30bpsMainnetAttacker attacker;
-        attacker = new USDC_WETH30bpsMainnetAttacker{salt: salt}();
-
-        console.log("Attacker deployed at:", address(attacker));
-
-        // Run the attack
+        USDC_WETH30bpsMainnetAttacker attacker = new USDC_WETH30bpsMainnetAttacker{salt: salt}();
         attacker.takeFlashLoanAndAttack();
     }
 
     function testTakeFlashLoanAndAttack_ETH_USDC5bpsBaseAttacker() public {
         vm.createSelectFork("base");
 
-        // Deploy with CREATE2 for deterministic address
         bytes32 salt = bytes32(uint256(0x123));
-
-        ETH_USDC5bpsBaseAttacker template;
-        ETH_USDC5bpsBaseAttacker attacker;
-        attacker = new ETH_USDC5bpsBaseAttacker{salt: salt}();
-
-        console.log("Attacker deployed at:", address(attacker));
-
-        // Run the attack
+        ETH_USDC5bpsBaseAttacker attacker = new ETH_USDC5bpsBaseAttacker{salt: salt}();
         attacker.takeFlashLoanAndAttack();
     }
 }
