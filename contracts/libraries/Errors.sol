@@ -94,4 +94,7 @@ library Errors {
 
     /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
     error ZeroLiquidity();
+
+    /// @notice PanopticMath: The supplied tokenId has no valid legs
+    error ZeroLegs();
 }

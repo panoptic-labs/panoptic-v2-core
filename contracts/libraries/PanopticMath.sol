@@ -129,9 +129,13 @@ library PanopticMath {
             (uint248(uint256(keccak256(abi.encode(tokenId)))));
 
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
+        uint8 numberOfLegs = tokenId.countLegs();
+
+        if (numberOfLegs == 0) revert Errors.ZeroLegs();
+
         uint256 newLegCount = addFlag
-            ? uint8(existingHash >> 248) + uint8(tokenId.countLegs())
-            : uint8(existingHash >> 248) - tokenId.countLegs();
+            ? uint8(existingHash >> 248) + numberOfLegs
+            : uint8(existingHash >> 248) - numberOfLegs;
 
         unchecked {
             return uint256(updatedHash) + (newLegCount << 248);
