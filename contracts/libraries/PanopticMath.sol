@@ -9,6 +9,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Math} from "@libraries/Math.sol";
+import {Errors} from "@libraries/Errors.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 // Custom types
@@ -129,7 +130,7 @@ library PanopticMath {
             (uint248(uint256(keccak256(abi.encode(tokenId)))));
 
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
-        uint8 numberOfLegs = tokenId.countLegs();
+        uint8 numberOfLegs = uint8(tokenId.countLegs());
 
         if (numberOfLegs == 0) revert Errors.ZeroLegs();
 
