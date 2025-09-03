@@ -59,6 +59,9 @@ library Errors {
     /// @notice PanopticPool: A position with the given token ID has already been minted by the caller and is still open
     error PositionAlreadyMinted();
 
+    /// @notice CollateralTracker: A position with the given token ID is not owned by the user and has positionSize=0
+    error PositionNotOwned();
+
     /// @notice CollateralTracker: The user has open/active option positions, so they cannot transfer collateral shares
     error PositionCountNotZero();
 
