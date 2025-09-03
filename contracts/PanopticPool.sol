@@ -1277,6 +1277,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 fingerprintIncomingList;
 
+        uint256 lastTokenId;
         for (uint256 i = 0; i < pLength; ) {
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
@@ -1286,6 +1287,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
             unchecked {
                 ++i;
             }
+            uint256 currentTokenId = TokenId.unwrap(positionIdList[i]);
+            if (!(currentTokenId > lastTokenId)) revert Errors.InputListFail();
         }
 
         // revert if fingerprint for provided `_positionIdList` does not match the one stored for the `_account`
