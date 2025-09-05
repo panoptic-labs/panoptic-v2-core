@@ -667,7 +667,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function interestRate() public view returns (uint128) {
         uint256 utilization = _poolUtilization();
 
-        return uint128((utilization * utilization) / 16 / (DECIMALS - utilization)); // 2**64/(365*24*60*5*5;
+        return uint128((utilization * utilization) / 16 / (DECIMALS + DECIMAL / 20 - utilization)); // u^2 / 16 / (1.05 - u);
         return uint128(1403861801652); // 2**64/(365*24*60*5*5;
     }
 
