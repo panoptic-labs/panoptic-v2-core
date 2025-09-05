@@ -120,6 +120,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
+    /// @notice Interest rate accumulator, contains the last block timestamp in the upper 32 bits, the () in the next 96 bits, and the accumulator itself in the lower 128 bits.
+    ///
+    uint256 internal s_interestRateAccumulator;
+
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -392,8 +396,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
+        accrueInterest();
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
-
         shares = previewDeposit(assets);
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
@@ -448,6 +452,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
+        accrueInterest();
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -505,6 +510,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 shares) {
+        accrueInterest();
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
 
         shares = previewWithdraw(assets);
@@ -549,6 +555,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address owner,
         TokenId[] calldata positionIdList
     ) external returns (uint256 shares) {
+        accrueInterest();
         shares = previewWithdraw(assets);
 
         // check/update allowance for approved withdraw
@@ -609,6 +616,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 assets) {
+        accrueInterest();
         if (shares > maxRedeem(owner)) revert Errors.ExceedsMaximumRedemption();
 
         // check/update allowance for approved redeem
@@ -637,6 +645,27 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
 
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
+    }
+
+    function accrueInterest() public {
+        uint256 currentBlock = block.number;
+        uint256 previousBlock = s_interestRateAccumulator >> 224;
+
+        if (currentBlock == previousBlock) return;
+
+        uint128 deltaBlock = uint128(currentBlock - previousBlock);
+
+        uint128 borrowIndex = 2 ** 64 + interestRate() * deltaBlock;
+
+        uint128 oldBorrowIndex = uint128(s_interestRateAccumulator);
+
+        uint256 newBorrowIndex = Math.mulDiv64(oldBorrowIndex, borrowIndex);
+
+        s_interestRateAccumulator = (currentBlock << 224) + uint128(newBorrowIndex);
+    }
+
+    function interestRate() public pure returns (uint128) {
+        return uint128(1403861801652); // 2**64/(365*24*60*5*5;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -996,7 +1025,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) external onlyPanopticPool returns (uint32, uint128) {
+    ) external onlyPanopticPool returns (uint32, LeftRightUnsigned) {
+        accrueInterest();
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1031,7 +1061,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint256(updatedAssets).toUint128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
-            return (uint32(_poolUtilization()), commission);
+            return (
+                uint32(_poolUtilization()),
+                LeftRightUnsigned.wrap(commission).toLeftSlot(uint128(s_interestRateAccumulator))
+            );
         }
     }
 
@@ -1042,17 +1075,28 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param shortAmount The notional value of the short legs of the position (if any)
     /// @param swappedAmount The amount of tokens moved during the option close
     /// @param realizedPremium Premium to settle on the current positions
+    /// @param interestSnapshot snapshot of the interest rate a mint
     /// @return The amount of tokens paid when closing that position
     function exercise(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
-        int128 realizedPremium
+        int128 realizedPremium,
+        uint128 interestSnapshot
     ) external onlyPanopticPool returns (int128) {
+        accrueInterest();
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
+
+            uint128 netBorrows = uint128(uint256(Math.max(shortAmount - longAmount, 0)));
+
+            uint128 netInterest = netBorrows == 0
+                ? uint128(0)
+                : uint128(
+                    Math.mulDiv(netBorrows, uint128(s_interestRateAccumulator), interestSnapshot)
+                );
 
             // add premium and token deltas not covered by swap to be paid/collected on position close
             int256 tokenToPay = int256(swappedAmount) -
