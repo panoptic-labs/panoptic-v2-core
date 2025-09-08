@@ -233,6 +233,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // cache the pool fee in hundredths of basis points
         s_poolFee = fee;
 
+        // store the initial block and initialize the borrowIndex
+        s_interestRateAccumulator = (block.number << 224) + 1e18;
+
         // Stores the addresses of the underlying tracked tokens.
         s_univ3token0 = token0;
         s_univ3token1 = token1;
@@ -1109,7 +1112,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             uint128 netBorrows = uint128(uint256(Math.max(shortAmount - longAmount, 0)));
 
-            int128 netInterest = netBorrows == 0
+            int128 netInterest = (netBorrows == 0 || interestSnapshot == 0)
                 ? int128(0)
                 : int128(
                     uint128(
