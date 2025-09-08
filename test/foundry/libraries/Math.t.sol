@@ -200,6 +200,20 @@ contract MathTest is Test {
         harness.mulDiv192(input, input);
     }
 
+    function test_Success_mulDivWad_Simple(uint128 a, uint128 b) public view {
+        uint256 expectedResult = FullMath.mulDiv(a, b, 1e18);
+        uint256 returnedResult = harness.mulDivWad(a, b);
+        assertEq(expectedResult, returnedResult);
+    }
+
+    function test_Fail_mulDivWad_Overflow() public {
+        uint256 a = 2 ** 128;
+        uint256 b = 2 ** 128 * 1_000_000_000_000_000_000;
+
+        vm.expectRevert();
+        harness.mulDivWad(a, b);
+    }
+
     function test_Success_mulDivCapped(uint256 a, uint256 b, uint256 c, uint256 power) public view {
         power = bound(power, 0, 255);
         vm.assume(c != 0);

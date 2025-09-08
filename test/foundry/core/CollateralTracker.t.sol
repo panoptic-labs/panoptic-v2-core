@@ -1827,7 +1827,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             0,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            1
         );
     }
 

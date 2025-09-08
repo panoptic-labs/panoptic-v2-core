@@ -125,6 +125,11 @@ contract MathHarness {
         return result;
     }
 
+    function mulDivWad(uint256 a, uint256 b) public pure returns (uint256) {
+        uint256 result = Math.mulDivWad(a, b);
+        return result;
+    }
+
     function unsafeDivRoundingUp(uint256 a, uint256 b) public pure returns (uint256) {
         uint256 result = Math.unsafeDivRoundingUp(a, b);
         return result;

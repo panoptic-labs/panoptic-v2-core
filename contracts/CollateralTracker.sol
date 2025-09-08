@@ -120,7 +120,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
-    /// @notice Interest rate accumulator, contains the last block timestamp in the upper 32 bits, the () in the next 96 bits, and the accumulator itself in the lower 128 bits.
+    /// @notice Interest rate accumulator, contains the last block timestamp in the upper 32 bits, the () in the next 96 bits, and the accumulator itself in the lower 128 bits in Wad.
     ///
     uint256 internal s_interestRateAccumulator;
 
@@ -261,8 +261,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         returns (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization)
     {
         poolAssets = s_poolAssets;
-        insideAMM = s_inAMM;
+        insideAMM = Math.mulDivWad(s_inAMM, uint128(s_interestRateAccumulator));
         currentPoolUtilization = _poolUtilization();
+        //TODO add: currentBorrowIndexWad = uint128(s_interestRateAccumulator);
     }
 
     /// @notice Returns name of token composed of underlying token symbol and pool data.
@@ -350,7 +351,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return The total amount of assets managed by the CollateralTracker vault
     function totalAssets() public view returns (uint256) {
         unchecked {
-            return uint256(s_poolAssets) + s_inAMM;
+            return
+                uint256(s_poolAssets) + Math.mulDivWad(s_inAMM, uint128(s_interestRateAccumulator));
         }
     }
 
@@ -648,27 +650,37 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     function accrueInterest() public {
+        // Get block delta
         uint256 currentBlock = block.number;
         uint256 previousBlock = s_interestRateAccumulator >> 224;
 
+        // return if same block
         if (currentBlock == previousBlock) return;
 
         uint128 deltaBlock = uint128(currentBlock - previousBlock);
 
-        uint128 borrowIndex = 2 ** 64 + interestRate() * deltaBlock;
+        //  extract interest rate owed during that period
+        //uint128 inAmm = s_inAmm;
+        //uint128 interestOwed = inAmm * interestRate() * deltaBlock
 
+        // add that value to the "inAMM" tracker
+        //s_inAMM += interestOwed;
+
+        // Update the borrow index (check that math, it's probably wrong)
+        uint128 borrowIndex = 10 ** 18 + interestRate() * deltaBlock;
+
+        // update the accumulator
         uint128 oldBorrowIndex = uint128(s_interestRateAccumulator);
 
-        uint256 newBorrowIndex = Math.mulDiv64(oldBorrowIndex, borrowIndex);
+        uint256 newBorrowIndex = Math.mulDivWad(oldBorrowIndex, borrowIndex);
 
         s_interestRateAccumulator = (currentBlock << 224) + uint128(newBorrowIndex);
     }
 
     function interestRate() public view returns (uint128) {
-        uint256 utilization = _poolUtilization();
+        //uint256 utilization = _poolUtilization();
 
-        return uint128((utilization * utilization) / 16 / (DECIMALS + DECIMAL / 20 - utilization)); // u^2 / 16 / (1.05 - u);
-        return uint128(1403861801652); // 2**64/(365*24*60*5*5;
+        return uint128(76103500761); // 0.2 * 10**18/(365*24*60*5) = 20% per year;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -778,7 +790,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return poolUtilization The pool utilization in basis points
     function _poolUtilization() internal view returns (uint256 poolUtilization) {
         unchecked {
-            return (s_inAMM * DECIMALS) / totalAssets();
+            return
+                (Math.mulDivWad(s_inAMM * DECIMALS, uint128(s_interestRateAccumulator))) /
+                totalAssets();
         }
     }
 
@@ -1095,16 +1109,23 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             uint128 netBorrows = uint128(uint256(Math.max(shortAmount - longAmount, 0)));
 
-            uint128 netInterest = netBorrows == 0
-                ? uint128(0)
-                : uint128(
-                    Math.mulDiv(netBorrows, uint128(s_interestRateAccumulator), interestSnapshot)
+            int128 netInterest = netBorrows == 0
+                ? int128(0)
+                : int128(
+                    uint128(
+                        Math.mulDiv(
+                            netBorrows,
+                            uint128(s_interestRateAccumulator) - interestSnapshot,
+                            interestSnapshot
+                        )
+                    )
                 );
 
             // add premium and token deltas not covered by swap to be paid/collected on position close
             int256 tokenToPay = int256(swappedAmount) -
                 (longAmount - shortAmount) -
-                realizedPremium;
+                realizedPremium +
+                netInterest;
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
@@ -1124,6 +1145,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
             s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+
+            // update the inAMM value, removing the part that was paid as interest (CHECK Math)
             s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
 
             return (int128(tokenToPay));
