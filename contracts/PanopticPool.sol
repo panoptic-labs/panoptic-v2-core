@@ -201,12 +201,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Collateral vault for token1 in the Uniswap pool.
     CollateralTracker internal s_collateralToken1;
 
-    /// @notice Mapping that tracks the collateral tracker's baseIndex at mint
-    /// @dev baseIndex is taking a snapshot of the interest rate accumulator in the collateral trackers, which is measuring the basis upon which
-    /// the interest rate will be computed
-    mapping(address account => mapping(TokenId tokenId => LeftRightUnsigned interestRateSnapshot))
-        internal s_interestRateSnapshot;
-
     /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
     /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
     /// collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index).
@@ -688,39 +682,26 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (uint32 utilization0, LeftRightUnsigned commissionAndInterest0) = s_collateralToken0
-            .takeCommissionAddData(
-                msg.sender,
-                longAmounts.rightSlot(),
-                shortAmounts.rightSlot(),
-                totalSwapped.rightSlot(),
-                isCovered
-            );
-        (uint32 utilization1, LeftRightUnsigned commissionAndInterest1) = s_collateralToken1
-            .takeCommissionAddData(
-                msg.sender,
-                longAmounts.leftSlot(),
-                shortAmounts.leftSlot(),
-                totalSwapped.leftSlot(),
-                isCovered
-            );
-
-        {
-            uint128 interestSnapshot0 = commissionAndInterest0.leftSlot();
-            uint128 interestSnapshot1 = commissionAndInterest1.leftSlot();
-            TokenId _tokenId = tokenId;
-            s_interestRateSnapshot[msg.sender][_tokenId] = LeftRightUnsigned
-                .wrap(interestSnapshot0)
-                .toLeftSlot(interestSnapshot1);
-        }
+        (uint32 utilization0, uint128 commission0) = s_collateralToken0.takeCommissionAddData(
+            msg.sender,
+            longAmounts.rightSlot(),
+            shortAmounts.rightSlot(),
+            totalSwapped.rightSlot(),
+            isCovered
+        );
+        (uint32 utilization1, uint128 commission1) = s_collateralToken1.takeCommissionAddData(
+            msg.sender,
+            longAmounts.leftSlot(),
+            shortAmounts.leftSlot(),
+            totalSwapped.leftSlot(),
+            isCovered
+        );
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
             return (
                 utilization0 + (utilization1 << 16),
-                LeftRightUnsigned.wrap(commissionAndInterest0.rightSlot()).toLeftSlot(
-                    commissionAndInterest1.rightSlot()
-                )
+                LeftRightUnsigned.wrap(commission0).toLeftSlot(commission1)
             );
         }
     }
@@ -908,15 +889,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
-        LeftRightUnsigned interestSnapshot = s_interestRateSnapshot[msg.sender][tokenId];
         {
             int128 paid0 = s_collateralToken0.exercise(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 totalSwapped.rightSlot(),
-                realizedPremia.rightSlot(),
-                interestSnapshot.rightSlot()
+                realizedPremia.rightSlot()
             );
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
@@ -927,8 +906,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 totalSwapped.leftSlot(),
-                realizedPremia.leftSlot(),
-                interestSnapshot.leftSlot()
+                realizedPremia.leftSlot()
             );
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
@@ -1585,10 +1563,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 .toLeftSlot(int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)));
 
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-            {
-                s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot(), 0);
-                s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot(), 0);
-            }
+            s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
+            s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
                     tokenId.strike(legIndex),
