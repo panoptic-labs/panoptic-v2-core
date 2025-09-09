@@ -125,9 +125,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     uint256 internal s_interestRateAccumulator;
 
     /// @notice Mapping that tracks the collateral tracker's baseIndex at mint
-    /// @dev baseIndex is taking a snapshot of the interest rate accumulator in the collateral trackers, which is measuring the basis upon which
+    /// @dev rightSlot: baseIndex is taking a snapshot of the interest rate accumulator in the collateral trackers, which is measuring the basis upon which
     /// the interest rate will be computed
-    mapping(address account => LeftRightUnsigned interestState) internal s_interestState;
+    /// @dev leftSlot: netBorrows is the net amount of tokens that have been borrowed, taken as max(netShorts - netLongs, 0)
+    mapping(address account => LeftRightSigned interestState) internal s_interestState;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -405,7 +406,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
-        accrueInterest(receiver);
+        _accrueInterest(receiver);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         shares = previewDeposit(assets);
 
@@ -461,7 +462,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        accrueInterest(receiver);
+        _accrueInterest(receiver);
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -519,7 +520,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 shares) {
-        accrueInterest(owner);
+        _accrueInterest(owner);
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
 
         shares = previewWithdraw(assets);
@@ -564,7 +565,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address owner,
         TokenId[] calldata positionIdList
     ) external returns (uint256 shares) {
-        accrueInterest(owner);
+        _accrueInterest(owner);
         shares = previewWithdraw(assets);
 
         // check/update allowance for approved withdraw
@@ -625,7 +626,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address receiver,
         address owner
     ) external returns (uint256 assets) {
-        accrueInterest(owner);
+        _accrueInterest(owner);
         if (shares > maxRedeem(owner)) revert Errors.ExceedsMaximumRedemption();
 
         // check/update allowance for approved redeem
@@ -656,31 +657,58 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
-    function accrueInterest(address user) public {
+    function accrueInterest() public {
+        _accrueInterest(msg.sender);
+    }
+
+    function _accrueInterest(address owner) internal {
         // Get block delta
         uint256 currentBlock = block.number;
         uint256 previousBlock = s_interestRateAccumulator >> 224;
         uint128 deltaBlock = uint128(currentBlock - previousBlock);
 
-        // return if same block
-        if (currentBlock == previousBlock) return;
+        // only update global quantities if not in the same block
+        uint128 currentBorrowIndex = uint128(s_interestRateAccumulator);
+        if (deltaBlock > 0) {
+            // PROTOCOL
+            //  extract interest rate owed during that period
+            uint128 rawInterest = interestRate() * deltaBlock;
+            uint128 interestOwed = Math.mulDivWad(s_inAMM, rawInterest).toUint128();
+            // add that value to the "inAMM" tracker
+            s_inAMM += interestOwed;
 
-        //  extract interest rate owed during that period
-        //uint128 inAmm = s_inAmm;
-        //uint128 interestOwed = inAmm * interestRate() * deltaBlock
+            // Update the borrow index (check that math, it's probably wrong)
+            uint128 borrowIndex = 10 ** 18 + rawInterest;
 
-        // add that value to the "inAMM" tracker
-        //s_inAMM += interestOwed;
+            // update current borrow index
+            currentBorrowIndex = Math.mulDivWad(currentBorrowIndex, borrowIndex).toUint128();
 
-        // Update the borrow index (check that math, it's probably wrong)
-        uint128 borrowIndex = 10 ** 18 + interestRate() * deltaBlock;
+            s_interestRateAccumulator = (currentBlock << 224) + currentBorrowIndex;
+        }
 
-        // update the accumulator
-        uint128 oldBorrowIndex = uint128(s_interestRateAccumulator);
-
-        uint256 newBorrowIndex = Math.mulDivWad(oldBorrowIndex, borrowIndex);
-
-        s_interestRateAccumulator = (currentBlock << 224) + uint128(newBorrowIndex);
+        // USER
+        LeftRightSigned userState = s_interestState[owner];
+        int128 netBorrows = userState.leftSlot();
+        if (netBorrows != 0) {
+            uint256 shares;
+            {
+                uint128 userBorrowIndex = uint128(userState.rightSlot());
+                uint128 positiveNetBorrows = uint128(uint256(Math.max(netBorrows, 0)));
+                uint128 latestInterest = Math
+                    .mulDiv(
+                        positiveNetBorrows,
+                        currentBorrowIndex - userBorrowIndex,
+                        userBorrowIndex
+                    )
+                    .toUint128();
+                shares = previewWithdraw(latestInterest);
+            }
+            _burn(owner, shares);
+        }
+        s_interestState[owner] = LeftRightSigned
+            .wrap(0)
+            .toRightSlot(int128(currentBorrowIndex))
+            .toLeftSlot(netBorrows);
     }
 
     function interestRate() public view returns (uint128) {
@@ -1046,7 +1074,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 swappedAmount,
         bool isCovered
     ) external onlyPanopticPool returns (uint32, uint128) {
-        accrueInterest(optionOwner);
+        _accrueInterest(optionOwner);
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1079,11 +1107,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
             s_poolAssets = uint256(updatedAssets).toUint128();
+            int128 netBorrows = shortAmount - longAmount;
+            s_inAMM = uint256(int256(uint256(s_inAMM)) + netBorrows).toUint128();
 
             {
-                int128 currentIndex = int128(uint128(s_interestRateAccumulator));
-                s_inAMM = uint256(int256(uint256(s_inAMM)) + ((shortAmount - longAmount)))
-                    .toUint128();
+                address _optionOwner = optionOwner;
+                s_interestState[_optionOwner] = s_interestState[_optionOwner].toLeftSlot(
+                    netBorrows
+                );
+                console2.log(
+                    "s_interestState[_optionOwner]",
+                    s_interestState[_optionOwner].leftSlot()
+                );
             }
             return (uint32(_poolUtilization()), commission);
         }
@@ -1104,31 +1139,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 swappedAmount,
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
-        accrueInterest(optionOwner);
+        _accrueInterest(optionOwner);
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
-            uint128 netBorrows = uint128(uint256(Math.max(shortAmount - longAmount, 0)));
-            uint128 interestSnapshot = s_interestState[optionOwner].rightSlot();
-            int128 netInterest = (netBorrows == 0 || interestSnapshot == 0)
-                ? int128(0)
-                : int128(
-                    uint128(
-                        Math.mulDiv(
-                            netBorrows,
-                            uint128(s_interestRateAccumulator) - interestSnapshot,
-                            interestSnapshot
-                        )
-                    )
-                );
-            console2.log("exerciseData", netInterest);
-
             // add premium and token deltas not covered by swap to be paid/collected on position close
             int256 tokenToPay = int256(swappedAmount) -
                 (longAmount - shortAmount) -
-                realizedPremium +
-                netInterest;
+                realizedPremium;
 
             if (tokenToPay > 0) {
                 // if user must pay tokens, burn them from user balance (revert if balance too small)
@@ -1151,9 +1170,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // update the inAMM value, removing the part that was paid as interest (CHECK Math)
             {
-                int128 currentIndex = int128(uint128(s_interestRateAccumulator));
-                s_inAMM = uint256(int256(uint256(s_inAMM)) - ((shortAmount - longAmount)))
-                    .toUint128();
+                int128 netBorrows = shortAmount - longAmount;
+                s_inAMM = uint256(int256(uint256(s_inAMM)) - netBorrows).toUint128();
+                console2.log("netBorrows", netBorrows);
+                s_interestState[optionOwner] = s_interestState[optionOwner].toLeftSlot(netBorrows);
             }
             return (int128(tokenToPay));
         }
