@@ -110,7 +110,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
     uint128 internal s_poolAssets;
 
-    /// @notice Amount of assets moved from the Panoptic Pool to the AMM, scaled with the current borrow index.
+    /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
 
     /// @notice Additional risk premium charged on intrinsic value of ITM positions,
@@ -273,6 +273,25 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         insideAMM = s_inAMM;
         currentPoolUtilization = _poolUtilization();
         //TODO add: currentBorrowIndexWad = uint128(s_interestRateAccumulator);
+    }
+
+    /// @notice Returns current borrowIndex.
+    /// @return The borrowIndex
+    function borrowIndex() external view returns (uint128) {
+        return uint128(s_interestRateAccumulator);
+    }
+
+    /// @notice Returns the last block at which interest rates were compounded.
+    /// @return The last block at which the interest rates were compounded
+    function lastInteractionBlock() external view returns (uint256) {
+        return (s_interestRateAccumulator >> 224);
+    }
+
+    /// @notice Returns the baseIndex and the net borrows for the user
+    /// @return The base index of the user in the current state
+    /// @return The net borrowing amounts for the user (if negative, do not pay interest)
+    function interestState(address user) external view returns (int128, int128) {
+        return (s_interestState[user].rightSlot(), s_interestState[user].leftSlot());
     }
 
     /// @notice Returns name of token composed of underlying token symbol and pool data.
@@ -690,30 +709,44 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         LeftRightSigned userState = s_interestState[owner];
         int128 netBorrows = userState.leftSlot();
         if (netBorrows != 0) {
-            uint256 shares;
-            {
-                uint128 userBorrowIndex = uint128(userState.rightSlot());
-                uint128 positiveNetBorrows = uint128(uint256(Math.max(netBorrows, 0)));
-                uint128 latestInterest = Math
-                    .mulDiv(
-                        positiveNetBorrows,
-                        currentBorrowIndex - userBorrowIndex,
-                        userBorrowIndex
-                    )
-                    .toUint128();
-                shares = previewWithdraw(latestInterest);
-            }
+            uint128 userInterestOwed = _getUserInterest(owner, userState, currentBorrowIndex);
+            uint256 shares = previewWithdraw(userInterestOwed);
+
             _burn(owner, shares);
+            s_inAMM -= userInterestOwed;
+
+            s_interestState[owner] = LeftRightSigned
+                .wrap(0)
+                .toRightSlot(int128(currentBorrowIndex))
+                .toLeftSlot(netBorrows);
         }
-        s_interestState[owner] = LeftRightSigned
-            .wrap(0)
-            .toRightSlot(int128(currentBorrowIndex))
-            .toLeftSlot(netBorrows);
     }
 
     function interestRate() public view returns (uint128) {
         uint256 utilization = _poolUtilization();
         return utilization == 0 ? uint128(0) : uint128(76103500761); // 0.2 * 10**18/(365*24*60*5) = 20% per year;
+    }
+
+    function _getUserInterest(
+        address owner,
+        LeftRightSigned userState,
+        uint256 currentBorrowIndex
+    ) internal view returns (uint128 interestOwed) {
+        int128 netBorrows = userState.leftSlot();
+        uint128 userBorrowIndex = uint128(userState.rightSlot());
+
+        uint128 positiveNetBorrows = uint128(uint256(Math.max(netBorrows, 0)));
+        unchecked {
+            interestOwed = Math
+                .mulDiv(positiveNetBorrows, currentBorrowIndex - userBorrowIndex, userBorrowIndex)
+                .toUint128();
+        }
+    }
+
+    function owedInterest(address owner) public view returns (uint128 interestOwed) {
+        LeftRightSigned userState = s_interestState[owner];
+        uint256 borrowIndex = uint128(s_interestRateAccumulator);
+        interestOwed = _getUserInterest(owner, userState, borrowIndex);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1241,7 +1274,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     .toLeftSlot(
                         positionBalanceArray.length > 0
                             ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +
-                                longPremium).toUint128()
+                                longPremium +
+                                owedInterest(user)).toUint128()
                             : 0
                     );
         }
