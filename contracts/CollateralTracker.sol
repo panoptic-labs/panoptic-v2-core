@@ -333,6 +333,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address recipient,
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
+        _accrueInterest(msg.sender);
+        _accrueInterest(recipient);
         // make sure the caller does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -352,6 +354,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address to,
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
+        _accrueInterest(from);
+        _accrueInterest(to);
         // make sure the sender does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -710,7 +714,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         if (netBorrows != 0) {
             uint128 userInterestOwed = _getUserInterest(owner, userState, currentBorrowIndex);
             uint256 shares = previewWithdraw(userInterestOwed);
-
             _burn(owner, shares);
             s_inAMM -= userInterestOwed;
 
@@ -992,6 +995,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address liquidatee,
         int256 bonus
     ) external onlyPanopticPool {
+        _accrueInterest(liquidatee);
+        _accrueInterest(liquidator);
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -1078,6 +1083,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param refundee The account being refunded to
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
+        _accrueInterest(refunder);
+        _accrueInterest(refundee);
         if (assets > 0) {
             _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
         } else {
