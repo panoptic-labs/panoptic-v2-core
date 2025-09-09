@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-import "forge-std/Test.sol";
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
@@ -1148,10 +1147,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 s_interestState[_optionOwner] = s_interestState[_optionOwner].toLeftSlot(
                     netBorrows
                 );
-                console2.log(
-                    "s_interestState[_optionOwner]",
-                    s_interestState[_optionOwner].leftSlot()
-                );
             }
             return (uint32(_poolUtilization()), commission);
         }
@@ -1205,7 +1200,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             {
                 int128 netBorrows = shortAmount - longAmount;
                 s_inAMM = uint256(int256(uint256(s_inAMM)) - netBorrows).toUint128();
-                console2.log("netBorrows", netBorrows);
                 s_interestState[optionOwner] = s_interestState[optionOwner].toLeftSlot(netBorrows);
             }
             return (int128(tokenToPay));
