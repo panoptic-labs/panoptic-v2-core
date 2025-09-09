@@ -119,9 +119,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
-    /// @notice Interest rate accumulator, contains the last block timestamp in the upper 32 bits, the () in the next 96 bits, and the accumulator itself in the lower 128 bits in Wad.
+    /// @notice Interest rate accumulator, contains the net interest owed in the left slot, the last block timestamp in the upper 32 bits of the right slow and the accumulator itself in the lower 96 bits in Wad of the right slot.
     ///
-    uint256 internal s_interestRateAccumulator;
+    LeftRightUnsigned internal s_interestRateAccumulator;
 
     /// @notice Mapping that tracks the collateral tracker's baseIndex at mint
     /// @dev rightSlot: baseIndex is taking a snapshot of the interest rate accumulator in the collateral trackers, which is measuring the basis upon which
@@ -239,7 +239,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_poolFee = fee;
 
         // store the initial block and initialize the borrowIndex
-        s_interestRateAccumulator = (block.number << 224) + 1e18;
+        s_interestRateAccumulator = LeftRightUnsigned.wrap(0).toRightSlot(
+            uint128((block.number << 96) + 1e18)
+        );
 
         // Stores the addresses of the underlying tracked tokens.
         s_univ3token0 = token0;
@@ -277,13 +279,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Returns current borrowIndex.
     /// @return The borrowIndex
     function borrowIndex() external view returns (uint128) {
-        return uint128(s_interestRateAccumulator);
+        return uint96(s_interestRateAccumulator.rightSlot());
     }
 
     /// @notice Returns the last block at which interest rates were compounded.
     /// @return The last block at which the interest rates were compounded
     function lastInteractionBlock() external view returns (uint256) {
-        return (s_interestRateAccumulator >> 224);
+        return (s_interestRateAccumulator.rightSlot() >> 96);
+    }
+
+    /// @notice Returns the last block at which interest rates were compounded.
+    /// @return The last block at which the interest rates were compounded
+    function globalInterestOwed() external view returns (uint256) {
+        return s_interestRateAccumulator.leftSlot();
     }
 
     /// @notice Returns the baseIndex and the net borrows for the user
@@ -382,7 +390,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return The total amount of assets managed by the CollateralTracker vault
     function totalAssets() public view returns (uint256) {
         unchecked {
-            return uint256(s_poolAssets) + s_inAMM;
+            uint128 globalInterestOwed = s_interestRateAccumulator.leftSlot();
+            return uint256(s_poolAssets) + s_inAMM + globalInterestOwed;
         }
     }
 
@@ -686,26 +695,28 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _accrueInterest(address owner) internal {
         // Get block delta
         uint256 currentBlock = block.number;
-        uint256 previousBlock = s_interestRateAccumulator >> 224;
+        uint256 previousBlock = s_interestRateAccumulator.rightSlot() >> 96;
         uint128 deltaBlock = uint128(currentBlock - previousBlock);
 
         // only update global quantities if not in the same block
-        uint128 currentBorrowIndex = uint128(s_interestRateAccumulator);
+        uint128 currentBorrowIndex = uint96(s_interestRateAccumulator.rightSlot());
+        uint128 globalInterestOwed = s_interestRateAccumulator.leftSlot();
         if (deltaBlock > 0) {
             // PROTOCOL
             //  extract interest rate owed during that period
             uint128 rawInterest = interestRate() * deltaBlock;
-            uint128 interestOwed = Math.mulDivWad(s_inAMM, rawInterest).toUint128();
+            uint128 interestOwed = Math
+                .mulDivWad(s_inAMM + globalInterestOwed, rawInterest)
+                .toUint128();
             // add that value to the "inAMM" tracker
-            s_inAMM += interestOwed;
+
+            globalInterestOwed += interestOwed;
 
             // Update the borrow index (check that math, it's probably wrong)
             uint128 borrowIndex = 10 ** 18 + rawInterest;
 
             // update current borrow index
             currentBorrowIndex = Math.mulDivWad(currentBorrowIndex, borrowIndex).toUint128();
-
-            s_interestRateAccumulator = (currentBlock << 224) + currentBorrowIndex;
         }
 
         // USER
@@ -715,13 +726,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             uint128 userInterestOwed = _getUserInterest(owner, userState, currentBorrowIndex);
             uint256 shares = previewWithdraw(userInterestOwed);
             _burn(owner, shares);
-            s_inAMM -= userInterestOwed;
 
-            s_interestState[owner] = LeftRightSigned
-                .wrap(0)
-                .toRightSlot(int128(currentBorrowIndex))
-                .toLeftSlot(netBorrows);
+            globalInterestOwed = userInterestOwed < globalInterestOwed
+                ? globalInterestOwed - userInterestOwed
+                : 0;
         }
+        s_interestRateAccumulator = LeftRightUnsigned
+            .wrap(0)
+            .toLeftSlot(globalInterestOwed)
+            .toRightSlot(uint128((currentBlock << 96) + uint96(currentBorrowIndex)));
+        s_interestState[owner] = LeftRightSigned
+            .wrap(0)
+            .toRightSlot(int128(currentBorrowIndex))
+            .toLeftSlot(netBorrows);
     }
 
     function interestRate() public view returns (uint128) {
@@ -747,7 +764,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     function owedInterest(address owner) public view returns (uint128 interestOwed) {
         LeftRightSigned userState = s_interestState[owner];
-        uint256 borrowIndex = uint128(s_interestRateAccumulator);
+        uint256 borrowIndex = uint96(s_interestRateAccumulator.rightSlot());
         interestOwed = _getUserInterest(owner, userState, borrowIndex);
     }
 
@@ -858,7 +875,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return poolUtilization The pool utilization in basis points
     function _poolUtilization() internal view returns (uint256 poolUtilization) {
         unchecked {
-            return (s_inAMM * DECIMALS) / totalAssets();
+            uint128 globalInterestOwed = s_interestRateAccumulator.leftSlot();
+            return ((s_inAMM + globalInterestOwed) * DECIMALS) / totalAssets();
         }
     }
 
