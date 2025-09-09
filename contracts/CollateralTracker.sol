@@ -240,7 +240,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // store the initial block and initialize the borrowIndex
         s_interestRateAccumulator = LeftRightUnsigned.wrap(0).toRightSlot(
-            uint128((block.number << 96) + 1e18)
+            uint128((block.number << 96) + uint96(1e18))
         );
 
         // Stores the addresses of the underlying tracked tokens.
@@ -278,7 +278,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Returns current borrowIndex.
     /// @return The borrowIndex
-    function borrowIndex() external view returns (uint128) {
+    function borrowIndex() external view returns (uint96) {
         return uint96(s_interestRateAccumulator.rightSlot());
     }
 
@@ -699,7 +699,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 deltaBlock = uint128(currentBlock - previousBlock);
 
         // only update global quantities if not in the same block
-        uint128 currentBorrowIndex = uint96(s_interestRateAccumulator.rightSlot());
+        uint128 currentBorrowIndex = uint128(uint96(s_interestRateAccumulator.rightSlot()));
         uint128 globalInterestOwed = s_interestRateAccumulator.leftSlot();
         if (deltaBlock > 0) {
             // PROTOCOL
@@ -724,12 +724,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 netBorrows = userState.leftSlot();
         if (netBorrows != 0) {
             uint128 userInterestOwed = _getUserInterest(owner, userState, currentBorrowIndex);
-            uint256 shares = previewWithdraw(userInterestOwed);
-            _burn(owner, shares);
+            if (userInterestOwed != 0) {
+                uint256 shares = Math.mulDivRoundingUp(
+                    userInterestOwed,
+                    totalSupply,
+                    s_poolAssets + s_inAMM + globalInterestOwed
+                );
 
-            globalInterestOwed = userInterestOwed < globalInterestOwed
-                ? globalInterestOwed - userInterestOwed
-                : 0;
+                if (shares > 0) _burn(owner, shares);
+
+                globalInterestOwed = userInterestOwed < globalInterestOwed
+                    ? globalInterestOwed - userInterestOwed
+                    : 0;
+            }
         }
         s_interestRateAccumulator = LeftRightUnsigned
             .wrap(0)
@@ -753,7 +760,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) internal view returns (uint128 interestOwed) {
         int128 netBorrows = userState.leftSlot();
         uint128 userBorrowIndex = uint128(userState.rightSlot());
-
+        if (netBorrows <= 0 || userBorrowIndex == 0) {
+            return 0;
+        }
         uint128 positiveNetBorrows = uint128(uint256(Math.max(netBorrows, 0)));
         unchecked {
             interestOwed = Math
@@ -764,7 +773,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     function owedInterest(address owner) public view returns (uint128 interestOwed) {
         LeftRightSigned userState = s_interestState[owner];
-        uint256 borrowIndex = uint96(s_interestRateAccumulator.rightSlot());
+        uint256 borrowIndex = uint256(uint96(s_interestRateAccumulator.rightSlot()));
         interestOwed = _getUserInterest(owner, userState, borrowIndex);
     }
 
