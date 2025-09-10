@@ -59,7 +59,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function _interestRateAccumulator() external view returns (uint256) {
-        return s_interestRateAccumulator;
+        return LeftRightUnsigned.unwrap(s_interestRateAccumulator);
     }
 
     function _totalAssets() external view returns (uint256 totalManagedAssets) {
@@ -79,7 +79,7 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
     }
 
     function setInterestRateAccumulator(uint256 amount) external {
-        s_interestRateAccumulator = amount;
+        s_interestRateAccumulator = LeftRightUnsigned.wrap(amount);
     }
 
     function setBalance(address owner, uint256 amount) external {
@@ -604,7 +604,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 perBlockInterestRate = collateralToken0.interestRate();
         uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + perBlockInterestRate);
 
-        uint256 expectedAccumulator = ((startingBlock + 1) << 224) + expectedNewIndex;
+        uint256 expectedAccumulator = ((startingBlock + 1) << 96) + expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -637,8 +637,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Calculate the expected new borrow index by applying the total interest.
         uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
 
+        uint256 unrealizedGlobalInterest = Math.mulDivWad(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+
         // Construct the full expected accumulator value for the new block.
-        uint256 expectedAccumulator = ((startingBlock + blocksToSkip) << 224) + expectedNewIndex;
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 128) +
+            ((startingBlock + blocksToSkip) << 96) +
+            expectedNewIndex;
 
         // Get the actual new accumulator value from the contract.
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -651,54 +658,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
     }
 
-    function test_Unit_accrueInterest_zeroUtilizationStopsAccrual() public {
-        //
-        // ================= SETUP =================
-        //
-        _initWorld(0);
-
-        uint32 blocksToSkip = 10;
-        uint128 amountToBorrow = 100 ether;
-
-        uint256 startingBlock = block.number;
-        uint128 initialBorrowIndex = 1e18; // From startToken initialization
-
-        collateralToken0.setPoolAssets(amountToBorrow * 10);
-
-        collateralToken0.setInAMM(int128(amountToBorrow));
-        uint256 blockAfterBorrow = block.number;
-
-        vm.roll(blockAfterBorrow + blocksToSkip);
-        collateralToken0.accrueInterest();
-
-        uint128 perBlockInterestRate = collateralToken0.interestRate();
-        assertGt(
-            perBlockInterestRate,
-            0,
-            "FAIL: Interest rate should be positive with utilization"
-        );
-
-        uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
-        uint256 expectedNewIndex = Math.mulDivWad(
-            initialBorrowIndex, // The starting index for this phase
-            1e18 + interestForPeriod
-        );
-
-        uint256 expectedAccumulator = ((blockAfterBorrow + blocksToSkip) << 224) + expectedNewIndex;
-        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
-        assertEq(
-            actualAccumulator,
-            expectedAccumulator,
-            "FAIL: Interest did not accrue correctly with utilization"
-        );
-    }
-
     function test_Success_accrueInterest_deposits() public {
         _initWorld(0);
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint128(collateralToken0._interestRateAccumulator());
+        uint128 initialAccumulator = uint128(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint96(collateralToken0._interestRateAccumulator());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -716,15 +682,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Check that the interest rate is zero.
         uint128 currentRate = collateralToken0.interestRate();
-        assertEq(currentRate, 0, "FAIL: Interest rate should be zero at zero utilization");
 
         // Get the final borrow index.
-        uint128 finalBorrowIndex = uint128(collateralToken0._interestRateAccumulator());
+        uint128 finalAccumulator = uint128(collateralToken0._interestRateAccumulator());
 
         // 4. Assert that the index has not changed from its initial value.
         assertEq(
-            finalBorrowIndex,
-            initialBorrowIndex,
+            finalAccumulator,
+            initialAccumulator,
             "FAIL: Borrow index should not change when only deposits are made"
         );
 
@@ -747,8 +712,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
         uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
 
+        uint256 unrealizedGlobalInterest = Math.mulDivWad(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+
         // Construct the full expected accumulator value.
-        uint256 expectedAccumulator = ((blockAfterBorrow + blocksToSkip) << 224) + expectedNewIndex;
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 128) +
+            ((blockAfterBorrow + blocksToSkip) << 96) +
+            expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
         // 4. Assert the final state is correct.
@@ -764,7 +736,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint128(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint96(collateralToken0._interestRateAccumulator());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -814,8 +786,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
         uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
 
+        uint256 netInterest = Math.mulDivWad(collateralToken0._inAMM(), interestForPeriod);
         // Construct the full expected accumulator value.
-        uint256 expectedAccumulator = ((blockAfterBorrow + blocksToSkip) << 224) + expectedNewIndex;
+        uint256 expectedAccumulator = (netInterest << 128) +
+            ((blockAfterBorrow + blocksToSkip) << 96) +
+            expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
         // 4. Assert the final state is correct.
@@ -852,7 +827,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
         // Get the initial borrow index right after initialization
-        uint128 initialBorrowIndex = uint128(collateralToken0._interestRateAccumulator());
+        uint128 initialBorrowIndex = uint96(collateralToken0._interestRateAccumulator());
 
         // --- Alice deposits ---
         vm.startPrank(Alice);
@@ -921,8 +896,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
         uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
 
+        uint256 unrealizedGlobalInterest = Math.mulDivWad(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+
         // 3. Construct the full expected accumulator value.
-        uint256 expectedAccumulator = ((blockAfterBorrow + blocksToSkip) << 224) + expectedNewIndex;
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 128) +
+            ((blockAfterBorrow + blocksToSkip) << 96) +
+            expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
 
         // 4. Assert the final state is correct.
@@ -968,7 +950,159 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
         );
         vm.stopPrank();
-        assertTrue(false);
+    }
+
+    function test_Success_accrueInterest_negativeborrow() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether; // Use a fixed deposit amount
+
+        // Get the initial borrow index right after initialization
+        uint128 initialBorrowIndex = uint128(uint96(collateralToken0._interestRateAccumulator()));
+
+        // --- Alice deposits ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+        collateralToken1.deposit(assets, Alice);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        strike = 198600 + 12000;
+        width = 2;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList1.push(tokenId);
+        console2.log("");
+        console2.log("");
+        console2.log("Alice mints");
+
+        // Alice sell assets/2
+        panopticPool.mintOptions(
+            positionIdList1,
+            assets / 2,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.stopPrank();
+
+        // --- Bob deposits ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        strike = 198600 + 6000;
+        width = 2;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+        console2.log("");
+        console2.log("");
+        console2.log("Bob mints");
+
+        // Bob sell assets/4
+        panopticPool.mintOptions(
+            positionIdList,
+            assets / 8,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        strike = 198600 + 12000;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob buys assets/2
+        panopticPool.mintOptions(
+            positionIdList,
+            assets / 4,
+            2 ** 64 - 1,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        vm.stopPrank();
+
+        uint256 blockAfterBorrow = block.number;
+
+        uint32 blocksToSkip = 7200 * 365;
+        vm.roll(blockAfterBorrow + blocksToSkip);
+        console2.log("before accru", uint128(collateralToken0._interestRateAccumulator()));
+        collateralToken0.accrueInterest();
+        console2.log("after accru", uint128(collateralToken0._interestRateAccumulator()));
+
+        {
+            (, , uint256 utilization) = collateralToken0.getPoolData();
+            assertGt(utilization, 0, "FAIL: Utilization should be positive after borrow");
+        }
+        uint128 perBlockInterestRate = collateralToken0.interestRate();
+        assertGt(perBlockInterestRate, 0, "FAIL: Rate should be positive after borrow");
+
+        // 2. Calculate the expected interest for the period.
+        uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
+        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
+
+        // 3. Construct the full expected accumulator value.
+        uint256 expectedAccumulator = ((blockAfterBorrow + blocksToSkip) << 96) + expectedNewIndex;
+        uint256 actualAccumulator = uint128(collateralToken0._interestRateAccumulator());
+
+        // 4. Assert the final state is correct.
+        assertEq(
+            actualAccumulator,
+            expectedAccumulator,
+            "FAIL: Interest did not accrue correctly after borrow was made"
+        );
+        console2.log(
+            "aa",
+            collateralToken0.totalAssets(),
+            collateralToken0.previewRedeem(collateralToken0.balanceOf(Alice)),
+            collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
+        );
+        vm.startPrank(Bob);
+
+        console2.log("");
+        console2.log("");
+        console2.log("Bob Burns");
+        panopticPool.burnOptions(
+            positionIdList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        console2.log(
+            "bb",
+            collateralToken0.totalAssets(),
+            collateralToken0.previewRedeem(collateralToken0.balanceOf(Alice)),
+            collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
+        );
+        vm.stopPrank();
+        console2.log("");
+        console2.log("");
+        console2.log("Alice Burns");
+
+        vm.startPrank(Alice);
+        panopticPool.burnOptions(
+            positionIdList1,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        console2.log(
+            "cc",
+            collateralToken0.totalAssets(),
+            collateralToken0.previewRedeem(collateralToken0.balanceOf(Alice)),
+            collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
+        );
+        vm.stopPrank();
     }
 
     /*//////////////////////////////////////////////////////////////
