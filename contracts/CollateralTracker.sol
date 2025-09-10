@@ -706,18 +706,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             uint256 previousBlock = accumulator.rightSlot() >> 96;
             uint128 deltaBlock;
             deltaBlock = uint128(currentBlock - previousBlock);
-            // return if in the same block and the user has no borrows
-            //if (deltaBlock == 0 && netBorrows == 0) return;
 
             uint128 currentBorrowIndex = uint128(uint96(accumulator.rightSlot()));
             uint128 unrealizedGlobalInterest = accumulator.leftSlot();
+            uint128 inAMM = s_inAMM;
             // only update global quantities if not in the same block
             if (deltaBlock > 0) {
                 // PROTOCOL
                 //  extract interest rate owed during that period
                 uint128 rawInterest = interestRate() * deltaBlock;
                 uint128 interestOwed = Math
-                    .mulDivWadRoundingUp(s_inAMM + unrealizedGlobalInterest, rawInterest)
+                    .mulDivWadRoundingUp(inAMM + unrealizedGlobalInterest, rawInterest)
                     .toUint128();
                 // add that value to the "inAMM" tracker
 
@@ -741,7 +740,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     uint256 shares = Math.mulDivRoundingUp(
                         userInterestOwed,
                         totalSupply,
-                        s_poolAssets + s_inAMM + unrealizedGlobalInterest
+                        s_poolAssets + inAMM + unrealizedGlobalInterest
                     );
                     if (shares > 0) _burn(owner, shares);
 
