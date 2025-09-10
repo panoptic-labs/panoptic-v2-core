@@ -94,6 +94,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
     }
 
+    function getOwedInterest(address owner) external view returns (uint128) {
+        return owedInterest(owner);
+    }
+
     function poolUtilizationHook() external view returns (int128) {
         return int128(int256(_poolUtilization()));
     }
@@ -602,9 +606,20 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.accrueInterest();
         // Calculate the expected new borrow index
         uint128 perBlockInterestRate = collateralToken0.interestRate();
-        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + perBlockInterestRate);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + perBlockInterestRate
+        );
+        uint256 interestForPeriod = uint256(perBlockInterestRate) * 1;
 
-        uint256 expectedAccumulator = ((startingBlock + 1) << 96) + expectedNewIndex;
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 128) +
+            ((startingBlock + 1) << 96) +
+            expectedNewIndex;
 
         // Get the actual new accumulator value from the contract
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -635,9 +650,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
 
         // Calculate the expected new borrow index by applying the total interest.
-        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
 
-        uint256 unrealizedGlobalInterest = Math.mulDivWad(
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
             collateralToken0._inAMM(),
             interestForPeriod
         );
@@ -710,9 +728,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Calculate the expected interest for the period.
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
-        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
 
-        uint256 unrealizedGlobalInterest = Math.mulDivWad(
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
             collateralToken0._inAMM(),
             interestForPeriod
         );
@@ -747,7 +768,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.deposit(assets, Alice);
         vm.stopPrank();
 
-        // --- Bob deposits ---
+        // --- Bob deposits + Mints ---
         vm.startPrank(Bob);
         _grantTokens(Bob);
         IERC20Partial(token0).approve(address(collateralToken0), assets);
@@ -761,7 +782,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        console2.log("mintOptions");
+        console2.log("mintOptions 1st");
         panopticPool.mintOptions(
             positionIdList,
             assets / 2,
@@ -772,9 +793,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         vm.stopPrank();
 
+        // --- Move forward by 1 day ---
+
         uint256 blockAfterBorrow = block.number;
 
         uint32 blocksToSkip = 7200;
+        console2.log("roll 1 day");
         vm.roll(blockAfterBorrow + blocksToSkip);
 
         collateralToken0.accrueInterest();
@@ -784,11 +808,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Calculate the expected interest for the period.
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
-        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
 
-        uint256 netInterest = Math.mulDivWad(collateralToken0._inAMM(), interestForPeriod);
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
         // Construct the full expected accumulator value.
-        uint256 expectedAccumulator = (netInterest << 128) +
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 128) +
             ((blockAfterBorrow + blocksToSkip) << 96) +
             expectedNewIndex;
         uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -800,19 +830,72 @@ contract CollateralTrackerTest is Test, PositionUtils {
             "FAIL: Interest did not accrue correctly after borrow was made"
         );
 
+        // --- Mints Again ---
+
         vm.startPrank(Bob);
         console2.log(
             collateralToken0.previewRedeem(collateralToken0.balanceOf(Alice)),
             collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
         );
-        console2.log("burnOptions", Bob);
 
-        panopticPool.burnOptions(
+        strike = 198600 + 12000;
+        width = 2;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        actualAccumulator = collateralToken0._interestRateAccumulator();
+
+        uint256 unrealizedGlobalInterestBefore = actualAccumulator >> 128;
+
+        assertApproxEqAbs(
+            collateralToken0.getOwedInterest(Bob),
+            unrealizedGlobalInterestBefore,
+            1000,
+            "FAIL: owed interest doesn match unrealized tracker"
+        );
+        console2.log("mintOptions 2nd");
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdList1,
+            assets / 4,
+            0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK
         );
+        actualAccumulator = collateralToken0._interestRateAccumulator();
+
+        uint256 unrealizedGlobalInterestAfter = actualAccumulator >> 128;
+
+        assertEq(unrealizedGlobalInterestAfter, 0, "FAIL: unrealized interest is not zero");
+
+        // --- Move forward by 1 day ---
+
+        blockAfterBorrow = block.number;
+
+        blocksToSkip = 7200;
+        vm.roll(blockAfterBorrow + blocksToSkip);
+
+        console2.log("burnOptions", Bob);
+
+        actualAccumulator = collateralToken0._interestRateAccumulator();
+        unrealizedGlobalInterestBefore = actualAccumulator >> 128;
+        assertApproxEqAbs(
+            collateralToken0.getOwedInterest(Bob),
+            unrealizedGlobalInterestBefore,
+            1000,
+            "FAIL: owed interest doesn match unrealized tracker"
+        );
+
+        panopticPool.burnOptions(
+            positionIdList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        console2.log("DONE", Bob);
+        actualAccumulator = collateralToken0._interestRateAccumulator();
+        unrealizedGlobalInterestAfter = actualAccumulator >> 128;
+        assertEq(unrealizedGlobalInterestAfter, 0, "FAIL: unrealized interest is not zero");
 
         console2.log(
             collateralToken0.previewRedeem(collateralToken0.balanceOf(Alice)),
@@ -894,9 +977,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // 2. Calculate the expected interest for the period.
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
-        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
 
-        uint256 unrealizedGlobalInterest = Math.mulDivWad(
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
             collateralToken0._inAMM(),
             interestForPeriod
         );
@@ -1048,7 +1134,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // 2. Calculate the expected interest for the period.
         uint256 interestForPeriod = uint256(perBlockInterestRate) * blocksToSkip;
-        uint256 expectedNewIndex = Math.mulDivWad(initialBorrowIndex, 1e18 + interestForPeriod);
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
 
         // 3. Construct the full expected accumulator value.
         uint256 expectedAccumulator = ((blockAfterBorrow + blocksToSkip) << 96) + expectedNewIndex;
