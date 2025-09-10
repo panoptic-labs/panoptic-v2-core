@@ -1102,6 +1102,20 @@ library Math {
         }
     }
 
+    /// @notice Calculates `ceil(a×b÷10^18)` with full precision.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return result The 256-bit result
+    function mulDivWadRoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        unchecked {
+            result = mulDivWad(a, b);
+            if (mulmod(a, b, 10 ** 18) > 0) {
+                require(result < type(uint256).max);
+                result++;
+            }
+        }
+    }
+
     /// @notice Calculates `ceil(a÷b)`, returning 0 if `b == 0`.
     /// @param a The numerator
     /// @param b The denominator
