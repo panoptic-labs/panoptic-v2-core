@@ -12,6 +12,9 @@ library Errors {
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();
 
+    /// @notice CollateralTracker: Attempted to withdraw/redeem less than a single asset
+    error BelowMinimumRedemption();
+
     /// @notice CollateralTracker: Collateral token has already been initialized
     error CollateralTokenAlreadyInitialized();
 
