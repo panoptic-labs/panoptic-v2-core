@@ -1040,27 +1040,27 @@ library PanopticMath {
         }
     }
 
-    /// @notice Redistribute the final exercise fee deltas between tokens if necessary according to the available collateral from the exercised user.
-    /// @param exercisee The address of the user being exercised
-    /// @param exerciseFees Pre-adjustment exercise fees to debit from exercisor (rightSlot = token0 left = token1)
-    /// @param atTick The tick at which to convert between token0/token1 when redistributing the exercise fees
-    /// @param ct0 The collateral tracker for token0
-    /// @param ct1 The collateral tracker for token1
-    /// @return The LeftRight-packed deltas for token0/token1 to move from the exercisor to the exercisee
-    function getExerciseDeltas(
-        address exercisee,
-        LeftRightSigned exerciseFees,
+    /// @notice Substitutes surplus tokens to a caller in exchange for any potential token shortages prior to revoking virtual shares from a payor.
+    /// @param payor The address of the user being exercised/settled
+    /// @param fees If applicable, fees to debit from caller (rightSlot = currency0 left = currency1), 0 for `settleLongPremium`
+    /// @param atTick The tick at which to convert between currency0/currency1 when redistributing the surplus tokens
+    /// @param ct0 The collateral tracker for currency0
+    /// @param ct1 The collateral tracker for currency1
+    /// @return The LeftRight-packed deltas for currency0/currency1 to move from the caller to the payor
+    function getRefundAmounts(
+        address payor,
+        LeftRightSigned fees,
         int24 atTick,
         CollateralTracker ct0,
         CollateralTracker ct1
     ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
-            // if the refunder lacks sufficient token0 to pay back the virtual shares, have the exercisor cover the difference in exchange for token1 (and vice versa)
+            // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
 
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
-                int256(ct0.balanceOf(exercisee)) -
-                int256(ct0.convertToShares(uint128(-exerciseFees.rightSlot())));
+                int256(ct0.balanceOf(payor)) -
+                int256(ct0.convertToShares(uint128(-fees.rightSlot())));
 
             if (balanceShortage > 0) {
                 return
@@ -1068,7 +1068,7 @@ library PanopticMath {
                         .wrap(0)
                         .toRightSlot(
                             int128(
-                                exerciseFees.rightSlot() -
+                                fees.rightSlot() -
                                     int256(
                                         Math.mulDivRoundingUp(
                                             uint256(balanceShortage),
@@ -1081,19 +1081,19 @@ library PanopticMath {
                         .toLeftSlot(
                             int128(
                                 int256(
-                                    PanopticMath.convert0to1(
+                                    PanopticMath.convert0to1RoundingUp(
                                         ct0.convertToAssets(uint256(balanceShortage)),
                                         sqrtPriceX96
                                     )
-                                ) + exerciseFees.leftSlot()
+                                ) + fees.leftSlot()
                             )
                         );
             }
 
             balanceShortage =
                 int256(uint256(type(uint248).max)) -
-                int256(ct1.balanceOf(exercisee)) -
-                int256(ct1.convertToShares(uint128(-exerciseFees.leftSlot())));
+                int256(ct1.balanceOf(payor)) -
+                int256(ct1.convertToShares(uint128(-fees.leftSlot())));
             if (balanceShortage > 0) {
                 return
                     LeftRightSigned
@@ -1101,16 +1101,16 @@ library PanopticMath {
                         .toRightSlot(
                             int128(
                                 int256(
-                                    PanopticMath.convert1to0(
+                                    PanopticMath.convert1to0RoundingUp(
                                         ct1.convertToAssets(uint256(balanceShortage)),
                                         sqrtPriceX96
                                     )
-                                ) + exerciseFees.rightSlot()
+                                ) + fees.rightSlot()
                             )
                         )
                         .toLeftSlot(
                             int128(
-                                exerciseFees.leftSlot() -
+                                fees.leftSlot() -
                                     int256(
                                         Math.mulDivRoundingUp(
                                             uint256(balanceShortage),
@@ -1123,7 +1123,7 @@ library PanopticMath {
             }
         }
 
-        // otherwise, no need to deviate from the original exercise fee deltas
-        return exerciseFees;
+        // otherwise, no need to deviate from the original deltas
+        return fees;
     }
 }

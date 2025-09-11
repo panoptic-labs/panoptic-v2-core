@@ -123,6 +123,10 @@ contract PanopticPool is Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
+    /// @notice The maximum allowed delta (~2%) between the lastObservedTick and the slowOracleTick/fastOracleTick during forceExercise/settleLongPremium.
+    /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
+    int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
+
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
@@ -1000,7 +1004,7 @@ contract PanopticPool is Multicall {
 
             unchecked {
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                    revert Errors.StaleTWAP();
+                    revert Errors.StaleOracle();
             }
 
             // Ensure the account is insolvent at twapTick (in place of slowOracleTick), currentTick, fastOracleTick, and lastObservedTick
@@ -1140,18 +1144,28 @@ contract PanopticPool is Multicall {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        int24 twapTick = getUniV3TWAP();
+        int24 currentTick;
+        int24 lastObservedTick;
+        {
+            int24 fastOracleTick;
+            int24 slowOracleTick;
+            (fastOracleTick, slowOracleTick, lastObservedTick, currentTick, ) = PanopticMath
+                .getOracleTicks(s_univ3pool, s_miniMedian);
+
+            if (
+                Math.abs(lastObservedTick - fastOracleTick) > MAX_TICK_DELTA_SUBSTITUTION ||
+                Math.abs(lastObservedTick - slowOracleTick) > MAX_TICK_DELTA_SUBSTITUTION
+            ) revert Errors.StaleOracle();
+        }
 
         // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-        tokenId.validateIsExercisable(twapTick);
+        tokenId.validateIsExercisable(lastObservedTick);
 
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
 
         LeftRightSigned exerciseFees;
         {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
             uint128 positionSize = s_positionBalance[account][tokenId].positionSize();
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
@@ -1164,7 +1178,7 @@ contract PanopticPool is Multicall {
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
             exerciseFees = ct0.exerciseCost(
                 currentTick,
-                twapTick,
+                lastObservedTick,
                 _tokenId,
                 positionSize,
                 longAmounts
@@ -1180,10 +1194,10 @@ contract PanopticPool is Multicall {
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, account, MIN_SWAP_TICK, MAX_SWAP_TICK);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+        LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
             account,
             exerciseFees,
-            twapTick,
+            lastObservedTick,
             ct0,
             ct1
         );
@@ -1609,6 +1623,13 @@ contract PanopticPool is Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
+        CollateralTracker ct0 = s_collateralToken0;
+        CollateralTracker ct1 = s_collateralToken1;
+
+        // The protocol delegates some virtual shares to ensure the premia can be settled.
+        ct0.delegate(owner);
+        ct1.delegate(owner);
+
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             legIndex,
@@ -1619,11 +1640,10 @@ contract PanopticPool is Multicall {
 
         LeftRightUnsigned accumulatedPremium;
         {
-            uint256 tokenType = tokenId.tokenType(legIndex);
             (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
                 address(s_univ3pool),
                 address(this),
-                tokenType,
+                tokenId.tokenType(legIndex),
                 liquidityChunk.tickLower(),
                 liquidityChunk.tickUpper(),
                 currentTick,
@@ -1651,8 +1671,8 @@ contract PanopticPool is Multicall {
                 .toLeftSlot(int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)));
 
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-            s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
-            s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
+            ct0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
+            ct1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
@@ -1669,8 +1689,45 @@ contract PanopticPool is Multicall {
             emit PremiumSettled(owner, tokenId, legIndex, realizedPremia);
         }
 
+        int24 lastObservedTick;
+        uint96 tickData;
+        {
+            int24 fastOracleTick;
+            int24 slowOracleTick;
+            (fastOracleTick, slowOracleTick, lastObservedTick, , ) = PanopticMath.getOracleTicks(
+                s_univ3pool,
+                s_miniMedian
+            );
+
+            if (
+                Math.abs(lastObservedTick - fastOracleTick) > MAX_TICK_DELTA_SUBSTITUTION ||
+                Math.abs(lastObservedTick - slowOracleTick) > MAX_TICK_DELTA_SUBSTITUTION
+            ) revert Errors.StaleOracle();
+            tickData = PositionBalanceLibrary.packTickData(
+                currentTick,
+                fastOracleTick,
+                slowOracleTick,
+                lastObservedTick
+            );
+        }
+
+        LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
+            owner,
+            LeftRightSigned.wrap(0),
+            lastObservedTick,
+            ct0,
+            ct1
+        );
+
+        // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
+        ct0.refund(owner, msg.sender, refundAmounts.rightSlot());
+        ct1.refund(owner, msg.sender, refundAmounts.leftSlot());
+
+        ct0.revoke(owner);
+        ct1.revoke(owner);
+
         // ensure the owner is solvent (insolvent accounts are not permitted to pay premium unless they are being liquidated)
-        _validateSolvency(owner, positionIdList, NO_BUFFER, usePremiaAsCollateral);
+        _checkSolvency(owner, positionIdList, tickData, NO_BUFFER, usePremiaAsCollateral);
     }
 
     /// @notice Adds collected tokens to `s_settledTokens` and adjusts `s_grossPremiumLast` for any liquidity added.
