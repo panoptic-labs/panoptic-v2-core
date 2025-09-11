@@ -128,10 +128,17 @@ library PanopticMath {
         uint256 updatedHash = uint248(existingHash) ^
             (uint248(uint256(keccak256(abi.encode(tokenId)))));
 
+        uint256 positionLegs = tokenId.countLegs();
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
-        uint256 newLegCount = addFlag
-            ? uint8(existingHash >> 248) + uint8(tokenId.countLegs())
-            : uint8(existingHash >> 248) - tokenId.countLegs();
+
+        uint256 newLegCount;
+        if (addFlag) {
+            newLegCount = uint8(existingHash >> 248) + uint8(positionLegs);
+        } else {
+            unchecked {
+                newLegCount = (existingHash >> 248) - positionLegs;
+            }
+        }
 
         unchecked {
             return uint256(updatedHash) + (newLegCount << 248);
@@ -240,8 +247,11 @@ library PanopticMath {
                     int256(timestamps[i] - timestamps[i + 1]);
             }
 
+            // the `ticks` array descends from the most recent Uniswap observation prior to the sort
+            int24 latestObservation = int24(ticks[0]);
+
             // get the median of the `ticks` array (assuming `cardinality` is odd)
-            return (int24(Math.sort(ticks)[cardinality / 2]), int24(ticks[0]));
+            return (int24(Math.sort(ticks)[cardinality / 2]), latestObservation);
         }
     }
 
@@ -409,7 +419,7 @@ library PanopticMath {
         //  The following function takes this into account when computing the liquidity of the leg and switches between
         //  the definition for getLiquidityForAmount0 or getLiquidityForAmount1 when relevant.
 
-        uint256 amount = uint256(positionSize) * tokenId.optionRatio(legIndex);
+        uint256 amount = positionSize * tokenId.optionRatio(legIndex);
         if (tokenId.asset(legIndex) == 0) {
             return Math.getLiquidityForAmount0(tickLower, tickUpper, amount);
         } else {
