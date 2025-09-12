@@ -154,7 +154,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
-    // LAST UPDATED BLOCK TIMESTAMP (40 bits)
+    // LAST UPDATED BLOCK TIMESTAMP (40 bits) -> 32 bits
     // [BLOCK.TIMESTAMP]
     // (00000000000000000000000000000000) // dynamic
     //
@@ -1246,12 +1246,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 medianData = s_miniMedian;
         unchecked {
-            int24 medianTick = (int24(
-                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
-            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
-
             // If ticks have recently deviated more than +/- ~10%, enforce covered mints
-            return Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA;
+            return Math.abs(currentTick - PanopticMath.getMedianTick(medianData)) > MAX_TICKS_DELTA;
         }
     }
 

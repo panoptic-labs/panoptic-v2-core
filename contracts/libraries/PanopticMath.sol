@@ -263,10 +263,7 @@ library PanopticMath {
     ) public view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
-            medianTick =
-                (int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))) +
-                    int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) /
-                2;
+            medianTick = getMedianTick(medianData);
 
             // only proceed if last entry is at least MEDIAN_PERIOD seconds old
             if (block.timestamp >= uint256(uint40(medianData >> 216)) + period) {
@@ -319,6 +316,15 @@ library PanopticMath {
                     uint256(uint24(lastObservedTick));
             }
         }
+    }
+
+    /// @notice Calculates the median of a packed structure representing a sorted 8-slot queue of ticks
+    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
+    /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
+    function getMedianTick(uint256 medianData) internal pure returns (int24) {
+        uint24 rank3 = uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24));
+        uint24 rank4 = uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24));
+        return (int24(rank3) + int24(rank4)) / 2;
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.
