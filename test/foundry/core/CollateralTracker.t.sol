@@ -590,6 +590,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+        assets = uint104(bound(assets, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on the msg.senders behalf
         IERC20Partial(token0).approve(address(collateralToken0), assets);
@@ -652,6 +653,27 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.deposit(assets, Bob);
     }
 
+    function test_Fail_deposit_BelowMinimumRedemption(uint256 x) public {
+        // initalize world state
+        _initWorld(x);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        // approve collateral tracker to move tokens on the msg.senders behalf
+        IERC20Partial(token0).approve(address(collateralToken0), 0);
+        IERC20Partial(token1).approve(address(collateralToken1), 0);
+
+        // attempt to deposit zero assets
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.deposit(0, Bob);
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.deposit(0, Bob);
+    }
+
     /*//////////////////////////////////////////////////////////////
                         WITHDRAW TESTS
     //////////////////////////////////////////////////////////////*/
@@ -667,6 +689,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+
+        assets = uint104(bound(assets, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on the msg.senders behalf
         IERC20Partial(token0).approve(address(collateralToken0), assets);
@@ -720,6 +744,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // give Bob the max amount of tokens
         _grantTokens(Bob);
 
+        assets = uint104(bound(assets, 1, type(uint104).max));
+
         // approve collateral tracker to move tokens on the msg.senders behalf
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         IERC20Partial(token1).approve(address(collateralToken1), assets);
@@ -762,6 +788,37 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertEq(assetsToken1, balanceAfter1 - balanceBefore1);
     }
 
+    function test_Fail_withdraw_PositionList_BelowMinimumRedemption(
+        uint256 x,
+        uint104 assets
+    ) public {
+        // initalize world state
+        _initWorld(x);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        assets = uint104(bound(assets, 1, type(uint104).max));
+
+        // approve collateral tracker to move tokens on the msg.senders behalf
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+
+        // deposit a number of assets determined via fuzzing
+        // equal deposits for both collateral token pairs for testing purposes
+        collateralToken0.deposit(assets, Bob);
+        collateralToken1.deposit(assets, Bob);
+
+        // withdraw tokens
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.withdraw(0, Bob, Bob, new TokenId[](0));
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.withdraw(0, Bob, Bob, new TokenId[](0));
+    }
+
     // fail if attempting to withdraw more assets than the max withdraw amount
     function test_Fail_withdraw_ExceedsMax(uint256 x) public {
         // initalize world state
@@ -791,6 +848,34 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // fail as assets > maxWithdraw(owner)
         vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(maxAssets + 1, Bob, Bob);
+    }
+
+    function test_Fail_withdraw_BelowMinimumRedemption(uint256 x, uint104 depositAssets) public {
+        // initalize world state
+        _initWorld(x);
+
+        // Ensure we have a non-zero deposit amount for setup
+        depositAssets = uint104(bound(depositAssets, 1, type(uint104).max));
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        // approve collateral tracker to move tokens on the msg.senders behalf
+        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
+        IERC20Partial(token1).approve(address(collateralToken1), depositAssets);
+
+        // First deposit some assets so we have something to withdraw
+        collateralToken0.deposit(depositAssets, Bob);
+        collateralToken1.deposit(depositAssets, Bob);
+
+        // attempt to withdraw zero assets
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.withdraw(0, Bob, Bob);
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.withdraw(0, Bob, Bob);
     }
 
     function test_Fail_withdraw_ExceedsMax_PositionListSig(uint256 x) public {
@@ -1276,6 +1361,32 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.mint(shares, Bob);
     }
 
+    function test_Fail_mint_BelowMinimumRedemption(uint256 x) public {
+        // initalize world state
+        _initWorld(x);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        // In mint function, if shares would result in 0 assets, it should revert
+        // This happens when shares is so small that previewMint returns 0
+        // For this test, we'll try to mint 0 shares which should result in 0 assets
+
+        // approve collateral tracker to move tokens on the msg.senders behalf
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+
+        // attempt to mint with shares that would result in 0 assets
+        // When shares = 0, previewMint should return 0 assets
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.mint(0, Bob);
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.mint(0, Bob);
+    }
+
     /*//////////////////////////////////////////////////////////////
                         TRANSFER TESTS
     //////////////////////////////////////////////////////////////*/
@@ -1376,6 +1487,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+        amount = uint104(bound(amount, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), amount);
@@ -1571,6 +1683,81 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.redeem(shares1, Bob, Bob);
     }
 
+    function test_Fail_redeem_BelowMinimumRedemption(uint256 x, uint104 depositAssets) public {
+        // initalize world state
+        _initWorld(x);
+
+        // Ensure we have a non-zero deposit amount for setup
+        depositAssets = uint104(bound(depositAssets, 1e18, type(uint104).max));
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+        depositAssets = uint104(bound(depositAssets, 1, type(uint104).max));
+
+        // approve collateral tracker to move tokens on the msg.senders behalf
+        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
+        IERC20Partial(token1).approve(address(collateralToken1), depositAssets);
+
+        // First deposit some assets so we have shares to redeem
+        collateralToken0.deposit(depositAssets, Bob);
+        collateralToken1.deposit(depositAssets, Bob);
+
+        // In redeem function, if shares would result in 0 assets after previewRedeem, it should revert
+        // This could happen with very small share amounts in certain rounding scenarios
+        // For this test, we'll attempt to redeem 0 shares which should result in 0 assets
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.redeem(0, Bob, Bob);
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.redeem(0, Bob, Bob);
+
+        uint256 sharesBelow0 = collateralToken0.convertToShares(1) - 1;
+        uint256 sharesBelow1 = collateralToken1.convertToShares(1) - 1;
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.redeem(sharesBelow0, Bob, Bob);
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.redeem(sharesBelow1, Bob, Bob);
+    }
+
+    function test_Success_redeem_Above_BelowMinimumRedemption(
+        uint256 x,
+        uint104 depositAssets
+    ) public {
+        // initalize world state
+        _initWorld(x);
+
+        // Ensure we have a non-zero deposit amount for setup
+        depositAssets = uint104(bound(depositAssets, 1e18, type(uint104).max));
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+        depositAssets = uint104(bound(depositAssets, 1, type(uint104).max));
+
+        // approve collateral tracker to move tokens on the msg.senders behalf
+        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
+        IERC20Partial(token1).approve(address(collateralToken1), depositAssets);
+
+        // First deposit some assets so we have shares to redeem
+        collateralToken0.deposit(depositAssets, Bob);
+        collateralToken1.deposit(depositAssets, Bob);
+
+        // In redeem function, if shares would result in 0 assets after previewRedeem, it should revert
+        // This could happen with very small share amounts in certain rounding scenarios
+        // For this test, we'll attempt to redeem 0 shares which should result in 0 assets
+
+        uint256 sharesBelow0 = collateralToken0.convertToShares(1) - 1;
+        uint256 sharesBelow1 = collateralToken1.convertToShares(1) - 1;
+
+        //  do plus 2 to handle exact convertToShares conversion with no rounding
+        collateralToken0.redeem(sharesBelow0 + 2, Bob, Bob);
+        collateralToken1.redeem(sharesBelow1 + 2, Bob, Bob);
+    }
+
     function test_Success_Redeem_onBehalf(uint128 x, uint104 shares) public {
         uint256 assetsToken0;
         uint256 assetsToken1;
@@ -1667,6 +1854,52 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.redeem(assetsToken1, Alice, Bob);
     }
 
+    function test_Fail_redeem_onBehalf_BelowMinimumRedemption(uint128 x) public {
+        _initWorld(x);
+
+        // hardcoded amount of shares to redeem
+        uint256 shares = 10 ** 6;
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        // calculate underlying assets via amount of shares
+        uint256 assetsToken0 = convertToAssets(shares, collateralToken0);
+        uint256 assetsToken1 = convertToAssets(shares, collateralToken1);
+
+        // approve collateral tracker to move tokens on Bob's behalf
+        IERC20Partial(token0).approve(address(collateralToken0), assetsToken0);
+        IERC20Partial(token1).approve(address(collateralToken1), assetsToken1);
+
+        // equal deposits for both collateral token pairs for testing purposes
+        _mockMaxDeposit(Bob);
+
+        // Bound the shares redemption to the maxRedeemable amount
+        uint256 shares0 = bound(shares, 0, collateralToken0.maxRedeem(Bob));
+        uint256 shares1 = bound(shares, 0, collateralToken1.maxRedeem(Bob));
+
+        // approve Alice to move shares/assets on Bob's behalf
+        IERC20Partial(address(collateralToken0)).approve(Alice, shares0);
+        IERC20Partial(address(collateralToken1)).approve(Alice, shares1);
+
+        // Start new interactions with user Alice
+        vm.startPrank(Alice);
+
+        uint256 sharesBelow0 = collateralToken0.convertToShares(1) - 1;
+        uint256 sharesBelow1 = collateralToken1.convertToShares(1) - 1;
+
+        // execute redemption
+        // should fail as Alice is not authorized to withdraw assets on Bob behalf
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken0.redeem(sharesBelow0, Alice, Bob);
+
+        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
+        collateralToken1.redeem(sharesBelow1, Alice, Bob);
+    }
+
     /*//////////////////////////////////////////////////////////////
                         DELEGATE/REVOKE TESTS
     //////////////////////////////////////////////////////////////*/
@@ -1757,6 +1990,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+        assets = uint104(bound(assets, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assets);
@@ -5728,6 +5962,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+        shares = uint104(bound(shares, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), shares);
@@ -5772,6 +6007,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+        assets = uint104(bound(assets, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assets);
@@ -5891,6 +6127,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // give Bob the max amount of tokens
         _grantTokens(Bob);
+        assets = uint104(bound(assets, 1, type(uint104).max));
 
         // approve collateral tracker to move tokens on Bob's behalf
         IERC20Partial(token0).approve(address(collateralToken0), assets);
