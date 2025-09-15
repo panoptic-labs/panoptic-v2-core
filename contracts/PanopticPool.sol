@@ -1131,13 +1131,12 @@ contract PanopticPool is Multicall {
                 positionSize
             );
 
-            TokenId _tokenId = tokenId;
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
             exerciseFees = ct0.exerciseCost(
                 currentTick,
                 twapTick,
-                _tokenId,
+                tokenId,
                 positionSize,
                 longAmounts
             );
@@ -1148,14 +1147,13 @@ contract PanopticPool is Multicall {
         ct1.delegate(account);
 
         {
-            address _account = account;
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
             _burnOptions(
                 COMMIT_LONG_SETTLED,
                 tokenId,
                 positionSize,
-                _account,
+                account,
                 MIN_SWAP_TICK,
                 MAX_SWAP_TICK
             );
