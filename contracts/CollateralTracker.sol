@@ -714,7 +714,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             if (deltaTime > 0) {
                 // PROTOCOL
                 //  extract interest rate owed during that period using: rawInterest = (exp(-interest * ∆t) - 1)
-                uint128 rawInterest = interestRate() * uint128(deltaTime);
+                uint128 rawInterest = uint128(
+                    Math.wTaylorCompounded(interestRate(), uint128(deltaTime))
+                );
                 uint128 interestOwed = Math
                     .mulDivWadRoundingUp(inAMM + unrealizedGlobalInterest, rawInterest)
                     .toUint128();

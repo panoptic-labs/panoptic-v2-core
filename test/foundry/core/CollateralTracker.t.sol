@@ -607,7 +607,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.accrueInterest();
         // Calculate the expected new borrow index
         uint128 perSecondInterestRate = collateralToken0.interestRate();
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * 12;
+        uint256 interestForPeriod = Math.wTaylorCompounded(uint256(perSecondInterestRate), 12);
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
             1e18 + interestForPeriod
@@ -646,7 +646,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("acc2", collateralToken0._interestRateAccumulator());
         // Calculate the expected new borrow index
         uint128 perSecondInterestRate = collateralToken0.interestRate();
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * 20;
+        uint256 interestForPeriod = Math.wTaylorCompounded(uint256(perSecondInterestRate), 20);
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
             1e18 + interestForPeriod
@@ -686,7 +686,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Calculate the total linear interest for the entire period.
         uint128 perSecondInterestRate = collateralToken0.interestRate();
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * blocksToSkip * 12;
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * 12
+        );
 
         // Calculate the expected new borrow index by applying the total interest.
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
@@ -768,7 +771,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
 
         // Calculate the expected interest for the period.
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * blocksToSkip * 12;
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * 12
+        );
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
             1e18 + interestForPeriod
@@ -850,7 +856,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
 
         // Calculate the expected interest for the period.
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * blocksToSkip * 12;
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * 12
+        );
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
             1e18 + interestForPeriod
@@ -1023,7 +1032,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
 
         // 2. Calculate the expected interest for the period.
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * blocksToSkip * 12;
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * 12
+        );
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
             1e18 + interestForPeriod
@@ -1182,7 +1194,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
 
         // 2. Calculate the expected interest for the period.
-        uint256 interestForPeriod = uint256(perSecondInterestRate) * blocksToSkip * 12;
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * 12
+        );
         uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
             initialBorrowIndex,
             1e18 + interestForPeriod

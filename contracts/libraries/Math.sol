@@ -15,6 +15,8 @@ library Math {
     /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
+    uint256 constant WAD = 1e18;
+
     /*//////////////////////////////////////////////////////////////
                           GENERAL MATH HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -1163,5 +1165,19 @@ library Math {
             quickSort(data, int256(0), int256(data.length - 1));
         }
         return data;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         EXPONENTIAL MATH
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev Returns the sum of the first three non-zero terms of a Taylor expansion of e^(nx) - 1, to approximate a
+    /// continuous compound interest rate. Source: https://github.com/morpho-org/morpho-blue/blob/main/src/libraries/MathLib.sol
+    function wTaylorCompounded(uint256 x, uint256 n) internal pure returns (uint256) {
+        uint256 firstTerm = x * n;
+        uint256 secondTerm = mulDiv(firstTerm, firstTerm, 2 * WAD);
+        uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * WAD);
+
+        return firstTerm + secondTerm + thirdTerm;
     }
 }
