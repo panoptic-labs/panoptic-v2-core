@@ -598,14 +598,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // the amount of shares that can be minted
         // supply == 0 ? assets : FullMath.mulDiv(assets, supply, totalAssets());
         uint256 sharesToken0 = FullMath.mulDiv(
-            uint256(assets) * 9_990,
+            uint256(assets),
             collateralToken0.totalSupply(),
-            collateralToken0.totalAssets() * 10_000
+            collateralToken0.totalAssets()
         );
         uint256 sharesToken1 = FullMath.mulDiv(
-            uint256(assets) * 9_990,
+            uint256(assets),
             collateralToken1.totalSupply(),
-            collateralToken1.totalAssets() * 10_000
+            collateralToken1.totalAssets()
         );
 
         // deposit a number of assets determined via fuzzing
@@ -1199,7 +1199,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // give Bob the max amount of tokens
         _grantTokens(Bob);
 
-        shares = uint104(bound(shares, 0, (uint256(type(uint104).max) * 1000) / 1001));
+        shares = uint104(bound(shares, 0, (uint256(type(uint104).max))));
 
         console2.log("test shares", shares);
         console2.log("test totalassets", collateralToken0.totalAssets());
@@ -5879,7 +5879,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // real value
         uint256 actualValue = collateralToken0.previewWithdraw(1000);
 
-        assertEq(actualValue, 999001000);
+        assertEq(actualValue, 1000000000);
     }
 
     // maxWithdraw
@@ -5944,7 +5944,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // real value
         uint256 actualValue = collateralToken0.previewMint(shares);
 
-        assertApproxEqAbs(((expectedValue * 10_000) / 9_990), actualValue, 5);
+        assertApproxEqAbs(((expectedValue)), actualValue, 5);
     }
 
     // maxMint
@@ -5952,7 +5952,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _initWorld(x);
 
         // use a fixed amount for single test
-        uint256 expectedValue = (collateralToken0.convertToShares(type(uint104).max) * 999) / 1000;
+        uint256 expectedValue = (collateralToken0.convertToShares(type(uint104).max));
 
         // real value
         uint256 actualValue = collateralToken0.maxMint(Bob);
@@ -5970,7 +5970,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // real value
         uint256 actualValue = collateralToken0.previewDeposit(1000);
 
-        assertEq((expectedValue * 9_990) / 10_000, actualValue);
+        assertEq((expectedValue), actualValue);
     }
 
     // maxDeposit

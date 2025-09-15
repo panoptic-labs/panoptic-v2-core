@@ -419,6 +419,9 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Bob);
 
+        deal(token0, Bob, type(uint104).max);
+        deal(token1, Bob, type(uint104).max);
+
         IERC20Partial(token0).approve(address(router), type(uint256).max);
         IERC20Partial(token1).approve(address(router), type(uint256).max);
         IERC20Partial(token0).approve(address(pp), type(uint256).max);
