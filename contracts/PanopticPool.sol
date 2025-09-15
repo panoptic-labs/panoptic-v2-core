@@ -969,24 +969,22 @@ contract PanopticPool is Multicall {
             revert Errors.NotMarginCalled();
         }
 
-        // if path = 2, settleLongPremium
-        if (path == 0) {
-            _settleLongPremium(account, tokenId, twapTick, currentTick);
+        if (path == 2) {
+            _liquidate(account, positionIdListTo, twapTick, currentTick);
+            // no need to check that the liquidatee is solvent as all positions are burnt
+        } else {
+            // if path = 0, settleLongPremium
+            if (path == 0) {
+                _settleLongPremium(account, tokenId, twapTick, currentTick);
+            }
 
-            _validateSolvency(
-                account,
-                positionIdListToFinal,
-                NO_BUFFER,
-                usePremiaAsCollateral.rightSlot() > 0
-            );
-        }
+            // if path = 1, force exercise
 
-        // if path = 1, force exercise
-
-        if (path == 1) {
-            // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-            tokenId.validateIsExercisable(twapTick);
-            _forceExercise(account, tokenId, twapTick, currentTick);
+            if (path == 1) {
+                // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
+                tokenId.validateIsExercisable(twapTick);
+                _forceExercise(account, tokenId, twapTick, currentTick);
+            }
 
             // ensure the callee is still solvent after the operation
             _validateSolvency(
@@ -995,11 +993,6 @@ contract PanopticPool is Multicall {
                 NO_BUFFER,
                 usePremiaAsCollateral.rightSlot() > 0
             );
-        }
-        // if path = 2, liquidate
-        if (path == 2) {
-            _liquidate(positionIdListFrom, account, positionIdListTo, twapTick, currentTick);
-            // no need to check that the liquidatee is solvent as all positions are burnt
         }
 
         // ensure the caller is still solvent after the operation
@@ -1013,11 +1006,9 @@ contract PanopticPool is Multicall {
 
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at one of the oracle ticks or if TWAP tick is too far away from the current tick.
-    /// @param positionIdListLiquidator List of positions owned by the liquidator
     /// @param liquidatee Address of the distressed account
     /// @param positionIdList List of positions owned by the user. Written as `[tokenId1, tokenId2, ...]`
     function _liquidate(
-        TokenId[] calldata positionIdListLiquidator,
         address liquidatee,
         TokenId[] calldata positionIdList,
         int24 twapTick,
@@ -1209,13 +1200,14 @@ contract PanopticPool is Multicall {
 
         LeftRightSigned refundAmounts;
 
-        uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
+        uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+
+        for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.isLong(leg) != 0) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
                     leg,
-                    s_positionBalance[owner][tokenId].positionSize()
+                    positionSize
                 );
 
                 LeftRightUnsigned accumulatedPremium;
@@ -1247,48 +1239,42 @@ contract PanopticPool is Multicall {
                     }
                 }
 
+                LeftRightSigned realizedPremia;
                 unchecked {
-                    LeftRightSigned realizedPremia;
+                    uint256 liquidity = liquidityChunk.liquidity();
 
-                    {
-                        uint256 liquidity = liquidityChunk.liquidity();
-
-                        // update the realized premia
-                        realizedPremia = LeftRightSigned
-                            .wrap(0)
-                            .toRightSlot(
-                                int128(
-                                    int256((accumulatedPremium.rightSlot() * liquidity) / 2 ** 64)
-                                )
-                            )
-                            .toLeftSlot(
-                                int128(
-                                    int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)
-                                )
-                            );
-                    }
+                    // update the realized premia
+                    realizedPremia = LeftRightSigned
+                        .wrap(0)
+                        .toRightSlot(
+                            int128(int256((accumulatedPremium.rightSlot() * liquidity) / 2 ** 64))
+                        )
+                        .toLeftSlot(
+                            int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64))
+                        );
+                }
+                {
                     // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
                     ct0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
                     ct1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
-                    bytes32 chunkKey = keccak256(
-                        abi.encodePacked(
-                            tokenId.strike(leg),
-                            tokenId.width(leg),
-                            tokenId.tokenType(leg)
-                        )
-                    );
+                    bytes32 chunkKey;
+                    {
+                        TokenId _tokenId = tokenId;
+                        int24 strike = _tokenId.strike(leg);
+                        int24 width = _tokenId.width(leg);
+                        uint256 tokenType = _tokenId.tokenType(leg);
+                        chunkKey = keccak256(abi.encodePacked(strike, width, tokenType));
+                    }
                     // commit the delta in settled tokens (all of the premium paid by long chunks in the tokenIds list) to storage
                     s_settledTokens[chunkKey] = s_settledTokens[chunkKey].add(
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
                     );
-
-                    emit PremiumSettled(owner, tokenId, leg, realizedPremia);
                 }
-
                 refundAmounts = PanopticMath
                     .getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick, ct0, ct1)
                     .add(refundAmounts);
+                emit PremiumSettled(owner, tokenId, leg, realizedPremia);
             }
             unchecked {
                 ++leg;
