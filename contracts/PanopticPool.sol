@@ -835,7 +835,7 @@ contract PanopticPool is Multicall {
         bool usePremiaAsCollateral
     ) internal view {
         // check that the provided positionIdList matches the positions in memory
-        _validatePositionList(user, positionIdList, 0);
+        _validatePositionList(user, positionIdList);
 
         (
             int24 currentTick,
@@ -914,7 +914,7 @@ contract PanopticPool is Multicall {
             atTicks[1] = twapTick;
             atTicks[2] = lastObservedTick;
             atTicks[3] = currentTick;
-            _validatePositionList(account, positionIdListTo, 0);
+            _validatePositionList(account, positionIdListTo);
 
             uint256 solvent = _checkSolvencyAtTicks(
                 account,
@@ -937,7 +937,7 @@ contract PanopticPool is Multicall {
         address liquidatee,
         TokenId[] calldata positionIdList
     ) external {
-        _validatePositionList(liquidatee, positionIdList, 0);
+        _validatePositionList(liquidatee, positionIdList);
 
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
@@ -1093,7 +1093,7 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned usePremiaAsCollateral
     ) external {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
-        _validatePositionList(msg.sender, positionIdListExercisor, 0);
+        _validatePositionList(msg.sender, positionIdListExercisor);
 
         int24 currentTick;
         int24 lastObservedTick;
@@ -1320,17 +1320,11 @@ contract PanopticPool is Multicall {
     /// @notice Makes sure that the positions in the incoming user's list match the existing active option positions.
     /// @param account The owner of the incoming list of positions
     /// @param positionIdList The existing list of active options for the owner
-    /// @param offset The amount of positions from the end of the list to exclude from validation
     function _validatePositionList(
         address account,
-        TokenId[] calldata positionIdList,
-        uint256 offset
+        TokenId[] calldata positionIdList
     ) internal view {
-        uint256 pLength;
-
-        unchecked {
-            pLength = positionIdList.length - offset;
-        }
+        uint256 pLength = positionIdList.length;
 
         uint256 fingerprintIncomingList;
 
@@ -1575,7 +1569,7 @@ contract PanopticPool is Multicall {
         uint256 legIndex,
         bool usePremiaAsCollateral
     ) external {
-        _validatePositionList(owner, positionIdList, 0);
+        _validatePositionList(owner, positionIdList);
 
         TokenId tokenId;
         unchecked {
