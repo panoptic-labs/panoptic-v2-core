@@ -867,20 +867,65 @@ contract PanopticPool is Multicall {
             atTicks[0] = fastOracleTick;
         }
 
-        _checkSolvencyAtTicks(
+        uint256 solvent = _checkSolvencyAtTicks(
             user,
             positionIdList,
             currentTick,
             atTicks,
             buffer,
-            ASSERT_SOLVENCY,
             usePremiaAsCollateral
         );
+        uint256 numberOfTicks = atTicks.length;
+
+        if (solvent != numberOfTicks) revert Errors.AccountInsolvent();
     }
 
     /*//////////////////////////////////////////////////////////////
                     LIQUIDATIONS & FORCED EXERCISES
     //////////////////////////////////////////////////////////////*/
+
+    function dispatchFrom(
+        TokenId[] calldata positionIdListFrom,
+        address account,
+        TokenId[] calldata positionIdListTo,
+        TokenId[] calldata positionIdListFinal
+    ) external {
+        // Assert the account we are liquidating is actually insolvent
+        int24 twapTick = getUniV3TWAP();
+
+        int24 currentTick;
+        {
+            // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
+            int24 fastOracleTick;
+            int24 lastObservedTick;
+            (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
+                s_univ3pool,
+                s_miniMedian
+            );
+
+            unchecked {
+                if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
+                    revert Errors.StaleOracle();
+            }
+
+            // Ensure the account is insolvent at twapTick (in place of slowOracleTick), currentTick, fastOracleTick, and lastObservedTick
+            int24[] memory atTicks = new int24[](4);
+            atTicks[0] = fastOracleTick;
+            atTicks[1] = twapTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
+            _validatePositionList(account, positionIdListTo, 0);
+
+            uint256 solvent = _checkSolvencyAtTicks(
+                account,
+                positionIdListTo,
+                currentTick,
+                atTicks,
+                NO_BUFFER,
+                COMPUTE_PREMIA_AS_COLLATERAL
+            );
+        }
+    }
 
     /// @notice Liquidates a distressed account. Will burn all positions and issue a bonus to the liquidator.
     /// @dev Will revert if liquidated account is solvent at one of the oracle ticks or if TWAP tick is too far away from the current tick.
@@ -919,15 +964,16 @@ contract PanopticPool is Multicall {
             atTicks[2] = lastObservedTick;
             atTicks[3] = currentTick;
 
-            _checkSolvencyAtTicks(
+            uint256 solvent = _checkSolvencyAtTicks(
                 liquidatee,
                 positionIdList,
                 currentTick,
                 atTicks,
                 NO_BUFFER,
-                ASSERT_INSOLVENCY,
                 COMPUTE_PREMIA_AS_COLLATERAL
             );
+            uint256 numberOfTicks = atTicks.length;
+            if (solvent != 0) revert Errors.NotMarginCalled();
         }
 
         LeftRightUnsigned tokenData0;
@@ -1158,17 +1204,16 @@ contract PanopticPool is Multicall {
     /// @param currentTick The current tick of the Uniswap pool (needed for fee calculations)
     /// @param atTicks An array of ticks to check solvency at
     /// @param buffer The buffer to apply to the collateral requirement
-    /// @param expectedSolvent Whether the account is expected to be solvent (true) or insolvent (false) at all provided `atTicks`
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
+    /// @return boolean flag that determines if account is solvent
     function _checkSolvencyAtTicks(
         address account,
         TokenId[] calldata positionIdList,
         int24 currentTick,
         int24[] memory atTicks,
         uint256 buffer,
-        bool expectedSolvent,
         bool usePremiaAsCollateral
-    ) internal view {
+    ) internal view returns (uint256) {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
@@ -1201,8 +1246,9 @@ contract PanopticPool is Multicall {
             }
         }
 
-        if (expectedSolvent && solvent != numberOfTicks) revert Errors.AccountInsolvent();
-        if (!expectedSolvent && solvent != 0) revert Errors.NotMarginCalled();
+        return solvent;
+        //if (expectedSolvent && solvent != numberOfTicks) revert Errors.AccountInsolvent();
+        //if (!expectedSolvent && solvent != 0) revert Errors.NotMarginCalled();
     }
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionBalanceArray`.
