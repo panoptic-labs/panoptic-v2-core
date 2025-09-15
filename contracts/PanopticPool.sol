@@ -494,82 +494,66 @@ contract PanopticPool is Multicall {
                           MINT/BURN INTERFACE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Validates the current options of the user, and mints a new position.
-    /// @param positionIdList The list of currently held positions by the user, where the newly minted position(token) will be the last element in `positionIdList`
-    /// @param positionSize The size of the position to be minted, expressed in terms of the asset
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
+    /// @notice Mints or burns each `tokenId` in `positionIdList.
+    /// @param positionIdList The list of tokenIds for the option positions to be minted or burnt
+    /// @param finalPositionIdList The final positionIdList after all the tokens have been minted/burnt
+    /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
+    /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    function mintOptions(
-        TokenId[] calldata positionIdList,
-        uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool usePremiaAsCollateral
-    ) external {
-        _mintOptions(
-            positionIdList,
-            positionSize,
-            effectiveLiquidityLimitX32,
-            tickLimitLow,
-            tickLimitHigh,
-            usePremiaAsCollateral
-        );
-    }
-
-    /// @notice Closes and burns the caller's entire balance of `tokenId`.
-    /// @param tokenId The tokenId of the option position to be burnt
-    /// @param newPositionIdList The new positionIdList without the token being burnt
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    function burnOptions(
-        TokenId tokenId,
-        TokenId[] calldata newPositionIdList,
+    function dispatch(
+        TokenId[] calldata positionIdList,
+        TokenId[] calldata finalPositionIdList,
+        uint128[] calldata positionSizes,
+        uint64[] calldata effectiveLiquidityLimitsX32,
         int24 tickLimitLow,
         int24 tickLimitHigh,
         bool usePremiaAsCollateral
     ) external {
-        _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
+        // if safeMode, enforce covered at mint and exercise at burn
+        if (isSafeMode()) {
+            if (tickLimitLow > tickLimitHigh) {
+                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+            }
+        }
 
+        for (uint256 i = 0; i < positionIdList.length; ) {
+            TokenId tokenId = positionIdList[i];
+
+            // make sure the tokenId is for this Panoptic pool
+            if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
+                revert Errors.InvalidTokenIdParameter(0);
+
+            PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
+
+            if (PositionBalance.unwrap(positionBalanceData) == 0) {
+                _mintOptions(
+                    tokenId,
+                    positionSizes[i],
+                    effectiveLiquidityLimitsX32[i],
+                    tickLimitLow,
+                    tickLimitHigh
+                );
+            } else {
+                _burnOptions(
+                    COMMIT_LONG_SETTLED,
+                    tokenId,
+                    positionBalanceData.positionSize(),
+                    msg.sender,
+                    tickLimitLow,
+                    tickLimitHigh
+                );
+            }
+        }
+
+        // Perform solvency check on user's account to ensure they had enough buying power to mint the option
+        // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         uint256 medianData = _validateSolvency(
             msg.sender,
-            newPositionIdList,
-            NO_BUFFER,
-            usePremiaAsCollateral
-        );
-
-        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
-        if (medianData != 0) s_miniMedian = medianData;
-    }
-
-    /// @notice Closes and burns the caller's entire balance of each `tokenId` in `positionIdList.
-    /// @param positionIdList The list of tokenIds for the option positions to be burnt
-    /// @param newPositionIdList The new positionIdList without the token(s) being burnt
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    function burnOptions(
-        TokenId[] calldata positionIdList,
-        TokenId[] calldata newPositionIdList,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool usePremiaAsCollateral
-    ) external {
-        _burnAllOptionsFrom(
-            msg.sender,
-            tickLimitLow,
-            tickLimitHigh,
-            COMMIT_LONG_SETTLED,
-            positionIdList
-        );
-
-        uint256 medianData = _validateSolvency(
-            msg.sender,
-            newPositionIdList,
-            NO_BUFFER,
+            finalPositionIdList,
+            BP_DECREASE_BUFFER,
             usePremiaAsCollateral
         );
 
@@ -582,39 +566,19 @@ contract PanopticPool is Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Validates the current options of the user, and mints a new position.
-    /// @param positionIdList The list of currently held positions by the user, where the newly minted position(token) will be the last element in `positionIdList`
+    /// @param tokenId The tokenId of the newly minted position
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function _mintOptions(
-        TokenId[] calldata positionIdList,
+        TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool usePremiaAsCollateral
+        int24 tickLimitHigh
     ) internal {
-        // the new tokenId will be the last element in `positionIdList`
-        TokenId tokenId;
-        unchecked {
-            tokenId = positionIdList[positionIdList.length - 1];
-        }
-
-        // do duplicate checks and the checks related to minting and positions
-        _validatePositionList(msg.sender, positionIdList, 1);
-
-        // make sure the tokenId is for this Panoptic pool
-        if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
-            revert Errors.InvalidTokenIdParameter(0);
-
-        // disallow user to mint exact same position
-        // in order to do it, user should burn it first and then mint
-        if (PositionBalance.unwrap(s_positionBalance[msg.sender][tokenId]) != 0)
-            revert Errors.PositionAlreadyMinted();
-
         // Mint in the SFPM and update state of collateral
         (uint32 poolUtilizations, LeftRightUnsigned commissions) = _mintInSFPMAndUpdateCollateral(
             tokenId,
@@ -625,26 +589,6 @@ contract PanopticPool is Multicall {
         );
 
         uint96 tickData;
-        {
-            (
-                int24 currentTick,
-                int24 fastOracleTick,
-                int24 slowOracleTick,
-                int24 lastObservedTick,
-                uint256 medianData
-            ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
-
-            tickData = PositionBalanceLibrary.packTickData(
-                currentTick,
-                fastOracleTick,
-                slowOracleTick,
-                lastObservedTick
-            );
-
-            // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
-            if (medianData != 0) s_miniMedian = medianData;
-        }
-
         PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
@@ -654,16 +598,6 @@ contract PanopticPool is Multicall {
         // update the users options balance of position `tokenId`
         // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
         s_positionBalance[msg.sender][tokenId] = balanceData;
-
-        // Perform solvency check on user's account to ensure they had enough buying power to mint the option
-        // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        _checkSolvency(
-            msg.sender,
-            positionIdList,
-            tickData,
-            BP_DECREASE_BUFFER,
-            usePremiaAsCollateral
-        );
 
         emit OptionMinted(msg.sender, tokenId, balanceData, commissions);
     }
@@ -777,10 +711,12 @@ contract PanopticPool is Multicall {
     ) internal returns (LeftRightSigned netPaid, LeftRightSigned[4][] memory premiasByLeg) {
         premiasByLeg = new LeftRightSigned[4][](positionIdList.length);
         for (uint256 i = 0; i < positionIdList.length; ) {
+            uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
             LeftRightSigned paidAmounts;
             (paidAmounts, premiasByLeg[i]) = _burnOptions(
                 commitLongSettled,
                 positionIdList[i],
+                positionSize,
                 owner,
                 tickLimitLow,
                 tickLimitHigh
@@ -794,6 +730,7 @@ contract PanopticPool is Multicall {
 
     /// @notice Close a single option position.
     /// @param tokenId The option position to burn
+    /// @param positionSize The size of the position to burn
     /// @param owner The owner of the option position to be burned
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
@@ -803,21 +740,49 @@ contract PanopticPool is Multicall {
     function _burnOptions(
         bool commitLongSettled,
         TokenId tokenId,
+        uint128 positionSize,
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
-        uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
+            .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
-        // burn position and do exercise checks
-        (premiaByLeg, paidAmounts) = _burnAndHandleExercise(
-            commitLongSettled,
-            tickLimitLow,
-            tickLimitHigh,
+        LeftRightSigned realizedPremia;
+        (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
+            owner,
             tokenId,
+            collectedByLeg,
             positionSize,
-            owner
+            commitLongSettled
         );
+
+        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+            .computeExercisedAmounts(tokenId, positionSize);
+
+        {
+            int128 paid0 = s_collateralToken0.exercise(
+                owner,
+                longAmounts.rightSlot(),
+                shortAmounts.rightSlot(),
+                totalSwapped.rightSlot(),
+                realizedPremia.rightSlot()
+            );
+            paidAmounts = paidAmounts.toRightSlot(paid0);
+        }
+
+        {
+            int128 paid1 = s_collateralToken1.exercise(
+                owner,
+                longAmounts.leftSlot(),
+                shortAmounts.leftSlot(),
+                totalSwapped.leftSlot(),
+                realizedPremia.leftSlot()
+            );
+            paidAmounts = paidAmounts.toLeftSlot(paid1);
+        }
+
+        emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
 
         emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
     }
@@ -911,66 +876,6 @@ contract PanopticPool is Multicall {
             ASSERT_SOLVENCY,
             usePremiaAsCollateral
         );
-    }
-
-    /// @notice Burns and handles the exercise of options.
-    /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @param tokenId The option position to burn
-    /// @param positionSize The size of the option position, expressed in terms of the asset
-    /// @param owner The owner of the option position
-    /// @return premiaByLeg The premia settled by the user for each leg of the option position
-    /// @return paidAmounts The net amount of tokens paid after closing the position
-    function _burnAndHandleExercise(
-        bool commitLongSettled,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        TokenId tokenId,
-        uint128 positionSize,
-        address owner
-    ) internal returns (LeftRightSigned[4] memory premiaByLeg, LeftRightSigned paidAmounts) {
-        // if safeMode, enforce covered at assignment
-        if (isSafeMode()) {
-            if (tickLimitLow > tickLimitHigh) {
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-            }
-        }
-
-        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
-
-        LeftRightSigned realizedPremia;
-        (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
-            owner,
-            tokenId,
-            collectedByLeg,
-            positionSize,
-            commitLongSettled
-        );
-
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeExercisedAmounts(tokenId, positionSize);
-
-        paidAmounts = paidAmounts
-            .toRightSlot(
-                s_collateralToken0.exercise(
-                    owner,
-                    longAmounts.rightSlot(),
-                    shortAmounts.rightSlot(),
-                    totalSwapped.rightSlot(),
-                    realizedPremia.rightSlot()
-                )
-            )
-            .toLeftSlot(
-                s_collateralToken1.exercise(
-                    owner,
-                    longAmounts.leftSlot(),
-                    shortAmounts.leftSlot(),
-                    totalSwapped.leftSlot(),
-                    realizedPremia.leftSlot()
-                )
-            );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1156,17 +1061,18 @@ contract PanopticPool is Multicall {
                 Math.abs(lastObservedTick - fastOracleTick) > MAX_TICK_DELTA_SUBSTITUTION ||
                 Math.abs(lastObservedTick - slowOracleTick) > MAX_TICK_DELTA_SUBSTITUTION
             ) revert Errors.StaleOracle();
-        }
 
-        // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-        tokenId.validateIsExercisable(lastObservedTick);
+            // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
+            tokenId.validateIsExercisable(lastObservedTick);
+        }
 
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
 
         LeftRightSigned exerciseFees;
+        uint128 positionSize;
         {
-            uint128 positionSize = s_positionBalance[account][tokenId].positionSize();
+            positionSize = s_positionBalance[account][tokenId].positionSize();
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
@@ -1189,10 +1095,19 @@ contract PanopticPool is Multicall {
         ct0.delegate(account);
         ct1.delegate(account);
 
-        // Exercise the option
-        // Turn off ITM swapping to prevent swap at potentially unfavorable price
-        _burnOptions(COMMIT_LONG_SETTLED, tokenId, account, MIN_SWAP_TICK, MAX_SWAP_TICK);
-
+        {
+            address _account = account;
+            // Exercise the option
+            // Turn off ITM swapping to prevent swap at potentially unfavorable price
+            _burnOptions(
+                COMMIT_LONG_SETTLED,
+                tokenId,
+                positionSize,
+                _account,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK
+            );
+        }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
             account,
