@@ -241,7 +241,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // store the initial block and initialize the borrowIndex
         s_interestRateAccumulator = LeftRightUnsigned.wrap(0).toRightSlot(
-            uint128((block.number << 96) + uint96(1e18))
+            uint128((block.timestamp << 96) + uint96(1e18))
         );
 
         // Stores the addresses of the underlying tracked tokens.
@@ -702,19 +702,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // Get block delta
             LeftRightUnsigned accumulator = s_interestRateAccumulator;
 
-            // keep uint32 to allow for wrapping inside unchecked scope
-            uint32 currentBlock = uint32(block.number);
-            uint32 previousBlock = uint32(accumulator.rightSlot() >> 96);
-            uint128 deltaBlock = uint32(currentBlock - previousBlock);
+            // keep uint32 to allow for wrapping inside unchecked scope, works as long as the deltaTime is less than 2**32 seconds  = 136 years
+            uint256 currentTime = block.timestamp;
+            uint256 previousTime = accumulator.rightSlot() >> 96;
+            uint128 deltaTime = uint32(currentTime - previousTime);
 
             uint128 currentBorrowIndex = uint128(uint96(accumulator.rightSlot()));
             uint128 unrealizedGlobalInterest = accumulator.leftSlot();
             uint128 inAMM = s_inAMM;
             // only update global quantities if not in the same block
-            if (deltaBlock > 0) {
+            if (deltaTime > 0) {
                 // PROTOCOL
-                //  extract interest rate owed during that period
-                uint128 rawInterest = interestRate() * uint128(deltaBlock);
+                //  extract interest rate owed during that period using: rawInterest = (exp(-interest * ∆t) - 1)
+                uint128 rawInterest = interestRate() * uint128(deltaTime);
                 uint128 interestOwed = Math
                     .mulDivWadRoundingUp(inAMM + unrealizedGlobalInterest, rawInterest)
                     .toUint128();
@@ -757,13 +757,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_interestRateAccumulator = LeftRightUnsigned
                 .wrap(0)
                 .toLeftSlot(unrealizedGlobalInterest)
-                .toRightSlot(uint128((currentBlock << 96) + uint96(currentBorrowIndex)));
+                .toRightSlot(uint128((currentTime << 96) + uint96(currentBorrowIndex)));
         }
     }
 
+    /// @notice returns the interest rate per second
     function interestRate() public view returns (uint128) {
         uint256 utilization = _poolUtilization();
-        return utilization == 0 ? uint128(0) : uint128(76103500761); // 0.2 * 10**18/(365*24*60*5) = 20% per year;
+        return utilization == 0 ? uint128(0) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     function _getUserInterest(
