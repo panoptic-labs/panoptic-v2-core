@@ -279,6 +279,15 @@ library PanopticMath {
                         (tickCumulative_last - tickCumulative_old) /
                             int256(timestamp_last - timestamp_old)
                     );
+
+                    // Clamp lastObservedTick to be within MAX_MEDIAN_DELTA of lastTick
+                    int24 lastTick = int24(uint24(medianData));
+                    int24 maxDelta = Constants.MAX_MEDIAN_DELTA;
+                    if (lastObservedTick > lastTick + maxDelta) {
+                        lastObservedTick = lastTick + maxDelta;
+                    } else if (lastObservedTick < lastTick - maxDelta) {
+                        lastObservedTick = lastTick - maxDelta;
+                    }
                 }
 
                 uint24 orderMap = uint24(medianData >> 192);

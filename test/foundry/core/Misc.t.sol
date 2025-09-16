@@ -230,7 +230,7 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -887270, 887270, 10 ** 18);
 
-        swapperc.swapTo(uniPool, 10 ** 17 * 2 ** 96);
+        swapperc.swapTo(uniPool, 2 ** 96 + 2 ** 88);
 
         swapperc.burn(uniPool, -887270, 887270, 10 ** 18);
 
@@ -3468,7 +3468,6 @@ contract Misctest is Test, PositionUtils {
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
-
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
         assertTrue(pp.isSafeMode() == false, "not in safe mode");
 
@@ -4021,6 +4020,7 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
+        (currentTick, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
@@ -4078,6 +4078,43 @@ contract Misctest is Test, PositionUtils {
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update here?");
         assertTrue(medianData != medianDataStale, "oracle median data updated here?");
+    }
+
+    function test_Success_OraclePoke_Max_Deviation() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+
+        (currentTick, , , , medianData) = pp.getOracleTicks();
+
+        // swap to more than MAX_MEDIAN_DELTA ticks away
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-Constants.MAX_MEDIAN_DELTA - 10));
+        swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
+        vm.warp(block.timestamp + 120);
+        vm.roll(block.number + 1);
+        swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
+        pp.pokeMedian();
+
+        (int24 currentTickNew, , int24 slowOracleTickNew, , uint256 medianDataNew) = pp
+            .getOracleTicks();
+
+        assertEq(
+            int24(uint24(medianData)) - Constants.MAX_MEDIAN_DELTA,
+            int24(uint24(medianDataNew)),
+            "uncapped slow oracle update"
+        );
     }
 
     function test_success_NotionalRounding() public {
