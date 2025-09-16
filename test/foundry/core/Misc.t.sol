@@ -4014,6 +4014,72 @@ contract Misctest is Test, PositionUtils {
         assertTrue(medianData != medianDataStale, "oracle median data updated");
     }
 
+    function test_Success_OraclePoke_loop() public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+
+        // setup mini-median price array
+        for (uint256 i = 0; i < 10; ++i) {
+            swapperc.mint(uniPool, -10, 10, 10 ** 18);
+            vm.warp(block.timestamp + 120);
+            vm.roll(block.number + 1);
+            pp.pokeMedian();
+            swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        }
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        vm.warp(2 ** 28 - 1);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
+
+        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
+
+        // mint OTM position
+        $posIdList.push(
+            TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+                .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
+        );
+
+        swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
+
+        vm.startPrank(Alice);
+
+        pp.mintOptions(
+            $posIdList,
+            500_000,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
+        assertEq(medianData, medianDataStale, "no slow oracle update");
+
+        vm.warp(block.timestamp + 2);
+        vm.roll(block.number + 1);
+
+        pp.burnOptions(
+            $posIdList[0],
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update here?");
+        assertTrue(medianData != medianDataStale, "oracle median data updated here?");
+    }
+
     function test_success_NotionalRounding() public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);

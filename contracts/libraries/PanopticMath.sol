@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -264,8 +263,8 @@ library PanopticMath {
 
             uint256 currentEpoch = (block.timestamp >> 6) % 2 ** 22;
             uint256 recordedEpoch = medianData >> 234;
-            // only proceed if last entry is in a bigger epoch (TODO: check looping)
-            if (currentEpoch > recordedEpoch) {
+            // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
+            if (currentEpoch != recordedEpoch) {
                 int24 lastObservedTick;
                 {
                     (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
