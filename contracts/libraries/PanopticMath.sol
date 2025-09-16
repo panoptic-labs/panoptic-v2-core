@@ -190,7 +190,6 @@ library PanopticMath {
             (slowOracleTick, medianData) = computeInternalMedian(
                 observationIndex,
                 observationCardinality,
-                Constants.MEDIAN_PERIOD,
                 miniMedian,
                 _univ3pool
             );
@@ -249,7 +248,6 @@ library PanopticMath {
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
     /// @param observationIndex The index of the last observation in the Uniswap pool
     /// @param observationCardinality The number of observations in the Uniswap pool
-    /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
     /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
     /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
@@ -257,7 +255,6 @@ library PanopticMath {
     function computeInternalMedian(
         uint256 observationIndex,
         uint256 observationCardinality,
-        uint256 period,
         uint256 medianData,
         IUniswapV3Pool univ3pool
     ) public view returns (int24 medianTick, uint256 updatedMedianData) {
@@ -265,8 +262,10 @@ library PanopticMath {
             // return the average of the rank 3 and 4 values
             medianTick = getMedianTick(medianData);
 
-            // only proceed if last entry is at least MEDIAN_PERIOD seconds old
-            if (block.timestamp >= uint256(uint40(medianData >> 216)) + period) {
+            uint256 currentEpoch = (block.timestamp >> 6) % 2 ** 22;
+            uint256 recordedEpoch = medianData >> 234;
+            // only proceed if last entry is in a bigger epoch (TODO: check looping)
+            if (currentEpoch > recordedEpoch) {
                 int24 lastObservedTick;
                 {
                     (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
@@ -310,7 +309,7 @@ library PanopticMath {
                 }
 
                 updatedMedianData =
-                    (block.timestamp << 216) +
+                    (currentEpoch << 234) +
                     (uint256(newOrderMap) << 192) +
                     uint256(uint192(medianData << 24)) +
                     uint256(uint24(lastObservedTick));

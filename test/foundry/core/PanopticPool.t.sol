@@ -2720,7 +2720,6 @@ contract PanopticPoolTest is PositionUtils {
             (slowOracleTick, ) = PanopticMath.computeInternalMedian(
                 observationIndex,
                 observationCardinality,
-                60,
                 pp.miniMedian(),
                 pool
             );
@@ -2876,7 +2875,6 @@ contract PanopticPoolTest is PositionUtils {
         (slowOracleTick, ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
-            60,
             pp.miniMedian(),
             pool
         );
@@ -3030,7 +3028,6 @@ contract PanopticPoolTest is PositionUtils {
         (slowOracleTick, ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
-            60,
             pp.miniMedian(),
             pool
         );
@@ -3253,7 +3250,6 @@ contract PanopticPoolTest is PositionUtils {
         (slowOracleTick, ) = PanopticMath.computeInternalMedian(
             observationIndex,
             observationCardinality,
-            60,
             pp.miniMedian(),
             pool
         );

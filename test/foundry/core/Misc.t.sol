@@ -3833,6 +3833,11 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        vm.warp((block.timestamp >> 6) * 64 + 128);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
         (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
@@ -3843,10 +3848,9 @@ contract Misctest is Test, PositionUtils {
                 .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
                 .addLeg(0, 1, 1, 0, 0, 0, 15, 4095)
         );
-
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        vm.warp(block.timestamp + 59);
+        vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
 
         vm.startPrank(Alice);
@@ -3867,8 +3871,8 @@ contract Misctest is Test, PositionUtils {
 
         (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
 
-        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(medianData, medianDataStale, "no slow oracle update");
+        assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update 1");
+        assertEq(medianData, medianDataStale, "no slow oracle update 2");
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
@@ -3883,10 +3887,10 @@ contract Misctest is Test, PositionUtils {
 
         (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
 
-        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update 3");
+        assertTrue(medianData != medianDataStale, "oracle median data update 4");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
@@ -3895,7 +3899,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
@@ -3904,7 +3908,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data update");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
@@ -3931,6 +3935,11 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
+        vm.warp((block.timestamp >> 6) * 64 + 128);
+        vm.roll(block.number + 1);
+        pp.pokeMedian();
+        swapperc.burn(uniPool, -10, 10, 10 ** 18);
+        swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
         (, , slowOracleTick, , medianData) = pp.getOracleTicks();
 
@@ -3944,7 +3953,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        vm.warp(block.timestamp + 59);
+        vm.warp(block.timestamp + 63);
         vm.roll(block.number + 1);
 
         vm.startPrank(Alice);
@@ -3977,7 +3986,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
@@ -3986,7 +3995,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
@@ -3995,7 +4004,7 @@ contract Misctest is Test, PositionUtils {
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
         assertTrue(medianData != medianDataStale, "oracle median data updated");
 
-        vm.warp(block.timestamp + 61);
+        vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
