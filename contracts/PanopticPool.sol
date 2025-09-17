@@ -962,11 +962,11 @@ contract PanopticPool is Multicall {
 
             // if account is insolvent at all ticks, this is a liquidation
             if (solvent == 0) {
-                path = 2;
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
+                path = 2;
+            } else {
+                revert Errors.NotMarginCalled();
             }
-
-            revert Errors.NotMarginCalled();
         }
 
         if (path == 2) {
