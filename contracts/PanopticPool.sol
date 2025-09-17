@@ -533,6 +533,7 @@ contract PanopticPool is Multicall {
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
+                    msg.sender,
                     tickLimitLow,
                     tickLimitHigh
                 );
@@ -545,6 +546,9 @@ contract PanopticPool is Multicall {
                     tickLimitLow,
                     tickLimitHigh
                 );
+            }
+            unchecked {
+                ++i;
             }
         }
 
@@ -570,63 +574,18 @@ contract PanopticPool is Multicall {
     /// @param positionSize The size of the position to be minted, expressed in terms of the asset
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
+    /// @param owner The owner of the option position to be minted
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
+        address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
     ) internal {
         // Mint in the SFPM and update state of collateral
-        (uint32 poolUtilizations, LeftRightUnsigned commissions) = _mintInSFPMAndUpdateCollateral(
-            tokenId,
-            positionSize,
-            effectiveLiquidityLimitX32,
-            tickLimitLow,
-            tickLimitHigh
-        );
-
-        uint96 tickData;
-        PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
-            positionSize,
-            poolUtilizations,
-            tickData
-        );
-
-        // update the users options balance of position `tokenId`
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        s_positionBalance[msg.sender][tokenId] = balanceData;
-
-        emit OptionMinted(msg.sender, tokenId, balanceData, commissions);
-    }
-
-    /// @notice Move all the required liquidity to/from the AMM and settle any required collateral deltas.
-    /// @param tokenId The option position to be minted
-    /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
-    /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
-    /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens
-    /// @return commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
-    function _mintInSFPMAndUpdateCollateral(
-        TokenId tokenId,
-        uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
-    ) internal returns (uint32 poolUtilizations, LeftRightUnsigned commissions) {
-        bool safeMode = isSafeMode();
-
-        // if safeMode, enforce covered deployment
-        if (safeMode) {
-            if (tickLimitLow > tickLimitHigh) {
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-            }
-        }
-
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
@@ -634,22 +593,36 @@ contract PanopticPool is Multicall {
             tokenId,
             collectedByLeg,
             positionSize,
-            effectiveLiquidityLimitX32
+            effectiveLiquidityLimitX32,
+            owner
         );
 
-        (poolUtilizations, commissions) = _payCommissionAndWriteData(
+        (uint32 poolUtilizations, LeftRightUnsigned commissions) = _payCommissionAndWriteData(
             tokenId,
             positionSize,
+            owner,
             totalSwapped,
             tickLimitLow < tickLimitHigh
         );
 
-        if (safeMode) poolUtilizations = uint32(10_000 + (10_000 << 16));
+        if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
+
+        uint96 tickData;
+        // update the users options balance of position `tokenId`
+        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+        s_positionBalance[owner][tokenId] = PositionBalanceLibrary.storeBalanceData(
+            positionSize,
+            poolUtilizations,
+            tickData
+        );
+
+        emit OptionMinted(owner, tokenId, balanceData, commissions);
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
     /// @param tokenId The option position
     /// @param positionSize The size of the position, expressed in terms of the asset
+    /// @param owner The owner of the option position to be minted
     /// @param totalSwapped The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
@@ -659,6 +632,7 @@ contract PanopticPool is Multicall {
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
+        address owner,
         LeftRightSigned totalSwapped,
         bool isCovered
     ) internal returns (uint32, LeftRightUnsigned) {
@@ -667,14 +641,14 @@ contract PanopticPool is Multicall {
             .computeExercisedAmounts(tokenId, positionSize);
 
         (uint32 utilization0, uint128 commission0) = s_collateralToken0.takeCommissionAddData(
-            msg.sender,
+            owner,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot(),
             isCovered
         );
         (uint32 utilization1, uint128 commission1) = s_collateralToken1.takeCommissionAddData(
-            msg.sender,
+            owner,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
             totalSwapped.leftSlot(),
@@ -781,8 +755,6 @@ contract PanopticPool is Multicall {
             );
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
-
-        emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
 
         emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
     }
@@ -962,11 +934,11 @@ contract PanopticPool is Multicall {
 
             // if account is insolvent at all ticks, this is a liquidation
             if (solvent == 0) {
-                path = 2;
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
+                path = 2;
+            } else {
+                revert Errors.NotMarginCalled();
             }
-
-            revert Errors.NotMarginCalled();
         }
 
         if (path == 2) {
@@ -1655,18 +1627,20 @@ contract PanopticPool is Multicall {
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
+    /// @param owner The owner of the option position to be minted
     function _updateSettlementPostMint(
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32
+        uint64 effectiveLiquidityLimitX32,
+        address owner
     ) internal {
         // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))
         // and increase the number of positions counter by 1.
-        _updatePositionsHash(msg.sender, tokenId, ADD);
+        _updatePositionsHash(owner, tokenId, ADD);
 
         uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ++leg) {
+        for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
 
             bytes32 chunkKey = keccak256(
@@ -1697,7 +1671,7 @@ contract PanopticPool is Multicall {
                     isLong
                 );
 
-                s_options[msg.sender][tokenId][leg] = LeftRightUnsigned
+                s_options[owner][tokenId][leg] = LeftRightUnsigned
                     .wrap(uint128(grossCurrent0))
                     .toLeftSlot(uint128(grossCurrent1));
             }
@@ -1755,6 +1729,10 @@ contract PanopticPool is Multicall {
                             )
                         );
                 }
+            }
+
+            unchecked {
+                ++leg;
             }
         }
     }
