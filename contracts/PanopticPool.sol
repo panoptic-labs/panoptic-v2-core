@@ -610,11 +610,13 @@ contract PanopticPool is Multicall {
         uint96 tickData;
         // update the users options balance of position `tokenId`
         // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        s_positionBalance[owner][tokenId] = PositionBalanceLibrary.storeBalanceData(
+        PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
             tickData
         );
+
+        s_positionBalance[owner][tokenId] = balanceData;
 
         emit OptionMinted(owner, tokenId, balanceData, commissions);
     }
