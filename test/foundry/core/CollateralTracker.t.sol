@@ -359,12 +359,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
     uint128 positionSize1;
     TokenId[] positionIdList1;
     TokenId[] positionIdList;
-    TokenId[] positionIdListFinal;
     TokenId tokenId;
     TokenId tokenId1;
-
-    uint128[] sizeList;
-    uint64[] spreadList;
 
     // Positional details
     int24 width;
@@ -860,18 +856,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
-
-        sizeList.push(uint128(bound(positionSizeSeed, 501, 1000)));
-        spreadList.push(0);
 
         vm.expectRevert(Errors.CastingError.selector);
-        //mint
-        panopticPool.dispatch(
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            uint128(bound(positionSizeSeed, 501, 1000)),
+            0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -904,35 +894,23 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
 
-        sizeList.push(750);
-        spreadList.push(0);
-        //mint
-        panopticPool.dispatch(
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            750,
+            0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
-        positionIdList.pop();
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
-        sizeList.pop();
-        sizeList.push(750);
-        spreadList.pop();
-        spreadList.push(type(uint64).max);
-        //mint
-        panopticPool.dispatch(
+
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            500,
+            type(uint64).max,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -941,19 +919,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.setPoolAssets(collateralToken0._availableAssets() - 300);
 
         positionIdList.pop();
-        positionIdList.push(tokenId);
-        positionIdListFinal.pop();
-
-        sizeList.pop();
-        spreadList.pop();
 
         vm.expectRevert(Errors.CastingError.selector);
-        //burn
-        panopticPool.dispatch(
+        panopticPool.burnOptions(
+            tokenId,
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -986,38 +956,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
-        sizeList.push(750);
-        spreadList.push(type(uint24).max);
 
-        //mint
-        panopticPool.dispatch(
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            750,
+            0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
-        positionIdList.pop();
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
 
         collateralToken0.setInAMM(-300);
 
-        sizeList.pop();
-        sizeList.push(500);
-
         vm.expectRevert(Errors.CastingError.selector);
-        //burn
-        panopticPool.dispatch(
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            500,
+            type(uint64).max,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -1050,15 +1008,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
-        sizeList.push(750);
-        spreadList.push(type(uint64).max);
-        //mint
-        panopticPool.dispatch(
+
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            750,
+            0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -1066,15 +1020,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         collateralToken0.setInAMM(-250);
 
-        positionIdListFinal.pop();
+        positionIdList.pop();
 
         vm.expectRevert(Errors.CastingError.selector);
-        //burn
-        panopticPool.dispatch(
+        panopticPool.burnOptions(
+            tokenId,
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -1401,7 +1352,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // sell as Bob
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
-        positionIdListFinal.push(tokenId);
 
         /// calculate position size
         (legLowerTick, legUpperTick) = tokenId.asTicks(0);
@@ -1409,14 +1359,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
         _assumePositionValidity(Bob, tokenId, positionSize0);
 
-        sizeList.push(positionSize0);
-        spreadList.push(type(uint64).max);
-        //mint
-        panopticPool.dispatch(
+        panopticPool.mintOptions(
             positionIdList,
-            positionIdListFinal,
-            sizeList,
-            spreadList,
+            positionSize0,
+            0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
@@ -1502,19 +1448,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // sell as Bob
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
-            sizeList.push(positionSize0);
-            spreadList.push(0);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                0,
                 Constants.MAX_V3POOL_TICK,
                 Constants.MIN_V3POOL_TICK,
                 true
@@ -1955,7 +1896,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             /// calculate position size
             (legLowerTick, legUpperTick) = tokenId.asTicks(0);
@@ -1963,14 +1903,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -1998,14 +1934,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2020,12 +1952,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint64 targetUtilization = uint64(bound(utilizationSeed, 1, 9_999));
             setUtilization(collateralToken0, token1, int64(targetUtilization), inAMMOffset, false);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2167,19 +2097,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2205,14 +2130,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2375,11 +2297,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -2390,12 +2309,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2420,16 +2337,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 0, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
-            sizeList.push(positionSize0 / 4);
-            spreadList.push(type(uint64).max);
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 4,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2593,12 +2506,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, width);
             tokenId = tokenId.addLeg(1, 1, 1, 0, 1, 1, strike1, width1);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             /// calculate position
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 64));
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -2609,12 +2519,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2639,16 +2547,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId1 = tokenId1.addLeg(1, 1, 1, 0, 1, 0, strike1, width1);
             positionIdList1.push(tokenId1);
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(type(uint64).max);
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2826,7 +2730,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             positionSizeSeed = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             positionSize0 = uint128(
@@ -2849,14 +2752,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -2891,14 +2790,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3076,7 +2972,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             tokenId = tokenId.addLeg(1, 1, isWETH, 0, 0, 1, strike1, width1);
             positionIdList.push(tokenId);
-            positionIdListFinal.push(tokenId);
 
             positionSizeSeed = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             positionSize0 = uint128(
@@ -3106,14 +3001,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdListFinal,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3148,15 +3039,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
-
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3326,14 +3212,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3361,14 +3243,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMBefore = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3383,14 +3261,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 1, 4_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, true);
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3573,14 +3447,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3608,14 +3478,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMBefore = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3630,14 +3496,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 5_000, 9_000));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, true);
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3806,14 +3668,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3841,14 +3699,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMBefore = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -3863,15 +3717,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 9_001, 9_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, true);
 
-            sizeList.push(positionSize0 / 2);
-            spreadList.push(0);
-
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 2,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4048,14 +3897,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4074,14 +3919,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 false
             );
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4238,14 +4079,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4264,14 +4101,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 false
             );
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4451,14 +4284,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4471,13 +4300,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 9_001, 9_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, false);
 
-            //mint
-            sizeList.push(positionSize0);
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4652,14 +4478,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken1._inAMM();
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4671,15 +4493,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             // take into account the offsets as states are updated before utilization is checked for the mint
             targetUtilization = uint64(bound(utilizationSeed, 9_001, 9_999));
             setUtilization(collateralToken1, token1, int64(targetUtilization), inAMMOffset, false);
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4851,14 +4669,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -4871,14 +4685,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 5_000, 8_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, false);
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5035,15 +4845,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 snapshot = vm.snapshot();
 
             uint256 inAMMOffset = collateralToken1._inAMM();
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5056,14 +4862,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 5_000, 8_999));
             setUtilization(collateralToken1, token1, int64(targetUtilization), inAMMOffset, false);
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5231,15 +5033,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
-
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5423,16 +5220,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-
-            spreadList.push(type(uint64).max);
-
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5458,14 +5249,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            sizeList.push(positionSize0 / 4);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 4,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5562,15 +5349,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 8, 2 ** 32));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5604,15 +5387,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
-            sizeList.push(positionSize0 / 4);
-            spreadList.push(type(uint64).max);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 4,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5709,15 +5488,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 8, 2 ** 32));
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
-            sizeList.push(positionSize0);
-            spreadList.push(type(uint64).max);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5752,14 +5527,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            sizeList.push(positionSize0 / 4);
-            spreadList.push(type(uint64).max);
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 4,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5857,16 +5628,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            sizeList.push(positionSize0);
-
-            spreadList.push(type(uint64).max);
-
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList,
-                positionIdList,
-                sizeList,
-                spreadList,
+                positionSize0,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
@@ -5900,15 +5665,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
-            sizeList.push(positionSize0 / 4);
-            spreadList.push(type(uint64).max);
 
-            //mint
-            panopticPool.dispatch(
+            panopticPool.mintOptions(
                 positionIdList1,
-                positionIdList1,
-                sizeList,
-                spreadList,
+                positionSize0 / 4,
+                type(uint64).max,
                 TickMath.MIN_TICK,
                 TickMath.MAX_TICK,
                 true
