@@ -189,6 +189,82 @@ contract PanopticPoolHarness is PanopticPool {
     ) external view returns (PositionBalance balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
     }
+
+    function mintOptions(
+        TokenId[] memory positionIdList,
+        uint128 positionSize,
+        uint64 effectiveLiquidityLimitX32,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+
+        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        sizeList[0] = positionSize;
+        spreadList[0] = effectiveLiquidityLimitX32;
+        mintList[0] = tokenId;
+        this.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function burnOptions(
+        TokenId tokenId,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory burnList = new TokenId[](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+        burnList[0] = tokenId;
+        this.dispatch(
+            burnList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function burnOptions(
+        TokenId[] memory tokenIds,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+
+        this.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
@@ -357,6 +433,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     uint128 positionSize0;
     uint128 positionSize1;
+    uint128[] sizeList;
+    uint64[] spreadList;
+    TokenId[] mintList;
     TokenId[] positionIdList1;
     TokenId[] positionIdList;
     TokenId tokenId;

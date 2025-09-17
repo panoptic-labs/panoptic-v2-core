@@ -121,6 +121,146 @@ contract SwapperC {
     }
 }
 
+// Inherits all of PanopticPool's functionality and adds legacy mint/burn/liquidate/forceExercise/settle access
+contract PanopticPoolHarness is PanopticPool {
+    constructor(SemiFungiblePositionManager _SFPM) PanopticPool(_SFPM) {}
+
+    function mintOptions(
+        TokenId[] memory positionIdList,
+        uint128 positionSize,
+        uint64 effectiveLiquidityLimitX32,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+
+        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        sizeList[0] = positionSize;
+        spreadList[0] = effectiveLiquidityLimitX32;
+        mintList[0] = tokenId;
+        this.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function burnOptions(
+        TokenId tokenId,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory burnList = new TokenId[](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+        burnList[0] = tokenId;
+        this.dispatch(
+            burnList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function burnOptions(
+        TokenId[] memory tokenIds,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+
+        this.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function liquidate(
+        TokenId[] memory liquidatorList,
+        address liquidatee,
+        TokenId[] memory positionIdList
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        this.dispatchFrom(
+            liquidatorList,
+            liquidatee,
+            positionIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+        );
+    }
+
+    function forceExercise(
+        address exercisee,
+        TokenId tokenId,
+        TokenId[] memory exerciseeList,
+        TokenId[] memory exercisorList,
+        LeftRightUnsigned premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        TokenId[] memory targetList = new TokenId[](1);
+
+        this.dispatchFrom(
+            exercisorList,
+            exercisee,
+            targetList,
+            exerciseeList,
+            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+        );
+    }
+
+    function settleLongPremium(
+        TokenId[] memory settlerList,
+        TokenId[] memory settleeList,
+        address exercisee,
+        uint256 legIndex,
+        bool premiaAsCollateral
+    ) external {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        TokenId[] memory targetList = new TokenId[](1);
+
+        this.dispatchFrom(
+            settlerList,
+            exercisee,
+            targetList,
+            settleeList,
+            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+        );
+    }
+}
+
 // mostly just fixed one-off tests/PoC
 contract Misctest is Test, PositionUtils {
     // the instance of SFPM we are testing
@@ -138,7 +278,7 @@ contract Misctest is Test, PositionUtils {
     ISwapRouter router = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
     PanopticFactory factory;
-    PanopticPool pp;
+    PanopticPoolHarness pp;
     CollateralTracker ct0;
     CollateralTracker ct1;
     PanopticHelper ph;
@@ -200,7 +340,7 @@ contract Misctest is Test, PositionUtils {
         ph = new PanopticHelper(sfpm);
 
         // deploy reference pool and collateral token
-        poolReference = address(new PanopticPool(sfpm));
+        poolReference = address(new PanopticPoolHarness(sfpm));
         collateralReference = address(
             new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000)
         );
@@ -330,7 +470,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(factory), type(uint104).max);
         token1.approve(address(factory), type(uint104).max);
 
-        pp = PanopticPool(
+        pp = PanopticPoolHarness(
             address(
                 factory.deployNewPool(
                     address(token0),
@@ -1708,9 +1848,10 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
+        $posIdLists[0].push($posIdList[0]);
         vm.startPrank(Alice);
         pp.mintOptions(
-            $posIdList,
+            $posIdLists[0],
             2_000_000,
             0,
             Constants.MIN_V3POOL_TICK,
@@ -1771,10 +1912,10 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Alice);
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
-        pp.settleLongPremium($posIdList, Bob, 0, false);
+        pp.settleLongPremium($posIdLists[0], $posIdList, Bob, 0, false);
 
         uint256 snap = vm.snapshotState();
-        pp.settleLongPremium($posIdList, Bob, 0, true);
+        pp.settleLongPremium($posIdLists[0], $posIdList, Bob, 0, true);
 
         vm.revertToState(snap);
 
@@ -2786,7 +2927,7 @@ contract Misctest is Test, PositionUtils {
 
         // collect buyer 1's three relevant chunks
         for (uint256 i = 0; i < 3; ++i) {
-            pp.settleLongPremium(collateralIdLists[i], Buyers[0], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[i], Buyers[0], 0, true);
         }
 
         assertEq(
@@ -2855,9 +2996,9 @@ contract Misctest is Test, PositionUtils {
         // now, settle the dummy chunks for all the buyers/positions and see that the settled ratio for primary doesn't change
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 1, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
 
-            pp.settleLongPremium(collateralIdLists[3], Buyers[i], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -2930,9 +3071,9 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 1, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[1], Buyers[i], 1, true);
 
-            pp.settleLongPremium(collateralIdLists[3], Buyers[i], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[3], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -2980,11 +3121,11 @@ contract Misctest is Test, PositionUtils {
         assetsBefore1Arr[2] = ct1.convertToAssets(ct1.balanceOf(Buyers[2]));
 
         for (uint256 i = 0; i < Buyers.length; ++i) {
-            pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
 
-            pp.settleLongPremium(collateralIdLists[1], Buyers[i], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[1], Buyers[i], 0, true);
 
-            pp.settleLongPremium(collateralIdLists[2], Buyers[i], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[2], Buyers[i], 0, true);
         }
 
         assertEq(
@@ -3050,7 +3191,7 @@ contract Misctest is Test, PositionUtils {
 
         // test long leg validation
         vm.expectRevert(Errors.NotALongLeg.selector);
-        pp.settleLongPremium(collateralIdLists[2], Buyers[0], 1, true);
+        pp.settleLongPremium(new TokenId[](0), collateralIdLists[2], Buyers[0], 1, true);
 
         // test positionIdList validation
         // snapshot so we don't have to reset changes to collateralIdLists array
@@ -3058,7 +3199,7 @@ contract Misctest is Test, PositionUtils {
 
         collateralIdLists[0].pop();
         vm.expectRevert(Errors.InputListFail.selector);
-        pp.settleLongPremium(collateralIdLists[0], Buyers[0], 0, true);
+        pp.settleLongPremium(new TokenId[](0), collateralIdLists[0], Buyers[0], 0, true);
         vm.revertTo(snap);
 
         // test collateral checking (basic)
@@ -3069,7 +3210,7 @@ contract Misctest is Test, PositionUtils {
             deal(address(ct0), Buyers[i], i ** 15);
             deal(address(ct1), Buyers[i], i ** 15);
             vm.expectRevert(Errors.AccountInsolvent.selector);
-            pp.settleLongPremium(collateralIdLists[0], Buyers[i], 0, true);
+            pp.settleLongPremium(new TokenId[](0), collateralIdLists[0], Buyers[i], 0, true);
             vm.revertTo(snap);
         }
 
@@ -3186,7 +3327,7 @@ contract Misctest is Test, PositionUtils {
         uint256 settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[0]));
         uint256 settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[0]));
 
-        pp.settleLongPremium($posIdLists[1], Buyers[0], 0, true);
+        pp.settleLongPremium($posIdLists[0], $posIdLists[1], Buyers[0], 0, true);
 
         int256 balanceDelta0 = int256(ct0.convertToAssets(ct0.balanceOf(Buyers[0]))) -
             int256(settleeBalanceBefore0);
@@ -3218,7 +3359,7 @@ contract Misctest is Test, PositionUtils {
         settleeBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Buyers[1]));
         settleeBalanceBefore1 = ct1.convertToAssets(ct1.balanceOf(Buyers[1]));
 
-        pp.settleLongPremium($posIdLists[1], Buyers[1], 0, true);
+        pp.settleLongPremium($posIdLists[0], $posIdLists[1], Buyers[1], 0, true);
 
         balanceDelta0 =
             int256(ct0.convertToAssets(ct0.balanceOf(Buyers[1]))) -
@@ -3248,7 +3389,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct1, Buyers[2], 0);
 
         vm.expectRevert(stdError.arithmeticError);
-        pp.settleLongPremium($posIdLists[1], Buyers[2], 0, true);
+        pp.settleLongPremium($posIdLists[0], $posIdLists[1], Buyers[2], 0, true);
     }
 
     function test_success_settledPremiumDistribution() public {
@@ -4572,6 +4713,7 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 59);
         vm.roll(block.number + 1);
 
+        console2.log("safe", pp.isSafeMode());
         vm.startPrank(Alice);
 
         pp.mintOptions(
