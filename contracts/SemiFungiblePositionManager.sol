@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -867,10 +866,20 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 int128 signMultiplier = isBurn ? -int128(1) : int128(1);
                 totalMoved = totalMoved.add(
                     tokenId.tokenType(leg) == 0
-                        ? LeftRightSigned.wrap(0).toLeftSlot(
+                        ? LeftRightSigned.wrap(0).toRightSlot(
                             signMultiplier * int128(amountsMoved.rightSlot())
                         )
-                        : LeftRightSigned.wrap(0).toRightSlot(
+                        : LeftRightSigned.wrap(0).toLeftSlot(
+                            signMultiplier * int128(amountsMoved.leftSlot())
+                        )
+                );
+
+                itmAmounts = itmAmounts.add(
+                    tokenId.tokenType(leg) == 0
+                        ? LeftRightSigned.wrap(0).toRightSlot(
+                            signMultiplier * int128(amountsMoved.rightSlot())
+                        )
+                        : LeftRightSigned.wrap(0).toLeftSlot(
                             signMultiplier * int128(amountsMoved.leftSlot())
                         )
                 );
