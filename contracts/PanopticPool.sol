@@ -546,6 +546,9 @@ contract PanopticPool is Multicall {
                     tickLimitHigh
                 );
             }
+            unchecked {
+                ++i;
+            }
         }
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
@@ -1666,7 +1669,7 @@ contract PanopticPool is Multicall {
         _updatePositionsHash(msg.sender, tokenId, ADD);
 
         uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ++leg) {
+        for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
 
             bytes32 chunkKey = keccak256(
@@ -1755,6 +1758,10 @@ contract PanopticPool is Multicall {
                             )
                         );
                 }
+            }
+
+            unchecked {
+                ++leg;
             }
         }
     }
