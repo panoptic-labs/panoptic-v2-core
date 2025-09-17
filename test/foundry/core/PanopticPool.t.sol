@@ -5500,28 +5500,29 @@ contract PanopticPoolTest is PositionUtils {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        {
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
 
-        sizeList[0] = positionSize;
-        spreadList[0] = type(uint64).max;
-        try
-            pp.dispatch(
-                posIdList,
-                posIdList,
-                sizeList,
-                spreadList,
-                Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK,
-                true
-            )
-        {} catch (bytes memory reason) {
-            if (bytes4(reason) == Errors.TransferFailed.selector) {
-                vm.assume(false);
+            sizeList[0] = positionSize;
+            spreadList[0] = type(uint64).max;
+            try
+                pp.dispatch(
+                    posIdList,
+                    posIdList,
+                    sizeList,
+                    spreadList,
+                    Constants.MAX_V3POOL_TICK,
+                    Constants.MIN_V3POOL_TICK,
+                    true
+                )
+            {} catch (bytes memory reason) {
+                if (bytes4(reason) == Errors.TransferFailed.selector) {
+                    vm.assume(false);
+                }
+                revert();
             }
-            revert();
         }
-
         lastCollateralBalance0[Alice] = ct0.convertToAssets(ct0.balanceOf(Alice));
         lastCollateralBalance1[Alice] = ct1.convertToAssets(ct1.balanceOf(Alice));
 
@@ -5529,12 +5530,11 @@ contract PanopticPoolTest is PositionUtils {
 
         oneWaySwap(swapSizeSeed, swapDirection);
 
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        //(currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         updatePositionDataVariable(numLegs, isLongs);
 
         updateITMAmountsBurn(numLegs, tokenTypes);
-
         updateIntrinsicValueBurn(longAmounts, shortAmounts);
 
         ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
