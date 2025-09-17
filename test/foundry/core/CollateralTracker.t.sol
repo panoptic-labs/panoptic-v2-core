@@ -189,82 +189,6 @@ contract PanopticPoolHarness is PanopticPool {
     ) external view returns (PositionBalance balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
     }
-
-    function mintOptions(
-        TokenId[] memory positionIdList,
-        uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool premiaAsCollateral
-    ) external {
-        uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
-        TokenId[] memory mintList = new TokenId[](1);
-
-        TokenId tokenId = positionIdList[positionIdList.length - 1];
-        sizeList[0] = positionSize;
-        spreadList[0] = effectiveLiquidityLimitX32;
-        mintList[0] = tokenId;
-        this.dispatch(
-            mintList,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimitLow,
-            tickLimitHigh,
-            premiaAsCollateral
-        );
-    }
-
-    function burnOptions(
-        TokenId tokenId,
-        TokenId[] memory positionIdList,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool premiaAsCollateral
-    ) external {
-        uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
-        TokenId[] memory burnList = new TokenId[](1);
-
-        sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
-        burnList[0] = tokenId;
-        this.dispatch(
-            burnList,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimitLow,
-            tickLimitHigh,
-            premiaAsCollateral
-        );
-    }
-
-    function burnOptions(
-        TokenId[] memory tokenIds,
-        TokenId[] memory positionIdList,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
-        bool premiaAsCollateral
-    ) external {
-        uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
-
-        sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
-
-        this.dispatch(
-            tokenIds,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimitLow,
-            tickLimitHigh,
-            premiaAsCollateral
-        );
-    }
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
@@ -489,6 +413,147 @@ contract CollateralTrackerTest is Test, PositionUtils {
     LeftRightUnsigned $shortPremia;
 
     uint256[2][] posBalanceArray;
+
+    function mintOptions(
+        PanopticPool pp,
+        TokenId[] memory positionIdList,
+        uint128 positionSize,
+        uint64 effectiveLiquidityLimitX32,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory mintList = new TokenId[](1);
+
+        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        sizeList[0] = positionSize;
+        spreadList[0] = effectiveLiquidityLimitX32;
+        mintList[0] = tokenId;
+        pp.dispatch(
+            mintList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function burnOptions(
+        PanopticPool pp,
+        TokenId tokenId,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+        TokenId[] memory burnList = new TokenId[](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+        burnList[0] = tokenId;
+        pp.dispatch(
+            burnList,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function burnOptions(
+        PanopticPool pp,
+        TokenId[] memory tokenIds,
+        TokenId[] memory positionIdList,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        sizeList[0] = 0;
+        spreadList[0] = type(uint64).max;
+
+        pp.dispatch(
+            tokenIds,
+            positionIdList,
+            sizeList,
+            spreadList,
+            tickLimitLow,
+            tickLimitHigh,
+            premiaAsCollateral
+        );
+    }
+
+    function liquidate(
+        PanopticPool pp,
+        TokenId[] memory liquidatorList,
+        address liquidatee,
+        TokenId[] memory positionIdList
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        pp.dispatchFrom(
+            liquidatorList,
+            liquidatee,
+            positionIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+        );
+    }
+
+    function forceExercise(
+        PanopticPool pp,
+        address exercisee,
+        TokenId tokenId,
+        TokenId[] memory exerciseeList,
+        TokenId[] memory exercisorList,
+        LeftRightUnsigned premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        TokenId[] memory targetList = new TokenId[](1);
+
+        pp.dispatchFrom(
+            exercisorList,
+            exercisee,
+            targetList,
+            exerciseeList,
+            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+        );
+    }
+
+    function settleLongPremium(
+        PanopticPool pp,
+        TokenId[] memory settlerList,
+        TokenId[] memory settleeList,
+        address exercisee,
+        uint256 legIndex,
+        bool premiaAsCollateral
+    ) internal {
+        uint128[] memory sizeList = new uint128[](1);
+        uint64[] memory spreadList = new uint64[](1);
+
+        TokenId[] memory targetList = new TokenId[](1);
+
+        pp.dispatchFrom(
+            settlerList,
+            exercisee,
+            targetList,
+            settleeList,
+            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+        );
+    }
 
     function _initWorld(uint256 seed) internal {
         // Pick a pool from the seed and cache initial state
@@ -937,7 +1002,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         vm.expectRevert(Errors.CastingError.selector);
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             uint128(bound(positionSizeSeed, 501, 1000)),
             0,
@@ -974,7 +1040,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             750,
             0,
@@ -986,7 +1053,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             500,
             type(uint64).max,
@@ -1000,7 +1068,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.pop();
 
         vm.expectRevert(Errors.CastingError.selector);
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             tokenId,
             positionIdList,
             Constants.MAX_V3POOL_TICK,
@@ -1036,7 +1105,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             750,
             0,
@@ -1051,7 +1121,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.setInAMM(-300);
 
         vm.expectRevert(Errors.CastingError.selector);
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             500,
             type(uint64).max,
@@ -1088,7 +1159,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             750,
             0,
@@ -1102,7 +1174,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.pop();
 
         vm.expectRevert(Errors.CastingError.selector);
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             tokenId,
             positionIdList,
             Constants.MAX_V3POOL_TICK,
@@ -1438,7 +1511,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
         _assumePositionValidity(Bob, tokenId, positionSize0);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             positionSize0,
             0,
@@ -1531,7 +1605,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 0,
@@ -1982,7 +2057,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -2013,7 +2089,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 snapshot = vm.snapshot();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -2031,7 +2108,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint64 targetUtilization = uint64(bound(utilizationSeed, 1, 9_999));
             setUtilization(collateralToken0, token1, int64(targetUtilization), inAMMOffset, false);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -2180,7 +2258,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -2210,7 +2289,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -2388,7 +2468,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -2418,7 +2499,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
                 type(uint64).max,
@@ -2598,7 +2680,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -2628,7 +2711,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -2831,7 +2915,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             );
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -2870,7 +2955,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3080,7 +3166,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -3118,7 +3205,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionIdList1.push(tokenId1);
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3291,7 +3379,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -3322,7 +3411,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMBefore = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3340,7 +3430,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 1, 4_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, true);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3526,7 +3617,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 120));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -3557,7 +3649,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMBefore = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3575,7 +3668,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 5_000, 9_000));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, true);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3747,7 +3841,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 104));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -3778,7 +3873,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMBefore = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3796,7 +3892,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 9_001, 9_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, true);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 2,
                 type(uint64).max,
@@ -3976,7 +4073,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -3998,7 +4096,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 false
             );
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4158,7 +4257,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4180,7 +4280,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 false
             );
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4363,7 +4464,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4379,7 +4481,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 9_001, 9_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, false);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4557,7 +4660,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken1._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4573,7 +4677,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 9_001, 9_999));
             setUtilization(collateralToken1, token1, int64(targetUtilization), inAMMOffset, false);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4748,7 +4853,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken0._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4764,7 +4870,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 5_000, 8_999));
             setUtilization(collateralToken0, token0, int64(targetUtilization), inAMMOffset, false);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4925,7 +5032,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             uint256 inAMMOffset = collateralToken1._inAMM();
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -4941,7 +5049,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             targetUtilization = uint64(bound(utilizationSeed, 5_000, 8_999));
             setUtilization(collateralToken1, token1, int64(targetUtilization), inAMMOffset, false);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -5112,7 +5221,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 10 ** 15, 10 ** 20));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -5299,7 +5409,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -5328,7 +5439,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
                 type(uint64).max,
@@ -5429,7 +5541,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -5467,7 +5580,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
                 type(uint64).max,
@@ -5568,7 +5682,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -5606,7 +5721,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
                 type(uint64).max,
@@ -5707,7 +5823,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 positionSize0,
                 type(uint64).max,
@@ -5745,7 +5862,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             _assumePositionValidity(Alice, tokenId1, positionSize0 / 4);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList1,
                 positionSize0 / 4,
                 type(uint64).max,
