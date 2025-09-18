@@ -27,8 +27,11 @@ library Constants {
     /// @dev If true, the "slow" oracle price is instead computed on-the-fly from 9 Uniswap observations (spaced 5 observations apart) irrespective of the frequency of `mintOptions` calls.
     bool internal constant SLOW_ORACLE_UNISWAP_MODE = false;
 
-    /// @notice The maximum amount of chaing, in ticks, permitted between internal median updates.
+    /// @notice The maximum amount of change, in ticks, permitted between internal median updates.
     int24 internal constant MAX_MEDIAN_DELTA = 149;
+
+    /// @notice The maximum amount of change, in ticks, permitted before TICK_OFFSET is updated.
+    int24 internal constant MAX_RESIDUAL_THRESHOLD = 1048;
 
     /// @notice The minimum amount of time, in seconds, permitted between internal TWAP updates.
     uint256 internal constant MEDIAN_PERIOD = 60;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
+import "forge-std/Test.sol";
 
 // Foundry
 // Internal
@@ -50,7 +51,6 @@ contract PanopticMathTest is Test, PositionUtils {
 
     // Constants for computeInternalMedian tests
     int24 internal constant REFERENCE_TICK = 200000;
-    int16 internal constant TICK_OFFSET = 1000;
     uint256 internal constant INITIAL_EPOCH = 5;
 
     /*//////////////////////////////////////////////////////////////
@@ -63,8 +63,7 @@ contract PanopticMathTest is Test, PositionUtils {
         uint256 data;
         data |= INITIAL_EPOCH << 234;
         data |= uint256(0xFAC688) << 192; // orderMap for a pre-sorted list
-        data |= uint256(uint24(REFERENCE_TICK)) << 112;
-        data |= uint256(uint16(TICK_OFFSET)) << 96;
+        data |= uint256(uint24(REFERENCE_TICK)) << 96;
         for (uint8 i = 0; i < 8; i++) {
             // Mask with 0xFFF to pack as a 12-bit value
             data |= (uint256(uint16(offsets[i])) & 0x0FFF) << (i * 12);
@@ -76,13 +75,12 @@ contract PanopticMathTest is Test, PositionUtils {
     /// This is the key to verifying the orderMap logic is correct.
     function _decodeSortedTicks(uint256 data) internal pure returns (int24[] memory) {
         int24[] memory sortedTicks = new int24[](8);
-        int24 refTick = int24(uint24(data >> 112));
-        int16 tickOff = int16(uint16(data >> 96));
+        int24 refTick = int24(uint24(data >> 96));
         uint24 orderMap = uint24(data >> 192);
         for (uint8 i = 0; i < 8; i++) {
             // i = sorted rank
             uint256 offsetData = (data >> (i * 12)) % 2 ** 12;
-            sortedTicks[i] = refTick + tickOff + PanopticMath.toInt24(offsetData);
+            sortedTicks[i] = refTick + PanopticMath.toInt24(offsetData);
         }
         return sortedTicks;
     }
@@ -90,7 +88,7 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice Generates a standard list of offsets for testing. [0, 10, 20, 30, 40, 50, 60, 70]
     function _generateSortedOffsets(int256 seed) internal pure returns (int16[] memory) {
         int16[] memory offsets = new int16[](8);
-        int16 seedStart = int16(bound(seed, -TICK_OFFSET / 3, TICK_OFFSET / 3));
+        int16 seedStart = int16(bound(seed, -1000, 1000));
         offsets[0] = seedStart;
         offsets[1] = seedStart + 10;
         offsets[2] = seedStart + 20;
@@ -1633,7 +1631,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
-            REFERENCE_TICK + TICK_OFFSET + PanopticMath.toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK + PanopticMath.toInt24(initialData % 2 ** 12) + deltaTick
         ) * 64;
         mockPool.setObservation(observationIndex - 1, 64, 0);
         mockPool.setObservation(observationIndex, 128, tickCumulative);
@@ -1653,14 +1651,14 @@ contract PanopticMathTest is Test, PositionUtils {
         // The oldest value (40) is dropped, and the new value (-100) is inserted.
         // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
         int24[] memory expectedTicks = new int24[](8);
-        expectedTicks[0] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[0] + deltaTick; // New minimum
-        expectedTicks[1] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[0];
-        expectedTicks[2] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[1];
-        expectedTicks[3] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[2];
-        expectedTicks[4] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[3];
-        expectedTicks[5] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[4];
-        expectedTicks[6] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[5];
-        expectedTicks[7] = REFERENCE_TICK + TICK_OFFSET + _generateSortedOffsets(x)[6];
+        expectedTicks[0] = REFERENCE_TICK + _generateSortedOffsets(x)[0] + deltaTick; // New minimum
+        expectedTicks[1] = REFERENCE_TICK + _generateSortedOffsets(x)[0];
+        expectedTicks[2] = REFERENCE_TICK + _generateSortedOffsets(x)[1];
+        expectedTicks[3] = REFERENCE_TICK + _generateSortedOffsets(x)[2];
+        expectedTicks[4] = REFERENCE_TICK + _generateSortedOffsets(x)[3];
+        expectedTicks[5] = REFERENCE_TICK + _generateSortedOffsets(x)[4];
+        expectedTicks[6] = REFERENCE_TICK + _generateSortedOffsets(x)[5];
+        expectedTicks[7] = REFERENCE_TICK + _generateSortedOffsets(x)[6];
 
         assertEq(
             keccak256(abi.encode(finalTicks)),
@@ -1677,10 +1675,10 @@ contract PanopticMathTest is Test, PositionUtils {
         UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
         uint16 observationIndex = 10;
 
-        // Set up the mock pool to return a new tick of REFERENCE_TICK + TICK_OFFSET + 5
+        // Set up the mock pool to return a new tick of REFERENCE_TICK - 100
         // This corresponds to a new tick of 201005.
         int56 tickCumulative = int56(200960 - 100) * 64; // new tick of 5 over 64 seconds
-        mockPool.setObservation(observationIndex - 1, 64, int56(200960) * 64);
+        mockPool.setObservation(observationIndex - 1, 64, 0);
         mockPool.setObservation(observationIndex, 128, tickCumulative);
 
         // Create the initial sorted list: [-40, -30, -20, -10, 10, 20, 30, 40]
@@ -1702,14 +1700,14 @@ contract PanopticMathTest is Test, PositionUtils {
         // The oldest value (-40) should be dropped, and the new value (+5) inserted.
         // Expected sorted list: [-30, -20, -10, 5, 10, 20, 30, 40]
         int24[] memory expectedTicks = new int24[](8);
-        expectedTicks[0] = REFERENCE_TICK + TICK_OFFSET - 189; // The newly inserted tick
-        expectedTicks[1] = REFERENCE_TICK + TICK_OFFSET - 40;
-        expectedTicks[2] = REFERENCE_TICK + TICK_OFFSET - 30;
-        expectedTicks[3] = REFERENCE_TICK + TICK_OFFSET - 20;
-        expectedTicks[4] = REFERENCE_TICK + TICK_OFFSET - 10;
-        expectedTicks[5] = REFERENCE_TICK + TICK_OFFSET + 10;
-        expectedTicks[6] = REFERENCE_TICK + TICK_OFFSET + 20;
-        expectedTicks[7] = REFERENCE_TICK + TICK_OFFSET + 30;
+        expectedTicks[0] = REFERENCE_TICK - 189; // The newly inserted tick
+        expectedTicks[1] = REFERENCE_TICK - 40;
+        expectedTicks[2] = REFERENCE_TICK - 30;
+        expectedTicks[3] = REFERENCE_TICK - 20;
+        expectedTicks[4] = REFERENCE_TICK - 10;
+        expectedTicks[5] = REFERENCE_TICK + 10;
+        expectedTicks[6] = REFERENCE_TICK + 20;
+        expectedTicks[7] = REFERENCE_TICK + 30;
 
         assertEq(
             keccak256(abi.encode(finalTicks)),

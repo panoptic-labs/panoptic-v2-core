@@ -299,10 +299,9 @@ library PanopticMath {
                                 int256(timestamp_last - timestamp_old)
                         );
                     }
-                    int24 referenceTick = int24(uint24(medianData >> 112));
-                    int16 tickOffset = int16(uint16(medianData >> 96));
+                    int24 referenceTick = int24(uint24(medianData >> 96));
                     // Clamp lastObservedTick to be within MAX_MEDIAN_DELTA of lastTick
-                    int24 lastTick = referenceTick + tickOffset + toInt24(medianData & 0x0FFF); // mod 2**12
+                    int24 lastTick = referenceTick + toInt24(medianData & 0x0FFF); // mod 2**12
                     //int24 lastTick = int24(uint24(medianData));
                     int24 maxDelta = Constants.MAX_MEDIAN_DELTA;
                     if (lastObservedTick > lastTick + maxDelta) {
@@ -311,10 +310,16 @@ library PanopticMath {
                         lastObservedTick = lastTick - maxDelta;
                     }
                 }
-                int24 referenceTick = int24(uint24(medianData >> 112));
-                int16 tickOffset = int16(uint16(medianData >> 96));
+                int24 referenceTick = int24(uint24(medianData >> 96));
+                int24 lastResidual = lastObservedTick - referenceTick;
 
                 uint256 _medianData = medianData;
+                if (
+                    (lastResidual > Constants.MAX_RESIDUAL_THRESHOLD) ||
+                    (lastResidual < -Constants.MAX_RESIDUAL_THRESHOLD)
+                ) {
+                    _medianData = rebaseMedianData(_medianData);
+                }
                 uint24 orderMap = uint24(_medianData >> 192);
 
                 uint24 newOrderMap;
@@ -325,7 +330,7 @@ library PanopticMath {
                     int24 entry;
                     for (uint8 i; i < 8; ++i) {
                         // read the rank from the existing ordering
-                        rank = (orderMap >> (3 * i)) % 8;
+                        rank = (orderMap >> (3 * i)) & 7; // mod 2**3
 
                         if (rank == 7) {
                             shift -= 1;
@@ -333,11 +338,8 @@ library PanopticMath {
                         }
 
                         // read the corresponding entry
-                        entry =
-                            referenceTick +
-                            tickOffset +
-                            toInt24((_medianData >> (rank * 12)) & 0x0FFF); // mod 2**12
-                        if ((below) && (lastObservedTick > entry)) {
+                        entry = toInt24((_medianData >> (rank * 12)) & 0x0FFF); // mod 2**12
+                        if ((below) && (lastResidual > entry)) {
                             shift += 1;
                             below = false;
                         }
@@ -345,15 +347,12 @@ library PanopticMath {
                         newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
                     }
                 }
-                int24 lastResidual = lastObservedTick - referenceTick - tickOffset;
-                uint16 lastBits = uint16(uint24(lastResidual) & 0x0FFF);
                 updatedMedianData =
                     (currentEpoch << 234) +
                     (uint256(newOrderMap) << 192) +
-                    (uint256(uint24(referenceTick)) << 112) +
-                    (uint256(uint16(tickOffset)) << 96) +
+                    (uint256(uint24(referenceTick)) << 96) +
                     uint256(uint96(medianData << 12)) +
-                    uint256(lastBits);
+                    uint256(uint16(uint24(lastResidual) & 0x0FFF));
             }
         }
     }
@@ -364,7 +363,26 @@ library PanopticMath {
     function getMedianTick(uint256 medianData) internal pure returns (int24) {
         uint24 rank3 = uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24));
         uint24 rank4 = uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24));
-        return (int24(rank3) + int24(rank4)) / 2;
+        int24 referenceTick = int24(uint24(medianData >> 96));
+        return referenceTick + (int24(rank3) + int24(rank4)) / 2;
+    }
+
+    function rebaseMedianData(uint256 data) internal pure returns (uint256) {
+        int24 referenceTick = int24(uint24(data >> 96));
+
+        int24 medianTick = getMedianTick(data);
+
+        int24 newReferenceTick = medianTick;
+
+        int24 deltaOffset = newReferenceTick - referenceTick;
+
+        uint256 offsetData;
+        for (uint8 i; i < 8; ++i) {
+            int24 newEntry = toInt24((data >> (i * 12)) & 0x0FFF) + deltaOffset;
+            offsetData += uint256(uint16(uint24(newEntry) & 0x0FFF)) << (i * 12);
+        }
+
+        return ((data >> 112) << 112) + (uint256(uint24(newReferenceTick)) << 96) + offsetData;
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.
