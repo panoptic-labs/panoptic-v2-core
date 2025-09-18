@@ -200,4 +200,23 @@ contract PanopticMathHarness is Test {
         (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         return (result0, result1);
     }
+
+    function toInt24(uint256 x) public pure returns (int24) {
+        return PanopticMath.toInt24(x);
+    }
+
+    function computeInternalMedian(
+        uint256 observationIndex,
+        uint256 observationCardinality,
+        uint256 medianData,
+        IUniswapV3Pool univ3pool
+    ) public view returns (int24, uint256) {
+        return
+            PanopticMath.computeInternalMedian(
+                observationIndex,
+                observationCardinality,
+                medianData,
+                univ3pool
+            );
+    }
 }

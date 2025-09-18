@@ -243,6 +243,16 @@ library PanopticMath {
         }
     }
 
+    function toInt24(uint256 x) internal pure returns (int24) {
+        unchecked {
+            uint16 u = uint16(x & 0x0FFF);
+            if ((u & 0x0800) != 0) {
+                u |= 0xF000;
+            }
+            return int24(int16(u));
+        }
+    }
+
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values and an updated queue if another observation is warranted.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
     /// @param observationIndex The index of the last observation in the Uniswap pool
@@ -261,27 +271,39 @@ library PanopticMath {
             // return the average of the rank 3 and 4 values
             medianTick = getMedianTick(medianData);
 
-            uint256 currentEpoch = (block.timestamp >> 6) % 2 ** 22;
-            uint256 recordedEpoch = medianData >> 234;
+            uint256 currentEpoch;
+            bool differentEpoch;
+            {
+                currentEpoch = (block.timestamp >> 6) & 0x3FFFFF; // mod 2**22
+                uint256 recordedEpoch = medianData >> 234;
+                differentEpoch = currentEpoch != recordedEpoch;
+            }
             // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
-            if (currentEpoch != recordedEpoch) {
+            if (differentEpoch) {
                 int24 lastObservedTick;
                 {
-                    (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
-                        uint256(
-                            int256(observationIndex) - int256(1) + int256(observationCardinality)
-                        ) % observationCardinality
-                    );
+                    {
+                        (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool
+                            .observations(
+                                uint256(
+                                    int256(observationIndex) -
+                                        int256(1) +
+                                        int256(observationCardinality)
+                                ) % observationCardinality
+                            );
 
-                    (uint256 timestamp_last, int56 tickCumulative_last, , ) = univ3pool
-                        .observations(observationIndex);
-                    lastObservedTick = int24(
-                        (tickCumulative_last - tickCumulative_old) /
-                            int256(timestamp_last - timestamp_old)
-                    );
-
+                        (uint256 timestamp_last, int56 tickCumulative_last, , ) = univ3pool
+                            .observations(observationIndex);
+                        lastObservedTick = int24(
+                            (tickCumulative_last - tickCumulative_old) /
+                                int256(timestamp_last - timestamp_old)
+                        );
+                    }
+                    int24 referenceTick = int24(uint24(medianData >> 112));
+                    int16 tickOffset = int16(uint16(medianData >> 96));
                     // Clamp lastObservedTick to be within MAX_MEDIAN_DELTA of lastTick
-                    int24 lastTick = int24(uint24(medianData));
+                    int24 lastTick = referenceTick + tickOffset + toInt24(medianData & 0x0FFF); // mod 2**12
+                    //int24 lastTick = int24(uint24(medianData));
                     int24 maxDelta = Constants.MAX_MEDIAN_DELTA;
                     if (lastObservedTick > lastTick + maxDelta) {
                         lastObservedTick = lastTick + maxDelta;
@@ -289,38 +311,49 @@ library PanopticMath {
                         lastObservedTick = lastTick - maxDelta;
                     }
                 }
+                int24 referenceTick = int24(uint24(medianData >> 112));
+                int16 tickOffset = int16(uint16(medianData >> 96));
 
-                uint24 orderMap = uint24(medianData >> 192);
+                uint256 _medianData = medianData;
+                uint24 orderMap = uint24(_medianData >> 192);
 
                 uint24 newOrderMap;
-                uint24 shift = 1;
-                bool below = true;
-                uint24 rank;
-                int24 entry;
-                for (uint8 i; i < 8; ++i) {
-                    // read the rank from the existing ordering
-                    rank = (orderMap >> (3 * i)) % 8;
+                {
+                    uint24 shift = 1;
+                    bool below = true;
+                    uint24 rank;
+                    int24 entry;
+                    for (uint8 i; i < 8; ++i) {
+                        // read the rank from the existing ordering
+                        rank = (orderMap >> (3 * i)) % 8;
 
-                    if (rank == 7) {
-                        shift -= 1;
-                        continue;
+                        if (rank == 7) {
+                            shift -= 1;
+                            continue;
+                        }
+
+                        // read the corresponding entry
+                        entry =
+                            referenceTick +
+                            tickOffset +
+                            toInt24((_medianData >> (rank * 12)) & 0x0FFF); // mod 2**12
+                        if ((below) && (lastObservedTick > entry)) {
+                            shift += 1;
+                            below = false;
+                        }
+
+                        newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
                     }
-
-                    // read the corresponding entry
-                    entry = int24(uint24(medianData >> (rank * 24)));
-                    if ((below) && (lastObservedTick > entry)) {
-                        shift += 1;
-                        below = false;
-                    }
-
-                    newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
                 }
-
+                int24 lastResidual = lastObservedTick - referenceTick - tickOffset;
+                uint16 lastBits = uint16(uint24(lastResidual) & 0x0FFF);
                 updatedMedianData =
                     (currentEpoch << 234) +
                     (uint256(newOrderMap) << 192) +
-                    uint256(uint192(medianData << 24)) +
-                    uint256(uint24(lastObservedTick));
+                    (uint256(uint24(referenceTick)) << 112) +
+                    (uint256(uint16(tickOffset)) << 96) +
+                    uint256(uint96(medianData << 12)) +
+                    uint256(lastBits);
             }
         }
     }

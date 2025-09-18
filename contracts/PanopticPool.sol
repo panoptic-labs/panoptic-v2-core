@@ -154,6 +154,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
+    //
+    //    timestamp     scale        orderMap        empty        reference      offset           r7          r6                     r0
+    // |<- 22 bits ->|<- 2 bits ->|<- 24 bits ->|<- 88 bits ->|<- 24 bits ->|<- 16 bits ->|<- 12bits ->|<- 12 bits ->|<- ... ->|<- 12 bits ->|
+    //
     // LAST UPDATED BLOCK TIMESTAMP (22 bits) -> 22 bits (use 28 bits for the timestamp and truncate the lower 6 bits to create a 64s epoch-based timekeeping)
     // [BLOCK.TIMESTAMP]
     // (0000000000000000000000) // dynamic
