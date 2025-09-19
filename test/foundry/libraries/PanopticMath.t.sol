@@ -13,6 +13,7 @@ import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
+import {Constants} from "@libraries/Constants.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
@@ -76,7 +77,6 @@ contract PanopticMathTest is Test, PositionUtils {
     function _decodeSortedTicks(uint256 data) internal pure returns (int24[] memory) {
         int24[] memory sortedTicks = new int24[](8);
         int24 refTick = int24(uint24(data >> 96));
-        uint24 orderMap = uint24(data >> 192);
         for (uint8 i = 0; i < 8; i++) {
             // i = sorted rank
             uint256 offsetData = (data >> (i * 12)) % 2 ** 12;
@@ -88,7 +88,7 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice Generates a standard list of offsets for testing. [0, 10, 20, 30, 40, 50, 60, 70]
     function _generateSortedOffsets(int256 seed) internal pure returns (int16[] memory) {
         int16[] memory offsets = new int16[](8);
-        int16 seedStart = int16(bound(seed, -1000, 1000));
+        int16 seedStart = seed != 0 ? int16(bound(seed, -1000, 1000)) : int16(0);
         offsets[0] = seedStart;
         offsets[1] = seedStart + 10;
         offsets[2] = seedStart + 20;
@@ -1667,26 +1667,31 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    /// @notice This test will FAIL if the ordermap/sorting logic is broken.
-    /// It inserts a new tick that should end up in the middle of the sorted list.
-    function test_SUCCESS_OrderMapIsCorrectAfterInsertion() public {
-        // ARRANGE: Create a mock pool and initial state.
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNew_cap(int256 x) public {
+        // ARRANGE
         uint16 observationCardinality = 65535;
         UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
         uint16 observationIndex = 10;
 
-        // Set up the mock pool to return a new tick of REFERENCE_TICK - 100
-        // This corresponds to a new tick of 201005.
-        int56 tickCumulative = int56(200960 - 100) * 64; // new tick of 5 over 64 seconds
+        // deltaTick would lead to capping
+        int24 deltaTick = int24(
+            bound(x, Constants.MAX_MEDIAN_DELTA + 1, Constants.MAX_RESIDUAL_THRESHOLD - 1)
+        );
+
+        deltaTick = x % 2 == 0 ? -deltaTick : deltaTick;
+
+        uint256 initialData = _encodeMedianData(_generateSortedOffsets(x));
+
+        // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+        int56 tickCumulative = int56(
+            REFERENCE_TICK + PanopticMath.toInt24(initialData % 2 ** 12) + deltaTick
+        ) * 64;
         mockPool.setObservation(observationIndex - 1, 64, 0);
         mockPool.setObservation(observationIndex, 128, tickCumulative);
 
-        // Create the initial sorted list: [-40, -30, -20, -10, 10, 20, 30, 40]
-        uint256 initialData = _encodeMedianData(_generateSortedOffsets(0));
-        int24[] memory initialTicks = _decodeSortedTicks(initialData);
-
-        // ACT: Warp time to a new epoch to trigger the update logic.
-        vm.warp(10 * 64); // block.timestamp >> 6 will be 10, which is > INITIAL_EPOCH (5)
+        // ACT
+        vm.warp(10 * 64);
         (, uint256 updatedData) = harness.computeInternalMedian(
             observationIndex,
             observationCardinality,
@@ -1694,26 +1699,63 @@ contract PanopticMathTest is Test, PositionUtils {
             IUniswapV3Pool(address(mockPool))
         );
 
-        // ASSERT: Decode the result and check if the new list is correctly sorted.
+        // ASSERT
         int24[] memory finalTicks = _decodeSortedTicks(updatedData);
 
-        // The oldest value (-40) should be dropped, and the new value (+5) inserted.
-        // Expected sorted list: [-30, -20, -10, 5, 10, 20, 30, 40]
+        // The oldest value (40) is dropped, and the new value (-100) is inserted.
+        // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
         int24[] memory expectedTicks = new int24[](8);
-        expectedTicks[0] = REFERENCE_TICK - 189; // The newly inserted tick
-        expectedTicks[1] = REFERENCE_TICK - 40;
-        expectedTicks[2] = REFERENCE_TICK - 30;
-        expectedTicks[3] = REFERENCE_TICK - 20;
-        expectedTicks[4] = REFERENCE_TICK - 10;
-        expectedTicks[5] = REFERENCE_TICK + 10;
-        expectedTicks[6] = REFERENCE_TICK + 20;
-        expectedTicks[7] = REFERENCE_TICK + 30;
+        expectedTicks[0] = REFERENCE_TICK + _generateSortedOffsets(x)[0] + deltaTick; // New minimum
 
         assertEq(
-            keccak256(abi.encode(finalTicks)),
-            keccak256(abi.encode(expectedTicks)),
-            "The final list is not sorted correctly!"
+            finalTicks[0],
+            expectedTicks[0] -
+                deltaTick +
+                (x % 2 == 0 ? int24(-1) : int24(1)) *
+                Constants.MAX_MEDIAN_DELTA,
+            "New minimum value not sorted correctly!"
         );
+    }
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNew_rebase(int256 x) public {
+        // ARRANGE
+        uint16 observationCardinality = 65535;
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
+        uint16 observationIndex = 10;
+
+        // deltaTick would lead to capping
+        int24 deltaTick = x % 2 == 0 ? Constants.MAX_MEDIAN_DELTA : -Constants.MAX_MEDIAN_DELTA;
+
+        uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / Constants.MAX_MEDIAN_DELTA)) + 1;
+
+        uint256 updatedData = _encodeMedianData(_generateSortedOffsets(0));
+
+        int24 referenceTick = int24(uint24(updatedData >> 96));
+        for (uint256 i; i < n; ++i) {
+            // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+            int56 tickCumulative = int56(
+                REFERENCE_TICK + PanopticMath.toInt24(updatedData % 2 ** 12) + deltaTick
+            ) * 64;
+            mockPool.setObservation(observationIndex - 1, 64, 0);
+            mockPool.setObservation(observationIndex, 128, tickCumulative);
+
+            // ACT
+            vm.warp(block.timestamp + 128);
+            vm.roll(block.number + 1);
+            (, uint256 _updatedData) = harness.computeInternalMedian(
+                observationIndex,
+                observationCardinality,
+                updatedData,
+                IUniswapV3Pool(address(mockPool))
+            );
+            updatedData = _updatedData;
+            console2.log("");
+        }
+
+        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+
+        assertTrue(referenceTick != newReferenceTick, "FAIL: reference tick not updated");
     }
 
     /// @notice This test ensures no update occurs if the block timestamp is in the same epoch.

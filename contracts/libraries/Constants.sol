@@ -31,7 +31,7 @@ library Constants {
     int24 internal constant MAX_MEDIAN_DELTA = 149;
 
     /// @notice The maximum amount of change, in ticks, permitted before TICK_OFFSET is updated.
-    int24 internal constant MAX_RESIDUAL_THRESHOLD = 1048;
+    int24 internal constant MAX_RESIDUAL_THRESHOLD = 1024;
 
     /// @notice The minimum amount of time, in seconds, permitted between internal TWAP updates.
     uint256 internal constant MEDIAN_PERIOD = 60;
