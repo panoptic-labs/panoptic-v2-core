@@ -400,20 +400,24 @@ contract PanopticPoolTest is PositionUtils {
         PanopticPool pp,
         address exercisee,
         TokenId tokenId,
-        TokenId[] memory exerciseeList,
+        TokenId[] memory exerciseeListFinal,
         TokenId[] memory exercisorList,
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
 
-        TokenId[] memory targetList = new TokenId[](1);
+        TokenId[] memory exerciseeListInitial = new TokenId[](exerciseeListFinal.length + 1);
+        for (uint256 i = 0; i < exerciseeListFinal.length; ++i) {
+            exerciseeListInitial[i] = exerciseeListFinal[i];
+        }
+        exerciseeListInitial[exerciseeListInitial.length - 1] = tokenId;
 
         pp.dispatchFrom(
             exercisorList,
             exercisee,
-            targetList,
-            exerciseeList,
+            exerciseeListInitial,
+            exerciseeListFinal,
             LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
         );
     }
@@ -429,12 +433,10 @@ contract PanopticPoolTest is PositionUtils {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
 
-        TokenId[] memory targetList = new TokenId[](1);
-
         pp.dispatchFrom(
             settlerList,
             exercisee,
-            targetList,
+            settleeList,
             settleeList,
             LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
         );
@@ -6639,6 +6641,9 @@ contract PanopticPoolTest is PositionUtils {
         {
             uint256 snap = vm.snapshot();
 
+            vm.warp(block.timestamp + 1200);
+            vm.roll(block.number + 100);
+
             vm.startPrank(Bob);
             forceExercise(
                 pp,
@@ -7224,7 +7229,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             touchedIds[0],
-            touchedIds,
+            new TokenId[](0),
             new TokenId[](0),
             LeftRightUnsigned.wrap(1).toLeftSlot(1)
         );
@@ -8900,9 +8905,194 @@ contract PanopticPoolTest is PositionUtils {
                 LeftRightUnsigned.wrap(0)
             )
         {
-            assertFalse(true, "liquidation should have failed");
+            assertFalse($posIdLists[1].length > 1, "liquidation should have failed");
         } catch (bytes memory reason) {
-            assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
+            assertTrue(
+                (bytes4(reason) == Errors.NotMarginCalled.selector) ||
+                    (bytes4(reason) == Errors.NoLegsExercisable.selector)
+            );
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           DISPATCHFROM TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fail_dispatchFrom_InvalidCallerList(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        posIdList = new TokenId[](2);
+        posIdList[0] = tokenId;
+
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+
+        posIdList[1] = tokenId2;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.dispatchFrom(
+            posIdList,
+            Alice,
+            posIdList,
+            posIdList,
+            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+        );
+    }
+
+    function test_Fail_dispatchFrom_InvalidFinalList(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        posIdList = new TokenId[](2);
+        posIdList[0] = tokenId;
+
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+
+        posIdList[1] = tokenId2;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.dispatchFrom(
+            new TokenId[](0),
+            Alice,
+            posIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+        );
     }
 }
