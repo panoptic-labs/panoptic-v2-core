@@ -278,8 +278,8 @@ library PanopticMath {
             uint256 currentEpoch;
             bool differentEpoch;
             {
-                currentEpoch = (block.timestamp >> 6) & 0x3FFFFF; // mod 2**22
-                uint256 recordedEpoch = medianData >> 234;
+                currentEpoch = (block.timestamp >> 6) & 0xFFFFFF; // mod 2**24
+                uint256 recordedEpoch = medianData >> 232;
                 differentEpoch = currentEpoch != recordedEpoch;
             }
             // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
@@ -314,7 +314,7 @@ library PanopticMath {
                 (referenceTick, medianData) = rebaseMedianData(medianData);
             }
 
-            uint24 orderMap = uint24(medianData >> 192);
+            uint24 orderMap = uint24(medianData >> 208);
 
             uint24 newOrderMap;
             {
@@ -342,8 +342,8 @@ library PanopticMath {
                 }
             }
             updatedMedianData =
-                (currentEpoch << 234) +
-                (uint256(newOrderMap) << 192) +
+                (currentEpoch << 232) +
+                (uint256(newOrderMap) << 208) +
                 (uint256(uint24(referenceTick)) << 96) +
                 uint256(uint96(medianData << 12)) +
                 uint256(uint16(uint24(lastResidual) & 0x0FFF));
@@ -355,10 +355,10 @@ library PanopticMath {
     /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
     function getMedianTick(uint256 medianData) internal pure returns (int24) {
         int24 rank3 = toInt24(
-            uint256(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 12)) & 0x0FFF
+            uint256(medianData >> ((uint24(medianData >> (208 + 3 * 3)) % 8) * 12)) & 0x0FFF
         );
         int24 rank4 = toInt24(
-            uint256(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 12)) & 0x0FFF
+            uint256(medianData >> ((uint24(medianData >> (208 + 3 * 4)) % 8) * 12)) & 0x0FFF
         );
         int24 referenceTick = int24(uint24(medianData >> 96));
         return referenceTick + ((rank3) + (rank4)) / 2;

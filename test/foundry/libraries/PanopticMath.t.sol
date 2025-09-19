@@ -62,8 +62,8 @@ contract PanopticMathTest is Test, PositionUtils {
     function _encodeMedianData(int16[] memory offsets) internal pure returns (uint256) {
         // Assume the input offsets are sorted and create a simple orderMap (0->0, 1->1, etc.)
         uint256 data;
-        data |= INITIAL_EPOCH << 234;
-        data |= uint256(0xFAC688) << 192; // orderMap for a pre-sorted list
+        data |= INITIAL_EPOCH << 232;
+        data |= uint256(0xFAC688) << 208; // orderMap for a pre-sorted list
         data |= uint256(uint24(REFERENCE_TICK)) << 96;
         for (uint8 i = 0; i < 8; i++) {
             // Mask with 0xFFF to pack as a 12-bit value
@@ -1750,7 +1750,6 @@ contract PanopticMathTest is Test, PositionUtils {
                 IUniswapV3Pool(address(mockPool))
             );
             updatedData = _updatedData;
-            console2.log("");
         }
 
         int24 newReferenceTick = int24(uint24(updatedData >> 96));
