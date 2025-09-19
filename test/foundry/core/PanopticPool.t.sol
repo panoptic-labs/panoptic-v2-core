@@ -4439,7 +4439,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
         posIdList[1] = tokenId;
 
-        vm.expectRevert(Errors.PositionAlreadyMinted.selector);
+        vm.expectRevert(Errors.InputListFail.selector);
         mintOptions(
             pp,
             posIdList,
@@ -9086,7 +9086,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.NotMarginCalled.selector);
         pp.dispatchFrom(
             new TokenId[](0),
             Alice,
