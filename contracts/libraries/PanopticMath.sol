@@ -31,6 +31,11 @@ library PanopticMath {
     uint256 internal constant UPPER_120BITS_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
 
+    uint256 constant EMA_PERIOD_10MINS = 600; // 600 seconds
+    uint256 constant EMA_PERIOD_1H = 3600; // 600 seconds
+    uint256 constant EMA_PERIOD_8H = 28800; // 600 seconds
+    uint256 constant EMA_PERIOD_1D = 86400; // 600 seconds
+
     /*//////////////////////////////////////////////////////////////
                               UTILITIES
     //////////////////////////////////////////////////////////////*/
@@ -277,10 +282,12 @@ library PanopticMath {
 
             uint256 currentEpoch;
             bool differentEpoch;
+            uint256 timeDelta;
             {
                 currentEpoch = (block.timestamp >> 6) & 0xFFFFFF; // mod 2**24
                 uint256 recordedEpoch = medianData >> 232;
                 differentEpoch = currentEpoch != recordedEpoch;
+                timeDelta = (currentEpoch - recordedEpoch) * 64;
             }
             // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
             if (differentEpoch) {
@@ -291,6 +298,13 @@ library PanopticMath {
                 );
 
                 int24 clampedTick = clampTick(lastObservedTick, medianData);
+
+                console2.log(
+                    "dd",
+                    int24(uint24(medianData >> 96)) +
+                        ((clampedTick - int24(uint24(medianData >> 96))) * timeDelta) /
+                        EMA_PERIOD_10MINS
+                );
 
                 updatedMedianData = insertObservation(medianData, clampedTick, currentEpoch);
             }
