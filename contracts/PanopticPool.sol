@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -913,6 +912,7 @@ contract PanopticPool is Multicall {
                 uint256 toLength = positionIdListTo.length;
                 uint256 finalLength = positionIdListToFinal.length;
                 unchecked {
+                    tokenId = positionIdListTo[toLength - 1];
                     if (toLength == finalLength) {
                         // same length, that's a settle
                         {
@@ -925,17 +925,16 @@ contract PanopticPool is Multicall {
                         path = 0;
                     } else if (toLength == (finalLength + 1)) {
                         // final is one shorter, that's a force exercise
-                        path == 1;
+                        tokenId.validateIsExercisable(twapTick);
+                        path = 1;
+                    } else if (finalLength == 0) {
+                        revert Errors.NotMarginCalled();
                     } else {
                         revert Errors.InputListFail();
                     }
-
-                    tokenId = positionIdListTo[toLength - 1];
                 }
-            }
-
-            // if account is insolvent at all ticks, this is a liquidation
-            if (solvent == 0) {
+            } else if (solvent == 0) {
+                // if account is insolvent at all ticks, this is a liquidation
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
                 path = 2;
             } else {
@@ -956,7 +955,6 @@ contract PanopticPool is Multicall {
 
             if (path == 1) {
                 // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-                tokenId.validateIsExercisable(twapTick);
                 _forceExercise(account, tokenId, twapTick, currentTick);
             }
 
