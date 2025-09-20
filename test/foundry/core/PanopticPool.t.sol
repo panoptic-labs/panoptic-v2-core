@@ -6218,7 +6218,7 @@ contract PanopticPoolTest is PositionUtils {
 
         oneWaySwap(swapSizeSeed, swapDirection);
 
-        //(currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         updatePositionDataVariable(numLegs, isLongs);
 
@@ -6254,7 +6254,7 @@ contract PanopticPoolTest is PositionUtils {
 
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
 
-            (, , , TWAPtick, ) = pp.getOracleTicks();
+            TWAPtick = pp.getUniV3TWAP_();
             uint160 lastObservedPrice = TickMath.getSqrtRatioAtTick(TWAPtick);
             LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 tokenId,
@@ -6291,7 +6291,6 @@ contract PanopticPoolTest is PositionUtils {
 
         exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
         exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
-
         forceExercise(
             pp,
             Alice,
@@ -6374,7 +6373,7 @@ contract PanopticPoolTest is PositionUtils {
                     int256(lastCollateralBalance0[Alice]),
                 $balanceDelta0,
                 uint256(
-                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_000_000 + 10)
+                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_00_000 + 10)
                 ),
                 "Incorrect balance delta for token0 (Force Exercisee)"
             );
@@ -7358,7 +7357,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        (, , , TWAPtick, ) = pp.getOracleTicks();
+        TWAPtick = pp.getUniV3TWAP_();
         vm.assume(Math.abs(int256(currentTick) - TWAPtick) <= 513);
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
@@ -7955,7 +7954,8 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        (, , , TWAPtick, ) = pp.getOracleTicks();
+
+        TWAPtick = pp.getUniV3TWAP_();
         vm.assume(Math.abs(int256(currentTick) - TWAPtick) <= 513);
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
