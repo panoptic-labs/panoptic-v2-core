@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
+
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -866,6 +867,7 @@ contract PanopticPool is Multicall {
     ) external {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
+
         int24 currentTick;
 
         uint256 path;
@@ -935,6 +937,8 @@ contract PanopticPool is Multicall {
                 }
             } else if (solvent == 0) {
                 // if account is insolvent at all ticks, this is a liquidation
+                if (positionIdListToFinal.length == positionIdListTo.length)
+                    revert Errors.AccountInsolvent();
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
                 path = 2;
             } else {
