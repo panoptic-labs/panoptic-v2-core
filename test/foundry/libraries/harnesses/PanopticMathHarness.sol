@@ -200,8 +200,8 @@ contract PanopticMathHarness is Test {
         return (result0, result1);
     }
 
-    function toInt24(uint256 x) public pure returns (int24) {
-        return PanopticMath.toInt24(x);
+    function int12toInt24(uint256 x) public pure returns (int24) {
+        return PanopticMath.int12toInt24(x);
     }
 
     function computeInternalMedian(

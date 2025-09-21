@@ -80,7 +80,7 @@ contract PanopticMathTest is Test, PositionUtils {
         for (uint8 i = 0; i < 8; i++) {
             // i = sorted rank
             uint256 offsetData = (data >> (i * 12)) % 2 ** 12;
-            sortedTicks[i] = refTick + PanopticMath.toInt24(offsetData);
+            sortedTicks[i] = refTick + PanopticMath.int12toInt24(offsetData);
         }
         return sortedTicks;
     }
@@ -1607,11 +1607,11 @@ contract PanopticMathTest is Test, PositionUtils {
     }
 
     function test_success_toInt24() public pure {
-        assertEq(int24(-1), PanopticMath.toInt24(2 ** 12 - 1));
-        assertEq(int24(-1), PanopticMath.toInt24(2 ** 13 - 1));
-        assertEq(int24(-1), PanopticMath.toInt24(2 ** 14 - 1));
-        assertEq(int24(-1), PanopticMath.toInt24(2 ** 15 - 1));
-        assertEq(int24(-1), PanopticMath.toInt24(2 ** 16 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 12 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 13 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 14 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 15 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 16 - 1));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1631,7 +1631,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
-            REFERENCE_TICK + PanopticMath.toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
         ) * 64;
         mockPool.setObservation(observationIndex - 1, 64, 0);
         mockPool.setObservation(observationIndex, 128, tickCumulative);
@@ -1685,7 +1685,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
-            REFERENCE_TICK + PanopticMath.toInt24(initialData % 2 ** 12) + deltaTick
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
         ) * 64;
         mockPool.setObservation(observationIndex - 1, 64, 0);
         mockPool.setObservation(observationIndex, 128, tickCumulative);
@@ -1735,7 +1735,7 @@ contract PanopticMathTest is Test, PositionUtils {
         for (uint256 i; i < n; ++i) {
             // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
             int56 tickCumulative = int56(
-                REFERENCE_TICK + PanopticMath.toInt24(updatedData % 2 ** 12) + deltaTick
+                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
             ) * 64;
             mockPool.setObservation(observationIndex - 1, 64, 0);
             mockPool.setObservation(observationIndex, 128, tickCumulative);

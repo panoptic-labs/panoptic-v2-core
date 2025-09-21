@@ -252,13 +252,23 @@ library PanopticMath {
         }
     }
 
-    function toInt24(uint256 x) internal pure returns (int24) {
+    function int12toInt24(uint256 x) internal pure returns (int24) {
         unchecked {
             uint16 u = uint16(x & 0x0FFF);
             if ((u & 0x0800) != 0) {
                 u |= 0xF000;
             }
             return int24(int16(u));
+        }
+    }
+
+    function int22toInt24(uint256 x) internal pure returns (int24) {
+        unchecked {
+            uint32 u = uint32(x & 0x3FFFFF);
+            if ((u & 0x200000) != 0) {
+                u |= 0xFFC00000;
+            }
+            return int24(int32(u));
         }
     }
 
@@ -303,11 +313,16 @@ library PanopticMath {
                 console2.log(
                     "dd",
                     int24(uint24(medianData >> 96)) +
-                        ((clampedTick - int24(uint24(medianData >> 96))) * int256(timeDelta)) /
+                        ((clampedTick - int24(uint24(medianData >> 96))) * int256(timeDelta < EMA_PERIOD_10MINS ? timeDelta : EMA_PERIOD_10MINS)) /
                         EMA_PERIOD_10MINS
                 );
                 */
-                updatedMedianData = insertObservation(medianData, clampedTick, currentEpoch);
+                updatedMedianData = insertObservation(
+                    medianData,
+                    clampedTick,
+                    currentEpoch,
+                    timeDelta
+                );
             }
         }
     }
@@ -316,7 +331,8 @@ library PanopticMath {
     function insertObservation(
         uint256 medianData,
         int24 newTick,
-        uint256 currentEpoch
+        uint256 currentEpoch,
+        int256 timeDelta
     ) internal pure returns (uint256 updatedMedianData) {
         unchecked {
             int24 referenceTick = int24(uint24(medianData >> 96));
@@ -347,7 +363,7 @@ library PanopticMath {
                     }
 
                     // read the corresponding entry
-                    entry = toInt24((medianData >> (rank * 12)) & 0x0FFF); // mod 2**12
+                    entry = int12toInt24((medianData >> (rank * 12)) & 0x0FFF); // mod 2**12
                     if ((below) && (lastResidual > entry)) {
                         shift += 1;
                         below = false;
@@ -355,6 +371,14 @@ library PanopticMath {
 
                     newOrderMap = newOrderMap + ((rank + 1) << (3 * (i + shift - 1)));
                 }
+            }
+
+            uint256 EMAs = (medianData >> 128) % 2 ** 88;
+            {
+                int24 EMA10mins;
+                int24 EMA1H;
+                int24 EMA8H;
+                int24 EMA1D;
             }
             updatedMedianData =
                 (currentEpoch << 232) +
@@ -369,10 +393,10 @@ library PanopticMath {
     /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
     /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
     function getMedianTick(uint256 medianData) internal pure returns (int24) {
-        int24 rank3 = toInt24(
+        int24 rank3 = int12toInt24(
             uint256(medianData >> ((uint24(medianData >> (208 + 3 * 3)) % 8) * 12)) & 0x0FFF
         );
-        int24 rank4 = toInt24(
+        int24 rank4 = int12toInt24(
             uint256(medianData >> ((uint24(medianData >> (208 + 3 * 4)) % 8) * 12)) & 0x0FFF
         );
         int24 referenceTick = int24(uint24(medianData >> 96));
@@ -405,7 +429,7 @@ library PanopticMath {
         unchecked {
             int24 refTick = int24(uint24(_medianData >> 96));
             // Clamp lastObservedTick to be within MAX_MEDIAN_DELTA of lastTick
-            int24 lastTick = refTick + toInt24(_medianData & 0x0FFF); // mod 2**12
+            int24 lastTick = refTick + int12toInt24(_medianData & 0x0FFF); // mod 2**12
             //int24 lastTick = int24(uint24(medianData));
             int24 maxDelta = Constants.MAX_MEDIAN_DELTA;
             if (newTick > lastTick + maxDelta) {
@@ -429,7 +453,7 @@ library PanopticMath {
 
         uint256 offsetData;
         for (uint8 i; i < 8; ++i) {
-            int24 newEntry = toInt24((data >> (i * 12)) & 0x0FFF) - deltaOffset;
+            int24 newEntry = int12toInt24((data >> (i * 12)) & 0x0FFF) - deltaOffset;
             offsetData += (uint256(uint16(uint24(newEntry) & 0x0FFF)) & 0x0FFF) << (i * 12);
         }
 
