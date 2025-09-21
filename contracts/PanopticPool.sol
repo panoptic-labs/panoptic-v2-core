@@ -171,29 +171,29 @@ contract PanopticPool is ERC1155Holder, Multicall {
     // slot: [7] [5] [3] [1] [0] [2] [4] [6]
     //       111 101 011 001 000 010 100 110
     //
-    // [Constants.MIN_V3POOL_TICK-1] [7]
-    // 111100100111011000010111
+    // [-512] [7]
+    // 111000000000
     //
-    // [Constants.MAX_V3POOL_TICK+1] [0]
-    // 000011011000100111101001
+    // [512] [0]
+    // 001000000000
     //
-    // [Constants.MIN_V3POOL_TICK-1] [6]
-    // 111100100111011000010111
+    // [-512] [6]
+    // 111000000000
     //
-    // [Constants.MAX_V3POOL_TICK+1] [1]
-    // 000011011000100111101001
+    // [512] [1]
+    // 001000000000
     //
-    // [Constants.MIN_V3POOL_TICK-1] [5]
-    // 111100100111011000010111
+    // [-512] [5]
+    // 111000000000
     //
-    // [Constants.MAX_V3POOL_TICK+1] [2]
-    // 000011011000100111101001
+    // [512] [2]
+    // 001000000000
     //
-    // [CURRENT TICK] [4]
-    // (000000000000000000000000) // dynamic
+    // [0 = CURRENT TICK] [4]
+    // (000000000000) // dynamic
     //
-    // [CURRENT TICK] [3]
-    // (000000000000000000000000) // dynamic
+    // [0 = CURRENT TICK] [3]
+    // (000000000000) // dynamic
     uint256 internal s_miniMedian;
 
     // ERC4626 vaults that users collateralize their positions with
@@ -275,12 +275,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Store the median data
         unchecked {
             s_miniMedian =
-                (uint256((block.timestamp >> 6) % 2 ** 22) << 234) +
+                (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_miniMedian initialization for format of this magic number
-                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 1 (rank 3)
-                (uint256(uint24(currentTick))); // add to slot 0 (rank 4)
+                (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
+                // store currentTick as the reference tick
+                (uint256(uint24(currentTick)) << 96);
         }
 
         // Store the collateral token0
