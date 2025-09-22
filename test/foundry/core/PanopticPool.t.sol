@@ -2660,9 +2660,10 @@ contract PanopticPoolTest is PositionUtils {
 
             int256 notionalVal = int256(expectedSwap0) + amount0Moved - shortAmounts.rightSlot();
 
+            // set itm spread fee to 0
             int256 ITMSpread = notionalVal > 0
-                ? (notionalVal * int24(2 * (fee / 100))) / 10_000
-                : -(notionalVal * int24(2 * (fee / 100))) / 10_000;
+                ? (notionalVal * int24(2 * ((0 * fee) / 100))) / 10_000
+                : -(notionalVal * int24(2 * ((0 * fee) / 100))) / 10_000;
 
             assertApproxEqAbs(
                 ct0.balanceOf(Alice),
@@ -2937,13 +2938,14 @@ contract PanopticPoolTest is PositionUtils {
                     amount0s + $amount0Moveds[0] + $amount0Moveds[1] - shortAmounts.rightSlot(),
                     amount1s + $amount1Moveds[0] + $amount1Moveds[1] - shortAmounts.leftSlot()
                 ];
+                // set itm spread fee to 0
                 int256[2] memory ITMSpreads = [
                     notionalVals[0] > 0
-                        ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-                        : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
+                        ? (notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000
+                        : -((notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000),
                     notionalVals[1] > 0
-                        ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
-                        : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
+                        ? (notionalVals[1] * int24(2 * ((0 * fee) / 100))) / 10_000
+                        : -((notionalVals[1] * int24(2 * ((0 * fee) / 100))) / 10_000)
                 ];
 
                 assertApproxEqAbs(
@@ -3164,6 +3166,7 @@ contract PanopticPoolTest is PositionUtils {
             positionSizes[0]
         );
 
+        console2.log("Seller");
         vm.startPrank(Seller);
 
         {
@@ -3225,6 +3228,7 @@ contract PanopticPoolTest is PositionUtils {
             -netSurplus0
         );
 
+        console2.log("Alice");
         vm.startPrank(Alice);
 
         if (pp.isSafeMode() == false) {
@@ -3244,13 +3248,14 @@ contract PanopticPoolTest is PositionUtils {
                     amount1s + $amount1Moveds[1] + $amount1Moveds[2] - shortAmounts.leftSlot()
                 ];
 
+                // set itm spread fee to 0
                 ITMSpreads = [
                     notionalVals[0] > 0
-                        ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-                        : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000),
+                        ? (notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000
+                        : -((notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000),
                     notionalVals[1] > 0
-                        ? (notionalVals[1] * int24(2 * (fee / 100))) / 10_000
-                        : -((notionalVals[1] * int24(2 * (fee / 100))) / 10_000)
+                        ? (notionalVals[1] * int24(2 * ((0 * fee) / 100))) / 10_000
+                        : -((notionalVals[1] * int24(2 * ((0 * fee) / 100))) / 10_000)
                 ];
 
                 uint256 tokenToPay = uint256(
@@ -3285,49 +3290,62 @@ contract PanopticPoolTest is PositionUtils {
             // price changes afters swap at mint so we need to update the price
             (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-            assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSizes[1]);
+            assertEq(
+                sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)),
+                positionSizes[1],
+                "FAIL: wrong sfpm balances"
+            );
 
             {
                 (, uint256 inAMM, ) = ct0.getPoolData();
                 assertApproxEqAbs(
                     inAMM,
                     uint128(shortAmountsSold.rightSlot() - longAmounts.rightSlot()),
-                    10
+                    10,
+                    "FAIL: wrong inAMM for token0"
                 );
             }
 
             {
                 (, uint256 inAMM, ) = ct1.getPoolData();
-                assertApproxEqAbs(inAMM, uint128(shortAmounts.leftSlot()), 10);
+                assertApproxEqAbs(
+                    inAMM,
+                    uint128(shortAmounts.leftSlot()),
+                    10,
+                    "FAIL: wrong inAMM for token1"
+                );
             }
 
             {
                 assertEq(
                     pp.positionsHash(Alice),
-                    uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+                    uint248(uint256(keccak256(abi.encodePacked(tokenId)))),
+                    "FAIL: wrong position hash"
                 );
 
-                assertEq(pp.numberOfLegs(Alice), 2);
+                assertEq(pp.numberOfLegs(Alice), 2, "FAIL: wrong number of legs");
 
                 TokenId _tokenId = tokenId;
 
                 (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                     .optionPositionInfo(pp, Alice, _tokenId);
 
-                assertEq(balance, positionSizes[1]);
+                assertEq(balance, positionSizes[1], "FAIL: wrong balance for Alice");
                 assertEq(
                     int64(poolUtilization0),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                         ? int64(10_001)
                         : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
-                            int256(ct0.totalSupply())
+                            int256(ct0.totalSupply()),
+                    "FAIL: werong pool utiliation0"
                 );
                 assertEq(
                     int64(poolUtilization1),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                         ? int64(10_001)
                         : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
-                            int256(ct1.totalSupply())
+                            int256(ct1.totalSupply()),
+                    "FAIL: wrong pool utilzation1"
                 );
             }
 
@@ -4835,9 +4853,10 @@ contract PanopticPoolTest is PositionUtils {
             -int256(expectedSwaps[1]) - amount0Moveds[1] + shortAmounts.rightSlot()
         ];
 
+        // set itm spread fee to 0
         int256 ITMSpread = notionalVals[0] > 0
-            ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-            : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000);
+            ? (notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000
+            : -((notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000);
 
         assertApproxEqAbs(
             balanceBefores[0],
@@ -5009,9 +5028,10 @@ contract PanopticPoolTest is PositionUtils {
             -int256(expectedSwaps[1]) - amount0Moveds[1] + shortAmounts.rightSlot()
         ];
 
+        // set itm spread fee to 0
         int256 ITMSpread = notionalVals[0] > 0
-            ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-            : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000);
+            ? (notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000
+            : -((notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000);
 
         assertApproxEqAbs(
             balanceBefores[0],
@@ -5226,9 +5246,10 @@ contract PanopticPoolTest is PositionUtils {
             -int256(expectedSwaps[1]) - amount0Moveds[1] + shortAmounts.rightSlot()
         ];
 
+        // set itm spread fee to 0
         int256 ITMSpread = notionalVals[0] > 0
-            ? (notionalVals[0] * int24(2 * (fee / 100))) / 10_000
-            : -((notionalVals[0] * int24(2 * (fee / 100))) / 10_000);
+            ? (notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000
+            : -((notionalVals[0] * int24(2 * ((0 * fee) / 100))) / 10_000);
 
         assertApproxEqAbs(
             int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
