@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
+import "forge-std/Test.sol";
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -539,7 +540,6 @@ contract PanopticPool is Multicall {
                     tickLimitLow,
                     tickLimitHigh
                 );
-                netPaid = netPaid.add(paidAmounts);
             } else {
                 (paidAmounts, premiasByLeg[i]) = _burnOptions(
                     COMMIT_LONG_SETTLED,
@@ -549,11 +549,35 @@ contract PanopticPool is Multicall {
                     tickLimitLow,
                     tickLimitHigh
                 );
+            }
+            if (!tokenId.isPureLoan()) {
                 netPaid = netPaid.add(paidAmounts);
             }
+
             unchecked {
                 ++i;
             }
+        }
+
+        /// @dev craft + mint a tokenId that tokenizes the amount of tokens exchanged
+        /// This means that any ITM amounts will be associated with a liability
+        /// --ie. ITM amount may be 500 USDC, but mint a 500 USDC debt to the account so that
+        /// the account has + 500USDC in their account but a 500 liability
+        {
+            console2.log("netPaid.r", netPaid.rightSlot());
+            console2.log("netPaid.l", netPaid.leftSlot());
+            /*
+            TokenId loanTokenId;
+            uint128 loanSize;
+            _mintOptions(
+                loanTokenId,
+                loanSize,
+                0,
+                msg.sender,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK
+            );
+           */
         }
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option

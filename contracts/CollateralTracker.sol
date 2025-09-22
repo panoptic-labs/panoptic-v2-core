@@ -1006,9 +1006,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
+            int256 intrinsicValue;
+
             if (isCreation) {
                 {
-                    int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
+                    intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
                     // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
                     commission = uint128(
@@ -1021,8 +1023,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     tokenToPay = intrinsicValue + int128(commission);
                 }
             } else {
+                intrinsicValue = int256(swappedAmount) - (longAmount - shortAmount);
                 // add premium and token deltas not covered by swap to be paid/collected on position close
-                tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
+                tokenToPay = intrinsicValue - realizedPremium;
             }
 
             // Mint/Burn Shares
@@ -1053,7 +1056,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
 
-            return (utilization, commission, int128(tokenToPay));
+            return (utilization, commission, int128(intrinsicValue - realizedPremium));
         }
     }
 

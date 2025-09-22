@@ -558,4 +558,17 @@ library TokenIdLibrary {
         // Fail if position has no legs that is far-out-of-the-money
         revert Errors.NoLegsExercisable();
     }
+
+    function isPureLoan(TokenId self) internal pure returns (bool) {
+        unchecked {
+            uint256 numLegs = self.countLegs();
+            uint256 loanLegs;
+            for (uint256 i = 0; i < numLegs; ++i) {
+                if (self.width(i) != 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
 }
