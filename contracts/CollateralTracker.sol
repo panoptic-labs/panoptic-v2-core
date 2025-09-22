@@ -991,7 +991,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @return The final utilization of the collateral vault
     /// @return The total amount of commission (base rate + ITM spread) paid
-    function takeCommissionAddData(
+    function settleMint(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
@@ -1053,7 +1053,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param swappedAmount The amount of tokens moved during the option close
     /// @param realizedPremium Premium to settle on the current positions
     /// @return The amount of tokens paid when closing that position
-    function exercise(
+    function settleBurn(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,

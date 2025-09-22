@@ -642,13 +642,13 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (uint32 utilization0, uint128 commission0) = s_collateralToken0.takeCommissionAddData(
+        (uint32 utilization0, uint128 commission0) = s_collateralToken0.settleMint(
             owner,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot()
         );
-        (uint32 utilization1, uint128 commission1) = s_collateralToken1.takeCommissionAddData(
+        (uint32 utilization1, uint128 commission1) = s_collateralToken1.settleMint(
             owner,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -735,7 +735,7 @@ contract PanopticPool is Multicall {
             .computeExercisedAmounts(tokenId, positionSize);
 
         {
-            int128 paid0 = s_collateralToken0.exercise(
+            int128 paid0 = s_collateralToken0.settleBurn(
                 owner,
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
@@ -746,7 +746,7 @@ contract PanopticPool is Multicall {
         }
 
         {
-            int128 paid1 = s_collateralToken1.exercise(
+            int128 paid1 = s_collateralToken1.settleBurn(
                 owner,
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
@@ -1227,8 +1227,8 @@ contract PanopticPool is Multicall {
                 }
                 {
                     // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-                    ct0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
-                    ct1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
+                    ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot());
+                    ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
                     bytes32 chunkKey;
                     {
