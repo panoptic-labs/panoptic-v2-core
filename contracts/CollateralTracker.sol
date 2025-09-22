@@ -984,6 +984,79 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                      OPTION EXERCISE AND COMMISSION
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Internal function to handle all balance and state updates for position creation and closing.
+    /// @param isCreation A boolean flag to indicate if this is for option creation (true) or closing (false).
+    /// @param optionOwner The user minting the option
+    /// @param longAmount The amount of longs
+    /// @param shortAmount The amount of shorts
+    /// @param swappedAmount The amount of tokens moved during creation of the option position
+    ///
+    function _updateBalancesAndSettle(
+        bool isCreation,
+        address optionOwner,
+        int128 longAmount,
+        int128 shortAmount,
+        int128 swappedAmount,
+        int128 realizedPremium
+    ) internal returns (uint32, uint128, int128) {
+        unchecked {
+            int256 tokenToPay;
+            uint128 commission;
+
+            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
+            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
+
+            if (isCreation) {
+                {
+                    int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
+
+                    // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
+                    commission = uint128(
+                        Math.unsafeDivRoundingUp(
+                            uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
+                            DECIMALS
+                        )
+                    );
+
+                    tokenToPay = intrinsicValue + int128(commission);
+                }
+            } else {
+                // add premium and token deltas not covered by swap to be paid/collected on position close
+                tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
+            }
+
+            // Mint/Burn Shares
+            if (tokenToPay > 0) {
+                uint256 sharesToBurn = Math.mulDivRoundingUp(
+                    uint256(tokenToPay),
+                    totalSupply,
+                    totalAssets()
+                );
+                _burn(optionOwner, sharesToBurn);
+            } else if (tokenToPay < 0) {
+                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
+                _mint(optionOwner, sharesToMint);
+            }
+
+            // Update Pool Assets
+            if (isCreation) {
+                s_poolAssets = uint256(updatedAssets).toUint128();
+            } else {
+                s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            }
+
+            // Update s_inAMM
+            s_inAMM = uint256(
+                int256(uint256(s_inAMM)) +
+                    (isCreation ? (shortAmount - longAmount) : -(shortAmount - longAmount))
+            ).toUint128();
+
+            uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
+
+            return (utilization, commission, int128(tokenToPay));
+        }
+    }
+
     /// @notice Take commission and settle ITM amounts on option creation.
     /// @param optionOwner The user minting the option
     /// @param longAmount The amount of longs
@@ -997,52 +1070,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 shortAmount,
         int128 swappedAmount
     ) external onlyPanopticPool returns (uint32, uint128) {
-        unchecked {
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
-
-            int256 tokenToPay;
-            uint128 commission;
-
-            {
-                int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
-
-                // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
-                commission = uint128(
-                    Math.unsafeDivRoundingUp(
-                        uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                        DECIMALS
-                    )
-                );
-
-                tokenToPay = intrinsicValue + int128(commission);
-            }
-
-            // compute tokens to be paid due to swap
-            // mint or burn tokens due to minting in-the-money
-            if (tokenToPay > 0) {
-                // if user must pay tokens, burn them from user balance
-                uint256 sharesToBurn = Math.mulDivRoundingUp(
-                    uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
-                );
-                _burn(optionOwner, sharesToBurn);
-            } else if (tokenToPay < 0) {
-                // if user must receive tokens, mint them
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
-            }
-
-            // update stored asset balances with net moved amounts
-            // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
-            // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
-            // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint256(updatedAssets).toUint128();
-            s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
-
-            return (uint32(_poolUtilization()), commission);
-        }
+        (uint32 utilization, uint128 commission, int128 tokenPaid) = _updateBalancesAndSettle(
+            true, // isCreation = true
+            optionOwner,
+            longAmount,
+            shortAmount,
+            swappedAmount,
+            0 // realizedPremium not used
+        );
+        return (utilization, commission);
     }
 
     /// @notice Exercise an option and pay to the seller what is owed from the buyer.
@@ -1060,37 +1096,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 swappedAmount,
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
-        unchecked {
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
-
-            // add premium and token deltas not covered by swap to be paid/collected on position close
-            int256 tokenToPay = int256(swappedAmount) -
-                (longAmount - shortAmount) -
-                realizedPremium;
-
-            if (tokenToPay > 0) {
-                // if user must pay tokens, burn them from user balance (revert if balance too small)
-                uint256 sharesToBurn = Math.mulDivRoundingUp(
-                    uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
-                );
-                _burn(optionOwner, sharesToBurn);
-            } else if (tokenToPay < 0) {
-                // if user must receive tokens, mint them
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
-            }
-
-            // update stored asset balances with net moved amounts
-            // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
-            // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
-            s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
-
-            return (int128(tokenToPay));
-        }
+        (, , int128 tokenPaid) = _updateBalancesAndSettle(
+            false, // isCreation = false
+            optionOwner,
+            longAmount,
+            shortAmount,
+            swappedAmount,
+            realizedPremium
+        );
+        return tokenPaid;
     }
 
     /*//////////////////////////////////////////////////////////////
