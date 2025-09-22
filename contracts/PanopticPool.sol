@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
 // Interfaces
-
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -642,13 +641,13 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (uint32 utilization0, uint128 commission0) = s_collateralToken0.settleMint(
+        (LeftRightUnsigned utilizationAndCommission0, ) = s_collateralToken0.settleMint(
             owner,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot()
         );
-        (uint32 utilization1, uint128 commission1) = s_collateralToken1.settleMint(
+        (LeftRightUnsigned utilizationAndCommission1, ) = s_collateralToken1.settleMint(
             owner,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -658,8 +657,13 @@ contract PanopticPool is Multicall {
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
             return (
-                utilization0 + (utilization1 << 16),
-                LeftRightUnsigned.wrap(commission0).toLeftSlot(commission1)
+                uint32(
+                    utilizationAndCommission0.rightSlot() +
+                        (utilizationAndCommission1.rightSlot() << 16)
+                ),
+                LeftRightUnsigned.wrap(utilizationAndCommission0.leftSlot()).toLeftSlot(
+                    utilizationAndCommission1.leftSlot()
+                )
             );
         }
     }

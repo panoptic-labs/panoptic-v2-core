@@ -1062,14 +1062,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
-    /// @return The final utilization of the collateral vault
-    /// @return The total amount of commission (base rate + ITM spread) paid
+    /// @return The final utilization of the collateral vault (rightSlot) and the total amount of commission (base rate + ITM spread) paid (leftSlot)
     function settleMint(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount
-    ) external onlyPanopticPool returns (uint32, uint128) {
+    ) external onlyPanopticPool returns (LeftRightUnsigned, int128) {
         (uint32 utilization, uint128 commission, int128 tokenPaid) = _updateBalancesAndSettle(
             true, // isCreation = true
             optionOwner,
@@ -1078,7 +1077,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             swappedAmount,
             0 // realizedPremium not used
         );
-        return (utilization, commission);
+        return (
+            LeftRightUnsigned.wrap(0).toRightSlot(utilization).toLeftSlot(commission),
+            tokenPaid
+        );
     }
 
     /// @notice Exercise an option and pay to the seller what is owed from the buyer.
