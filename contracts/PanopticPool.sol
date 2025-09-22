@@ -518,7 +518,7 @@ contract PanopticPool is Multicall {
                 (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
             }
         }
-
+        LeftRightSigned netPaid;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
@@ -538,7 +538,9 @@ contract PanopticPool is Multicall {
                     tickLimitHigh
                 );
             } else {
-                _burnOptions(
+                LeftRightSigned paidAmounts;
+                LeftRightSigned[4][] memory premiasByLeg;
+                (paidAmounts, premiasByLeg[i]) = _burnOptions(
                     COMMIT_LONG_SETTLED,
                     tokenId,
                     positionBalanceData.positionSize(),
