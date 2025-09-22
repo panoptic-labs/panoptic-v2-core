@@ -1001,11 +1001,22 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
-            (int256 tokenToPay, uint128 commission) = _getExchangedAmount(
-                longAmount,
-                shortAmount,
-                swappedAmount
-            );
+            int256 tokenToPay;
+            uint128 commission;
+
+            {
+                int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
+
+                // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
+                commission = uint128(
+                    Math.unsafeDivRoundingUp(
+                        uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
+                        DECIMALS
+                    )
+                );
+
+                tokenToPay = intrinsicValue + int128(commission);
+            }
 
             // compute tokens to be paid due to swap
             // mint or burn tokens due to minting in-the-money
@@ -1079,30 +1090,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
 
             return (int128(tokenToPay));
-        }
-    }
-
-    /// @notice Get the amount exchanged to mint an option, including any fees.
-    /// @param longAmount The amount of long options held
-    /// @param shortAmount The amount of short options held
-    /// @param swappedAmount The amount of tokens moved during creation of the option position
-    /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
-    /// @return The total commission (base rate + ITM spread) paid for minting the option
-    function _getExchangedAmount(
-        int128 longAmount,
-        int128 shortAmount,
-        int128 swappedAmount
-    ) internal view returns (int256, uint128) {
-        unchecked {
-            int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
-
-            // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
-            uint256 commission = Math.unsafeDivRoundingUp(
-                uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
-                DECIMALS
-            );
-
-            return (intrinsicValue + int256(commission), uint128(commission));
         }
     }
 
