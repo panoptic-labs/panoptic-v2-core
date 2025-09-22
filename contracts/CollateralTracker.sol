@@ -989,15 +989,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
-    /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The final utilization of the collateral vault
     /// @return The total amount of commission (base rate + ITM spread) paid
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount,
-        bool isCovered
+        int128 swappedAmount
     ) external onlyPanopticPool returns (uint32, uint128) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
@@ -1006,8 +1004,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             (int256 tokenToPay, uint128 commission) = _getExchangedAmount(
                 longAmount,
                 shortAmount,
-                swappedAmount,
-                isCovered
+                swappedAmount
             );
 
             // compute tokens to be paid due to swap
@@ -1089,14 +1086,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of long options held
     /// @param shortAmount The amount of short options held
     /// @param swappedAmount The amount of tokens moved during creation of the option position
-    /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
     /// @return The total commission (base rate + ITM spread) paid for minting the option
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount,
-        bool isCovered
+        int128 swappedAmount
     ) internal view returns (int256, uint128) {
         unchecked {
             int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
@@ -1105,15 +1100,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             uint256 commission = Math.unsafeDivRoundingUp(
                 uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
                 DECIMALS
-            ) +
-                (
-                    intrinsicValue == 0 || isCovered
-                        ? 0
-                        : Math.unsafeDivRoundingUp(
-                            s_ITMSpreadFee * uint256(Math.abs(intrinsicValue)),
-                            DECIMALS * 100
-                        )
-                );
+            );
 
             return (intrinsicValue + int256(commission), uint128(commission));
         }

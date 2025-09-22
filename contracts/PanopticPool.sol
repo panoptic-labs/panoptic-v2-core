@@ -646,15 +646,13 @@ contract PanopticPool is Multicall {
             owner,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
-            totalSwapped.rightSlot(),
-            isCovered
+            totalSwapped.rightSlot()
         );
         (uint32 utilization1, uint128 commission1) = s_collateralToken1.takeCommissionAddData(
             owner,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
-            totalSwapped.leftSlot(),
-            isCovered
+            totalSwapped.leftSlot()
         );
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
