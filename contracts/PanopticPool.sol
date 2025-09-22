@@ -518,8 +518,9 @@ contract PanopticPool is Multicall {
             }
         }
         LeftRightSigned netPaid;
-        LeftRightSigned[4][] memory premiasByLeg;
-        for (uint256 i = 0; i < positionIdList.length; ) {
+        uint256 pLength = positionIdList.length;
+        LeftRightSigned[4][] memory premiasByLeg = new LeftRightSigned[4][](pLength);
+        for (uint256 i = 0; i < pLength; ) {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
