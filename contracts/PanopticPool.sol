@@ -518,6 +518,9 @@ contract PanopticPool is Multicall {
             }
         }
 
+        LeftRightSigned netPaid;
+        LeftRightSigned[4][] memory premiasByLeg;
+
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
@@ -527,8 +530,9 @@ contract PanopticPool is Multicall {
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
+            LeftRightSigned paidAmounts;
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
-                _mintOptions(
+                paidAmounts = _mintOptions(
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
@@ -536,8 +540,9 @@ contract PanopticPool is Multicall {
                     tickLimitLow,
                     tickLimitHigh
                 );
+                netPaid = netPaid.add(paidAmounts);
             } else {
-                _burnOptions(
+                (paidAmounts, premiasByLeg[i]) = _burnOptions(
                     COMMIT_LONG_SETTLED,
                     tokenId,
                     positionBalanceData.positionSize(),
@@ -545,6 +550,7 @@ contract PanopticPool is Multicall {
                     tickLimitLow,
                     tickLimitHigh
                 );
+                netPaid = netPaid.add(paidAmounts);
             }
             unchecked {
                 ++i;
@@ -583,7 +589,7 @@ contract PanopticPool is Multicall {
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal {
+    ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
@@ -596,12 +602,14 @@ contract PanopticPool is Multicall {
             owner
         );
 
-        (uint32 poolUtilizations, LeftRightUnsigned commissions) = _payCommissionAndWriteData(
+        uint32 poolUtilizations;
+        LeftRightUnsigned commissions;
+
+        (poolUtilizations, commissions, paidAmounts) = _payCommissionAndWriteData(
             tokenId,
             positionSize,
             owner,
-            totalSwapped,
-            tickLimitLow < tickLimitHigh
+            totalSwapped
         );
 
         if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
@@ -625,7 +633,6 @@ contract PanopticPool is Multicall {
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param owner The owner of the option position to be minted
     /// @param totalSwapped The amount of tokens moved during creation of the option position
-    /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
@@ -634,37 +641,47 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        LeftRightSigned totalSwapped,
-        bool isCovered
-    ) internal returns (uint32, LeftRightUnsigned) {
+        LeftRightSigned totalSwapped
+    ) internal returns (uint32, LeftRightUnsigned, LeftRightSigned) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (LeftRightUnsigned utilizationAndCommission0, ) = s_collateralToken0.settleMint(
-            owner,
-            longAmounts.rightSlot(),
-            shortAmounts.rightSlot(),
-            totalSwapped.rightSlot()
-        );
-        (LeftRightUnsigned utilizationAndCommission1, ) = s_collateralToken1.settleMint(
-            owner,
-            longAmounts.leftSlot(),
-            shortAmounts.leftSlot(),
-            totalSwapped.leftSlot()
-        );
+        uint32 commissions;
+        LeftRightUnsigned utilizations;
+        LeftRightSigned paidAmounts;
+
+        // stack too deep
+        LeftRightSigned _totalSwapped = totalSwapped;
+
+        {
+            (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
+                .settleMint(
+                    owner,
+                    longAmounts.rightSlot(),
+                    shortAmounts.rightSlot(),
+                    _totalSwapped.rightSlot()
+                );
+            commissions = uint32(utilizationAndCommission0.rightSlot());
+            utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
+            paidAmounts = paidAmounts.toRightSlot(paid0);
+        }
+        {
+            (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = s_collateralToken1
+                .settleMint(
+                    owner,
+                    longAmounts.leftSlot(),
+                    shortAmounts.leftSlot(),
+                    _totalSwapped.leftSlot()
+                );
+            commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
+            utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
+            paidAmounts = paidAmounts.toLeftSlot(paid1);
+        }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
-            return (
-                uint32(
-                    utilizationAndCommission0.rightSlot() +
-                        (utilizationAndCommission1.rightSlot() << 16)
-                ),
-                LeftRightUnsigned.wrap(utilizationAndCommission0.leftSlot()).toLeftSlot(
-                    utilizationAndCommission1.leftSlot()
-                )
-            );
+            return (commissions, utilizations, paidAmounts);
         }
     }
 
