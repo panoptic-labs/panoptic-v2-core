@@ -400,20 +400,24 @@ contract PanopticPoolTest is PositionUtils {
         PanopticPool pp,
         address exercisee,
         TokenId tokenId,
-        TokenId[] memory exerciseeList,
+        TokenId[] memory exerciseeListFinal,
         TokenId[] memory exercisorList,
         LeftRightUnsigned premiaAsCollateral
     ) internal {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
 
-        TokenId[] memory targetList = new TokenId[](1);
+        TokenId[] memory exerciseeListInitial = new TokenId[](exerciseeListFinal.length + 1);
+        for (uint256 i = 0; i < exerciseeListFinal.length; ++i) {
+            exerciseeListInitial[i] = exerciseeListFinal[i];
+        }
+        exerciseeListInitial[exerciseeListInitial.length - 1] = tokenId;
 
         pp.dispatchFrom(
             exercisorList,
             exercisee,
-            targetList,
-            exerciseeList,
+            exerciseeListInitial,
+            exerciseeListFinal,
             LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
         );
     }
@@ -429,12 +433,10 @@ contract PanopticPoolTest is PositionUtils {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
 
-        TokenId[] memory targetList = new TokenId[](1);
-
         pp.dispatchFrom(
             settlerList,
             exercisee,
-            targetList,
+            settleeList,
             settleeList,
             LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
         );
@@ -3553,6 +3555,692 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    function test_Success_dispatch_OTMShortCall(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        uint128[] memory sizeList = new uint128[](1);
+        sizeList[0] = positionSize;
+        uint64[] memory spreadList = new uint64[](1);
+        spreadList[0] = type(uint64).max;
+
+        pp.dispatch(
+            posIdList,
+            posIdList,
+            sizeList,
+            spreadList,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
+
+        uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
+            sqrtLower,
+            sqrtUpper,
+            expectedLiq
+        );
+
+        {
+            (, uint256 inAMM, ) = ct0.getPoolData();
+            assertApproxEqAbs(inAMM, amount0, 10, "inAMM 0");
+        }
+
+        {
+            (, uint256 inAMM, ) = ct1.getPoolData();
+            assertEq(inAMM, 0, "inAMM 1");
+        }
+        {
+            assertEq(
+                pp.positionsHash(Alice),
+                uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+            );
+
+            assertEq(pp.numberOfLegs(Alice), 1);
+
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
+
+            assertEq(balance, positionSize, "user balance");
+            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(poolUtilization1, 0, "pu 1");
+        }
+
+        {
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                uint128(positionSize)
+            );
+
+            assertApproxEqAbs(
+                ct0.balanceOf(Alice),
+                uint256(type(uint104).max) - uint128((shortAmounts.rightSlot() * 10) / 10000),
+                uint256(int256(shortAmounts.rightSlot()) / 1_000_000 + 10),
+                "alice balance 0"
+            );
+
+            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance 1");
+        }
+    }
+
+    function test_Success_dispatch_2xOTMShortCall(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256[2] memory positionSizeSeeds
+    ) public {
+        _initPool(x);
+
+        (int24 width0, int24 strike0) = PositionUtils.getOTMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width1, int24 strike1) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData([width0, width1], [strike0, strike1], positionSizeSeeds);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike0,
+            width0
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike1,
+            width1
+        );
+
+        TokenId[] memory posIdList = new TokenId[](2);
+        posIdList[0] = tokenId0;
+        posIdList[1] = tokenId1;
+
+        uint128[] memory sizeList = new uint128[](2);
+        sizeList[0] = uint128(positionSizes[0]);
+        sizeList[1] = uint128(positionSizes[1]);
+        uint64[] memory spreadList = new uint64[](2);
+        spreadList[0] = type(uint64).max;
+        spreadList[1] = type(uint64).max;
+
+        pp.dispatch(
+            posIdList,
+            posIdList,
+            sizeList,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), positionSizes[0]);
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), positionSizes[1]);
+
+        uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
+            sqrtLowers[0],
+            sqrtUppers[0],
+            expectedLiqs[0]
+        ) + LiquidityAmounts.getAmount0ForLiquidity(sqrtLowers[1], sqrtUppers[1], expectedLiqs[1]);
+
+        {
+            (, uint256 inAMM, ) = ct0.getPoolData();
+            assertApproxEqAbs(inAMM, amount0, 10, "inAMM 0");
+        }
+
+        {
+            (, uint256 inAMM, ) = ct1.getPoolData();
+            assertEq(inAMM, 0, "inAMM 1");
+        }
+        {
+            assertEq(
+                pp.positionsHash(Alice),
+                uint248(
+                    uint256(keccak256(abi.encodePacked(tokenId0))) ^
+                        uint256(keccak256(abi.encodePacked(tokenId1)))
+                ),
+                "FAIL: position hashes don't match"
+            );
+
+            assertEq(pp.numberOfLegs(Alice), 2, "FAIL: nLegs don't match");
+
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId0);
+
+            assertEq(balance, positionSizes[0], "user balance");
+            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(poolUtilization1, 0, "pu 1");
+        }
+
+        {
+            (, LeftRightSigned shortAmounts0) = PanopticMath.computeExercisedAmounts(
+                tokenId0,
+                uint128(positionSizes[0])
+            );
+
+            (, LeftRightSigned shortAmounts1) = PanopticMath.computeExercisedAmounts(
+                tokenId1,
+                uint128(positionSizes[1])
+            );
+
+            console2.log("shortAmounts0", shortAmounts0.rightSlot());
+            console2.log("shortAmounts1", shortAmounts1.rightSlot());
+            assertApproxEqAbs(
+                ct0.balanceOf(Alice),
+                uint256(type(uint104).max) -
+                    uint128((shortAmounts0.rightSlot() * 10) / 10000) -
+                    uint128((shortAmounts1.rightSlot() * 10) / 10000),
+                uint256(
+                    int256(shortAmounts0.rightSlot() + shortAmounts1.rightSlot()) / 1_000_000 + 10
+                ),
+                "alice balance 0"
+            );
+
+            assertEq(ct1.balanceOf(Alice), uint256(type(uint104).max), "alice balance 1");
+        }
+    }
+
+    function test_Success_dispatch_burn(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256[2] memory positionSizeSeeds
+    ) public {
+        _initPool(x);
+
+        (int24 width0, int24 strike0) = PositionUtils.getOTMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width1, int24 strike1) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData([width0, width1], [strike0, strike1], positionSizeSeeds);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike0,
+            width0
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike1,
+            width1
+        );
+
+        TokenId[] memory posIdList = new TokenId[](2);
+        posIdList[0] = tokenId0;
+        posIdList[1] = tokenId1;
+
+        uint128[] memory sizeList = new uint128[](2);
+        sizeList[0] = uint128(positionSizes[0]);
+        sizeList[1] = uint128(positionSizes[1]);
+        uint64[] memory spreadList = new uint64[](2);
+        spreadList[0] = type(uint64).max;
+        spreadList[1] = type(uint64).max;
+
+        // mint two positions
+        pp.dispatch(
+            posIdList,
+            posIdList,
+            sizeList,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), positionSizes[0]);
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), positionSizes[1]);
+
+        // burn two positions
+        pp.dispatch(
+            posIdList,
+            new TokenId[](0),
+            sizeList,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)), 0);
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)), 0);
+    }
+
+    function test_Fail_dispatch_wrong_final_list(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256[2] memory positionSizeSeeds
+    ) public {
+        _initPool(x);
+
+        (int24 width0, int24 strike0) = PositionUtils.getOTMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width1, int24 strike1) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData([width0, width1], [strike0, strike1], positionSizeSeeds);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike0,
+            width0
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike1,
+            width1
+        );
+
+        TokenId[] memory posIdList = new TokenId[](2);
+        posIdList[0] = tokenId0;
+        posIdList[1] = tokenId1;
+
+        TokenId[] memory posIdListWrong = new TokenId[](2);
+        posIdListWrong[0] = tokenId0;
+        posIdListWrong[1] = tokenId0;
+
+        uint128[] memory sizeList = new uint128[](2);
+        sizeList[0] = uint128(positionSizes[0]);
+        sizeList[1] = uint128(positionSizes[1]);
+        uint64[] memory spreadList = new uint64[](2);
+        spreadList[0] = type(uint64).max;
+        spreadList[1] = type(uint64).max;
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        // mint two positions
+        pp.dispatch(
+            posIdList,
+            posIdListWrong,
+            sizeList,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        // mint two positions
+        pp.dispatch(
+            posIdListWrong,
+            posIdList,
+            sizeList,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        // mint two positions
+        pp.dispatch(
+            posIdListWrong,
+            posIdListWrong,
+            sizeList,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+    }
+
+    function test_Success_dispatch_insolvent_between_states(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds
+    ) public {
+        _initPool(x);
+
+        (int24 width0, int24 strike0) = PositionUtils.getOTMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width1, int24 strike1) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        uint256[2] memory positionSizeSeeds;
+
+        positionSizeSeeds[0] = 10 ** 16;
+        positionSizeSeeds[1] = 10 ** 16;
+
+        populatePositionData([width0, width0], [strike0, strike0], positionSizeSeeds);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike0,
+            width0
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            10,
+            isWETH,
+            0,
+            0,
+            0,
+            strike0,
+            width0
+        );
+
+        TokenId[] memory posIdListFail = new TokenId[](1);
+        posIdListFail[0] = tokenId1;
+
+        uint128[] memory sizeListFail = new uint128[](1);
+        sizeListFail[0] = uint128(positionSizes[1]);
+        uint64[] memory spreadList = new uint64[](1);
+        spreadList[0] = type(uint64).max;
+
+        console2.log("sis", positionSizes[0], positionSizes[1]);
+        (, LeftRightSigned shortAmounts0) = PanopticMath.computeExercisedAmounts(
+            tokenId0,
+            uint128(positionSizes[0])
+        );
+
+        (, LeftRightSigned shortAmounts1) = PanopticMath.computeExercisedAmounts(
+            tokenId1,
+            uint128(positionSizes[1])
+        );
+
+        console2.log("shortAmounts0", shortAmounts0.rightSlot());
+        console2.log("shortAmounts1", shortAmounts1.rightSlot());
+        vm.startPrank(Alice);
+        ct0.redeem(ct0.maxRedeem(Alice) - uint128(shortAmounts0.rightSlot()), Alice, Alice);
+        ct1.redeem(ct1.maxRedeem(Alice), Alice, Alice);
+
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        pp.dispatch(
+            posIdListFail,
+            posIdListFail,
+            sizeListFail,
+            spreadList,
+            Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
+            true
+        );
+        {
+            TokenId[] memory posIdListPass = new TokenId[](3);
+            posIdListPass[0] = tokenId0;
+            posIdListPass[1] = tokenId1;
+            posIdListPass[2] = tokenId1;
+
+            TokenId[] memory posIdListFinal = new TokenId[](3);
+            posIdListFinal[0] = tokenId0;
+
+            uint128[] memory sizeListPass = new uint128[](3);
+            sizeListPass[0] = uint128(positionSizes[0]);
+            sizeListPass[1] = uint128(positionSizes[1]);
+            sizeListPass[2] = uint128(positionSizes[1]);
+
+            uint64[] memory spreadListPass = new uint64[](3);
+            spreadListPass[0] = type(uint64).max;
+            spreadListPass[1] = type(uint64).max;
+            spreadListPass[2] = type(uint64).max;
+
+            pp.dispatch(
+                posIdListPass,
+                posIdListFinal,
+                sizeListPass,
+                spreadListPass,
+                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_V3POOL_TICK,
+                true
+            );
+        }
+
+        assertEq(
+            sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)),
+            positionSizes[0],
+            "FAIL: sfpm balance token0"
+        );
+        assertEq(
+            sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)),
+            0,
+            "FAIL: sfpm balance token1"
+        );
+
+        uint256 amount0 = LiquidityAmounts.getAmount0ForLiquidity(
+            sqrtLowers[0],
+            sqrtUppers[0],
+            expectedLiqs[0]
+        );
+
+        {
+            (, uint256 inAMM, ) = ct0.getPoolData();
+            assertApproxEqAbs(inAMM, amount0, 10, "inAMM 0");
+        }
+
+        {
+            (, uint256 inAMM, ) = ct1.getPoolData();
+            assertEq(inAMM, 0, "inAMM 1");
+        }
+        {
+            assertEq(
+                pp.positionsHash(Alice),
+                uint248(uint256(keccak256(abi.encodePacked(tokenId0)))),
+                "FAIL: position hashes don't match"
+            );
+
+            assertEq(pp.numberOfLegs(Alice), 1, "FAIL: nLegs don't match");
+
+            {
+                (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                    .optionPositionInfo(pp, Alice, tokenId0);
+
+                assertEq(balance, positionSizes[0], "user balance");
+                assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+                assertEq(poolUtilization1, 0, "pu 1");
+            }
+        }
+
+        {
+            assertApproxEqAbs(
+                ct0.balanceOf(Alice),
+                uint128(shortAmounts0.rightSlot()) -
+                    uint128((shortAmounts0.rightSlot() * 10) / 10000) -
+                    uint128((shortAmounts1.rightSlot() * 10) / 10000),
+                uint256(int256(shortAmounts0.rightSlot()) / 1_000_000 + 10),
+                "alice balance 0"
+            );
+            assertEq(ct1.balanceOf(Alice), 0, "alice balance 1");
+        }
+    }
+
+    function test_Success_dispatch_repeated_states(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds
+    ) public {
+        _initPool(x);
+
+        (int24 width0, int24 strike0) = PositionUtils.getOTMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width1, int24 strike1) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        uint256[2] memory positionSizeSeeds;
+
+        positionSizeSeeds[0] = 10 ** 16;
+        positionSizeSeeds[1] = 10 ** 16;
+
+        populatePositionData([width0, width0], [strike0, strike0], positionSizeSeeds);
+
+        TokenId tokenId0 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike0,
+            width0
+        );
+
+        TokenId tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike1,
+            width1
+        );
+
+        TokenId[] memory posIdListFinal = new TokenId[](1);
+        posIdListFinal[0] = tokenId1;
+
+        uint256 numberOfPositions = ((x % 2 ** 10) / 2) * 2 + 3;
+
+        {
+            TokenId[] memory posIdList = new TokenId[](numberOfPositions);
+
+            uint128[] memory sizeList = new uint128[](numberOfPositions);
+
+            uint64[] memory spreadList = new uint64[](numberOfPositions);
+
+            for (uint256 i = 0; i < numberOfPositions; ++i) {
+                posIdList[i] = tokenId1;
+                sizeList[i] = uint128(positionSizes[1]);
+                spreadList[i] = type(uint64).max;
+            }
+
+            pp.dispatch(
+                posIdList,
+                posIdListFinal,
+                sizeList,
+                spreadList,
+                Constants.MIN_V3POOL_TICK,
+                Constants.MAX_V3POOL_TICK,
+                true
+            );
+        }
+
+        assertEq(
+            sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId0)),
+            0,
+            "FAIL: sfpm balance token0"
+        );
+        assertEq(
+            sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId1)),
+            positionSizes[1],
+            "FAIL: sfpm balance token1"
+        );
+    }
+
     function test_Fail_mintOptions_PriceBoundEqualFail(
         uint256 x,
         uint256 widthSeed,
@@ -3751,7 +4439,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
         posIdList[1] = tokenId;
 
-        vm.expectRevert(Errors.PositionAlreadyMinted.selector);
+        vm.expectRevert(Errors.InputListFail.selector);
         mintOptions(
             pp,
             posIdList,
@@ -5530,7 +6218,7 @@ contract PanopticPoolTest is PositionUtils {
 
         oneWaySwap(swapSizeSeed, swapDirection);
 
-        //(currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
         updatePositionDataVariable(numLegs, isLongs);
 
@@ -5566,7 +6254,7 @@ contract PanopticPoolTest is PositionUtils {
 
             rangesFromStrike = legRanges > rangesFromStrike ? legRanges : rangesFromStrike;
 
-            (, , , TWAPtick, ) = pp.getOracleTicks();
+            TWAPtick = pp.getUniV3TWAP_();
             uint160 lastObservedPrice = TickMath.getSqrtRatioAtTick(TWAPtick);
             LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                 tokenId,
@@ -5603,7 +6291,6 @@ contract PanopticPoolTest is PositionUtils {
 
         exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
         exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
-
         forceExercise(
             pp,
             Alice,
@@ -5686,7 +6373,7 @@ contract PanopticPoolTest is PositionUtils {
                     int256(lastCollateralBalance0[Alice]),
                 $balanceDelta0,
                 uint256(
-                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_000_000 + 10)
+                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_00_000 + 10)
                 ),
                 "Incorrect balance delta for token0 (Force Exercisee)"
             );
@@ -5952,6 +6639,9 @@ contract PanopticPoolTest is PositionUtils {
         lastCollateralBalance1[Alice] = ct1.balanceOf(Alice);
         {
             uint256 snap = vm.snapshot();
+
+            vm.warp(block.timestamp + 1200);
+            vm.roll(block.number + 100);
 
             vm.startPrank(Bob);
             forceExercise(
@@ -6538,7 +7228,7 @@ contract PanopticPoolTest is PositionUtils {
             pp,
             Alice,
             touchedIds[0],
-            touchedIds,
+            new TokenId[](0),
             new TokenId[](0),
             LeftRightUnsigned.wrap(1).toLeftSlot(1)
         );
@@ -6667,7 +7357,7 @@ contract PanopticPoolTest is PositionUtils {
         }
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
 
-        (, , , TWAPtick, ) = pp.getOracleTicks();
+        TWAPtick = pp.getUniV3TWAP_();
         vm.assume(Math.abs(int256(currentTick) - TWAPtick) <= 513);
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
@@ -7264,7 +7954,8 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        (, , , TWAPtick, ) = pp.getOracleTicks();
+
+        TWAPtick = pp.getUniV3TWAP_();
         vm.assume(Math.abs(int256(currentTick) - TWAPtick) <= 513);
 
         (, uint256 totalCollateralRequired0) = ph.checkCollateral(
@@ -8214,9 +8905,194 @@ contract PanopticPoolTest is PositionUtils {
                 LeftRightUnsigned.wrap(0)
             )
         {
-            assertFalse(true, "liquidation should have failed");
+            assertFalse($posIdLists[1].length > 1, "liquidation should have failed");
         } catch (bytes memory reason) {
-            assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
+            assertTrue(
+                (bytes4(reason) == Errors.NotMarginCalled.selector) ||
+                    (bytes4(reason) == Errors.NoLegsExercisable.selector)
+            );
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           DISPATCHFROM TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fail_dispatchFrom_InvalidCallerList(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        posIdList = new TokenId[](2);
+        posIdList[0] = tokenId;
+
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+
+        posIdList[1] = tokenId2;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.InputListFail.selector);
+        pp.dispatchFrom(
+            posIdList,
+            Alice,
+            posIdList,
+            posIdList,
+            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+        );
+    }
+
+    function test_Fail_dispatchFrom_InvalidFinalList(
+        uint256 x,
+        uint256[2] memory widthSeeds,
+        int256[2] memory strikeSeeds,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeeds[0],
+            strikeSeeds[0],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        (int24 width2, int24 strike2) = PositionUtils.getOTMSW(
+            widthSeeds[1],
+            strikeSeeds[1],
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        vm.assume(width2 != width || strike2 != strike);
+
+        populatePositionData([width, width2], [strike, strike2], positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        posIdList = new TokenId[](2);
+        posIdList[0] = tokenId;
+
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike2,
+            width2
+        );
+
+        posIdList[1] = tokenId2;
+
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        vm.startPrank(Bob);
+
+        vm.expectRevert(Errors.NotMarginCalled.selector);
+        pp.dispatchFrom(
+            new TokenId[](0),
+            Alice,
+            posIdList,
+            new TokenId[](0),
+            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+        );
     }
 }
