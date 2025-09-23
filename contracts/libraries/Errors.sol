@@ -18,6 +18,9 @@ library Errors {
     /// @notice CollateralTracker: The amount of shares (or assets) deposited is larger than the maximum permitted
     error DepositTooLarge();
 
+    /// @notice PanopticPool: The list of provided TokenIds has a duplicate entry
+    error DuplicateTokenId();
+
     /// @notice PanopticPool: The effective liquidity (X32) is greater than min(`MAX_SPREAD`, `USER_PROVIDED_THRESHOLD`) during a long mint or short burn
     /// @dev Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
     error EffectiveLiquidityAboveThreshold();

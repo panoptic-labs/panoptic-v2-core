@@ -131,7 +131,6 @@ library PanopticMath {
 
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
         uint8 numberOfLegs = uint8(tokenId.countLegs());
-
         if (numberOfLegs == 0) revert Errors.ZeroLegs();
 
         uint256 newLegCount = addFlag
@@ -140,6 +139,41 @@ library PanopticMath {
 
         unchecked {
             return uint256(updatedHash) + (newLegCount << 248);
+        }
+    }
+
+    function hasNoDuplicateTokenIds(TokenId[] calldata arr) external pure returns (bool) {
+        assembly {
+            let len := arr.length
+            let offset := arr.offset
+
+            // Early return for 0 or 1 elements
+            if lt(len, 2) {
+                mstore(0x00, 1)
+                return(0x00, 0x20)
+            }
+
+            // Check for duplicates
+            for {
+                let i := 0
+            } lt(i, len) {
+                i := add(i, 1)
+            } {
+                let val := calldataload(add(offset, mul(i, 0x20)))
+                for {
+                    let j := add(i, 1)
+                } lt(j, len) {
+                    j := add(j, 1)
+                } {
+                    if eq(val, calldataload(add(offset, mul(j, 0x20)))) {
+                        mstore(0x00, 0)
+                        return(0x00, 0x20)
+                    }
+                }
+            }
+
+            mstore(0x00, 1)
+            return(0x00, 0x20)
         }
     }
 

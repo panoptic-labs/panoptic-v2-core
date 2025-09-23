@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -759,6 +758,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
 
+        if (positionSize == 0) revert Errors.PositionNotOwned();
+
         // burn position and do exercise checks
         (premiaByLeg, paidAmounts) = _burnAndHandleExercise(
             commitLongSettled,
@@ -1277,7 +1278,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 fingerprintIncomingList;
 
-        uint256 lastTokenId;
+        if (!PanopticMath.hasNoDuplicateTokenIds(positionIdList)) {
+            revert Errors.DuplicateTokenId();
+        }
+
         for (uint256 i = 0; i < pLength; ) {
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
@@ -1287,8 +1291,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             unchecked {
                 ++i;
             }
-            uint256 currentTokenId = TokenId.unwrap(positionIdList[i]);
-            if (!(currentTokenId > lastTokenId)) revert Errors.InputListFail();
         }
 
         // revert if fingerprint for provided `_positionIdList` does not match the one stored for the `_account`

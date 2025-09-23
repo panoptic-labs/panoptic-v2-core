@@ -560,7 +560,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
         _burn(owner, shares);
-
         // update tracked asset balance
         s_poolAssets -= uint128(assets);
 

@@ -45,8 +45,26 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
+    function setPositionsHash(address user, uint256 hash) external {
+        s_positionsHash[user] = hash;
+    }
+
     function miniMedian() external view returns (uint256) {
         return s_miniMedian;
+    }
+
+    function generatePositionsHash(TokenId[] memory positionIdList) external returns (uint256) {
+        uint256 fingerprintIncomingList;
+        uint256 pLength = positionIdList.length;
+
+        for (uint256 i = 0; i < pLength; ++i) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+        }
+        return fingerprintIncomingList;
     }
 
     /**
@@ -7836,6 +7854,71 @@ contract PanopticPoolTest is PositionUtils {
             assertFalse(true, "liquidation should have failed");
         } catch (bytes memory reason) {
             assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           SPOOFING LIST TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fail_positions_hash(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        vm.startPrank(Bob);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        console2.log("a");
+
+        // mint option from another account to change the effective liquidity
+        pp.mintOptions(
+            posIdList,
+            positionSize * 2,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        {
+            assertEq(pp.positionsHash(Bob), uint248(uint256(keccak256(abi.encodePacked(tokenId)))));
+            assertEq(pp.numberOfLegs(Bob), 1);
+
+            pp.setPositionsHash(Bob, 0);
+            assertEq(pp.positionsHash(Bob), uint248(uint256(0)));
+            assertEq(pp.numberOfLegs(Bob), 0);
+
+            uint256 newPositionsHash = pp.generatePositionsHash(posIdList);
+
+            pp.setPositionsHash(Bob, newPositionsHash);
+
+            assertEq(pp.positionsHash(Bob), uint248(uint256(newPositionsHash)));
+            assertEq(pp.numberOfLegs(Bob), 1);
         }
     }
 }
