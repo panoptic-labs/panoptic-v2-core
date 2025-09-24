@@ -540,12 +540,12 @@ contract PanopticPool is Multicall {
                 );
             } else {
                 _burnOptions(
-                    COMMIT_LONG_SETTLED,
                     tokenId,
                     positionBalanceData.positionSize(),
-                    msg.sender,
                     tickLimitLow,
-                    tickLimitHigh
+                    tickLimitHigh,
+                    msg.sender,
+                    COMMIT_LONG_SETTLED
                 );
             }
             unchecked {
@@ -691,12 +691,12 @@ contract PanopticPool is Multicall {
             uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
             LeftRightSigned paidAmounts;
             (paidAmounts, premiasByLeg[i]) = _burnOptions(
-                commitLongSettled,
                 positionIdList[i],
                 positionSize,
-                owner,
                 tickLimitLow,
-                tickLimitHigh
+                tickLimitHigh,
+                owner,
+                commitLongSettled
             );
             netPaid = netPaid.add(paidAmounts);
             unchecked {
@@ -708,19 +708,19 @@ contract PanopticPool is Multicall {
     /// @notice Close a single option position.
     /// @param tokenId The option position to burn
     /// @param positionSize The size of the position to burn
-    /// @param owner The owner of the option position to be burned
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
+    /// @param owner The owner of the option position to be burned
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @return paidAmounts The net amount of tokens paid after closing the position
     /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _burnOptions(
-        bool commitLongSettled,
         TokenId tokenId,
         uint128 positionSize,
-        address owner,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        address owner,
+        bool commitLongSettled
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
@@ -1127,12 +1127,12 @@ contract PanopticPool is Multicall {
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
             _burnOptions(
-                COMMIT_LONG_SETTLED,
                 tokenId,
                 positionSize,
-                account,
                 MIN_SWAP_TICK,
-                MAX_SWAP_TICK
+                MAX_SWAP_TICK,
+                account,
+                COMMIT_LONG_SETTLED
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
