@@ -120,7 +120,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
-    /// @notice Interest rate accumulator, contains the net interest owed in the left slot, the last block timestamp in the upper 32 bits of the right slow and the accumulator itself in the lower 96 bits in Wad of the right slot.
+    /// @notice Interest rate accumulator, contains the net interest owed in the left slot, the last block timestamp in the upper 32 bits of the right slot and the accumulator itself in the lower 96 bits in Wad of the right slot.
     ///
     LeftRightUnsigned internal s_interestRateAccumulator;
 
@@ -698,38 +698,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param owner the account which calls accrue interest
     function _accrueInterest(address owner) internal {
         unchecked {
-            // Get block delta
-            LeftRightUnsigned accumulator = s_interestRateAccumulator;
+            (
+                uint128 currentBorrowIndex,
+                uint128 unrealizedGlobalInterest,
+                uint256 currentTime,
+                uint128 deltaTime
+            ) = _calculateCurrentInterestState();
 
-            // keep uint32 to allow for wrapping inside unchecked scope, works as long as the deltaTime is less than 2**32 seconds  = 136 years
-            uint256 currentTime = block.timestamp;
-            uint256 previousTime = accumulator.rightSlot() >> 96;
-            uint128 deltaTime = uint32(currentTime - previousTime);
-
-            uint128 currentBorrowIndex = uint128(uint96(accumulator.rightSlot()));
-            uint128 unrealizedGlobalInterest = accumulator.leftSlot();
             uint128 inAMM = s_inAMM;
-            // only update global quantities if not in the same block
-            if (deltaTime > 0) {
-                // PROTOCOL
-                //  extract interest rate owed during that period using: rawInterest = (exp(-interest * ∆t) - 1)
-                uint128 rawInterest = uint128(
-                    Math.wTaylorCompounded(interestRate(), uint128(deltaTime))
-                );
-                uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
-                // add that value to the "inAMM" tracker
-
-                unrealizedGlobalInterest += interestOwed;
-
-                // Update the borrow index
-                uint128 borrowIndex = 10 ** 18 + rawInterest;
-
-                // update current borrow index
-                currentBorrowIndex = Math
-                    .mulDivWadRoundingUp(currentBorrowIndex, borrowIndex)
-                    .toUint128();
-            }
-
             // USER
             LeftRightSigned userState = s_interestState[owner];
             int128 netBorrows = userState.leftSlot();
@@ -737,10 +713,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             if (netBorrows != 0) {
                 uint128 userInterestOwed = _getUserInterest(userState, currentBorrowIndex);
                 if (userInterestOwed != 0) {
+                    uint256 _totalAssets = s_poolAssets + inAMM + unrealizedGlobalInterest;
+
                     uint256 shares = Math.mulDivRoundingUp(
                         userInterestOwed,
                         totalSupply,
-                        s_poolAssets + inAMM + unrealizedGlobalInterest
+                        _totalAssets
                     );
 
                     uint128 burntInterestValue = userInterestOwed;
@@ -749,7 +727,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         uint256 userBalance = balanceOf[_owner];
                         if (shares > userBalance) {
                             // update the acrual of interest paid
-                            burntInterestValue = uint128(convertToAssets(userBalance));
+                            burntInterestValue = Math
+                                .mulDiv(userBalance, _totalAssets, totalSupply)
+                                .toUint128();
 
                             /// Insolvent case: Pay what you can
                             _burn(_owner, userBalance);
@@ -777,6 +757,45 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 .wrap(0)
                 .toLeftSlot(unrealizedGlobalInterest)
                 .toRightSlot(uint128((currentTime << 96) + uint96(currentBorrowIndex)));
+        }
+    }
+
+    function _calculateCurrentInterestState()
+        internal
+        view
+        returns (
+            uint128 currentBorrowIndex,
+            uint128 unrealizedGlobalInterest,
+            uint256 currentTime,
+            uint128 deltaTime
+        )
+    {
+        unchecked {
+            LeftRightUnsigned accumulator = s_interestRateAccumulator;
+
+            currentTime = block.timestamp;
+            uint256 previousTime = accumulator.rightSlot() >> 96;
+            deltaTime = uint32(currentTime - previousTime);
+            currentBorrowIndex = uint128(uint96(accumulator.rightSlot()));
+            unrealizedGlobalInterest = accumulator.leftSlot();
+
+            if (deltaTime > 0) {
+                // Calculate interest growth
+                uint128 rawInterest = uint128(
+                    Math.wTaylorCompounded(interestRate(), uint128(deltaTime))
+                );
+
+                // Calculate interest owed on borrowed amount
+                uint128 inAMM = s_inAMM;
+                uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
+                unrealizedGlobalInterest += interestOwed;
+
+                // Update borrow index
+                uint128 borrowIndex = 10 ** 18 + rawInterest;
+                currentBorrowIndex = Math
+                    .mulDivWadRoundingUp(currentBorrowIndex, borrowIndex)
+                    .toUint128();
+            }
         }
     }
 
@@ -814,6 +833,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         LeftRightSigned userState = s_interestState[owner];
         uint256 borrowIndex = uint256(uint96(s_interestRateAccumulator.rightSlot()));
         return _getUserInterest(userState, borrowIndex);
+    }
+
+    function _calculateCurrentBorrowIndex() internal view returns (uint256) {
+        (uint128 currentBorrowIndex, , , ) = _calculateCurrentInterestState();
+        return currentBorrowIndex;
+    }
+
+    function previewOwedInterest(address owner) public view returns (uint128) {
+        uint256 simulatedBorrowIndex = _calculateCurrentBorrowIndex();
+        LeftRightSigned userState = s_interestState[owner];
+        return _getUserInterest(userState, simulatedBorrowIndex);
     }
 
     /*//////////////////////////////////////////////////////////////
