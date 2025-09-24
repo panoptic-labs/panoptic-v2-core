@@ -74,6 +74,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         s_poolAssets = uint128(amount);
     }
 
+    function setTotalSupply(uint256 amount) external {
+        totalSupply = amount;
+    }
+
     function setInAMM(int128 amount) external {
         s_inAMM = uint128(int128(s_inAMM) + amount);
     }
@@ -1257,6 +1261,434 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
         );
         vm.stopPrank();
+    }
+
+    function test_Success_accrueInterest_smallBalance() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether; // Use a fixed deposit amount
+
+        // Get the initial borrow index right after initialization
+        uint128 initialBorrowIndex = uint96(collateralToken0._interestRateAccumulator());
+
+        // --- Alice deposits ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+        collateralToken1.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // --- Bob deposits ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        strike = 198600 + 6000;
+        width = 2;
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob sell assets/2
+        panopticPool.mintOptions(
+            positionIdList,
+            1,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
+
+        assertEq(netBorrowsBefore, 1);
+
+        uint256 blockAfterBorrow = block.number;
+        uint256 timestampAfterBorrow = block.timestamp;
+
+        uint32 blocksToSkip = 1;
+        uint256 blockTime = 1;
+        vm.roll(blockAfterBorrow + blocksToSkip);
+        vm.warp(timestampAfterBorrow + blocksToSkip * blockTime);
+
+        collateralToken0.accrueInterest();
+        (int128 baseIndexAfter, int128 netBorrowsAfter) = collateralToken0.interestState(Bob);
+
+        assertTrue(baseIndexAfter == baseIndexBefore, "FAIL: Bob's base index increased");
+        uint128 perSecondInterestRate = collateralToken0.interestRate();
+
+        // 2. Calculate the expected interest for the period.
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * blockTime
+        );
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
+
+        uint256 unrealizedGlobalInterest = Math.mulDivWadRoundingUp(
+            collateralToken0._inAMM(),
+            interestForPeriod
+        );
+
+        // 3. Construct the full expected accumulator value.
+        uint256 expectedAccumulator = (unrealizedGlobalInterest << 128) +
+            ((timestampAfterBorrow + blocksToSkip * blockTime) << 96) +
+            expectedNewIndex;
+        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+
+        // 4. Assert the final state is correct.
+        assertEq(
+            actualAccumulator,
+            expectedAccumulator,
+            "FAIL: Interest did not accrue correctly after borrow was made"
+        );
+
+        vm.startPrank(Bob);
+        {
+            (baseIndexBefore, netBorrowsBefore) = collateralToken0.interestState(Bob);
+            uint256 balanceBobBefore = collateralToken0.balanceOf(Bob);
+            // pay Bob's interest
+            collateralToken0.accrueInterest();
+            (baseIndexAfter, netBorrowsAfter) = collateralToken0.interestState(Bob);
+            uint256 balanceBobAfter = collateralToken0.balanceOf(Bob);
+
+            assertTrue(balanceBobAfter < balanceBobBefore, "FAIL: Bob's balance did not decrease");
+
+            assertTrue(
+                collateralToken0.convertToAssets(balanceBobBefore - balanceBobAfter) > 0,
+                "FAIL: Bob did not burn at least 1 share"
+            );
+        }
+
+        assertTrue(baseIndexAfter > baseIndexBefore, "FAIL: Bob's base index did not increased");
+
+        actualAccumulator = collateralToken0._interestRateAccumulator();
+
+        assertEq(actualAccumulator >> 128, 0, "FAIL: still outstanding interest");
+        assertEq(actualAccumulator % 2 ** 96, expectedNewIndex, "Fail: wrong index");
+    }
+
+    function testFuzz_accrueInterest_smallValues(
+        uint8 borrowAmount,
+        uint64 userInitialAssets,
+        uint32 deltaTime
+    ) public {
+        // 1. SETUP
+        vm.assume(deltaTime > 0); // Interest only accrues over time.
+        console2.log("data", borrowAmount, userInitialAssets, deltaTime);
+        vm.assume(uint256(userInitialAssets) > uint256(borrowAmount) + 2);
+
+        _initWorld(0);
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), 1 ether);
+        collateralToken0.deposit(1 ether, Alice);
+        vm.stopPrank();
+
+        // Have Bob make a small, fuzzed borrow.
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint104).max);
+        collateralToken0.deposit(userInitialAssets, Bob);
+
+        if (borrowAmount > 0) {
+            (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+            strike = 198600 + 6000;
+            width = 2;
+
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            positionIdList.push(tokenId);
+
+            panopticPool.mintOptions(
+                positionIdList,
+                borrowAmount,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
+        }
+
+        (int128 baseIndexBefore, ) = collateralToken0.interestState(Bob);
+        uint256 balanceBefore = collateralToken0.balanceOf(Bob);
+
+        // 2. ACTION: Time passes and interest is accrued.
+        vm.warp(block.timestamp + deltaTime);
+        collateralToken0.accrueInterest(); // Settle Bob's interest.
+        vm.stopPrank();
+
+        // 3. ASSERT INVARIANTS
+        (int128 baseIndexAfter, ) = collateralToken0.interestState(Bob);
+        uint256 balanceAfter = collateralToken0.balanceOf(Bob);
+        uint256 sharesOwed = collateralToken0.convertToShares(collateralToken0.owedInterest(Bob));
+
+        // Invariant 1: No reverts (implicitly tested by reaching this point).
+
+        // Invariant 2: No free lunch. Balance should not increase.
+        assertTrue(balanceAfter <= balanceBefore, "FAIL: User gained shares by borrowing");
+
+        // Invariant 4: Solvency logic must hold.
+        if (borrowAmount > 0) {
+            if (balanceBefore >= sharesOwed) {
+                // SOLVENT: Base index must be updated.
+                assertTrue(
+                    baseIndexAfter > baseIndexBefore,
+                    "FAIL: Solvent user index not updated"
+                );
+
+                // Invariant 3: Debt has a cost. If interest is owed, balance must drop.
+                if (sharesOwed > 0) {
+                    assertTrue(balanceAfter < balanceBefore, "FAIL: Solvent user paid no interest");
+                }
+            } else {
+                // INSOLVENT: Base index must NOT be updated.
+                assertTrue(
+                    baseIndexAfter == baseIndexBefore,
+                    "FAIL: Insolvent user index was updated"
+                );
+                // They should have been wiped out.
+                assertEq(balanceAfter, 0, "FAIL: Insolvent user not wiped out");
+            }
+        } else {
+            // If borrowAmount is 0, nothing should change.
+            assertTrue(baseIndexAfter > baseIndexBefore, "FAIL: Index changed with no borrow");
+            assertEq(balanceAfter, balanceBefore, "FAIL: Balance changed with no borrow");
+        }
+    }
+
+    function test_Fail_accrueInterest_noMorefunds() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether; // Use a fixed deposit amount
+
+        // Get the initial borrow index right after initialization
+        uint128 initialBorrowIndex = uint96(collateralToken0._interestRateAccumulator());
+
+        // --- Alice deposits ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        IERC20Partial(token1).approve(address(collateralToken1), assets);
+        collateralToken1.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // --- Charlie (our control user) deposits and borrows exactly like Bob ---
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Charlie);
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+        panopticPool.mintOptions(
+            positionIdList,
+            assets,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        // --- Bob deposits ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        // Bob sell assets/2
+        panopticPool.mintOptions(
+            positionIdList,
+            assets,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        console2.log("inAMM", collateralToken0._inAMM());
+        collateralToken0.setBalance(Bob, 1 ether);
+
+        uint32 blocksToSkip = 7200 * 365;
+        uint256 timestampAfterBorrow = block.timestamp;
+
+        {
+            uint256 blockAfterBorrow = block.number;
+
+            vm.roll(blockAfterBorrow + blocksToSkip);
+            vm.warp(timestampAfterBorrow + blocksToSkip * 12);
+        }
+        vm.stopPrank();
+
+        // Charlie repays
+        uint256 charliePayment1;
+        {
+            uint256 charlieBalanceBefore1 = collateralToken0.balanceOf(Charlie);
+            vm.startPrank(Charlie);
+            collateralToken0.accrueInterest();
+            vm.stopPrank();
+            uint256 charlieBalanceAfter1 = collateralToken0.balanceOf(Charlie);
+            charliePayment1 = collateralToken0.convertToAssets(
+                charlieBalanceBefore1 - charlieBalanceAfter1
+            );
+        }
+        vm.stopPrank();
+
+        uint256 balanceBobBefore = collateralToken0.balanceOf(Bob);
+        uint256 maxInterestPaidByBob = collateralToken0.convertToAssets(balanceBobBefore);
+
+        vm.startPrank(Bob);
+
+        {
+            (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
+
+            collateralToken0.accrueInterest();
+
+            uint256 balanceBobAfter = collateralToken0.balanceOf(Bob);
+            (int128 baseIndexAfter, int128 netBorrowsAfter) = collateralToken0.interestState(Bob);
+
+            assertTrue(balanceBobAfter == 0, "FAIL: Bob did not pay all");
+            assertEq(
+                baseIndexAfter,
+                baseIndexBefore,
+                "FAIL: Insolvent user's base index was updated"
+            );
+            assertEq(
+                netBorrowsAfter,
+                netBorrowsBefore,
+                "FAIL: Net borrows changed during interest accrual"
+            );
+        }
+        vm.stopPrank();
+
+        uint128 perSecondInterestRate = collateralToken0.interestRate();
+        assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
+
+        // 2. Calculate the expected interest for the period.
+        uint256 interestForPeriod = Math.wTaylorCompounded(
+            uint256(perSecondInterestRate),
+            blocksToSkip * 12
+        );
+
+        uint256 totalInterestGenerated = Math.mulDivWadRoundingUp(
+            assets, // The amount borrowed before interest was added, Charlie has paid their share already
+            interestForPeriod
+        );
+
+        uint256 finalUnrealizedInterest = totalInterestGenerated > maxInterestPaidByBob
+            ? totalInterestGenerated - maxInterestPaidByBob
+            : 0;
+
+        uint256 expectedNewIndex = Math.mulDivWadRoundingUp(
+            initialBorrowIndex,
+            1e18 + interestForPeriod
+        );
+
+        // 3. Construct the full expected accumulator value.
+        uint256 expectedAccumulator = (finalUnrealizedInterest << 128) +
+            ((timestampAfterBorrow + blocksToSkip * 12) << 96) +
+            expectedNewIndex;
+
+        uint256 actualAccumulator = collateralToken0._interestRateAccumulator();
+
+        // 4. Assert the final state is correct.
+        assertEq(
+            actualAccumulator,
+            expectedAccumulator,
+            "FAIL: Interest did not accrue correctly after borrow was made it seems"
+        );
+
+        // Bob re-reposits and pays interest
+        vm.startPrank(Bob);
+        {
+            uint256 newAssets = 5000 ether;
+            _grantTokens(Bob);
+            IERC20Partial(token0).approve(address(collateralToken0), newAssets);
+            collateralToken0.deposit(newAssets, Bob);
+        }
+        (int128 stuckBaseIndex, ) = collateralToken0.interestState(Bob); // His index is still old
+
+        uint256 bobBalanceBeforeFinalPayment = collateralToken0.balanceOf(Bob);
+        vm.warp(block.timestamp + 1 days);
+
+        // Charlie pays interest for the final day
+        uint256 charliePayment2;
+        {
+            uint256 charlieBalanceBefore2 = collateralToken0.balanceOf(Charlie);
+            vm.startPrank(Charlie);
+            collateralToken0.accrueInterest();
+            vm.stopPrank();
+            uint256 charlieBalanceAfter2 = collateralToken0.balanceOf(Charlie);
+            charliePayment2 = collateralToken0.convertToAssets(
+                charlieBalanceBefore2 - charlieBalanceAfter2
+            );
+        }
+        // NOW, BOB PAYS HIS ACCUMULATED DEBT
+        // Since he has funds, this should succeed and take the SOLVENT path
+        vm.startPrank(Bob);
+        collateralToken0.accrueInterest();
+
+        uint256 bobFinalPayment;
+        {
+            uint256 bobBalanceAfterFinalPayment = collateralToken0.balanceOf(Bob);
+            bobFinalPayment = collateralToken0.convertToAssets(
+                bobBalanceBeforeFinalPayment - bobBalanceAfterFinalPayment
+            );
+        }
+        {
+            uint256 finalBalance = collateralToken0.balanceOf(Bob);
+            (int128 finalBaseIndex, ) = collateralToken0.interestState(Bob);
+            uint128 finalGlobalBorrowIndex = collateralToken0.borrowIndex();
+            console2.log("ff", finalBalance, bobBalanceBeforeFinalPayment);
+            assertTrue(
+                finalBalance < bobBalanceBeforeFinalPayment,
+                "FAIL: Bob paid no interest after re-depositing"
+            );
+
+            assertTrue(
+                finalBaseIndex > stuckBaseIndex,
+                "FAIL: Bob's base index was not updated after paying his debt"
+            );
+            assertEq(
+                uint128(finalBaseIndex),
+                finalGlobalBorrowIndex,
+                "FAIL: Bob's index is not current"
+            );
+
+            uint256 finalUnrealizedInterestAfterPayment = collateralToken0
+                .unrealizedGlobalInterest();
+            assertEq(
+                finalUnrealizedInterestAfterPayment,
+                0,
+                "FAIL: Unrealized interest was not settled to zero"
+            );
+        }
+
+        vm.stopPrank();
+        {
+            console2.log("amts", balanceBobBefore, bobFinalPayment);
+        }
+
+        {
+            uint256 totalCharlieInterestPaid = charliePayment1 + charliePayment2;
+            uint256 totalBobInterestPaid = maxInterestPaidByBob + bobFinalPayment;
+
+            console2.log("Total Interest Paid by Charlie (2 payments):", totalCharlieInterestPaid);
+            console2.log("Total Interest Paid by Bob (1 lump sum):", totalBobInterestPaid);
+
+            // This assertion proves that Bob paid more due to compounding.
+            assertTrue(
+                totalBobInterestPaid > totalCharlieInterestPaid,
+                "FAIL: Compounding did not result in higher total interest"
+            );
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
