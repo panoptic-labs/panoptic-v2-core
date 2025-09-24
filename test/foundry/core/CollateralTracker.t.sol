@@ -1963,16 +1963,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.refund(address(0), address(0), 0);
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.takeCommissionAddData(
+        collateralToken0.settleMint(
             address(0),
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            false
+            Constants.MIN_V3POOL_TICK
         );
 
         vm.expectRevert(Errors.NotPanopticPool.selector);
-        collateralToken0.exercise(
+        collateralToken0.settleBurn(
             address(0),
             0,
             0,
