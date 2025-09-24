@@ -511,16 +511,10 @@ contract PanopticPool is Multicall {
         int24[2][] calldata tickLimits,
         bool[2] calldata bools //usePremiaAsCollateral
     ) external {
-        // if safeMode, enforce covered at mint and exercise at burn
-        //if (isSafeMode()) {
-        //    if (tickLimitLow > tickLimitHigh) {
-        //        (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-        //    }
-        //}
+        //bool safeMode = isSafeMode();
         LeftRightSigned netPaid;
-        uint256 pLength = positionIdList.length;
         uint64 poolId;
-        for (uint256 i = 0; i < pLength; ) {
+        for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
             poolId = tokenId.poolId();
@@ -529,25 +523,32 @@ contract PanopticPool is Multicall {
                 revert Errors.InvalidTokenIdParameter(0);
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
-
-            LeftRightSigned paidAmounts;
+            /*
+            if (safeMode) {
+                if (tickLimitLow > tickLimitHigh) {
+                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+                }
+            }
+            */
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
-                paidAmounts = _mintOptions(
+                LeftRightSigned paidAmounts = _mintOptions(
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
                     msg.sender,
-                    tickLimits[i],
+                    tickLimits[i][0],
+                    tickLimits[i][1],
                     bools[1]
                 );
                 netPaid = netPaid.add(paidAmounts);
             } else {
                 _burnOptions(
-                    COMMIT_LONG_SETTLED,
                     tokenId,
                     positionBalanceData.positionSize(),
+                    tickLimits[i][0],
+                    tickLimits[i][1],
                     msg.sender,
-                    tickLimits[i],
+                    COMMIT_LONG_SETTLED,
                     bools[1]
                 );
             }
@@ -583,19 +584,21 @@ contract PanopticPool is Multicall {
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param owner The owner of the option position to be minted
-    /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @param executeAtSettlement whether to...
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         address owner,
-        int24[2] memory tickLimits,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
         bool executeAtSettlement
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .mintTokenizedPosition(tokenId, positionSize, tickLimits[0], tickLimits[1]);
+            .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         _updateSettlementPostMint(
             tokenId,
@@ -618,15 +621,17 @@ contract PanopticPool is Multicall {
 
         if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
 
-        uint96 tickData;
-        // update the users options balance of position `tokenId`
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
-            positionSize,
-            poolUtilizations,
-            tickData
-        );
-
+        PositionBalance balanceData;
+        {
+            uint96 tickData;
+            // update the users options balance of position `tokenId`
+            // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+            balanceData = PositionBalanceLibrary.storeBalanceData(
+                positionSize,
+                poolUtilizations,
+                tickData
+            );
+        }
         s_positionBalance[owner][tokenId] = balanceData;
 
         emit OptionMinted(owner, tokenId, balanceData, commissions);
@@ -699,13 +704,13 @@ contract PanopticPool is Multicall {
         int128 net1 = netPaid.leftSlot();
         // token0
         TokenId tokenId0 = tokenIdBase.addLeg(0, 1, 0, net0 > 0 ? 0 : 1, 0, 0, 0, 0);
-        int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
         _mintOptions(
             tokenId0,
             uint128(net0 > 0 ? net0 : -net0),
             0,
             recipient,
-            defaultLimits,
+            MIN_SWAP_TICK,
+            MAX_SWAP_TICK,
             false
         );
 
@@ -716,7 +721,8 @@ contract PanopticPool is Multicall {
             uint128(net1 > 0 ? net1 : -net1),
             0,
             recipient,
-            defaultLimits,
+            MIN_SWAP_TICK,
+            MAX_SWAP_TICK,
             false
         );
     }
@@ -727,14 +733,16 @@ contract PanopticPool is Multicall {
 
     /// @notice Close all options in `positionIdList`.
     /// @param owner The owner of the option position to be closed
-    /// @param tickLimits The lower and upperbound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @param positionIdList The list of option positions to close
     /// @return netPaid The net amount of tokens paid after closing the positions
     /// @return premiasByLeg The amount of premia settled by the user for each leg of the position
     function _burnAllOptionsFrom(
         address owner,
-        int24[2] memory tickLimits,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
         bool commitLongSettled,
         TokenId[] calldata positionIdList
     ) internal returns (LeftRightSigned netPaid, LeftRightSigned[4][] memory premiasByLeg) {
@@ -743,11 +751,12 @@ contract PanopticPool is Multicall {
             uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
             LeftRightSigned paidAmounts;
             (paidAmounts, premiasByLeg[i]) = _burnOptions(
-                commitLongSettled,
                 positionIdList[i],
                 positionSize,
+                tickLimitLow,
+                tickLimitHigh,
                 owner,
-                tickLimits,
+                commitLongSettled,
                 false
             );
             netPaid = netPaid.add(paidAmounts);
@@ -761,20 +770,22 @@ contract PanopticPool is Multicall {
     /// @param tokenId The option position to burn
     /// @param positionSize The size of the position to burn
     /// @param owner The owner of the option position to be burned
-    /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @return paidAmounts The net amount of tokens paid after closing the position
     /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
     function _burnOptions(
-        bool commitLongSettled,
         TokenId tokenId,
         uint128 positionSize,
+        int24 tickLimitLow,
+        int24 tickLimitHigh,
         address owner,
-        int24[2] memory tickLimits,
+        bool commitLongSettled,
         bool executeAtSettlement
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .burnTokenizedPosition(tokenId, positionSize, tickLimits[0], tickLimits[1]);
+            .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         LeftRightSigned realizedPremia;
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
@@ -1097,10 +1108,10 @@ contract PanopticPool is Multicall {
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
             // NOTE: tick limits are not applied here since it is not the liquidator's position being liquidated
-            int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
             (netPaid, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
-                defaultLimits,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK,
                 DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
@@ -1186,15 +1197,15 @@ contract PanopticPool is Multicall {
         ct1.delegate(account);
 
         {
-            int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
             (LeftRightSigned paidAmounts, ) = _burnOptions(
-                COMMIT_LONG_SETTLED,
                 tokenId,
                 positionSize,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK,
                 account,
-                defaultLimits,
+                COMMIT_LONG_SETTLED,
                 false
             );
 
