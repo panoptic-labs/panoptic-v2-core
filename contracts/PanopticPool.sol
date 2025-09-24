@@ -500,25 +500,18 @@ contract PanopticPool is Multicall {
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
     /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param tickLimits The lower and lower bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
         uint64[] calldata effectiveLiquidityLimitsX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
+        int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
-        if (isSafeMode()) {
-            if (tickLimitLow > tickLimitHigh) {
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-            }
-        }
-
+        bool safeMode = isSafeMode();
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
@@ -527,6 +520,14 @@ contract PanopticPool is Multicall {
                 revert Errors.InvalidTokenIdParameter(0);
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
+
+            int24 tickLimitLow = tickLimits[i][0];
+            int24 tickLimitHigh = tickLimits[i][1];
+            if (safeMode) {
+                if (tickLimitLow > tickLimitHigh) {
+                    (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+                }
+            }
 
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
                 _mintOptions(

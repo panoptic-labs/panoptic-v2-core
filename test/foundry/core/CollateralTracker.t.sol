@@ -426,20 +426,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
         TokenId[] memory mintList = new TokenId[](1);
+        int24[2][] memory tickLimits = new int24[2][](1);
 
         TokenId tokenId = positionIdList[positionIdList.length - 1];
         sizeList[0] = positionSize;
         spreadList[0] = effectiveLiquidityLimitX32;
         mintList[0] = tokenId;
-        pp.dispatch(
-            mintList,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimitLow,
-            tickLimitHigh,
-            premiaAsCollateral
-        );
+        tickLimits[0][0] = tickLimitLow;
+        tickLimits[0][1] = tickLimitHigh;
+
+        pp.dispatch(mintList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
     }
 
     function burnOptions(
@@ -453,19 +449,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128[] memory sizeList = new uint128[](1);
         uint64[] memory spreadList = new uint64[](1);
         TokenId[] memory burnList = new TokenId[](1);
+        int24[2][] memory tickLimits = new int24[2][](1);
 
         sizeList[0] = 0;
         spreadList[0] = type(uint64).max;
         burnList[0] = tokenId;
-        pp.dispatch(
-            burnList,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimitLow,
-            tickLimitHigh,
-            premiaAsCollateral
-        );
+        tickLimits[0][0] = tickLimitLow;
+        tickLimits[0][1] = tickLimitHigh;
+        pp.dispatch(burnList, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
     }
 
     function burnOptions(
@@ -476,21 +467,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
         int24 tickLimitHigh,
         bool premiaAsCollateral
     ) internal {
-        uint128[] memory sizeList = new uint128[](1);
-        uint64[] memory spreadList = new uint64[](1);
+        uint128[] memory sizeList = new uint128[](tokenIds.length);
+        uint64[] memory spreadList = new uint64[](tokenIds.length);
+        int24[2][] memory tickLimits = new int24[2][](tokenIds.length);
 
-        sizeList[0] = 0;
-        spreadList[0] = type(uint64).max;
+        for (uint256 i; i < tokenIds.length; ++i) {
+            tickLimits[i][0] = tickLimitLow;
+            tickLimits[i][1] = tickLimitHigh;
+        }
 
-        pp.dispatch(
-            tokenIds,
-            positionIdList,
-            sizeList,
-            spreadList,
-            tickLimitLow,
-            tickLimitHigh,
-            premiaAsCollateral
-        );
+        pp.dispatch(tokenIds, positionIdList, sizeList, spreadList, tickLimits, premiaAsCollateral);
     }
 
     function liquidate(
