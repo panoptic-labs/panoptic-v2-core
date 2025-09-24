@@ -1359,6 +1359,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             currentTick,
             0
         );
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 0, 4094);
+
+        positionIdList1.push(tokenId);
+        panopticPool.setPositionsHash(Alice, panopticPool.generatePositionsHash(positionIdList1));
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        panopticPool.settleLongPremium(positionIdList1, Alice, 0);
+
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 

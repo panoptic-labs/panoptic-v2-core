@@ -1088,6 +1088,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             uint128 positionSize = s_positionBalance[account][tokenId].positionSize();
 
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
                 positionSize
@@ -1527,10 +1529,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
+        uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+
+        if (positionSize == 0) revert Errors.PositionNotOwned();
+
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             legIndex,
-            s_positionBalance[owner][tokenId].positionSize()
+            positionSize
         );
 
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
