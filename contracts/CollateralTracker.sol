@@ -997,7 +997,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
-        int128 realizedPremium
+        int128 realizedPremium,
+        bool FLAG
     ) internal returns (uint32, uint128, int128) {
         unchecked {
             int256 tokenToPay;
@@ -1028,19 +1029,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 tokenToPay = intrinsicValue - realizedPremium;
             }
 
-            // Mint/Burn Shares
-            if (tokenToPay > 0) {
-                uint256 sharesToBurn = Math.mulDivRoundingUp(
-                    uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
-                );
-                _burn(optionOwner, sharesToBurn);
-            } else if (tokenToPay < 0) {
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
+            if (FLAG) {
+                // Mint/Burn Shares
+                if (tokenToPay > 0) {
+                    uint256 sharesToBurn = Math.mulDivRoundingUp(
+                        uint256(tokenToPay),
+                        totalSupply,
+                        totalAssets()
+                    );
+                    _burn(optionOwner, sharesToBurn);
+                } else if (tokenToPay < 0) {
+                    uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
+                    _mint(optionOwner, sharesToMint);
+                }
             }
-
             // Update Pool Assets
             if (isCreation) {
                 s_poolAssets = uint256(updatedAssets).toUint128();
@@ -1056,7 +1058,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
 
-            return (utilization, commission, int128(intrinsicValue - realizedPremium));
+            return (utilization, commission, int128(tokenToPay));
         }
     }
 
@@ -1070,7 +1072,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
-        int128 swappedAmount
+        int128 swappedAmount,
+        bool FLAG
     ) external onlyPanopticPool returns (LeftRightUnsigned, int128) {
         (uint32 utilization, uint128 commission, int128 tokenPaid) = _updateBalancesAndSettle(
             true, // isCreation = true
@@ -1078,7 +1081,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             longAmount,
             shortAmount,
             swappedAmount,
-            0 // realizedPremium not used
+            0, // realizedPremium not used,
+            FLAG
         );
         return (
             LeftRightUnsigned.wrap(0).toRightSlot(utilization).toLeftSlot(commission),
@@ -1107,7 +1111,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             longAmount,
             shortAmount,
             swappedAmount,
-            realizedPremium
+            realizedPremium,
+            true
         );
         return tokenPaid;
     }

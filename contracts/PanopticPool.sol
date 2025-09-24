@@ -500,27 +500,24 @@ contract PanopticPool is Multicall {
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
     /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param tickLimits An array of the lower and upper bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
         uint64[] calldata effectiveLiquidityLimitsX32,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
+        int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
-        if (isSafeMode()) {
-            if (tickLimitLow > tickLimitHigh) {
-                (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
-            }
-        }
+        //if (isSafeMode()) {
+        //    if (tickLimitLow > tickLimitHigh) {
+        //        (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
+        //    }
+        //}
         LeftRightSigned netPaid;
         uint256 pLength = positionIdList.length;
-        LeftRightSigned[4][] memory premiasByLeg = new LeftRightSigned[4][](pLength);
         for (uint256 i = 0; i < pLength; ) {
             TokenId tokenId = positionIdList[i];
 
@@ -537,17 +534,16 @@ contract PanopticPool is Multicall {
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
                     msg.sender,
-                    tickLimitLow,
-                    tickLimitHigh
+                    tickLimits[i]
                 );
+                netPaid = netPaid.add(paidAmounts);
             } else {
-                (paidAmounts, premiasByLeg[i]) = _burnOptions(
+                _burnOptions(
                     COMMIT_LONG_SETTLED,
                     tokenId,
                     positionBalanceData.positionSize(),
                     msg.sender,
-                    tickLimitLow,
-                    tickLimitHigh
+                    tickLimits[i]
                 );
             }
 
@@ -579,19 +575,17 @@ contract PanopticPool is Multicall {
     /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param owner The owner of the option position to be minted
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         address owner,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24[2] memory tickLimits
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
+            .mintTokenizedPosition(tokenId, positionSize, tickLimits[0], tickLimits[1]);
 
         _updateSettlementPostMint(
             tokenId,
@@ -659,7 +653,8 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
-                    _totalSwapped.rightSlot()
+                    _totalSwapped.rightSlot(),
+                    true
                 );
             commissions = uint32(utilizationAndCommission0.rightSlot());
             utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
@@ -671,7 +666,8 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
-                    _totalSwapped.leftSlot()
+                    _totalSwapped.leftSlot(),
+                    true
                 );
             commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
             utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
@@ -690,16 +686,14 @@ contract PanopticPool is Multicall {
 
     /// @notice Close all options in `positionIdList`.
     /// @param owner The owner of the option position to be closed
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimits The lower and upperbound of an acceptable open interval for the ending price on each option close
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @param positionIdList The list of option positions to close
     /// @return netPaid The net amount of tokens paid after closing the positions
     /// @return premiasByLeg The amount of premia settled by the user for each leg of the position
     function _burnAllOptionsFrom(
         address owner,
-        int24 tickLimitLow,
-        int24 tickLimitHigh,
+        int24[2] memory tickLimits,
         bool commitLongSettled,
         TokenId[] calldata positionIdList
     ) internal returns (LeftRightSigned netPaid, LeftRightSigned[4][] memory premiasByLeg) {
@@ -712,8 +706,7 @@ contract PanopticPool is Multicall {
                 positionIdList[i],
                 positionSize,
                 owner,
-                tickLimitLow,
-                tickLimitHigh
+                tickLimits
             );
             netPaid = netPaid.add(paidAmounts);
             unchecked {
@@ -726,8 +719,7 @@ contract PanopticPool is Multicall {
     /// @param tokenId The option position to burn
     /// @param positionSize The size of the position to burn
     /// @param owner The owner of the option position to be burned
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price on each option close
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price on each option close
+    /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price on each option close
     /// @param commitLongSettled Whether to commit the long premium that will be settled to storage (disabled during liquidations)
     /// @return paidAmounts The net amount of tokens paid after closing the position
     /// @return premiaByLeg The amount of premia settled by the user for each leg of the position
@@ -736,11 +728,10 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24[2] memory tickLimits
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
-            .burnTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
+            .burnTokenizedPosition(tokenId, positionSize, tickLimits[0], tickLimits[1]);
 
         LeftRightSigned realizedPremia;
         (realizedPremia, premiaByLeg) = _updateSettlementPostBurn(
@@ -1059,10 +1050,10 @@ contract PanopticPool is Multicall {
             // Do not commit any settled long premium to storage - we will do this after we determine if any long premium must be revoked
             // This is to prevent any short positions the liquidatee has being settled with tokens that will later be revoked
             // NOTE: tick limits are not applied here since it is not the liquidator's position being liquidated
+            int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
             (netPaid, premiasByLeg) = _burnAllOptionsFrom(
                 liquidatee,
-                MIN_SWAP_TICK,
-                MAX_SWAP_TICK,
+                defaultLimits,
                 DONOT_COMMIT_LONG_SETTLED,
                 positionIdList
             );
@@ -1148,16 +1139,10 @@ contract PanopticPool is Multicall {
         ct1.delegate(account);
 
         {
+            int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
-            _burnOptions(
-                COMMIT_LONG_SETTLED,
-                tokenId,
-                positionSize,
-                account,
-                MIN_SWAP_TICK,
-                MAX_SWAP_TICK
-            );
+            _burnOptions(COMMIT_LONG_SETTLED, tokenId, positionSize, account, defaultLimits);
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = PanopticMath.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
