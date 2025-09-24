@@ -716,9 +716,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 uint128 rawInterest = uint128(
                     Math.wTaylorCompounded(interestRate(), uint128(deltaTime))
                 );
-                uint128 interestOwed = Math
-                    .mulDivWadRoundingUp(inAMM + unrealizedGlobalInterest, rawInterest)
-                    .toUint128();
+                uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
                 // add that value to the "inAMM" tracker
 
                 unrealizedGlobalInterest += interestOwed;
@@ -750,11 +748,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         address _owner = owner;
                         uint256 userBalance = balanceOf[_owner];
                         if (shares > userBalance) {
-                            /// Insolvent case: Pay what you can
-                            _burn(_owner, userBalance);
-
                             // update the acrual of interest paid
                             burntInterestValue = uint128(convertToAssets(userBalance));
+
+                            /// Insolvent case: Pay what you can
+                            _burn(_owner, userBalance);
 
                             /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
                             userBorrowIndex = userState.rightSlot();
@@ -785,7 +783,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice returns the interest rate per second
     function interestRate() public view returns (uint128) {
         uint256 utilization = _poolUtilization();
-        return utilization == 0 ? uint128(0) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     function _getUserInterest(
