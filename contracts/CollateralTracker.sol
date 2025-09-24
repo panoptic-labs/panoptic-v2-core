@@ -1103,7 +1103,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
-        int128 realizedPremium
+        int128 realizedPremium,
+        bool FLAG
     ) external onlyPanopticPool returns (int128) {
         (, , int128 tokenPaid) = _updateBalancesAndSettle(
             false, // isCreation = false
@@ -1112,7 +1113,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             shortAmount,
             swappedAmount,
             realizedPremium,
-            true
+            FLAG
         );
         return tokenPaid;
     }

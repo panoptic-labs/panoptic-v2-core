@@ -501,14 +501,15 @@ contract PanopticPool is Multicall {
     /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimits An array of the lower and upper bounds of an acceptable open interval for the ending price
-    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
+    /// @param bools packed bools, 1st bit = usePremiaAsCollateral: whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
+    ///                            2nd bit = executeAtSettlement: whether to execute in the collateraToken contract (true) or issue a token receipt (false)
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
         uint64[] calldata effectiveLiquidityLimitsX32,
         int24[2][] calldata tickLimits,
-        bool usePremiaAsCollateral
+        bool[2] calldata bools //usePremiaAsCollateral
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
         //if (isSafeMode()) {
@@ -518,11 +519,13 @@ contract PanopticPool is Multicall {
         //}
         LeftRightSigned netPaid;
         uint256 pLength = positionIdList.length;
+        uint64 poolId;
         for (uint256 i = 0; i < pLength; ) {
             TokenId tokenId = positionIdList[i];
 
+            poolId = tokenId.poolId();
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
+            if (poolId != SFPM.getPoolId(address(s_univ3pool)))
                 revert Errors.InvalidTokenIdParameter(0);
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
@@ -534,7 +537,8 @@ contract PanopticPool is Multicall {
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
                     msg.sender,
-                    tickLimits[i]
+                    tickLimits[i],
+                    bools[1]
                 );
                 netPaid = netPaid.add(paidAmounts);
             } else {
@@ -543,7 +547,8 @@ contract PanopticPool is Multicall {
                     tokenId,
                     positionBalanceData.positionSize(),
                     msg.sender,
-                    tickLimits[i]
+                    tickLimits[i],
+                    bools[1]
                 );
             }
 
@@ -552,13 +557,16 @@ contract PanopticPool is Multicall {
             }
         }
 
+        if (bools[1]) {
+            _issueReceipt(poolId, netPaid, msg.sender);
+        }
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         uint256 medianData = _validateSolvency(
             msg.sender,
             finalPositionIdList,
             BP_DECREASE_BUFFER,
-            usePremiaAsCollateral
+            bools[0] //usePremiaAsCollateral
         );
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
@@ -576,12 +584,14 @@ contract PanopticPool is Multicall {
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param owner The owner of the option position to be minted
     /// @param tickLimits The lower and upper bound of an acceptable open interval for the ending price
+    /// @param executeAtSettlement whether to...
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         address owner,
-        int24[2] memory tickLimits
+        int24[2] memory tickLimits,
+        bool executeAtSettlement
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
@@ -602,7 +612,8 @@ contract PanopticPool is Multicall {
             tokenId,
             positionSize,
             owner,
-            totalSwapped
+            totalSwapped,
+            executeAtSettlement
         );
 
         if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
@@ -634,7 +645,8 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        LeftRightSigned totalSwapped
+        LeftRightSigned totalSwapped,
+        bool executeAtSettlement
     ) internal returns (uint32, LeftRightUnsigned, LeftRightSigned) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
@@ -646,15 +658,16 @@ contract PanopticPool is Multicall {
 
         // stack too deep
         LeftRightSigned _totalSwapped = totalSwapped;
-
+        address _owner = owner;
+        bool _executeAtSettlement = executeAtSettlement;
         {
             (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
                 .settleMint(
-                    owner,
+                    _owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
                     _totalSwapped.rightSlot(),
-                    true
+                    _executeAtSettlement
                 );
             commissions = uint32(utilizationAndCommission0.rightSlot());
             utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
@@ -663,11 +676,11 @@ contract PanopticPool is Multicall {
         {
             (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = s_collateralToken1
                 .settleMint(
-                    owner,
+                    _owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
                     _totalSwapped.leftSlot(),
-                    true
+                    _executeAtSettlement
                 );
             commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
             utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
@@ -678,6 +691,34 @@ contract PanopticPool is Multicall {
         unchecked {
             return (commissions, utilizations, paidAmounts);
         }
+    }
+
+    function _issueReceipt(uint64 poolId, LeftRightSigned netPaid, address recipient) internal {
+        TokenId tokenIdBase = TokenId.wrap(0).addPoolId(poolId);
+        int128 net0 = netPaid.rightSlot();
+        int128 net1 = netPaid.leftSlot();
+        // token0
+        TokenId tokenId0 = tokenIdBase.addLeg(0, 1, 0, net0 > 0 ? 0 : 1, 0, 0, 0, 0);
+        int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
+        _mintOptions(
+            tokenId0,
+            uint128(net0 > 0 ? net0 : -net0),
+            0,
+            recipient,
+            defaultLimits,
+            false
+        );
+
+        // token1
+        TokenId tokenId1 = tokenIdBase.addLeg(0, 1, 1, net1 > 0 ? 0 : 1, 1, 0, 0, 0);
+        _mintOptions(
+            tokenId1,
+            uint128(net1 > 0 ? net1 : -net1),
+            0,
+            recipient,
+            defaultLimits,
+            false
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -706,7 +747,8 @@ contract PanopticPool is Multicall {
                 positionIdList[i],
                 positionSize,
                 owner,
-                tickLimits
+                tickLimits,
+                false
             );
             netPaid = netPaid.add(paidAmounts);
             unchecked {
@@ -728,7 +770,8 @@ contract PanopticPool is Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        int24[2] memory tickLimits
+        int24[2] memory tickLimits,
+        bool executeAtSettlement
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .burnTokenizedPosition(tokenId, positionSize, tickLimits[0], tickLimits[1]);
@@ -751,7 +794,8 @@ contract PanopticPool is Multicall {
                 longAmounts.rightSlot(),
                 shortAmounts.rightSlot(),
                 totalSwapped.rightSlot(),
-                realizedPremia.rightSlot()
+                realizedPremia.rightSlot(),
+                executeAtSettlement
             );
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
@@ -762,7 +806,8 @@ contract PanopticPool is Multicall {
                 longAmounts.leftSlot(),
                 shortAmounts.leftSlot(),
                 totalSwapped.leftSlot(),
-                realizedPremia.leftSlot()
+                realizedPremia.leftSlot(),
+                executeAtSettlement
             );
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
@@ -987,7 +1032,9 @@ contract PanopticPool is Multicall {
                     usePremiaAsCollateral.rightSlot() > 0
                 );
             }
+            _issueReceipt(positionIdListTo[0].poolId(), exchangedAmounts, msg.sender);
         }
+
         // ensure the caller is still solvent after the operation
         _validateSolvency(
             msg.sender,
@@ -1142,7 +1189,16 @@ contract PanopticPool is Multicall {
             int24[2] memory defaultLimits = [MIN_SWAP_TICK, MAX_SWAP_TICK];
             // Exercise the option
             // Turn off ITM swapping to prevent swap at potentially unfavorable price
-            _burnOptions(COMMIT_LONG_SETTLED, tokenId, positionSize, account, defaultLimits);
+            (LeftRightSigned paidAmounts, ) = _burnOptions(
+                COMMIT_LONG_SETTLED,
+                tokenId,
+                positionSize,
+                account,
+                defaultLimits,
+                false
+            );
+
+            _issueReceipt(tokenId.poolId(), paidAmounts, account);
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
         refundAmounts = PanopticMath.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
@@ -1231,8 +1287,8 @@ contract PanopticPool is Multicall {
                 }
                 {
                     // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-                    ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot());
-                    ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot());
+                    ct0.settleBurn(owner, 0, 0, 0, -realizedPremia.rightSlot(), true);
+                    ct1.settleBurn(owner, 0, 0, 0, -realizedPremia.leftSlot(), true);
 
                     bytes32 chunkKey;
                     {

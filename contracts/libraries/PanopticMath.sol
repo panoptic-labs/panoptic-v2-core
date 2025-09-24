@@ -1029,9 +1029,16 @@ library PanopticMath {
             }
 
             if (haircutTotal.rightSlot() != 0)
-                collateral0.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.rightSlot()));
+                collateral0.settleBurn(
+                    _liquidatee,
+                    0,
+                    0,
+                    0,
+                    int128(haircutTotal.rightSlot()),
+                    true
+                );
             if (haircutTotal.leftSlot() != 0)
-                collateral1.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.leftSlot()));
+                collateral1.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.leftSlot()), true);
 
             return
                 LeftRightSigned.wrap(0).toRightSlot(int128(collateralDelta0)).toLeftSlot(
