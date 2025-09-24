@@ -37,7 +37,7 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
-    constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000, 20_000) {}
+    constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
 
     // view deployer (panoptic pool)
     function panopticPool() external view returns (PanopticPool) {
@@ -679,15 +679,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker(
-            10,
-            2_000,
-            1_000,
-            -1_024,
-            5_000,
-            9_000,
-            20_000
-        );
+        CollateralTracker ct = new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000);
         ct.startToken(false, token0, token1, fee, panopticPool);
 
         assertEq(ct.totalSupply(), 10 ** 6);

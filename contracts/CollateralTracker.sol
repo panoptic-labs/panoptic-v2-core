@@ -113,10 +113,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Amount of assets moved from the Panoptic Pool to the AMM.
     uint128 internal s_inAMM;
 
-    /// @notice Additional risk premium charged on intrinsic value of ITM positions,
-    /// denominated in hundredths of basis points.
-    uint128 internal s_ITMSpreadFee;
-
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
@@ -149,10 +145,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev i.e 90% -> 0.9 * 10_000 = 9_000.
     uint256 immutable SATURATED_POOL_UTIL;
 
-    /// @notice Multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions.
-    /// @dev e.g. ITM_SPREAD_MULTIPLIER = 20_000, s_ITMSpreadFee = 2 * s_poolFee.
-    uint256 immutable ITM_SPREAD_MULTIPLIER;
-
     /*//////////////////////////////////////////////////////////////
                             ACCESS CONTROL
     //////////////////////////////////////////////////////////////*/
@@ -174,15 +166,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise an out-of-range position
     /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000
     /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000
-    /// @param _ITMSpreadMultiplier Multiplier, in basis points, to the pool fee that is charged on the intrinsic value of ITM positions
     constructor(
         uint256 _commissionFee,
         uint256 _sellerCollateralRatio,
         uint256 _buyerCollateralRatio,
         int256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
-        uint256 _saturatedPoolUtilization,
-        uint256 _ITMSpreadMultiplier
+        uint256 _saturatedPoolUtilization
     ) {
         COMMISSION_FEE = _commissionFee;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
@@ -190,7 +180,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         FORCE_EXERCISE_COST = _forceExerciseCost;
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
-        ITM_SPREAD_MULTIPLIER = _ITMSpreadMultiplier;
     }
 
     /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
@@ -235,11 +224,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // store whether the current collateral token is token0 (true) or token1 (false)
         s_underlyingIsToken0 = underlyingIsToken0;
-
-        // Additional risk premium charged on intrinsic value of ITM positions
-        unchecked {
-            s_ITMSpreadFee = uint128((ITM_SPREAD_MULTIPLIER * fee) / DECIMALS);
-        }
     }
 
     /*//////////////////////////////////////////////////////////////
