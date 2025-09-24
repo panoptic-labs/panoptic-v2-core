@@ -501,15 +501,14 @@ contract PanopticPool is Multicall {
     /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimits An array of the lower and upper bounds of an acceptable open interval for the ending price
-    /// @param bools packed bools, 1st bit = usePremiaAsCollateral: whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    ///                            2nd bit = executeAtSettlement: whether to execute in the collateraToken contract (true) or issue a token receipt (false)
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function dispatch(
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
         uint64[] calldata effectiveLiquidityLimitsX32,
         int24[2][] calldata tickLimits,
-        bool[2] calldata bools //usePremiaAsCollateral
+        bool usePremiaAsCollateral
     ) external {
         //bool safeMode = isSafeMode();
         LeftRightSigned netPaid;
@@ -538,7 +537,7 @@ contract PanopticPool is Multicall {
                     msg.sender,
                     tickLimits[i][0],
                     tickLimits[i][1],
-                    bools[1]
+                    true
                 );
                 netPaid = netPaid.add(paidAmounts);
             } else {
@@ -549,7 +548,7 @@ contract PanopticPool is Multicall {
                     tickLimits[i][1],
                     msg.sender,
                     COMMIT_LONG_SETTLED,
-                    bools[1]
+                    true
                 );
             }
 
@@ -558,16 +557,13 @@ contract PanopticPool is Multicall {
             }
         }
 
-        if (bools[1]) {
-            _issueReceipt(poolId, netPaid, msg.sender);
-        }
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         uint256 medianData = _validateSolvency(
             msg.sender,
             finalPositionIdList,
             BP_DECREASE_BUFFER,
-            bools[0] //usePremiaAsCollateral
+            usePremiaAsCollateral
         );
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
@@ -700,31 +696,60 @@ contract PanopticPool is Multicall {
 
     function _issueReceipt(uint64 poolId, LeftRightSigned netPaid, address recipient) internal {
         TokenId tokenIdBase = TokenId.wrap(0).addPoolId(poolId);
-        int128 net0 = netPaid.rightSlot();
-        int128 net1 = netPaid.leftSlot();
-        // token0
-        TokenId tokenId0 = tokenIdBase.addLeg(0, 1, 0, net0 > 0 ? 0 : 1, 0, 0, 0, 0);
-        _mintOptions(
-            tokenId0,
-            uint128(net0 > 0 ? net0 : -net0),
-            0,
-            recipient,
-            MIN_SWAP_TICK,
-            MAX_SWAP_TICK,
-            false
-        );
+        {
+            int128 net0 = netPaid.rightSlot();
+            // token0
+            TokenId tokenId0 = tokenIdBase.addLeg(0, 1, 0, net0 > 0 ? 0 : 1, 0, 0, 0, 0);
+            PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId0];
+            if (PositionBalance.unwrap(positionBalanceData) != 0) {
+                _burnOptions(
+                    tokenId0,
+                    positionBalanceData.positionSize(),
+                    MIN_SWAP_TICK,
+                    MAX_SWAP_TICK,
+                    recipient,
+                    false,
+                    true
+                );
+            }
 
-        // token1
-        TokenId tokenId1 = tokenIdBase.addLeg(0, 1, 1, net1 > 0 ? 0 : 1, 1, 0, 0, 0);
-        _mintOptions(
-            tokenId1,
-            uint128(net1 > 0 ? net1 : -net1),
-            0,
-            recipient,
-            MIN_SWAP_TICK,
-            MAX_SWAP_TICK,
-            false
-        );
+            _mintOptions(
+                tokenId0,
+                uint128(net0 > 0 ? net0 : -net0),
+                0,
+                recipient,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK,
+                false
+            );
+        }
+        {
+            int128 net1 = netPaid.leftSlot();
+            // token1
+            TokenId tokenId1 = tokenIdBase.addLeg(0, 1, 1, net1 > 0 ? 0 : 1, 1, 0, 0, 0);
+            PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId1];
+            if (PositionBalance.unwrap(positionBalanceData) != 0) {
+                _burnOptions(
+                    tokenId1,
+                    positionBalanceData.positionSize(),
+                    MIN_SWAP_TICK,
+                    MAX_SWAP_TICK,
+                    recipient,
+                    false,
+                    true
+                );
+            }
+
+            _mintOptions(
+                tokenId1,
+                uint128(net1 > 0 ? net1 : -net1),
+                0,
+                recipient,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK,
+                false
+            );
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
