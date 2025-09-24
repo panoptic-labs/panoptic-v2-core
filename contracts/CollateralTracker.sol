@@ -274,7 +274,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         poolAssets = s_poolAssets;
         insideAMM = s_inAMM;
         currentPoolUtilization = _poolUtilization();
-        //TODO add: currentBorrowIndexWad = uint128(s_interestRateAccumulator);
     }
 
     /// @notice Returns current borrowIndex.
@@ -285,7 +284,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Returns the last block at which interest rates were compounded.
     /// @return The last block at which the interest rates were compounded
-    function lastInteractionBlock() external view returns (uint256) {
+    function lastInteractionTimestamp() external view returns (uint256) {
         return (s_interestRateAccumulator.rightSlot() >> 96);
     }
 
@@ -736,6 +735,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // USER
             LeftRightSigned userState = s_interestState[owner];
             int128 netBorrows = userState.leftSlot();
+            int128 userBorrowIndex = int128(currentBorrowIndex);
             if (netBorrows != 0) {
                 uint128 userInterestOwed = _getUserInterest(userState, currentBorrowIndex);
                 if (userInterestOwed != 0) {
@@ -744,17 +744,36 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         totalSupply,
                         s_poolAssets + inAMM + unrealizedGlobalInterest
                     );
-                    if (shares > 0) _burn(owner, shares);
 
-                    unrealizedGlobalInterest = userInterestOwed > unrealizedGlobalInterest
+                    uint128 burntInterestValue = userInterestOwed;
+                    if (shares > 0) {
+                        address _owner = owner;
+                        uint256 userBalance = balanceOf[_owner];
+                        if (shares > userBalance) {
+                            /// Insolvent case: Pay what you can
+                            _burn(_owner, userBalance);
+
+                            // update the acrual of interest paid
+                            burntInterestValue = uint128(convertToAssets(userBalance));
+
+                            /// @dev DO NOT update index. By keeping the user's old baseIndex, their debt continues to compound correctly from the original point in time.
+                            userBorrowIndex = userState.rightSlot();
+                        } else {
+                            // Solvent case: Pay in full.
+                            _burn(_owner, shares);
+                        }
+                    }
+
+                    unrealizedGlobalInterest = burntInterestValue > unrealizedGlobalInterest
                         ? 0
-                        : unrealizedGlobalInterest - userInterestOwed;
+                        : unrealizedGlobalInterest - burntInterestValue;
                 }
             }
 
-            s_interestState[owner] = LeftRightSigned.wrap(int128(currentBorrowIndex)).toLeftSlot(
-                netBorrows
-            );
+            s_interestState[owner] = LeftRightSigned
+                .wrap(0)
+                .toRightSlot(userBorrowIndex)
+                .toLeftSlot(netBorrows);
 
             s_interestRateAccumulator = LeftRightUnsigned
                 .wrap(0)
