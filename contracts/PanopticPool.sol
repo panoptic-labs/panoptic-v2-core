@@ -1280,6 +1280,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 fingerprintIncomingList;
 
+        // verify it has no duplicated elements
         if (!PanopticMath.hasNoDuplicateTokenIds(positionIdList)) {
             revert Errors.DuplicateTokenId();
         }
