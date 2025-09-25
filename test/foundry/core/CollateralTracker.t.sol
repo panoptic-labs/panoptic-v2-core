@@ -1462,7 +1462,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
     }
 
-    function test_Fail_accrueInterest_noMorefunds() public {
+    function test_Success_accrueInterest_noMorefunds() public {
         _initWorld(0);
         uint104 assets = 1000 ether; // Use a fixed deposit amount
 
@@ -1689,6 +1689,514 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 "FAIL: Compounding did not result in higher total interest"
             );
         }
+    }
+
+    function test_Success_accrueInterest_previewOwedInterest() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Alice deposits
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Bob deposits and borrows
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows by minting options
+        panopticPool.mintOptions(
+            positionIdList,
+            assets / 2,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        // Record initial state
+        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint128 initialOwedInterest = collateralToken0.owedInterest(Bob);
+
+        // Should be 0 initially since no time has passed
+        assertEq(initialOwedInterest, 0, "Initial owed interest should be 0");
+
+        // Move forward in time without accruing
+        uint256 timeJump = 86400; // 1 day
+        vm.warp(block.timestamp + timeJump);
+
+        // Get preview of what interest would be owed
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+
+        // Verify state hasn't changed
+        uint256 accumulatorAfterPreview = collateralToken0._interestRateAccumulator();
+        assertEq(
+            accumulatorAfterPreview,
+            initialAccumulator,
+            "Preview should not modify accumulator"
+        );
+
+        // owedInterest should still return stale value
+        uint128 staleOwedInterest = collateralToken0.owedInterest(Bob);
+        assertEq(staleOwedInterest, 0, "Stale owed interest should still be 0");
+
+        // Preview should show non-zero interest
+        assertGt(previewedInterest, 0, "Preview should show interest accrued over time");
+
+        // Now actually accrue interest
+        collateralToken0.accrueInterest();
+
+        // After accrual, owedInterest should match what preview showed
+        uint128 actualOwedInterest = collateralToken0.owedInterest(Bob);
+        assertEq(
+            actualOwedInterest,
+            previewedInterest,
+            "Actual owed interest should match preview"
+        );
+
+        // Test preview with multiple time jumps
+        uint256 timeJump2 = 43200; // 0.5 days
+        vm.warp(block.timestamp + timeJump2);
+
+        uint128 previewedInterest2 = collateralToken0.previewOwedInterest(Bob);
+        assertGt(
+            previewedInterest2,
+            actualOwedInterest,
+            "Preview should show additional interest for new time period"
+        );
+
+        // Verify preview works correctly for users with no borrows
+        uint128 alicePreview = collateralToken0.previewOwedInterest(Alice);
+        assertEq(alicePreview, 0, "Preview for non-borrower should be 0");
+
+        // Test preview in same block (deltaTime = 0)
+        collateralToken0.accrueInterest();
+        uint128 immediatePreview = collateralToken0.previewOwedInterest(Bob);
+        uint128 immediateOwed = collateralToken0.owedInterest(Bob);
+        assertEq(
+            immediatePreview,
+            immediateOwed,
+            "Preview in same block should match owedInterest"
+        );
+    }
+
+    function test_Success_previewOwedInterest_insolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Alice deposits to provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        panopticPool.mintOptions(
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // Reduce Bob's balance to make him insolvent when interest accrues
+        collateralToken0.setBalance(Bob, 1 ether); // Set very low balance
+        vm.stopPrank();
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent
+        assertGt(sharesOwed, bobBalance, "Interest owed in shares should exceed Bob's balance");
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertGt(previewedInterest, maxBobCanPay, "Preview shows more than Bob can pay");
+
+        vm.startPrank(Bob);
+        // Now accrue interest to verify Bob becomes insolvent
+        collateralToken0.accrueInterest();
+        vm.stopPrank();
+
+        // Bob's balance should be wiped out
+        uint256 bobBalanceAfter = collateralToken0.balanceOf(Bob);
+        assertEq(bobBalanceAfter, 0, "Insolvent Bob should have 0 balance after accrual");
+
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 100 ether, "Net borrows should remain unchanged");
+        assertLt(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Fuzz_previewOwedInterest_accuracy(uint32 timeDelta) public {
+        // Bound the time delta to reasonable values (1 second to 1 year)
+        timeDelta = uint32(bound(timeDelta, 1, 3650 days));
+
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Alice deposits for liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Bob deposits and borrows
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows
+        uint128 borrowAmount = assets / 2;
+        panopticPool.mintOptions(
+            positionIdList,
+            borrowAmount,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        // Record state immediately after borrow
+        uint256 initialTimestamp = block.timestamp;
+
+        // Move forward by fuzzed time delta
+        vm.warp(initialTimestamp + timeDelta);
+
+        // Get preview before accrual
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+
+        // Store state before accrual to verify preview didn't change it
+        uint256 accumulatorBefore = collateralToken0._interestRateAccumulator();
+        (int128 baseIndexBefore, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
+
+        // Actually accrue interest
+        collateralToken0.accrueInterest();
+
+        // Get actual interest after accrual
+        uint128 actualInterest = collateralToken0.owedInterest(Bob);
+
+        // Verify preview didn't modify state
+        assertEq(
+            accumulatorBefore >> 96, // Extract timestamp portion
+            initialTimestamp,
+            "Preview modified the accumulator timestamp"
+        );
+
+        // Main assertion: preview should exactly match actual
+        assertEq(
+            previewedInterest,
+            actualInterest,
+            "Preview interest doesn't match actual interest after accrual"
+        );
+
+        // Additional test: multiple preview calls should return same result
+        vm.warp(block.timestamp + timeDelta);
+        {
+            uint128 preview1 = collateralToken0.previewOwedInterest(Bob);
+            uint128 preview2 = collateralToken0.previewOwedInterest(Bob);
+            assertEq(preview1, preview2, "Multiple preview calls return different results");
+        }
+        // Test preview accuracy for Charlie (non-borrower)
+        uint128 charliePreview = collateralToken0.previewOwedInterest(Charlie);
+        assertEq(charliePreview, 0, "Non-borrower should have zero preview interest");
+
+        // Edge case: preview immediately after accrual (deltaTime = 0)
+        {
+            collateralToken0.accrueInterest();
+            uint128 immediatePreview = collateralToken0.previewOwedInterest(Bob);
+            uint128 immediateOwed = collateralToken0.owedInterest(Bob);
+            assertEq(
+                immediatePreview,
+                immediateOwed,
+                "Preview with deltaTime=0 should match owedInterest"
+            );
+        }
+        // Test with varying borrow amounts by having Bob adjust position
+        if (timeDelta < 30 days) {
+            // Only do this for shorter time periods to avoid overflow
+            vm.startPrank(Bob);
+
+            // Bob increases his borrow
+            panopticPool.burnOptions(
+                positionIdList[0],
+                new TokenId[](0),
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
+
+            // Bob increases his borrow
+            panopticPool.mintOptions(
+                positionIdList,
+                borrowAmount + borrowAmount / 4,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK
+            );
+
+            // Move forward again
+            vm.warp(block.timestamp + timeDelta);
+
+            vm.stopPrank();
+            // Preview should account for the new borrow amount
+            uint128 previewAfterIncrease = collateralToken0.previewOwedInterest(Bob);
+            collateralToken0.accrueInterest();
+            uint128 actualAfterIncrease = collateralToken0.owedInterest(Bob);
+
+            assertEq(
+                previewAfterIncrease,
+                actualAfterIncrease,
+                "Preview doesn't match actual after position change"
+            );
+        }
+
+        // Verify mathematical properties
+        if (timeDelta > 1) {
+            // Interest should be monotonically increasing with time
+            vm.warp(initialTimestamp + (timeDelta / 2));
+            uint128 halfTimePreview = collateralToken0.previewOwedInterest(Bob);
+
+            vm.warp(initialTimestamp + timeDelta);
+            uint128 fullTimePreview = collateralToken0.previewOwedInterest(Bob);
+
+            assertGe(
+                fullTimePreview,
+                halfTimePreview,
+                "Interest should increase monotonically with time"
+            );
+        }
+
+        // Test precision: ensure we're not losing significant amounts to rounding
+        if (borrowAmount > 1e18 && timeDelta > 1 days) {
+            // For significant borrows over meaningful time, interest should be non-zero
+            assertGt(
+                previewedInterest,
+                0,
+                "Should accrue non-zero interest for significant borrows"
+            );
+        }
+    }
+
+    function test_Success_accrueInterest_compoundingAccuracy() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Setup initial liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup two identical borrowers - Bob (frequent accrual) and Charlie (infrequent accrual)
+        uint128 borrowAmount = 100 ether;
+        uint256 depositAmount = 200 ether;
+
+        // Bob setup
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmount);
+        collateralToken0.deposit(depositAmount, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            borrowAmount,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        // Charlie setup (identical position)
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), depositAmount);
+        collateralToken0.deposit(depositAmount, Charlie);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            borrowAmount,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        collateralToken0.setBalance(Bob, 1e6 * 200 ether);
+        collateralToken0.setBalance(Charlie, 1e6 * 200 ether);
+        // Record initial balances
+        uint256 bobInitialBalance = collateralToken0.balanceOf(Bob);
+        uint256 charlieInitialBalance = collateralToken0.balanceOf(Charlie);
+        assertEq(bobInitialBalance, charlieInitialBalance, "Initial balances should match");
+
+        // Test period: 365 days
+        uint256 testDuration = 365 days;
+        uint256 startTime = block.timestamp;
+        uint256 endTime = startTime + testDuration;
+
+        // Bob: Accrue interest frequently (hourly)
+        uint256 accrualFrequency = 1 hours;
+        uint256 numAccruals = testDuration / accrualFrequency;
+
+        for (uint256 i = 0; i < numAccruals; i++) {
+            vm.warp(startTime + (i + 1) * accrualFrequency);
+            vm.prank(Bob);
+            collateralToken0.accrueInterest();
+        }
+
+        uint256 bobFinalBalance = collateralToken0.balanceOf(Bob);
+        uint256 bobInterestPaid = collateralToken0.convertToAssets(
+            bobInitialBalance - bobFinalBalance
+        );
+
+        // Charlie: Accrue interest once at the end
+        vm.warp(endTime);
+        vm.prank(Charlie);
+        collateralToken0.accrueInterest();
+
+        uint256 tolerance;
+        {
+            uint256 charlieFinalBalance = collateralToken0.balanceOf(Charlie);
+            uint256 charlieInterestPaid = collateralToken0.convertToAssets(
+                charlieInitialBalance - charlieFinalBalance
+            );
+
+            // Log results for debugging
+            console2.log("Bob (daily accrual) paid:", bobInterestPaid);
+            console2.log("Charlie (single accrual) paid:", charlieInterestPaid);
+            console2.log(
+                "Difference:",
+                bobInterestPaid > charlieInterestPaid
+                    ? bobInterestPaid - charlieInterestPaid
+                    : charlieInterestPaid - bobInterestPaid
+            );
+
+            // The difference should be minimal (due to rounding in compound calculations)
+            // We allow for a small tolerance based on the total interest amount
+            tolerance = Math.max(bobInterestPaid, charlieInterestPaid) / 1000; // 1% tolerance
+            uint256 tolerance = bobInterestPaid ** 2 /
+                (collateralToken0.convertToAssets(bobInitialBalance));
+
+            assertApproxEqAbs(
+                bobInterestPaid,
+                charlieInterestPaid,
+                tolerance,
+                "Interest paid should be nearly identical regardless of accrual frequency"
+            );
+        }
+    }
+
+    function test_Success_accrueInterest_maxValues() public {
+        _initWorld(0);
+
+        // Setup with near-maximum values
+        // Use values close to type(uint104).max (the limit for deposits)
+        uint128 maxAssets = type(uint104).max - 1e18; // Leave small buffer for calculations
+
+        // Alice provides massive liquidity
+        vm.startPrank(Alice);
+        deal(token0, Alice, type(uint256).max);
+        deal(token1, Alice, type(uint256).max);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        collateralToken0.deposit(maxAssets / 2, Alice);
+        vm.stopPrank();
+
+        // Bob makes a massive deposit and borrow
+        vm.startPrank(Bob);
+        deal(token0, Bob, type(uint256).max);
+        deal(token1, Bob, type(uint256).max);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        collateralToken0.deposit(maxAssets / 2, Bob);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows near the maximum possible amount
+        uint128 maxBorrow = uint128(maxAssets / 450000);
+        panopticPool.mintOptions(
+            positionIdList,
+            maxBorrow,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        collateralToken0.setInAMM(int128(maxAssets - 1)); // Maximum borrowed
+        Math.wTaylorCompounded(2 ** 93, type(uint32).max);
+
+        // Record initial state
+        uint256 initialAccumulator = collateralToken0._interestRateAccumulator();
+        uint256 bobInitialBalance = collateralToken0.balanceOf(Bob);
+        (int128 initialBaseIndex, int128 initialNetBorrows) = collateralToken0.interestState(Bob);
+
+        // Test 1: Maximum time jump (just under uint32 max to avoid wrap)
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + type(uint32).max); // 138 years
+
+        // This should not revert despite massive values
+        vm.prank(Bob);
+        collateralToken0.accrueInterest();
+
+        // Verify state updated correctly
+        uint256 newAccumulator = collateralToken0._interestRateAccumulator();
+        assertGt(newAccumulator, initialAccumulator, "Accumulator should have increased");
+
+        // Verify Bob paid interest (or was wiped out if insolvent)
+        uint256 bobAfterBalance = collateralToken0.balanceOf(Bob);
+        assertLe(bobAfterBalance, bobInitialBalance, "Bob's balance should decrease or be zero");
+        console2.log("Final borrow index:", collateralToken0.borrowIndex());
+        console2.log("Final unrealized interest:", collateralToken0.unrealizedGlobalInterest());
+        console2.log("Bob final balance:", collateralToken0.balanceOf(Bob));
     }
 
     /*//////////////////////////////////////////////////////////////
