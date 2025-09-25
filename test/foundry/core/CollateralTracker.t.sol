@@ -1462,6 +1462,324 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
     }
 
+    function test_Success_accrueInterest_concurrentBorrowers() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+        // Setup initial liquidity
+        vm.startPrank(Swapper);
+        deal(token0, Swapper, type(uint104).max);
+        deal(token1, Swapper, type(uint104).max);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        collateralToken0.deposit(assets * 3, Swapper);
+        vm.stopPrank();
+
+        // Setup position parameters
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Alice deposits and borrows 100 ether
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Alice);
+
+        uint128 aliceBorrowAmount = 100 ether;
+        panopticPool.mintOptions(
+            positionIdList,
+            aliceBorrowAmount,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        // Bob deposits and borrows 50 ether (half of Alice)
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Bob);
+
+        uint128 bobBorrowAmount = 50 ether;
+        panopticPool.mintOptions(
+            positionIdList,
+            bobBorrowAmount,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+
+        // Charlie deposits and borrows 50 ether (half of Alice)
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(assets, Charlie);
+
+        uint128 charlieBorrowAmount = 50 ether;
+        panopticPool.mintOptions(
+            positionIdList,
+            charlieBorrowAmount,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        vm.stopPrank();
+        uint256 initialTotalSupply = collateralToken0.totalSupply();
+
+        // Record initial balances
+        uint256 aliceInitialBalance = collateralToken0.balanceOf(Alice);
+        uint256 bobInitialBalance = collateralToken0.balanceOf(Bob);
+        uint256 charlieInitialBalance = collateralToken0.balanceOf(Charlie);
+
+        {
+            // Verify initial borrow states
+            (int128 aliceInitIndex, int128 aliceNetBorrows) = collateralToken0.interestState(Alice);
+            (int128 bobInitIndex, int128 bobNetBorrows) = collateralToken0.interestState(Bob);
+            (int128 charlieInitIndex, int128 charlieNetBorrows) = collateralToken0.interestState(
+                Charlie
+            );
+
+            assertEq(aliceNetBorrows, int128(aliceBorrowAmount), "Alice net borrows incorrect");
+            assertEq(bobNetBorrows, int128(bobBorrowAmount), "Bob net borrows incorrect");
+            assertEq(
+                charlieNetBorrows,
+                int128(charlieBorrowAmount),
+                "Charlie net borrows incorrect"
+            );
+            assertEq(aliceInitIndex, bobInitIndex, "Initial indices should match");
+            assertEq(bobInitIndex, charlieInitIndex, "Initial indices should match");
+        }
+        // Move forward 1 day
+        uint256 timeJump = 1 days;
+        vm.warp(block.timestamp + timeJump);
+
+        // Alice accrues and pays interest
+        vm.prank(Alice);
+        collateralToken0.accrueInterest();
+
+        uint256 aliceInterestPaid;
+        {
+            uint256 aliceFinalBalance = collateralToken0.balanceOf(Alice);
+            aliceInterestPaid = collateralToken0.convertToAssets(
+                aliceInitialBalance - aliceFinalBalance
+            );
+        }
+        // Bob accrues and pays interest
+        vm.prank(Bob);
+        collateralToken0.accrueInterest();
+        uint256 bobInterestPaid;
+        {
+            uint256 bobFinalBalance = collateralToken0.balanceOf(Bob);
+            bobInterestPaid = collateralToken0.convertToAssets(bobInitialBalance - bobFinalBalance);
+        }
+        // Charlie accrues and pays interest
+        vm.prank(Charlie);
+        collateralToken0.accrueInterest();
+
+        uint256 charlieInterestPaid;
+        {
+            uint256 charlieFinalBalance = collateralToken0.balanceOf(Charlie);
+            charlieInterestPaid = collateralToken0.convertToAssets(
+                charlieInitialBalance - charlieFinalBalance
+            );
+        }
+        // Verify interest accounting is properly isolated
+        console2.log(
+            "Alice borrowed:",
+            aliceBorrowAmount / 1e18,
+            "ether, paid:",
+            aliceInterestPaid
+        );
+        console2.log("Bob borrowed:", bobBorrowAmount / 1e18, "ether, paid:", bobInterestPaid);
+        console2.log(
+            "Charlie borrowed:",
+            charlieBorrowAmount / 1e18,
+            "ether, paid:",
+            charlieInterestPaid
+        );
+        console2.log("Bob + Charlie combined interest:", bobInterestPaid + charlieInterestPaid);
+
+        // Key assertion: Bob and Charlie's combined interest should equal Alice's
+        // Since Bob + Charlie borrowed the same total amount as Alice for the same period
+        assertApproxEqAbs(
+            bobInterestPaid + charlieInterestPaid,
+            aliceInterestPaid,
+            1, // Small tolerance for rounding
+            "Combined interest of Bob+Charlie should equal Alice's interest"
+        );
+
+        // Verify proportional interest: Bob and Charlie should pay equal amounts
+        assertApproxEqAbs(
+            bobInterestPaid,
+            charlieInterestPaid,
+            1, // Very small tolerance
+            "Bob and Charlie should pay equal interest for equal borrows"
+        );
+
+        // Verify Alice paid approximately 2x what Bob paid
+        assertApproxEqAbs(
+            aliceInterestPaid,
+            bobInterestPaid * 2,
+            1,
+            "Alice should pay 2x Bob's interest for 2x borrow"
+        );
+
+        {
+            // Verify all users' indices are now current
+            (int128 aliceFinalIndex, ) = collateralToken0.interestState(Alice);
+            (int128 bobFinalIndex, ) = collateralToken0.interestState(Bob);
+            (int128 charlieFinalIndex, ) = collateralToken0.interestState(Charlie);
+            uint128 globalIndex = collateralToken0.borrowIndex();
+
+            assertEq(uint128(aliceFinalIndex), globalIndex, "Alice index should be current");
+            assertEq(uint128(bobFinalIndex), globalIndex, "Bob index should be current");
+            assertEq(uint128(charlieFinalIndex), globalIndex, "Charlie index should be current");
+        }
+        // Test overlapping time periods with different accrual times
+        vm.warp(block.timestamp + 1 days);
+
+        // Only Bob accrues
+        vm.prank(Bob);
+        collateralToken0.accrueInterest();
+
+        vm.warp(block.timestamp + 1 days);
+
+        {
+            // Verify Bob's index is ahead of Alice and Charlie
+            (int128 bobIndexMid, ) = collateralToken0.interestState(Bob);
+            (int128 aliceIndexMid, ) = collateralToken0.interestState(Alice);
+            (int128 charlieIndexMid, ) = collateralToken0.interestState(Charlie);
+            assertGt(bobIndexMid, aliceIndexMid, "Bob should have a more recent index than Alice");
+            assertGt(
+                bobIndexMid,
+                charlieIndexMid,
+                "Bob should have a more recent index than Charlie"
+            );
+        }
+
+        // Bob and Charlie accrue after Alice
+        vm.prank(Alice);
+        collateralToken0.accrueInterest();
+        vm.prank(Charlie);
+        collateralToken0.accrueInterest();
+        {
+            // Verify Bob and Charlie still have matching interest despite accruing at different times
+            (int128 aliceIndex2, ) = collateralToken0.interestState(Alice);
+            (int128 charlieIndex2, ) = collateralToken0.interestState(Charlie);
+            assertEq(aliceIndex2, charlieIndex2, "Alice and Charlie should have matching indices");
+            // Only BoB accrues
+            vm.prank(Bob);
+            collateralToken0.accrueInterest();
+
+            // ADD: Verify all users are now synchronized
+            (int128 bobIndexFinal, ) = collateralToken0.interestState(Bob);
+            assertEq(bobIndexFinal, aliceIndex2, "All users should now have the same index");
+        }
+        {
+            // ADD: Verify Bob paid more interest total (accrued twice in this period)
+            uint256 bobFinalBalanceEnd = collateralToken0.balanceOf(Bob);
+            uint256 aliceFinalBalanceEnd = collateralToken0.balanceOf(Alice);
+            uint256 charlieFinalBalanceEnd = collateralToken0.balanceOf(Charlie);
+            {
+                // Calculate actual interest paid by each user
+                uint256 bobTotalInterestPaid = collateralToken0.convertToAssets(
+                    bobInitialBalance - bobFinalBalanceEnd
+                );
+                uint256 aliceTotalInterestPaid = collateralToken0.convertToAssets(
+                    aliceInitialBalance - aliceFinalBalanceEnd
+                );
+                // Bob accrued 3 times (more frequent payments), Alice only 2 times
+                // Bob has half the borrow, so his interest should be slightly LESS than half of Alice's
+                // because frequent accruals mean less compounding
+                assertLt(
+                    bobTotalInterestPaid * 2,
+                    aliceTotalInterestPaid,
+                    "Bob should pay slightly less than half of Alice's interest due to more frequent payments"
+                );
+                {
+                    uint256 charlieTotalInterestPaid = collateralToken0.convertToAssets(
+                        charlieInitialBalance - charlieFinalBalanceEnd
+                    );
+
+                    // Charlie should have paid more than Bob (same borrow, but less frequent accruals = more compounding)
+                    assertGt(
+                        charlieTotalInterestPaid,
+                        bobTotalInterestPaid,
+                        "Charlie should pay more than Bob due to less frequent accruals (more compounding)"
+                    );
+
+                    // Alice's interest should be approximately equal to Bob + Charlie
+                    // (Alice has 2x the borrow, but same accrual pattern as Charlie)
+                    assertApproxEqAbs(
+                        aliceTotalInterestPaid,
+                        charlieTotalInterestPaid * 2,
+                        1,
+                        "Alice should pay approximately 2x Charlie's interest (same accrual pattern, 2x borrow)"
+                    );
+                }
+            }
+            {
+                // Verify no cross-contamination of interest between users
+                uint256 unrealizedInterest = collateralToken0.unrealizedGlobalInterest();
+                assertEq(
+                    unrealizedInterest,
+                    0,
+                    "All interest should be settled after all users accrued"
+                );
+            }
+            {
+                // ADD: Final sanity check - verify total interest collected
+                uint256 totalInterestCollected = (aliceInitialBalance - aliceFinalBalanceEnd) +
+                    (bobInitialBalance - bobFinalBalanceEnd) +
+                    (charlieInitialBalance - charlieFinalBalanceEnd);
+
+                assertGt(totalInterestCollected, 0, "Total interest collected should be positive");
+            }
+
+            // Verify net borrows haven't changed (only interest was paid, not principal)
+            {
+                (, int128 aliceFinalBorrows) = collateralToken0.interestState(Alice);
+                uint128 _aliceBorrowAmount = aliceBorrowAmount;
+                assertEq(
+                    aliceFinalBorrows,
+                    int128(_aliceBorrowAmount),
+                    "Alice's borrows should be unchanged"
+                );
+            }
+            {
+                (, int128 bobFinalBorrows) = collateralToken0.interestState(Bob);
+                assertEq(
+                    bobFinalBorrows,
+                    int128(bobBorrowAmount),
+                    "Bob's borrows should be unchanged"
+                );
+            }
+            {
+                (, int128 charlieFinalBorrows) = collateralToken0.interestState(Charlie);
+                assertEq(
+                    charlieFinalBorrows,
+                    int128(charlieBorrowAmount),
+                    "Charlie's borrows should be unchanged"
+                );
+            }
+            // Verify total supply decreased by exactly the interest paid (burned shares)
+            uint256 expectedSupplyDecrease = (aliceInitialBalance - aliceFinalBalanceEnd) +
+                (bobInitialBalance - bobFinalBalanceEnd) +
+                (charlieInitialBalance - charlieFinalBalanceEnd);
+
+            uint256 _initialTotalSupply = initialTotalSupply;
+            console2.log("aa", _initialTotalSupply, collateralToken0.totalSupply());
+            assertEq(
+                _initialTotalSupply - collateralToken0.totalSupply(),
+                expectedSupplyDecrease,
+                "Total supply should decrease by exactly the burned interest shares"
+            );
+        }
+    }
+
     function test_Success_accrueInterest_noMorefunds() public {
         _initWorld(0);
         uint104 assets = 1000 ether; // Use a fixed deposit amount
