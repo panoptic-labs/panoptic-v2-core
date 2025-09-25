@@ -175,4 +175,8 @@ contract MathHarness {
         LiquidityChunk result = Math.getLiquidityForAmount1(tl, tu, a1);
         return result;
     }
+
+    function wTaylorCompounded(uint256 x, uint256 n) public pure returns (uint256) {
+        return Math.wTaylorCompounded(x, n);
+    }
 }
