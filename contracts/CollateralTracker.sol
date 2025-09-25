@@ -786,7 +786,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     Math.wTaylorCompounded(interestRate(), uint128(deltaTime))
                 );
                 // Calculate interest owed on borrowed amount
-                uint128 inAMM = s_inAMM;
                 uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
                 unrealizedGlobalInterest += interestOwed;
 
