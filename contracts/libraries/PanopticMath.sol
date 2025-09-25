@@ -1043,10 +1043,10 @@ library PanopticMath {
     /// @notice Substitutes surplus tokens to a caller in exchange for any potential token shortages prior to revoking virtual shares from a payor.
     /// @param payor The address of the user being exercised/settled
     /// @param fees If applicable, fees to debit from caller (rightSlot = token0 left = token1), 0 for `settleLongPremium`
-    /// @param atTick The tick at which to convert between currency0/currency1 when redistributing the surplus tokens
-    /// @param ct0 The collateral tracker for currency0
-    /// @param ct1 The collateral tracker for currency1
-    /// @return The LeftRight-packed deltas for currency0/currency1 to move from the caller to the payor
+    /// @param atTick The tick at which to convert between token0/token1 when redistributing the surplus tokens
+    /// @param ct0 The collateral tracker for token0
+    /// @param ct1 The collateral tracker for token1
+    /// @return The LeftRight-packed deltas for token0/token1 to move from the caller to the payor
     function getRefundAmounts(
         address payor,
         LeftRightSigned fees,
@@ -1056,7 +1056,7 @@ library PanopticMath {
     ) external view returns (LeftRightSigned) {
         uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
         unchecked {
-            // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
+            // if the refunder lacks sufficient token0 to pay back the virtual shares, have the caller cover the difference in exchange for token1 (and vice versa)
 
             int256 balanceShortage = int256(uint256(type(uint248).max)) -
                 int256(ct0.balanceOf(payor)) -
