@@ -698,14 +698,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param owner the account which calls accrue interest
     function _accrueInterest(address owner) internal {
         unchecked {
+            uint128 inAMM = s_inAMM;
             (
                 uint128 currentBorrowIndex,
                 uint128 unrealizedGlobalInterest,
                 uint256 currentTime,
                 uint128 deltaTime
-            ) = _calculateCurrentInterestState();
+            ) = _calculateCurrentInterestState(inAMM);
 
-            uint128 inAMM = s_inAMM;
             // USER
             LeftRightSigned userState = s_interestState[owner];
             int128 netBorrows = userState.leftSlot();
@@ -760,7 +760,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    function _calculateCurrentInterestState()
+    function _calculateCurrentInterestState(
+        uint128 inAMM
+    )
         internal
         view
         returns (
@@ -778,13 +780,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             deltaTime = uint32(currentTime - previousTime);
             currentBorrowIndex = uint128(uint96(accumulator.rightSlot()));
             unrealizedGlobalInterest = accumulator.leftSlot();
-
             if (deltaTime > 0) {
                 // Calculate interest growth
                 uint128 rawInterest = uint128(
                     Math.wTaylorCompounded(interestRate(), uint128(deltaTime))
                 );
-
                 // Calculate interest owed on borrowed amount
                 uint128 inAMM = s_inAMM;
                 uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
@@ -836,7 +836,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     function _calculateCurrentBorrowIndex() internal view returns (uint256) {
-        (uint128 currentBorrowIndex, , , ) = _calculateCurrentInterestState();
+        (uint128 currentBorrowIndex, , , ) = _calculateCurrentInterestState(s_inAMM);
         return currentBorrowIndex;
     }
 
