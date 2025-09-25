@@ -1042,7 +1042,7 @@ library PanopticMath {
 
     /// @notice Substitutes surplus tokens to a caller in exchange for any potential token shortages prior to revoking virtual shares from a payor.
     /// @param payor The address of the user being exercised/settled
-    /// @param fees If applicable, fees to debit from caller (rightSlot = currency0 left = currency1), 0 for `settleLongPremium`
+    /// @param fees If applicable, fees to debit from caller (rightSlot = token0 left = token1), 0 for `settleLongPremium`
     /// @param atTick The tick at which to convert between currency0/currency1 when redistributing the surplus tokens
     /// @param ct0 The collateral tracker for currency0
     /// @param ct1 The collateral tracker for currency1
