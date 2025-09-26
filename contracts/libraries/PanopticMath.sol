@@ -32,7 +32,8 @@ library PanopticMath {
     uint256 internal constant PRIME_MODULUS_248 =
         0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff13;
 
-    uint256 internal constant PRIME_MODULUS_124 = 0xfffffffffffffffffffffffffffffc5;
+    uint256 internal constant PRIME_MODULUS_124_0 = 0xfffffffffffffffffffffffffffffc5; // 2**124 - 59
+    uint256 internal constant PRIME_MODULUS_124_1 = 0xffffffffffffffffffffffffffffd99; // 2**124 - 615
 
     // Mask for isolating a 124-bit lane
     uint256 internal constant LANE_MASK_124 = 0xfffffffffffffffffffffffffffffff;
@@ -204,14 +205,14 @@ library PanopticMath {
             uint256 lane0 = hash & LANE_MASK_124;
             uint256 newItem_h0 = addFlag
                 ? item_h0
-                : PRIME_MODULUS_124 - (item_h0 % PRIME_MODULUS_124);
-            uint256 hash0 = addmod(lane0, newItem_h0, PRIME_MODULUS_124);
+                : PRIME_MODULUS_124_0 - (item_h0 % PRIME_MODULUS_124_0);
+            uint256 hash0 = addmod(lane0, newItem_h0, PRIME_MODULUS_124_0);
 
             uint256 lane1 = (hash >> 124) & LANE_MASK_124;
             uint256 newItem_h1 = addFlag
                 ? item_h1
-                : PRIME_MODULUS_124 - (item_h1 % PRIME_MODULUS_124);
-            uint256 hash1 = addmod(lane1, newItem_h1, PRIME_MODULUS_124);
+                : PRIME_MODULUS_124_1 - (item_h1 % PRIME_MODULUS_124_1);
+            uint256 hash1 = addmod(lane1, newItem_h1, PRIME_MODULUS_124_1);
 
             return hash0 + (hash1 << 124);
         }
