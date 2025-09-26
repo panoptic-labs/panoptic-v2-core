@@ -722,6 +722,7 @@ contract CollateralEngine {
         // calculate the spread requirement as max(max_loss, long_leg_col_req)
         // narrower spreads will be very capital efficient (up to only ~5% of non-partnered CR!), but
         // wider spreads (an uncommon position w/ high max loss) may not benefit from risk partnering
+        // TODO: check this assumption, allow very small collateral requirements since force exercise can work while in-range
         spreadRequirement = Math.max(
             spreadRequirement,
             _getRequiredCollateralAtUtilization(
