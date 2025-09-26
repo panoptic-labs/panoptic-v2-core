@@ -331,17 +331,7 @@ library PanopticMath {
                     observationCardinality,
                     univ3pool
                 );
-
                 int24 clampedTick = clampTick(lastObservedTick, medianData);
-
-                /*
-                console2.log(
-                    "dd",
-                    int24(uint24(medianData >> 96)) +
-                        ((clampedTick - int24(uint24(medianData >> 96))) * int256(timeDelta < EMA_PERIOD_10MINS ? timeDelta : EMA_PERIOD_10MINS)) /
-                        EMA_PERIOD_10MINS
-                );
-                */
                 updatedMedianData = insertObservation(
                     medianData,
                     clampedTick,
@@ -382,6 +372,7 @@ library PanopticMath {
                 (lastResidual < -Constants.MAX_RESIDUAL_THRESHOLD)
             ) {
                 (referenceTick, medianData) = rebaseMedianData(medianData);
+                lastResidual = newTick - referenceTick;
             }
 
             uint24 orderMap = uint24(medianData >> 208);
@@ -509,7 +500,6 @@ library PanopticMath {
         int24 referenceTick = int24(uint24(data >> 96));
 
         newReferenceTick = getMedianTick(data);
-
         int24 deltaOffset = newReferenceTick - referenceTick;
 
         uint256 offsetData;
