@@ -279,7 +279,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
                 // see comment on s_miniMedian initialization for format of this magic number
                 (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
-                // store currentTick as the reference tick
+                // EMA1D at bits 207-186
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
+                // EMA8H at bits 185-164
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
+                // EMA1H at bits 163-142
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
+                // EMA10m at bits 141-120
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
+                // store currentTick as the reference tick at bits 119-96
                 (uint256(uint24(currentTick)) << 96);
         }
 

@@ -31,6 +31,9 @@ library PanopticMath {
     uint256 internal constant UPPER_120BITS_MASK =
         0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
 
+    uint256 internal constant BITMASK_UINT88 = 0xFFFFFFFFFFFFFFFFFFFFFF;
+    uint256 internal constant BITMASK_UINT22 = 0x3FFFFF;
+
     int256 constant EMA_PERIOD_10MINS = 600; // 600 seconds
     int256 constant EMA_PERIOD_1H = 3600; // 600 seconds
     int256 constant EMA_PERIOD_8H = 28800; // 600 seconds
@@ -252,20 +255,42 @@ library PanopticMath {
         }
     }
 
+    /// @notice Converts a 12-bit signed integer to a 24-bit signed integer with proper sign extension
+    /// @dev Handles two's complement sign extension for 12-bit values stored in larger integer types
+    /// @dev The function checks bit 11 (the sign bit for 12-bit integers) and extends the sign
+    /// @dev if the number is negative by setting bits 12-15 to 1
+    /// @param x The input value containing a 12-bit signed integer in its lower 12 bits
+    /// @return The sign-extended 24-bit signed integer (as int24)
     function int12toInt24(uint256 x) internal pure returns (int24) {
         unchecked {
+            // Extract only the lower 12 bits
             uint16 u = uint16(x & 0x0FFF);
+
+            // Check if bit 11 is set
+            // This is the sign bit for a 12-bit signed integer
             if ((u & 0x0800) != 0) {
+                // Number is negative, extend the sign by setting bits 12-15 to 1
                 u |= 0xF000;
             }
             return int24(int16(u));
         }
     }
 
+    /// @notice Converts a 22-bit signed integer to a 24-bit signed integer with proper sign extension
+    /// @dev Handles two's complement sign extension for 22-bit values stored in larger integer types
+    /// @dev The function checks bit 21 (the sign bit for 22-bit integers) and extends the sign
+    /// @dev if the number is negative by setting bits 22-31 to 1
+    /// @param x The input value containing a 22-bit signed integer in its lower 22 bits
+    /// @return The sign-extended 24-bit signed integer (as int24)
     function int22toInt24(uint256 x) internal pure returns (int24) {
         unchecked {
-            uint32 u = uint32(x & 0x3FFFFF);
+            // Extract only the lower 22 bits
+            uint32 u = uint32(x & BITMASK_UINT22);
+
+            // Check if bit 21 is set
+            // This is the sign bit for a 22-bit signed integer
             if ((u & 0x200000) != 0) {
+                // Number is negative, extend the sign by setting bits 22-31 to 1
                 u |= 0xFFC00000;
             }
             return int24(int32(u));
@@ -327,7 +352,21 @@ library PanopticMath {
         }
     }
 
-    /// @dev Inserts a new clamped tick into the median data structure.
+    /// @notice Inserts a new tick observation into the median data structure and updates EMAs
+    /// @dev Updates the sorted queue by finding the correct insertion point for the new tick residual
+    /// @dev The function maintains an 8-slot sorted queue using a 24-bit order map where each 3-bit segment
+    /// @dev represents the rank of the corresponding slot. Slot 7 is reserved for the new observation.
+    /// @param medianData The current packed median data structure containing:
+    ///                   - Bits 255-232: Current epoch timestamp
+    ///                   - Bits 231-208: 24-bit order map (8 slots × 3 bits each)
+    ///                   - Bits 207-128: Reserved for future EMA data (88 bits)
+    ///                   - Bits 127-96:  Reference tick (24 bits)
+    ///                   - Bits 95-12:   Previous observations as 12-bit residuals (84 bits)
+    ///                   - Bits 11-0:    Most recent observation residual (12 bits)
+    /// @param newTick The new tick observation to insert (as a residual relative to reference tick)
+    /// @param currentEpoch The current epoch timestamp ((block.timestamp >> 6) & 0xFFFFFF)
+    /// @param timeDelta Time difference in seconds between current and last epoch (currentEpoch - recordedEpoch) * 64
+    /// @return updatedMedianData The updated packed median data structure with the new observation inserted
     function insertObservation(
         uint256 medianData,
         int24 newTick,
@@ -373,25 +412,26 @@ library PanopticMath {
                 }
             }
 
-            uint256 EMAs = (medianData >> 128) % 2 ** 88;
-            {
-                int24 EMA10mins;
-                int24 EMA1H;
-                int24 EMA8H;
-                int24 EMA1D;
-            }
+            uint256 EMAs = updateEMAs(medianData, timeDelta, newTick);
+
             updatedMedianData =
                 (currentEpoch << 232) +
                 (uint256(newOrderMap) << 208) +
+                (EMAs << 120) +
                 (uint256(uint24(referenceTick)) << 96) +
                 uint256(uint96(medianData << 12)) +
                 uint256(uint16(uint24(lastResidual) & 0x0FFF));
         }
     }
 
-    /// @notice Calculates the median of a packed structure representing a sorted 8-slot queue of ticks
-    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
-    /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
+    /// @notice Calculates the median tick from a packed median data structure
+    /// @dev Retrieves the 3rd and 4th ranked values from the sorted 8-slot queue and returns their average
+    /// @dev The median is calculated as: referenceTick + (rank3_residual + rank4_residual) / 2
+    /// @param medianData The packed structure containing:
+    ///                   - Order map indicating the rank of each slot
+    ///                   - Reference tick for absolute positioning
+    ///                   - 8 tick observations stored as 12-bit signed residuals relative to reference tick
+    /// @return medianTick The median tick value, representing the middle value of the sorted observations
     function getMedianTick(uint256 medianData) internal pure returns (int24) {
         int24 rank3 = int12toInt24(
             uint256(medianData >> ((uint24(medianData >> (208 + 3 * 3)) % 8) * 12)) & 0x0FFF
@@ -403,7 +443,13 @@ library PanopticMath {
         return referenceTick + ((rank3) + (rank4)) / 2;
     }
 
-    /// @dev Fetches and calculates the latest time-weighted average tick from Uniswap observations.
+    /// @notice Fetches the most recent time-weighted average price (TWAP) tick from Uniswap V3 oracle
+    /// @dev Calculates TWAP using the two most recent observations in the Uniswap pool's oracle
+    /// @dev TWAP = (tickCumulative_current - tickCumulative_previous) / (timestamp_current - timestamp_previous)
+    /// @param observationIndex The index of the most recent observation in the Uniswap oracle array
+    /// @param observationCardinality The total number of observations that can be stored in the oracle
+    /// @param univ3pool The Uniswap V3 pool contract to query for oracle data
+    /// @return twap The time-weighted average tick over the period between the last two observations
     function getUniswapTWAP(
         uint256 observationIndex,
         uint256 observationCardinality,
@@ -424,7 +470,12 @@ library PanopticMath {
         }
     }
 
-    /// @dev Clamps a new tick observation to be within a maximum delta of the previous tick.
+    /// @notice Clamps a new tick observation to prevent large price movements that could manipulate the median
+    /// @dev Limits the new tick to be within MAX_MEDIAN_DELTA of the most recent tick observation
+    /// @dev This prevents flash loan attacks or other price manipulation attempts from skewing the median calculation
+    /// @param newTick The new tick observation from Uniswap TWAP that needs to be clamped
+    /// @param _medianData The current median data structure containing the reference tick and most recent observation
+    /// @return clamped The clamped tick value, guaranteed to be within MAX_MEDIAN_DELTA of the last observation
     function clampTick(int24 newTick, uint256 _medianData) private pure returns (int24 clamped) {
         unchecked {
             int24 refTick = int24(uint24(_medianData >> 96));
@@ -442,6 +493,16 @@ library PanopticMath {
         }
     }
 
+    /// @notice Rebases the median data structure when tick residuals exceed the 12-bit signed integer range
+    /// @dev When residuals become too large (>2047 or <-2048), this function shifts the reference tick
+    /// @dev to the current median and adjusts all stored residuals relative to the new reference
+    /// @dev This maintains precision while keeping residuals within the 12-bit storage constraint
+    /// @param data The current median data structure with residuals that have exceeded the threshold
+    /// @return newReferenceTick The new reference tick (set to the current median)
+    /// @return rebasedData The updated median data structure with:
+    ///                     - New reference tick set to the current median
+    ///                     - All residuals recalculated relative to the new reference
+    ///                     - All other data (order map, EMAs, epoch) preserved
     function rebaseMedianData(
         uint256 data
     ) internal pure returns (int24 newReferenceTick, uint256 rebasedData) {
@@ -461,6 +522,52 @@ library PanopticMath {
             (data & UPPER_120BITS_MASK) +
             (uint256(uint24(newReferenceTick)) << 96) +
             offsetData;
+    }
+
+    /// @notice Updates exponential moving averages (EMAs) at multiple timescales with a new tick observation
+    /// @dev Implements a cascading time delta cap to prevent excessive convergence after periods of inactivity
+    /// @dev EMAs converge at most 75% toward the new tick value using linear approximation: exp(-x) ≈ 1-x
+    /// @dev The function modifies timeDelta in cascade: longer periods cap it first, affecting shorter periods
+    /// @param medianData The packed median data containing current EMA values in bits 207-120
+    /// @param timeDelta Time elapsed since last update in seconds (will be modified by cascading caps)
+    /// @param newTick The new tick observation to update EMAs toward
+    /// @return updatedEMAs The packed 88-bit value containing all four updated EMAs
+    function updateEMAs(
+        uint256 medianData,
+        int256 timeDelta,
+        int24 newTick
+    ) internal pure returns (uint256 updatedEMAs) {
+        unchecked {
+            // Extract current EMAs from medianData (88 bits starting at bit 120)
+            uint256 EMAs = (medianData >> 120) & BITMASK_UINT88;
+
+            // Update 1-day EMA (bits 87-66)
+            int24 EMA1D = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_1D) / 4) timeDelta = (3 * EMA_PERIOD_1D) / 4;
+            EMA1D = int24(EMA1D + (timeDelta * (newTick - EMA1D)) / EMA_PERIOD_1D);
+
+            // Update 8-hour EMA (bits 65-44)
+            int24 EMA8H = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_8H) / 4) timeDelta = (3 * EMA_PERIOD_8H) / 4;
+            EMA8H = int24(EMA8H + (timeDelta * (newTick - EMA8H)) / EMA_PERIOD_8H);
+
+            // Update 1-hour EMA (bits 43-22)
+            int24 EMA1H = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_1H) / 4) timeDelta = (3 * EMA_PERIOD_1H) / 4;
+            EMA1H = int24(EMA1H + (timeDelta * (newTick - EMA1H)) / EMA_PERIOD_1H);
+
+            // Update 10-minute EMA (bits 21-0)
+            int24 EMA10m = int22toInt24(EMAs & BITMASK_UINT22);
+            if (timeDelta > (3 * EMA_PERIOD_10MINS) / 4) timeDelta = (3 * EMA_PERIOD_10MINS) / 4;
+            EMA10m = int24(EMA10m + (timeDelta * (newTick - EMA10m)) / EMA_PERIOD_10MINS);
+
+            // Pack updated EMAs back into 88-bit format
+            updatedEMAs =
+                (uint256(uint24(EMA10m)) & BITMASK_UINT22) +
+                ((uint256(uint24(EMA1H)) & BITMASK_UINT22) << 22) +
+                ((uint256(uint24(EMA8H)) & BITMASK_UINT22) << 44) +
+                ((uint256(uint24(EMA1D)) & BITMASK_UINT22) << 66);
+        }
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.
