@@ -463,14 +463,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeMedian() external {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = s_univ3pool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
 
-        (, uint256 medianData) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            s_miniMedian,
-            s_univ3pool
-        );
+        ) = s_univ3pool.slot0();
+
+        (, uint256 medianData) = PanopticMath.computeInternalMedian(s_miniMedian, currentTick);
 
         if (medianData != 0) s_miniMedian = medianData;
     }
@@ -849,12 +852,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 int256(currentTick - slowOracleTick) ** 2 >
             MAX_TICKS_DELTA ** 2
         ) {
+            // High deviation detected; check against all four ticks.
             atTicks = new int24[](4);
             atTicks[0] = fastOracleTick;
             atTicks[1] = slowOracleTick;
             atTicks[2] = lastObservedTick;
             atTicks[3] = currentTick;
         } else {
+            // Normal operation; check against the fast oracle tick = 10 mins EMA.
             atTicks = new int24[](1);
             atTicks[0] = fastOracleTick;
         }
@@ -1250,16 +1255,28 @@ contract PanopticPool is ERC1155Holder, Multicall {
         return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
     }
 
-    /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
-    /// @return Whether the current tick has deviated from the median by `> MAX_TICKS_DELTA`
+    /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
+    /// @dev Safe Mode is triggered if EITHER of two conditions are met:
+    ///      1. "External Shock": The live spot price deviates too far from the responsive 10-minute EMA.
+    ///      2. "Internal Disagreement": The 10-minute EMA deviates too far from the more stable 1-hour EMA, indicating high volatility.
+    /// @return Whether the protocol should be in Safe Mode.
     function isSafeMode() public view returns (bool) {
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
         uint256 medianData = s_miniMedian;
-        unchecked {
-            // If ticks have recently deviated more than +/- ~10%, enforce covered mints
-            return Math.abs(currentTick - PanopticMath.getMedianTick(medianData)) > MAX_TICKS_DELTA;
-        }
+
+        // Extract the relevant EMAs from the packed medianData
+        (, , int24 EMA1H, int24 EMA10m) = PanopticMath.getEMAs(medianData);
+
+        // Condition 1: Check for a sudden deviation of the spot price from the fast-moving EMA.
+        // This is your primary defense against a flash crash or single-block manipulation.
+        bool externalShock = Math.abs(currentTick - EMA10m) > MAX_TICKS_DELTA;
+
+        // Condition 2: Check for high internal volatility by comparing the fast and slow EMAs.
+        // If the 10m EMA is moving much faster than the 1h EMA, it signals an unstable market.
+        // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
+        bool internalDisagreement = Math.abs(EMA10m - EMA1H) > (MAX_TICKS_DELTA / 2);
+
+        return externalShock || internalDisagreement;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1345,9 +1362,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Computes and returns all oracle ticks.
     /// @return currentTick The current tick in the Uniswap pool
-    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return slowOracleTick The slow oracle tick (either composed of observations retrieved from Uniswap or observations stored in `s_miniMedian`)
-    /// @return latestObservation The latest observation from the Uniswap pool
+    /// @return fastOracleTick The fast oracle tick, sourced from the internal 10-minute EMA.
+    /// @return slowOracleTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
+    /// @return latestObservation The reconstructed absolute tick of the latest observation stored in the internal oracle.
     /// @return medianData The current value of the 8-slot internal observation queue (`s_miniMedian`)
     function getOracleTicks()
         external
@@ -1392,7 +1409,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getUniV3TWAP() internal view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
+        twapTick = PanopticMath.twapEMA(s_miniMedian);
     }
 
     /*//////////////////////////////////////////////////////////////

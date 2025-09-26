@@ -209,13 +209,19 @@ contract PanopticHelper {
         uint256 medianData,
         IUniswapV3Pool univ3pool
     ) external view returns (int24, uint256) {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
+
+        ) = univ3pool.slot0();
 
         (int24 _medianTick, uint256 _medianData) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
             medianData,
-            univ3pool
+            currentTick
         );
         return (_medianTick, _medianData);
     }

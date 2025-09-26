@@ -175,36 +175,16 @@ library PanopticMath {
             uint256 medianData
         )
     {
-        uint16 observationIndex;
-        uint16 observationCardinality;
+        (, currentTick, , , , , ) = univ3pool.slot0();
 
-        IUniswapV3Pool _univ3pool = univ3pool;
-        (, currentTick, observationIndex, observationCardinality, , , ) = univ3pool.slot0();
+        (slowOracleTick, medianData) = computeInternalMedian(miniMedian, currentTick);
 
-        (fastOracleTick, latestObservation) = computeMedianObservedPrice(
-            _univ3pool,
-            observationIndex,
-            observationCardinality,
-            Constants.FAST_ORACLE_CARDINALITY,
-            Constants.FAST_ORACLE_PERIOD
-        );
+        // Extract the 10-minute EMA from the lowest 22 bits of the packed EMAs value and assign it as the fast oracle price.
+        uint256 EMAs = (medianData >> 120) & BITMASK_UINT88;
+        fastOracleTick = int22toInt24(EMAs & BITMASK_UINT22);
 
-        if (Constants.SLOW_ORACLE_UNISWAP_MODE) {
-            (slowOracleTick, ) = computeMedianObservedPrice(
-                _univ3pool,
-                observationIndex,
-                observationCardinality,
-                Constants.SLOW_ORACLE_CARDINALITY,
-                Constants.SLOW_ORACLE_PERIOD
-            );
-        } else {
-            (slowOracleTick, medianData) = computeInternalMedian(
-                observationIndex,
-                observationCardinality,
-                miniMedian,
-                _univ3pool
-            );
-        }
+        // Reconstruct the absolute tick of the last observation by adding the reference tick (bits 96-119) to the latest residual (bits 0-11).
+        latestObservation = int24(uint24(medianData >> 96)) + int12toInt24(medianData % 2 ** 12);
     }
 
     /// @notice Returns the median of the last `cardinality` average prices over `period` observations from `univ3pool`.
@@ -299,17 +279,13 @@ library PanopticMath {
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values and an updated queue if another observation is warranted.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
-    /// @param observationIndex The index of the last observation in the Uniswap pool
-    /// @param observationCardinality The number of observations in the Uniswap pool
     /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
-    /// @param univ3pool The Uniswap pool to retrieve observations from
+    /// @param currentTick The current tick as return from slot0
     /// @return medianTick The median of the provided 8-slot queue of ticks in `medianData`
     /// @return updatedMedianData The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
-        uint256 observationIndex,
-        uint256 observationCardinality,
         uint256 medianData,
-        IUniswapV3Pool univ3pool
+        int24 currentTick
     ) public view returns (int24 medianTick, uint256 updatedMedianData) {
         unchecked {
             // return the average of the rank 3 and 4 values
@@ -324,14 +300,10 @@ library PanopticMath {
                 differentEpoch = currentEpoch != recordedEpoch;
                 timeDelta = int256((currentEpoch - recordedEpoch) * 64);
             }
+
             // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
             if (differentEpoch) {
-                int24 lastObservedTick = getUniswapTWAP(
-                    observationIndex,
-                    observationCardinality,
-                    univ3pool
-                );
-                int24 clampedTick = clampTick(lastObservedTick, medianData);
+                int24 clampedTick = clampTick(currentTick, medianData);
                 updatedMedianData = insertObservation(
                     medianData,
                     clampedTick,
@@ -434,33 +406,6 @@ library PanopticMath {
         return referenceTick + ((rank3) + (rank4)) / 2;
     }
 
-    /// @notice Fetches the most recent time-weighted average price (TWAP) tick from Uniswap V3 oracle
-    /// @dev Calculates TWAP using the two most recent observations in the Uniswap pool's oracle
-    /// @dev TWAP = (tickCumulative_current - tickCumulative_previous) / (timestamp_current - timestamp_previous)
-    /// @param observationIndex The index of the most recent observation in the Uniswap oracle array
-    /// @param observationCardinality The total number of observations that can be stored in the oracle
-    /// @param univ3pool The Uniswap V3 pool contract to query for oracle data
-    /// @return twap The time-weighted average tick over the period between the last two observations
-    function getUniswapTWAP(
-        uint256 observationIndex,
-        uint256 observationCardinality,
-        IUniswapV3Pool univ3pool
-    ) internal view returns (int24 twap) {
-        unchecked {
-            (uint256 timestamp_old, int56 tickCumulative_old, , ) = univ3pool.observations(
-                uint256(int256(observationIndex) - int256(1) + int256(observationCardinality)) %
-                    observationCardinality
-            );
-
-            (uint256 timestamp_last, int56 tickCumulative_last, , ) = univ3pool.observations(
-                observationIndex
-            );
-            twap = int24(
-                (tickCumulative_last - tickCumulative_old) / int256(timestamp_last - timestamp_old)
-            );
-        }
-    }
-
     /// @notice Clamps a new tick observation to prevent large price movements that could manipulate the median
     /// @dev Limits the new tick to be within MAX_MEDIAN_DELTA of the most recent tick observation
     /// @dev This prevents flash loan attacks or other price manipulation attempts from skewing the median calculation
@@ -558,6 +503,31 @@ library PanopticMath {
                 ((uint256(uint24(EMA8H)) & BITMASK_UINT22) << 44) +
                 ((uint256(uint24(EMA1D)) & BITMASK_UINT22) << 66);
         }
+    }
+
+    /// @notice Calculates a slow-moving, weighted average price from the on-chain EMAs.
+    /// @dev Extracts the 1-hour, 8-hour, and 1-day EMA tick values from the packed `medianData`
+    /// structure. It then computes and returns a blended average with a 60/30/10 weighting
+    /// respectively. This heavily smoothed value is designed to be highly resistant to
+    /// manipulation and serves as a robust price feed for critical system functions like solvency checks.
+    /// @param medianData The packed `s_miniMedian` storage slot containing the oracle's state,
+    /// including the on-chain EMAs.
+    /// @return The blended time-weighted average price, represented as an int24 tick.
+    function twapEMA(uint256 medianData) external pure returns (int24) {
+        // Extract current EMAs from medianData
+        (int24 EMA1D, int24 EMA8H, int24 EMA1H, ) = getEMAs(medianData);
+
+        return (6 * EMA1H + 3 * EMA8H + EMA1D) / 10;
+    }
+
+    function getEMAs(
+        uint256 medianData
+    ) internal pure returns (int24 EMA1D, int24 EMA8H, int24 EMA1H, int24 EMA10m) {
+        uint256 EMAs = (medianData >> 120) & BITMASK_UINT88;
+        EMA1D = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
+        EMA8H = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
+        EMA1H = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
+        EMA10m = int22toInt24(EMAs & BITMASK_UINT22);
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.
