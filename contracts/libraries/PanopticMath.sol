@@ -349,7 +349,7 @@ library PanopticMath {
     /// @param medianData The current packed median data structure containing:
     ///                   - Bits 255-232: Current epoch timestamp
     ///                   - Bits 231-208: 24-bit order map (8 slots × 3 bits each)
-    ///                   - Bits 207-128: Reserved for future EMA data (88 bits)
+    ///                   - Bits 207-128: Reserved for EMA data (88 bits): 10mins, 1hour, 8hour and 1day
     ///                   - Bits 127-96:  Reference tick (24 bits)
     ///                   - Bits 95-12:   Previous observations as 12-bit residuals (84 bits)
     ///                   - Bits 11-0:    Most recent observation residual (12 bits)
