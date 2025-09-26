@@ -88,7 +88,7 @@ contract PanopticMathTest is Test, PositionUtils {
     /// @notice Generates a standard list of offsets for testing. [0, 10, 20, 30, 40, 50, 60, 70]
     function _generateSortedOffsets(int256 seed) internal pure returns (int16[] memory) {
         int16[] memory offsets = new int16[](8);
-        int16 seedStart = seed != 0 ? int16(bound(seed, -1000, 1000)) : int16(0);
+        int16 seedStart = seed != 0 ? int16(int256(bound(seed, -1970, 1970))) : int16(0);
         offsets[0] = seedStart;
         offsets[1] = seedStart + 10;
         offsets[2] = seedStart + 20;
@@ -1636,6 +1636,8 @@ contract PanopticMathTest is Test, PositionUtils {
         mockPool.setObservation(observationIndex - 1, 64, 0);
         mockPool.setObservation(observationIndex, 128, tickCumulative);
 
+        int24 deltaOffset = PanopticMath.int12toInt24(initialData % 2 ** 12);
+        int24 oldReferenceTick = int24(uint24(initialData >> 96));
         // ACT
         vm.warp(10 * 64);
         (, uint256 updatedData) = harness.computeInternalMedian(
@@ -1648,10 +1650,13 @@ contract PanopticMathTest is Test, PositionUtils {
         // ASSERT
         int24[] memory finalTicks = _decodeSortedTicks(updatedData);
 
+        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+        int24 deltaReference = newReferenceTick - oldReferenceTick;
+
         // The oldest value (40) is dropped, and the new value (-100) is inserted.
         // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
         int24[] memory expectedTicks = new int24[](8);
-        expectedTicks[0] = REFERENCE_TICK + _generateSortedOffsets(x)[0] + deltaTick; // New minimum
+        expectedTicks[0] = newReferenceTick + deltaOffset - deltaReference + deltaTick; // New minimum
         expectedTicks[1] = REFERENCE_TICK + _generateSortedOffsets(x)[0];
         expectedTicks[2] = REFERENCE_TICK + _generateSortedOffsets(x)[1];
         expectedTicks[3] = REFERENCE_TICK + _generateSortedOffsets(x)[2];
