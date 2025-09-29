@@ -367,11 +367,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
         // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
         unchecked {
-            shares = Math.mulDiv(
-                assets * (DECIMALS - COMMISSION_FEE),
-                totalSupply,
-                totalAssets() * DECIMALS
-            );
+            shares = Math.mulDiv(assets, totalSupply, totalAssets());
         }
     }
 
@@ -409,7 +405,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return maxShares The maximum amount of shares that can be minted
     function maxMint(address) external view returns (uint256 maxShares) {
         unchecked {
-            return (convertToShares(type(uint104).max) * (DECIMALS - COMMISSION_FEE)) / DECIMALS;
+            return convertToShares(type(uint104).max);
         }
     }
 
@@ -419,16 +415,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewMint(uint256 shares) public view returns (uint256 assets) {
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
-        // finalAssets - convertedAssets = commissionRate * finalAssets
-        // finalAssets - commissionRate * finalAssets = convertedAssets
-        // finalAssets * (1 - commissionRate) = convertedAssets
-        // finalAssets = convertedAssets / (1 - commissionRate)
-        assets = Math.mulDivRoundingUp(
-            shares * DECIMALS,
-            totalAssets(),
-            totalSupply * (DECIMALS - COMMISSION_FEE)
-        );
+        assets = Math.mulDivRoundingUp(shares, totalAssets(), totalSupply);
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.

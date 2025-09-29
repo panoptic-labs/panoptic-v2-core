@@ -1809,12 +1809,9 @@ contract Misctest is Test, PositionUtils {
         CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
 
         vm.startPrank(Alice);
-        token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        CollateralTracker(collateralReference).deposit(
-            (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
-            Alice
-        );
+        token0.mint(Alice, (uint256(1_000_000_000_000_000)));
+        token0.approve(collateralReference, (uint256(1_000_000_000_000_000)));
+        CollateralTracker(collateralReference).deposit((uint256(1_000_000_000_000_000)), Alice);
 
         vm.startPrank(address(pp));
         CollateralTracker(collateralReference).settleMint(Alice, 0, 0, 1_000_000_000);
@@ -5045,7 +5042,7 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -1244790
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -930817
+            -1245199
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
