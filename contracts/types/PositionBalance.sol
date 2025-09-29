@@ -11,23 +11,20 @@ using PositionBalanceLibrary for PositionBalance global;
 // PACKING RULES FOR A POSITIONBALANCE:
 // =================================================================================================
 //  From the LSB to the MSB:
-// (1) positionSize     128bits : The size of this position (uint128).
-// (2) poolUtilization0 16bits  : The pool utilization of token0, stored as (10000 * inAMM0)/totalAssets0 (uint16).
-// (3) poolUtilization1 16bits  : The pool utilization of token1, stored as (10000 * inAMM1)/totalAssets1 (uint16).
-// (4) currentTick      24bits  : The currentTick at mint (int24).
-// (5) fastOracleTick   24bits  : The fastOracleTick at mint (int24).
-// (6) slowOracleTick   24bits  : The slowOracleTick at mint (int24).
-// (7) lastObservedTick 24bits  : The lastObservedTick at mint (int24).
-// Total                256bits : Total bits used by a PositionBalance.
+// (1) positionSize       128bits : The size of this position (uint128).
+// (2) poolUtilization0   16bits  : The pool utilization of token0, stored as (10000 * inAMM0)/totalAssets0 (uint16).
+// (3) poolUtilization1   16bits  : The pool utilization of token1, stored as (10000 * inAMM1)/totalAssets1 (uint16).
+// (4) maxLongPremiaX80   96bits  : The maximum amount of long premia to be paid, computed as a function of the amount of tokens moved in that position.
+// Total                  256bits : Total bits used by a PositionBalance.
 // ===============================================================================================
 //
 // The bit pattern is therefore:
 //
-//           (7)             (6)            (5)             (4)             (3)             (2)             (1)
-//    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
-//   lastObservedTick  slowOracleTick  fastOracleTick   currentTick     utilization1    utilization0    positionSize
+//        (4)             (3)             (2)             (1)
+//   <-- 96 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
+//  maxLongPremiaX80   utilization1    utilization0    positionSize
 //
-//    <--- most significant bit                                                             least significant bit --->
+//    <--- most significant bit                            least significant bit --->
 //
 library PositionBalanceLibrary {
     /*//////////////////////////////////////////////////////////////
@@ -37,17 +34,17 @@ library PositionBalanceLibrary {
     /// @notice Create a new `PositionBalance` given by positionSize, utilizations, and its tickData.
     /// @param _positionSize The amount of option minted
     /// @param _utilizations Packed data containing pool utilizations for token0 and token1 at mint
-    /// @param _tickData Packed data containing ticks at mint (currentTick, fastOracleTick, slowOracleTick, lastObservedTick)
+    /// @param _maxLongPremiaX80 The maximum amount of long premia to be paid
     /// @return The new PositionBalance with the given positionSize, utilization, and tickData
     function storeBalanceData(
         uint128 _positionSize,
         uint32 _utilizations,
-        uint96 _tickData
+        uint96 _maxLongPremiaX80
     ) internal pure returns (PositionBalance) {
         unchecked {
             return
                 PositionBalance.wrap(
-                    (uint256(_tickData) << 160) +
+                    (uint256(_maxLongPremiaX80) << 160) +
                         (uint256(_utilizations) << 128) +
                         uint256(_positionSize)
                 );
@@ -78,42 +75,6 @@ library PositionBalanceLibrary {
     /*//////////////////////////////////////////////////////////////
                                 DECODING
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Get the last observed tick of `self`.
-    /// @param self The PositionBalance to retrieve the last observed tick from
-    /// @return The last observed tick of `self`
-    function lastObservedTick(PositionBalance self) internal pure returns (int24) {
-        unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 232));
-        }
-    }
-
-    /// @notice Get the slow oracle tick of `self`.
-    /// @param self The PositionBalance to retrieve the slow oracle tick from
-    /// @return The slow oracle tick of `self`
-    function slowOracleTick(PositionBalance self) internal pure returns (int24) {
-        unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 208));
-        }
-    }
-
-    /// @notice Get the fast oracle tick of `self`.
-    /// @param self The PositionBalance to retrieve the fast oracle tick from
-    /// @return The fast oracle tick of `self`
-    function fastOracleTick(PositionBalance self) internal pure returns (int24) {
-        unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 184));
-        }
-    }
-
-    /// @notice Get the current tick of `self`.
-    /// @param self The PositionBalance to retrieve the current tick from
-    /// @return The current tick of `self`
-    function currentTick(PositionBalance self) internal pure returns (int24) {
-        unchecked {
-            return int24(int256(PositionBalance.unwrap(self) >> 160));
-        }
-    }
 
     /// @notice Get the tickData of `self`.
     /// @param self The PositionBalance to retrieve the tickData from
@@ -176,12 +137,18 @@ library PositionBalanceLibrary {
         }
     }
 
+    /// @notice Get the maxLongPremiaX80  of `self`.
+    /// @param self The PositionBalance to retrieve the maxLongPremiaX80 from
+    /// @return The maxLongPremiaX80 of `self`
+    function maxLongPremia(PositionBalance self) internal pure returns (uint96) {
+        unchecked {
+            return uint96(PositionBalance.unwrap(self) >> 160);
+        }
+    }
+
     /// @notice Unpack all data from `self`.
     /// @param self The PositionBalance to get all data from
-    /// @return currentTickAtMint `currentTick` at mint
-    /// @return fastOracleTickAtMint Fast oracle tick at mint
-    /// @return slowOracleTickAtMint Slow oracle tick at mint
-    /// @return lastObservedTickAtMint Last observed tick at mint
+    /// @return _maxLongPremia maxLongPremia for this position
     /// @return utilization0AtMint Utilization of token0 at mint
     /// @return utilization1AtMint Utilization of token1 at mint
     /// @return _positionSize Size of the position
@@ -191,21 +158,13 @@ library PositionBalanceLibrary {
         external
         pure
         returns (
-            int24 currentTickAtMint,
-            int24 fastOracleTickAtMint,
-            int24 slowOracleTickAtMint,
-            int24 lastObservedTickAtMint,
+            uint96 _maxLongPremia,
             int256 utilization0AtMint,
             int256 utilization1AtMint,
             uint128 _positionSize
         )
     {
-        (
-            currentTickAtMint,
-            fastOracleTickAtMint,
-            slowOracleTickAtMint,
-            lastObservedTickAtMint
-        ) = unpackTickData(self.tickData());
+        _maxLongPremia = self.maxLongPremia();
 
         utilization0AtMint = self.utilization0();
         utilization1AtMint = self.utilization1();

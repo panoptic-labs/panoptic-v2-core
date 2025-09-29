@@ -267,6 +267,30 @@ library LeftRightLibrary {
         }
     }
 
+    /// @notice Subtract two LeftRight-encoded words.
+    /// @notice For each slot, if the subtrahend is larger than the minuend, the result is 0 (rectified subtraction).
+    /// @param x The minuend
+    /// @param y The subtrahend
+    /// @return z The rectified difference `max(0, x - y)` for each slot
+    function subRect(
+        LeftRightUnsigned x,
+        LeftRightUnsigned y
+    ) internal pure returns (LeftRightUnsigned z) {
+        unchecked {
+            uint128 x_left = x.leftSlot();
+            uint128 y_left = y.leftSlot();
+            // If x < y, the result is 0; otherwise, it's the difference.
+            uint128 left_diff = (x_left > y_left) ? x_left - y_left : 0;
+
+            uint128 x_right = x.rightSlot();
+            uint128 y_right = y.rightSlot();
+            // Same logic for the right slot.
+            uint128 right_diff = (x_right > y_right) ? x_right - y_right : 0;
+
+            return z.toRightSlot(right_diff).toLeftSlot(left_diff);
+        }
+    }
+
     /// @notice Adds two sets of LeftRight-encoded words, freezing both right slots if either overflows, and vice versa.
     /// @dev Used for linked accumulators, so if the accumulator for one side overflows for a token, both cease to accumulate.
     /// @param x The first augend
