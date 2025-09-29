@@ -315,8 +315,8 @@ contract RiskEngine {
     /// @param user The account to check collateral/margin health for
     /// @param atTick The tick at which to evaluate the account's positions
     /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[[tokenId, balance/poolUtilizationAtMint], ...]`
-    /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
-    /// @param longPremium The total amount of premium owed by the long legs of `user`
+    /// @param shortPremia The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
+    /// @param longPremia The total amount of premium owed by the long legs of `user`
     /// @param ct0 The Address of the CollateralTracker for token0
     /// @param ct1 The Address of the CollateralTracker for token1
     /// @return Information collected for the tokens about the health of the account
