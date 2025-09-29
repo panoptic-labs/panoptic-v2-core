@@ -99,8 +99,95 @@ contract RiskEngine {
     }
 
     /*//////////////////////////////////////////////////////////////
-                            ACCOUNTING LOGIC
+                LIQUIDATION/FORCE EXERCISE CALCULATIONS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Substitutes surplus tokens to a caller in exchange for any potential token shortages prior to revoking virtual shares from a payor.
+    /// @param payor The address of the user being exercised/settled
+    /// @param fees If applicable, fees to debit from caller (rightSlot = currency0 left = currency1), 0 for `settleLongPremium`
+    /// @param atTick The tick at which to convert between currency0/currency1 when redistributing the surplus tokens
+    /// @param ct0 The collateral tracker for currency0
+    /// @param ct1 The collateral tracker for currency1
+    /// @return The LeftRight-packed deltas for currency0/currency1 to move from the caller to the payor
+    function getRefundAmounts(
+        address payor,
+        LeftRightSigned fees,
+        int24 atTick,
+        CollateralTracker ct0,
+        CollateralTracker ct1
+    ) external view returns (LeftRightSigned) {
+        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
+        unchecked {
+            // if the refunder lacks sufficient currency0 to pay back the virtual shares, have the caller cover the difference in exchange for currency1 (and vice versa)
+
+            int256 balanceShortage = int256(uint256(type(uint248).max)) -
+                int256(ct0.balanceOf(payor)) -
+                int256(ct0.convertToShares(uint128(-fees.rightSlot())));
+
+            if (balanceShortage > 0) {
+                return
+                    LeftRightSigned
+                        .wrap(0)
+                        .toRightSlot(
+                            int128(
+                                fees.rightSlot() -
+                                    int256(
+                                        Math.mulDivRoundingUp(
+                                            uint256(balanceShortage),
+                                            ct0.totalAssets(),
+                                            ct0.totalSupply()
+                                        )
+                                    )
+                            )
+                        )
+                        .toLeftSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert0to1RoundingUp(
+                                        ct0.convertToAssets(uint256(balanceShortage)),
+                                        sqrtPriceX96
+                                    )
+                                ) + fees.leftSlot()
+                            )
+                        );
+            }
+
+            balanceShortage =
+                int256(uint256(type(uint248).max)) -
+                int256(ct1.balanceOf(payor)) -
+                int256(ct1.convertToShares(uint128(-fees.leftSlot())));
+            if (balanceShortage > 0) {
+                return
+                    LeftRightSigned
+                        .wrap(0)
+                        .toRightSlot(
+                            int128(
+                                int256(
+                                    PanopticMath.convert1to0RoundingUp(
+                                        ct1.convertToAssets(uint256(balanceShortage)),
+                                        sqrtPriceX96
+                                    )
+                                ) + fees.rightSlot()
+                            )
+                        )
+                        .toLeftSlot(
+                            int128(
+                                fees.leftSlot() -
+                                    int256(
+                                        Math.mulDivRoundingUp(
+                                            uint256(balanceShortage),
+                                            ct1.totalAssets(),
+                                            ct1.totalSupply()
+                                        )
+                                    )
+                            )
+                        );
+            }
+        }
+
+        // otherwise, no need to deviate from the original deltas
+        return fees;
+    }
 
     /// @notice Get the cost of exercising an option. Used during a forced exercise.
     /// @notice This one computes the cost of calling the forceExercise function on a position:
@@ -201,107 +288,133 @@ contract RiskEngine {
         }
     }
 
-    /// @notice Get the base collateral requirement for a short leg at a given pool utilization.
-    /// @dev This is computed at the time the position is minted.
-    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
-    /// @return sellCollateralRatio The sell collateral ratio at `utilization`
-    function _sellCollateralRatio(
-        int256 utilization
-    ) internal view returns (uint256 sellCollateralRatio) {
-        // the sell ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
-        //   (x0,y0) = (targetPoolUtilization,min_sell_ratio) and
-        //   (x1,y1) = (saturatedPoolUtilization,max_sell_ratio)
-        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
-        /*
-            SELL
-            COLLATERAL
-            RATIO
-                          ^
-                          |                  max ratio = 100%
-                   100% - |                _------
-                          |             _-¯
-                          |          _-¯
-                    20% - |---------¯
-                          |         .       . .
-                          +---------+-------+-+--->   POOL_
-                                   50%    90% 100%     UTILIZATION
-        */
-
-        uint256 min_sell_ratio = SELLER_COLLATERAL_RATIO;
-        /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
-        if (utilization < 0) {
-            unchecked {
-                min_sell_ratio /= 2;
-                utilization = -utilization;
-            }
-        }
-
-        // return the basal sell ratio if pool utilization is lower than target
-        if (uint256(utilization) < TARGET_POOL_UTIL) {
-            return min_sell_ratio;
-        }
-
-        // return 100% collateral ratio if utilization is above saturated pool utilization
-        if (uint256(utilization) > SATURATED_POOL_UTIL) {
-            return DECIMALS;
-        }
-
+    /// @notice Compute the pre-haircut liquidation bonuses to be paid to the liquidator and the protocol loss caused by the liquidation (pre-haircut).
+    /// @param tokenData0 LeftRight encoded word with balance of token0 in the right slot, and required balance in left slot
+    /// @param tokenData1 LeftRight encoded word with balance of token1 in the right slot, and required balance in left slot
+    /// @param atSqrtPriceX96 The oracle price used to swap tokens between the liquidator/liquidatee and determine solvency for the liquidatee
+    /// @param netPaid The net amount of tokens paid/received by the liquidatee to close their portfolio of positions
+    /// @param shortPremium Total owed premium (prorated by available settled tokens) across all short legs being liquidated
+    /// @return The LeftRight-packed bonus amounts to be paid to the liquidator for both tokens (may be negative)
+    /// @return The LeftRight-packed protocol loss (pre-haircut) for both tokens, i.e., the delta between the user's starting balance and expended tokens
+    function getLiquidationBonus(
+        LeftRightUnsigned tokenData0,
+        LeftRightUnsigned tokenData1,
+        uint160 atSqrtPriceX96,
+        LeftRightSigned netPaid,
+        LeftRightUnsigned shortPremium
+    ) external pure returns (LeftRightSigned, LeftRightSigned) {
+        int256 bonus0;
+        int256 bonus1;
         unchecked {
-            return
-                min_sell_ratio +
-                ((DECIMALS - min_sell_ratio) * (uint256(utilization) - TARGET_POOL_UTIL)) /
-                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL);
-        }
-    }
+            // compute bonus as min(collateralBalance/2, required-collateralBalance)
+            {
+                // compute the ratio of token0 to total collateral requirements
+                // evaluate at TWAP price to maintain consistency with solvency calculations
+                (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
+                    tokenData0,
+                    tokenData1,
+                    atSqrtPriceX96
+                );
 
-    /// @notice Get the base collateral requirement for a long leg at a given pool utilization.
-    /// @dev This is computed at the time the position is minted.
-    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
-    /// @return buyCollateralRatio The buy collateral ratio at `utilization`
-    function _buyCollateralRatio(
-        uint16 utilization
-    ) internal view returns (uint256 buyCollateralRatio) {
-        // linear from BUY to BUY/2 between 50% and 90%
-        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
-        //   (x0,y0) = (targetPoolUtilization,buyCollateralRatio) and
-        //   (x1,y1) = (saturatedPoolUtilization,buyCollateralRatio / 2)
-        // note that y1<y0 so the slope is negative:
-        // aka the buy ratio starts high and drops to a lower value with increased utilization; the sell ratio does the opposite (slope is positive)
-        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
-        // but since a<0, we rewrite as:
-        // y = a' * (x0 - x) + y0, where a' = (y0 - y1) / (x1 - x0)
+                uint256 bonusCross = Math.min(balanceCross / 2, thresholdCross - balanceCross);
 
-        /*
-          BUY
-          COLLATERAL
-          RATIO
-                 ^
-                 |   buy_ratio = 10%
-           10% - |----------__       min_ratio = 5%
-           5%  - | . . . . .  ¯¯¯--______
-                 |         .       . .
-                 +---------+-------+-+--->   POOL_
-                          50%    90% 100%      UTILIZATION
-         */
+                // `bonusCross` and `thresholdCross` are returned in terms of the lowest-priced token
+                if (atSqrtPriceX96 < Constants.FP96) {
+                    // required0 / (required0 + token0(required1))
+                    uint256 requiredRatioX128 = Math.mulDiv(
+                        tokenData0.leftSlot(),
+                        2 ** 128,
+                        thresholdCross
+                    );
 
-        // return the basal buy ratio if pool utilization is lower than target
-        if (utilization < TARGET_POOL_UTIL) {
-            return BUYER_COLLATERAL_RATIO;
-        }
+                    bonus0 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
 
-        // return the basal ratio divided by 2 if pool utilization is above saturated pool utilization
-        /// this incentivizes option buying, which returns funds to the Panoptic pool
-        if (utilization > SATURATED_POOL_UTIL) {
-            unchecked {
-                return BUYER_COLLATERAL_RATIO / 2;
+                    bonus1 = int256(
+                        PanopticMath.convert0to1(
+                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                            atSqrtPriceX96
+                        )
+                    );
+                } else {
+                    // required1 / (token1(required0) + required1)
+                    uint256 requiredRatioX128 = Math.mulDiv(
+                        tokenData1.leftSlot(),
+                        2 ** 128,
+                        thresholdCross
+                    );
+
+                    bonus1 = int256(Math.mulDiv128(bonusCross, requiredRatioX128));
+
+                    bonus0 = int256(
+                        PanopticMath.convert1to0(
+                            Math.mulDiv128(bonusCross, 2 ** 128 - requiredRatioX128),
+                            atSqrtPriceX96
+                        )
+                    );
+                }
             }
-        }
 
-        unchecked {
-            return
-                (BUYER_COLLATERAL_RATIO +
-                    (BUYER_COLLATERAL_RATIO * (SATURATED_POOL_UTIL - utilization)) /
-                    (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
+            // negative premium (owed to the liquidatee) is credited to the collateral balance
+            // this is already present in the netPaid amount, so to avoid double-counting we remove it from the balance
+            int256 balance0 = int256(uint256(tokenData0.rightSlot())) -
+                int256(uint256(shortPremium.rightSlot()));
+            int256 balance1 = int256(uint256(tokenData1.rightSlot())) -
+                int256(uint256(shortPremium.leftSlot()));
+
+            int256 paid0 = bonus0 + int256(netPaid.rightSlot());
+            int256 paid1 = bonus1 + int256(netPaid.leftSlot());
+
+            // note that "balance0" and "balance1" are the liquidatee's original balances before token delegation by a liquidator
+            // their actual balances at the time of computation may be higher, but these are a buffer representing the amount of tokens we
+            // have to work with before cutting into the liquidator's funds
+            if (!(paid0 > balance0 && paid1 > balance1)) {
+                // liquidatee cannot pay back the liquidator fully in either token, so no protocol loss can be avoided
+                if ((paid0 > balance0)) {
+                    // liquidatee has insufficient token0 but some token1 left over, so we use what they have left to mitigate token0 losses
+                    // we do this by substituting an equivalent value of token1 in our refund to the liquidator, plus a bonus, for the token0 we convert
+                    // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
+                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token1 balance: balance1 - paid1
+                    // and paid0 - balance0 is the amount of token0 that the liquidatee is missing, i.e the protocol loss
+                    // if the protocol loss is lower than the excess token1 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                    // if the protocol loss is higher than the excess token1 balance, we can only mitigate part of the loss, so we should convert only the excess token1 balance
+                    // thus, the value converted should be min(balance1 - paid1, paid0 - balance0)
+                    bonus1 += Math.min(
+                        balance1 - paid1,
+                        PanopticMath.convert0to1(paid0 - balance0, atSqrtPriceX96)
+                    );
+                    bonus0 -= Math.min(
+                        PanopticMath.convert1to0(balance1 - paid1, atSqrtPriceX96),
+                        paid0 - balance0
+                    );
+                }
+                if ((paid1 > balance1)) {
+                    // liquidatee has insufficient token1 but some token0 left over, so we use what they have left to mitigate token1 losses
+                    // we do this by substituting an equivalent value of token0 in our refund to the liquidator, plus a bonus, for the token1 we convert
+                    // we want to convert the minimum amount of tokens required to achieve the lowest possible protocol loss (to avoid overpaying on the conversion bonus)
+                    // the maximum level of protocol loss mitigation that can be achieved is the liquidatee's excess token0 balance: balance0 - paid0
+                    // and paid1 - balance1 is the amount of token1 that the liquidatee is missing, i.e the protocol loss
+                    // if the protocol loss is lower than the excess token0 balance, then we can fully mitigate the loss and we should only convert the loss amount
+                    // if the protocol loss is higher than the excess token0 balance, we can only mitigate part of the loss, so we should convert only the excess token0 balance
+                    // thus, the value converted should be min(balance0 - paid0, paid1 - balance1)
+                    bonus0 += Math.min(
+                        balance0 - paid0,
+                        PanopticMath.convert1to0(paid1 - balance1, atSqrtPriceX96)
+                    );
+                    bonus1 -= Math.min(
+                        PanopticMath.convert0to1(balance0 - paid0, atSqrtPriceX96),
+                        paid1 - balance1
+                    );
+                }
+            }
+
+            paid0 = bonus0 + int256(netPaid.rightSlot());
+            paid1 = bonus1 + int256(netPaid.leftSlot());
+            return (
+                LeftRightSigned.wrap(0).toRightSlot(int128(bonus0)).toLeftSlot(int128(bonus1)),
+                LeftRightSigned.wrap(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(
+                    int128(balance1 - paid1)
+                )
+            );
         }
     }
 
@@ -773,6 +886,110 @@ contract RiskEngine {
                     atTick,
                     poolUtilization
                 );
+        }
+    }
+
+    /// @notice Get the base collateral requirement for a short leg at a given pool utilization.
+    /// @dev This is computed at the time the position is minted.
+    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @return sellCollateralRatio The sell collateral ratio at `utilization`
+    function _sellCollateralRatio(
+        int256 utilization
+    ) internal view returns (uint256 sellCollateralRatio) {
+        // the sell ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (targetPoolUtilization,min_sell_ratio) and
+        //   (x1,y1) = (saturatedPoolUtilization,max_sell_ratio)
+        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
+        /*
+            SELL
+            COLLATERAL
+            RATIO
+                          ^
+                          |                  max ratio = 100%
+                   100% - |                _------
+                          |             _-¯
+                          |          _-¯
+                    20% - |---------¯
+                          |         .       . .
+                          +---------+-------+-+--->   POOL_
+                                   50%    90% 100%     UTILIZATION
+        */
+
+        uint256 min_sell_ratio = SELLER_COLLATERAL_RATIO;
+        /// if utilization is less than zero, this is the calculation for a strangle, which gets 2x the capital efficiency at low pool utilization
+        if (utilization < 0) {
+            unchecked {
+                min_sell_ratio /= 2;
+                utilization = -utilization;
+            }
+        }
+
+        // return the basal sell ratio if pool utilization is lower than target
+        if (uint256(utilization) < TARGET_POOL_UTIL) {
+            return min_sell_ratio;
+        }
+
+        // return 100% collateral ratio if utilization is above saturated pool utilization
+        if (uint256(utilization) > SATURATED_POOL_UTIL) {
+            return DECIMALS;
+        }
+
+        unchecked {
+            return
+                min_sell_ratio +
+                ((DECIMALS - min_sell_ratio) * (uint256(utilization) - TARGET_POOL_UTIL)) /
+                (SATURATED_POOL_UTIL - TARGET_POOL_UTIL);
+        }
+    }
+
+    /// @notice Get the base collateral requirement for a long leg at a given pool utilization.
+    /// @dev This is computed at the time the position is minted.
+    /// @param utilization The pool utilization of this collateral vault at the time the position is minted
+    /// @return buyCollateralRatio The buy collateral ratio at `utilization`
+    function _buyCollateralRatio(
+        uint16 utilization
+    ) internal view returns (uint256 buyCollateralRatio) {
+        // linear from BUY to BUY/2 between 50% and 90%
+        // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
+        //   (x0,y0) = (targetPoolUtilization,buyCollateralRatio) and
+        //   (x1,y1) = (saturatedPoolUtilization,buyCollateralRatio / 2)
+        // note that y1<y0 so the slope is negative:
+        // aka the buy ratio starts high and drops to a lower value with increased utilization; the sell ratio does the opposite (slope is positive)
+        // the line's formula: y = a * (x - x0) + y0, where a = (y1 - y0) / (x1 - x0)
+        // but since a<0, we rewrite as:
+        // y = a' * (x0 - x) + y0, where a' = (y0 - y1) / (x1 - x0)
+
+        /*
+          BUY
+          COLLATERAL
+          RATIO
+                 ^
+                 |   buy_ratio = 10%
+           10% - |----------__       min_ratio = 5%
+           5%  - | . . . . .  ¯¯¯--______
+                 |         .       . .
+                 +---------+-------+-+--->   POOL_
+                          50%    90% 100%      UTILIZATION
+         */
+
+        // return the basal buy ratio if pool utilization is lower than target
+        if (utilization < TARGET_POOL_UTIL) {
+            return BUYER_COLLATERAL_RATIO;
+        }
+
+        // return the basal ratio divided by 2 if pool utilization is above saturated pool utilization
+        /// this incentivizes option buying, which returns funds to the Panoptic pool
+        if (utilization > SATURATED_POOL_UTIL) {
+            unchecked {
+                return BUYER_COLLATERAL_RATIO / 2;
+            }
+        }
+
+        unchecked {
+            return
+                (BUYER_COLLATERAL_RATIO +
+                    (BUYER_COLLATERAL_RATIO * (SATURATED_POOL_UTIL - utilization)) /
+                    (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
         }
     }
 }

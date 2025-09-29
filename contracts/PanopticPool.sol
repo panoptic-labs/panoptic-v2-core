@@ -1064,7 +1064,7 @@ contract PanopticPool is Multicall {
 
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
-            (bonusAmounts, collateralRemaining) = PanopticMath.getLiquidationBonus(
+            (bonusAmounts, collateralRemaining) = s_riskEngine.getLiquidationBonus(
                 tokenData0,
                 tokenData1,
                 Math.getSqrtRatioAtTick(twapTick),
@@ -1155,7 +1155,7 @@ contract PanopticPool is Multicall {
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = PanopticMath.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
+        refundAmounts = s_riskEngine.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         ct0.refund(account, msg.sender, refundAmounts.rightSlot());
@@ -1257,7 +1257,7 @@ contract PanopticPool is Multicall {
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
                     );
                 }
-                refundAmounts = PanopticMath
+                refundAmounts = s_riskEngine
                     .getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick, ct0, ct1)
                     .add(refundAmounts);
                 emit PremiumSettled(owner, tokenId, leg, realizedPremia);
