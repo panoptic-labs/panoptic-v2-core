@@ -54,70 +54,49 @@ contract RiskEngine {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice The commission fee, in basis points, collected from PLPs at option mint.
-    /// @dev In Panoptic, options never expire, commissions are only paid when a new position is minted.
-    /// @dev We believe that this will eliminate the impact of the commission fee on the user's decision-making process when closing a position.
-    uint256 immutable COMMISSION_FEE;
-
     /// @notice Required collateral ratios for selling options, represented as percentage * 10_000.
-    /// @dev i.e 20% -> 0.2 * 10_000 = 2_000.
+    /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
     uint256 immutable SELLER_COLLATERAL_RATIO;
 
     /// @notice Required collateral ratios for buying options, represented as percentage * 10_000.
-    /// @dev i.e 10% -> 0.1 * 10_000 = 1_000.
+    /// @dev i.e 10% -> 0.1 * 10_000_000 = 1_000_000.
     uint256 immutable BUYER_COLLATERAL_RATIO;
 
     /// @notice Basal cost (in bps of notional) to force exercise an out-of-range position.
-    int256 immutable FORCE_EXERCISE_COST;
+    uint256 immutable FORCE_EXERCISE_COST;
 
     // Targets a pool utilization (balance between buying and selling)
     /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
-    /// @dev i.e 50% -> 0.5 * 10_000 = 5_000.
+    /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
     uint256 immutable TARGET_POOL_UTIL;
 
     /// @notice Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
-    /// @dev i.e 90% -> 0.9 * 10_000 = 9_000.
+    /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
     uint256 immutable SATURATED_POOL_UTIL;
-
-    /*//////////////////////////////////////////////////////////////
-                            ACCESS CONTROL
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Reverts if the associated Panoptic Pool is not the caller.
-    modifier onlyPanopticPool() {
-        //if (msg.sender != address(s_panopticPool)) revert Errors.NotPanopticPool();
-        _;
-    }
 
     /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Set immutable parameters for the Collateral Tracker.
-    /// @param _commissionFee The commission fee, in basis points, collected from PLPs at option mint
     /// @param _sellerCollateralRatio Required collateral ratio for selling options, represented as percentage * 10_000
     /// @param _buyerCollateralRatio Required collateral ratio for buying options, represented as percentage * 10_000
     /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise an out-of-range position
     /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000
     /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000
     constructor(
-        uint256 _commissionFee,
         uint256 _sellerCollateralRatio,
         uint256 _buyerCollateralRatio,
-        int256 _forceExerciseCost,
+        uint256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
         uint256 _saturatedPoolUtilization
     ) {
-        COMMISSION_FEE = _commissionFee;
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
     }
-
-    /// @notice Initialize a new collateral tracker for a specific token corresponding to the Panoptic Pool being created by the factory that called it.
-    function addPool() external {}
 
     /*//////////////////////////////////////////////////////////////
                             ACCOUNTING LOGIC
@@ -213,7 +192,7 @@ contract RiskEngine {
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-            int256 fee = (FORCE_EXERCISE_COST >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
+            int256 fee = int256(FORCE_EXERCISE_COST >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
@@ -330,6 +309,18 @@ contract RiskEngine {
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Get the collateral status/margin details of an account/user.
+    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
+    /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
+    /// @param user The account to check collateral/margin health for
+    /// @param atTick The tick at which to evaluate the account's positions
+    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[[tokenId, balance/poolUtilizationAtMint], ...]`
+    /// @param shortPremium The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
+    /// @param longPremium The total amount of premium owed by the long legs of `user`
+    /// @param ct0 The Address of the CollateralTracker for token0
+    /// @param ct1 The Address of the CollateralTracker for token1
+    /// @return Information collected for the tokens about the health of the account
+    /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getMargin(
         address user,
         int24 atTick,

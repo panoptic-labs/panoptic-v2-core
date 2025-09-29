@@ -1129,7 +1129,7 @@ contract PanopticPool is Multicall {
 
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
-            exerciseFees = ct0.exerciseCost(
+            exerciseFees = s_riskEngine.exerciseCost(
                 currentTick,
                 twapTick,
                 tokenId,
