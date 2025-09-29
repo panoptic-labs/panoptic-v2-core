@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
@@ -36,7 +37,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
         PanopticPool indexed poolAddress,
         IUniswapV3Pool indexed uniswapPool,
         CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1
+        CollateralTracker collateralTracker1,
+        RiskEngine riskEngine
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -69,7 +71,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mapping from address(UniswapV3Pool) to address(PanopticPool) that stores the address of all deployed Panoptic Pools.
-    mapping(IUniswapV3Pool univ3pool => PanopticPool panopticPool) internal s_getPanopticPool;
+    mapping(IUniswapV3Pool univ3pool => mapping(RiskEngine riskEngine => PanopticPool panopticPool))
+        internal s_getPanopticPool;
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
@@ -109,12 +112,14 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @param token0 Address of token0 for the underlying Uniswap V3 pool
     /// @param token1 Address of token1 for the underlying Uniswap V3 pool
     /// @param fee The fee tier of the underlying Uniswap V3 pool, denominated in hundredths of bips
+    /// @param riskEngine Risk Engine to be used for this Panoptic Pool
     /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
     /// @return newPoolContract The address of the newly deployed Panoptic pool
     function deployNewPool(
         address token0,
         address token1,
         uint24 fee,
+        RiskEngine riskEngine,
         uint96 salt
     ) external returns (PanopticPool newPoolContract) {
         // sort the tokens, if necessary:
@@ -123,7 +128,7 @@ contract PanopticFactory is FactoryNFT, Multicall {
         IUniswapV3Pool v3Pool = IUniswapV3Pool(UNIV3_FACTORY.getPool(token0, token1, fee));
         if (address(v3Pool) == address(0)) revert Errors.UniswapPoolNotInitialized();
 
-        if (address(s_getPanopticPool[v3Pool]) != address(0))
+        if (address(s_getPanopticPool[v3Pool][riskEngine]) != address(0))
             revert Errors.PoolAlreadyInitialized();
 
         // initialize pool in SFPM if it has not already been initialized
@@ -134,7 +139,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
         bytes32 salt32 = bytes32(
             abi.encodePacked(
                 uint80(uint160(msg.sender) >> 80),
-                uint80(uint160(address(v3Pool)) >> 80),
+                uint80(uint160(address(v3Pool)) >> 40),
+                uint80(uint160(address(riskEngine)) >> 40),
                 salt
             )
         );
@@ -154,9 +160,16 @@ contract PanopticFactory is FactoryNFT, Multicall {
         collateralTracker0.startToken(true, token0, token1, fee, newPoolContract);
         collateralTracker1.startToken(false, token0, token1, fee, newPoolContract);
 
-        newPoolContract.startPool(v3Pool, token0, token1, collateralTracker0, collateralTracker1);
+        newPoolContract.startPool(
+            v3Pool,
+            token0,
+            token1,
+            collateralTracker0,
+            collateralTracker1,
+            riskEngine
+        );
 
-        s_getPanopticPool[v3Pool] = newPoolContract;
+        s_getPanopticPool[v3Pool][riskEngine] = newPoolContract;
 
         // The Panoptic pool won't be safe to use until the observation cardinality is at least CARDINALITY_INCREASE
         // If this is not the case, we increase the next cardinality during deployment so the cardinality can catch up over time
@@ -167,7 +180,13 @@ contract PanopticFactory is FactoryNFT, Multicall {
         uint256 tokenId = uint256(uint160(address(newPoolContract)));
         _mint(msg.sender, tokenId);
 
-        emit PoolDeployed(newPoolContract, v3Pool, collateralTracker0, collateralTracker1);
+        emit PoolDeployed(
+            newPoolContract,
+            v3Pool,
+            collateralTracker0,
+            collateralTracker1,
+            riskEngine
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -239,7 +258,10 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @notice Return the address of the Panoptic Pool associated with `univ3pool`.
     /// @param univ3pool The Uniswap V3 pool address to query
     /// @return Address of the Panoptic Pool associated with `univ3pool`
-    function getPanopticPool(IUniswapV3Pool univ3pool) external view returns (PanopticPool) {
-        return s_getPanopticPool[univ3pool];
+    function getPanopticPool(
+        IUniswapV3Pool univ3pool,
+        RiskEngine riskEngine
+    ) external view returns (PanopticPool) {
+        return s_getPanopticPool[univ3pool][riskEngine];
     }
 }

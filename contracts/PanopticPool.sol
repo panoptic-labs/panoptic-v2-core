@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
@@ -203,6 +204,9 @@ contract PanopticPool is Multicall {
     /// @notice Collateral vault for token1 in the Uniswap pool.
     CollateralTracker internal s_collateralToken1;
 
+    /// @notice Risk Engine powering this PanopticPool
+    RiskEngine internal s_riskEngine;
+
     /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
     /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
     /// collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index).
@@ -260,7 +264,8 @@ contract PanopticPool is Multicall {
         address token0,
         address token1,
         CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1
+        CollateralTracker collateralTracker1,
+        RiskEngine _riskEngine
     ) external {
         // reverts if the Uniswap pool has already been initialized
         if (address(s_univ3pool) != address(0)) revert Errors.PoolAlreadyInitialized();
@@ -284,6 +289,9 @@ contract PanopticPool is Multicall {
         // Store the collateral token0
         s_collateralToken0 = collateralTracker0;
         s_collateralToken1 = collateralTracker1;
+
+        // store the risk engine
+        s_riskEngine = _riskEngine;
 
         // consolidate all 4 approval calls to one library delegatecall in order to reduce bytecode size
         // approves:
@@ -322,10 +330,8 @@ contract PanopticPool is Multicall {
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
-        if (
-            ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
-            ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
-        ) revert Errors.AccountInsolvent();
+        if (ct0.assetsOf(msg.sender) < minValue0 || ct1.assetsOf(msg.sender) < minValue1)
+            revert Errors.AccountInsolvent();
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -1025,21 +1031,14 @@ contract PanopticPool is Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
-
-            tokenData0 = s_collateralToken0.getAccountMarginDetails(
+            (tokenData0, tokenData1) = s_riskEngine.getMargin(
                 liquidatee,
                 twapTick,
                 positionBalanceArray,
-                shortPremium.rightSlot(),
-                longPremium.rightSlot()
-            );
-
-            tokenData1 = s_collateralToken1.getAccountMarginDetails(
-                liquidatee,
-                twapTick,
-                positionBalanceArray,
-                shortPremium.leftSlot(),
-                longPremium.leftSlot()
+                shortPremium,
+                longPremium,
+                s_collateralToken0,
+                s_collateralToken1
             );
         }
 
@@ -1349,21 +1348,18 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = s_riskEngine.getMargin(
+            account,
+            atTick,
+            positionBalanceArray,
+            shortPremium,
+            longPremium,
+            s_collateralToken0,
+            s_collateralToken1
+        );
         (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-            s_collateralToken0.getAccountMarginDetails(
-                account,
-                atTick,
-                positionBalanceArray,
-                shortPremium.rightSlot(),
-                longPremium.rightSlot()
-            ),
-            s_collateralToken1.getAccountMarginDetails(
-                account,
-                atTick,
-                positionBalanceArray,
-                shortPremium.leftSlot(),
-                longPremium.leftSlot()
-            ),
+            tokenData0,
+            tokenData1,
             Math.getSqrtRatioAtTick(atTick)
         );
 
@@ -1467,6 +1463,12 @@ contract PanopticPool is Multicall {
     /// @return Collateral token corresponding to token1 in the AMM
     function collateralToken1() external view returns (CollateralTracker) {
         return s_collateralToken1;
+    }
+
+    /// @notice Get the address of the risk engine powering this PanopticPool.
+    /// @return RiskEngine address of the risk engine
+    function riskEngine() external view returns (RiskEngine) {
+        return s_riskEngine;
     }
 
     /// @notice Computes and returns all oracle ticks.
