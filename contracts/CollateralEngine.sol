@@ -339,8 +339,8 @@ contract CollateralEngine {
         CollateralTracker ct0,
         CollateralTracker ct1
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned) {
-        uint256 balance0 = ct0.convertToAssets(ct0.balanceOf(user)) + shortPremia.rightSlot();
-        uint256 balance1 = ct1.convertToAssets(ct1.balanceOf(user)) + shortPremia.leftSlot();
+        uint256 balance0 = ct0.assetsOf(user) + shortPremia.rightSlot();
+        uint256 balance1 = ct1.assetsOf(user) + shortPremia.leftSlot();
 
         uint256 requirement0 = positionBalanceArray.length > 0
             ? _getTotalRequiredCollateral(atTick, positionBalanceArray, true) +

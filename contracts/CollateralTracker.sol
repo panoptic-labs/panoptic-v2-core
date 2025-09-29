@@ -348,6 +348,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         return Math.mulDiv(shares, totalAssets(), totalSupply);
     }
 
+    /// @notice Returns the amount of assets that can be redeem by the user.
+    /// @param owner The redeeming address
+    /// @return assets The amount of assets that can be redeemed
+    function assetsOf(address owner) external view returns (uint256 assets) {
+        return convertToAssets(balanceOf[owner]);
+    }
+
     /// @notice Returns the maximum deposit amount.
     /// @return maxAssets The maximum amount of assets that can be deposited
     function maxDeposit(address) external pure returns (uint256 maxAssets) {
