@@ -282,8 +282,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         return uint96(s_interestRateAccumulator.rightSlot());
     }
 
-    /// @notice Returns the last block at which interest rates were compounded.
-    /// @return The last block at which the interest rates were compounded
+    /// @notice Returns the last time at which interest rates were compounded.
+    /// @return The last time at which the interest rates were compounded
     function lastInteractionTimestamp() external view returns (uint256) {
         return (s_interestRateAccumulator.rightSlot() >> 96);
     }
@@ -726,7 +726,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         address _owner = owner;
                         uint256 userBalance = balanceOf[_owner];
                         if (shares > userBalance) {
-                            // update the acrual of interest paid
+                            // update the accrual of interest paid
                             burntInterestValue = Math
                                 .mulDiv(userBalance, _totalAssets, totalSupply)
                                 .toUint128();
