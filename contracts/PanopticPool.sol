@@ -631,7 +631,8 @@ contract PanopticPool is Multicall {
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
-    /// @return The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
+    /// @return The total amount of commissions (base rate) paid for token0 (right) and token1 (left)
+    /// @return The amount of tokens paid when creating that option for token0 (right) and token1 (left)
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
@@ -872,6 +873,22 @@ contract PanopticPool is Multicall {
                     LIQUIDATIONS & FORCED EXERCISES
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Dispatches liquidations, forced exercises, or long premium settlements based on account solvency
+    /// @dev This function determines the appropriate action based on solvency checks at multiple price points:
+    ///      - If insolvent at all ticks: Execute liquidation (burns all positions)
+    ///      - If solvent at all ticks: Execute force exercise or settle long premium based on list lengths
+    ///      - Otherwise: Revert as account is not fully margin called
+    /// @dev The function uses position list lengths to determine the specific operation:
+    ///      - Same length lists between positionIdListTo and positionIdListToFinal: Settle long premium
+    ///      - Final list one shorter: Force exercise
+    ///      - Final list empty: Liquidation
+    /// @param positionIdListFrom List of positions held by the caller (msg.sender)
+    /// @param account The account being acted upon (liquidated, exercised, or settled)
+    /// @param positionIdListTo Current positions of the target account
+    /// @param positionIdListToFinal Expected positions after the operation completes
+    /// @param usePremiaAsCollateral Packed value indicating whether to use premia as collateral:
+    ///        - leftSlot: For the caller (msg.sender)
+    ///        - rightSlot: For the target account
     function dispatchFrom(
         TokenId[] calldata positionIdListFrom,
         address account,
@@ -882,7 +899,6 @@ contract PanopticPool is Multicall {
         // Assert the account we are liquidating is actually insolvent
         int24 twapTick = getUniV3TWAP();
         int24 currentTick;
-        uint256 path;
 
         TokenId tokenId;
 
@@ -921,6 +937,7 @@ contract PanopticPool is Multicall {
             );
             numberOfTicks = atTicks.length;
         }
+        LeftRightSigned exchangedAmounts;
         {
             // if account is solvent at all ticks, this is a force exercise or a settleLongPremium.
             if (solvent == numberOfTicks) {
@@ -937,18 +954,31 @@ contract PanopticPool is Multicall {
                                 revert Errors.InputListFail();
                             }
                         }
-                        path = 0;
+                        exchangedAmounts = _settleLongPremium(
+                            account,
+                            tokenId,
+                            twapTick,
+                            currentTick
+                        );
                     } else if (toLength == (finalLength + 1)) {
                         // final is one element shorter, that's a force exercise
                         tokenId.validateIsExercisable(twapTick);
-                        path = 1;
+                        exchangedAmounts = _forceExercise(account, tokenId, twapTick, currentTick);
                     } else if (finalLength == 0) {
-                        // if final length was zero, this was intended to be liquidaton, but revert because not marging called
+                        // if final length was zero, this was intended to be liquidation, but revert because not margin called and solvent at some of the tested ticks
                         revert Errors.NotMarginCalled();
                     } else {
                         // otherwise, wrong input lists
                         revert Errors.InputListFail();
                     }
+                    // ensure the callee is still solvent after the operation
+                    bool premiaAsCollateral = usePremiaAsCollateral.rightSlot() > 0;
+                    _validateSolvency(
+                        account,
+                        positionIdListToFinal,
+                        NO_BUFFER,
+                        premiaAsCollateral
+                    );
                 }
             } else if (solvent == 0) {
                 // if account is insolvent at all ticks, this is a liquidation
@@ -959,40 +989,13 @@ contract PanopticPool is Multicall {
 
                 // if the final position list has a non-zero length, this can't be a complete liquidation, revert
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
-                path = 2;
+                exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
             } else {
                 // otherwise, revert because the account is not fully margin called
                 revert Errors.NotMarginCalled();
             }
         }
 
-        {
-            LeftRightSigned exchangedAmounts;
-            if (path == 2) {
-                exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
-                // no need to check that the liquidatee is solvent as all positions are burnt
-            } else {
-                // if path = 0, settleLongPremium
-                if (path == 0) {
-                    exchangedAmounts = _settleLongPremium(account, tokenId, twapTick, currentTick);
-                }
-
-                // if path = 1, force exercise
-
-                if (path == 1) {
-                    // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-                    exchangedAmounts = _forceExercise(account, tokenId, twapTick, currentTick);
-                }
-
-                // ensure the callee is still solvent after the operation
-                _validateSolvency(
-                    account,
-                    positionIdListToFinal,
-                    NO_BUFFER,
-                    usePremiaAsCollateral.rightSlot() > 0
-                );
-            }
-        }
         // ensure the caller is still solvent after the operation
         _validateSolvency(
             msg.sender,
@@ -1329,8 +1332,6 @@ contract PanopticPool is Multicall {
         }
 
         return solvent;
-        //if (expectedSolvent && solvent != numberOfTicks) revert Errors.AccountInsolvent();
-        //if (!expectedSolvent && solvent != 0) revert Errors.NotMarginCalled();
     }
 
     /// @notice Check whether an account is solvent at a given `atTick` with a collateral requirement of `buffer/10_000` multiplied by the requirement of `positionBalanceArray`.
