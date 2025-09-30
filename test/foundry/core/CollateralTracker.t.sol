@@ -741,8 +741,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 assetsToken1 = convertToAssets(returnedShares1, collateralToken1);
 
         // withdraw tokens
-        collateralToken0.withdraw(assetsToken0, Bob, Bob, new TokenId[](0));
-        collateralToken1.withdraw(assetsToken1, Bob, Bob, new TokenId[](0));
+        collateralToken0.withdraw(assetsToken0, Bob, Bob, new TokenId[](0), true);
+        collateralToken1.withdraw(assetsToken1, Bob, Bob, new TokenId[](0), true);
 
         // Total amount of shares after withdrawal (after burn)
         uint256 sharesAfter0 = convertToAssets(collateralToken0.totalSupply(), collateralToken0);
@@ -820,7 +820,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // attempt to withdraw
         // fail as assets > maxWithdraw(owner)
         vm.expectRevert(stdError.arithmeticError);
-        collateralToken0.withdraw(maxAssets + 1, Bob, Bob, new TokenId[](0));
+        collateralToken0.withdraw(maxAssets + 1, Bob, Bob, new TokenId[](0), true);
     }
 
     function test_Fail_mintGTAvailableAssets(
@@ -863,7 +863,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint128(bound(positionSizeSeed, 501, 1000)),
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
     }
 
@@ -899,7 +900,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             750,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
@@ -910,7 +912,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             500,
             type(uint64).max,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         collateralToken0.setPoolAssets(collateralToken0._availableAssets() - 300);
@@ -922,7 +925,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId,
             positionIdList,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
     }
 
@@ -958,7 +962,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             750,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
@@ -972,7 +977,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             500,
             type(uint64).max,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
     }
 
@@ -1008,7 +1014,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             750,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         collateralToken0.setInAMM(-250);
@@ -1020,7 +1027,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId,
             positionIdList,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
     }
 
@@ -1051,7 +1059,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // no erc4626 maxWithdraw check, so s_poolAssets math underflows instead
         vm.expectRevert(stdError.arithmeticError);
-        collateralToken0.withdraw(assets, Bob, Bob, new TokenId[](0));
+        collateralToken0.withdraw(assets, Bob, Bob, new TokenId[](0), true);
     }
 
     function test_Success_withdraw_OnBehalf(uint256 x, uint104 assets) public {
@@ -1120,8 +1128,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 balanceBefore1 = IERC20Partial(token1).balanceOf(Alice);
 
         // attempt to withdraw
-        collateralToken0.withdraw(assets, Alice, Bob, new TokenId[](0));
-        collateralToken1.withdraw(assets, Alice, Bob, new TokenId[](0));
+        collateralToken0.withdraw(assets, Alice, Bob, new TokenId[](0), true);
+        collateralToken1.withdraw(assets, Alice, Bob, new TokenId[](0), true);
 
         // Bob's token balance after withdraw
         uint256 balanceAfter0 = IERC20Partial(token0).balanceOf(Alice);
@@ -1183,7 +1191,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // attempt to withdraw
         // fail as user does not have approval to transfer on behalf
         vm.expectRevert(stdError.arithmeticError);
-        collateralToken0.withdraw(100, Alice, Bob, new TokenId[](0));
+        collateralToken0.withdraw(100, Alice, Bob, new TokenId[](0), true);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1356,7 +1364,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         // Attempt a transfer to Alice from Bob
@@ -1448,7 +1457,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 0,
                 Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MIN_V3POOL_TICK,
+                true
             );
         }
 
@@ -1898,7 +1908,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -1928,7 +1939,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             uint256 inAMMOffset = collateralToken0._inAMM();
@@ -1945,7 +1957,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2093,7 +2106,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2122,7 +2136,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2299,7 +2314,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2328,7 +2344,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2507,7 +2524,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2536,7 +2554,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2738,7 +2757,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2776,7 +2796,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -2985,7 +3006,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -3022,7 +3044,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
                 .optionPositionInfo(panopticPool, Alice, tokenId1);
@@ -3194,7 +3217,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -3224,7 +3248,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             uint256 inAMMOffset = inAMMBefore - collateralToken0._inAMM();
@@ -3241,7 +3266,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             int128 currentUtilization = collateralToken0.poolUtilizationHook();
@@ -3426,7 +3452,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -3456,7 +3483,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             uint256 inAMMOffset = inAMMBefore - collateralToken0._inAMM();
@@ -3473,7 +3501,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             int128 currentUtilization = collateralToken0.poolUtilizationHook();
@@ -3644,7 +3673,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -3674,7 +3704,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             uint256 inAMMOffset = inAMMBefore - collateralToken0._inAMM();
@@ -3691,7 +3722,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             int128 currentUtilization = collateralToken0.poolUtilizationHook();
@@ -3870,7 +3902,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.revertTo(snapshot);
@@ -3891,7 +3924,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.assume(
@@ -4050,7 +4084,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.revertTo(snapshot);
@@ -4071,7 +4106,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.assume(collateralToken0.poolUtilizationHook() < 5_000);
@@ -4253,7 +4289,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.revertTo(snapshot);
@@ -4268,7 +4305,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             int128 currentUtilization = collateralToken0.poolUtilizationHook();
@@ -4445,7 +4483,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.revertTo(snapshot);
@@ -4460,7 +4499,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             int128 currentUtilization = collateralToken1.poolUtilizationHook();
@@ -4634,7 +4674,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.revertTo(snapshot);
@@ -4649,7 +4690,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             int128 currentUtilization = collateralToken0.poolUtilizationHook();
@@ -4809,7 +4851,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
 
             vm.revertTo(snapshot);
@@ -4824,7 +4867,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
             int128 currentUtilization = collateralToken1.poolUtilizationHook();
             vm.assume(currentUtilization > 5_000 && currentUtilization < 9_000);
@@ -4994,7 +5038,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5180,7 +5225,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5208,7 +5254,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5308,7 +5355,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5345,7 +5393,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5445,7 +5494,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5482,7 +5532,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5582,7 +5633,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 
@@ -5619,7 +5671,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 4,
                 type(uint64).max,
                 TickMath.MIN_TICK,
-                TickMath.MAX_TICK
+                TickMath.MAX_TICK,
+                true
             );
         }
 

@@ -6,7 +6,6 @@ import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
-import {ERC1155Holder} from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 import {Multicall} from "@base/Multicall.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
@@ -23,7 +22,7 @@ import {TokenId} from "@types/TokenId.sol";
 /// @title The Panoptic Pool: Create permissionless options on a CLAMM.
 /// @author Axicon Labs Limited
 /// @notice Manages positions, collateral, liquidations and forced exercises.
-contract PanopticPool is ERC1155Holder, Multicall {
+contract PanopticPool is Multicall {
     /*//////////////////////////////////////////////////////////////
                                 EVENTS
     //////////////////////////////////////////////////////////////*/
@@ -98,7 +97,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     int24 internal constant MAX_SWAP_TICK = Constants.MAX_V3POOL_TICK + 1;
 
     /// @notice Flag that signals to compute premia for both the short and long legs of a position.
-    bool internal constant COMPUTE_ALL_PREMIA = true;
+    bool internal constant COMPUTE_PREMIA_AS_COLLATERAL = true;
 
     /// @notice Flag that indicates only to include the share of (settled) premium that is available to collect when calling `_calculateAccumulatedPremia`.
     bool internal constant ONLY_AVAILABLE_PREMIUM = false;
@@ -124,6 +123,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
+    /// @notice The maximum allowed delta (~2%) between the lastObservedTick and the slowOracleTick/fastOracleTick during forceExercise/settleLongPremium.
+    /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
+    int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
+
     /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
     /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
     int256 internal constant MAX_TICKS_DELTA = 953;
@@ -131,7 +134,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
-    uint64 internal constant MAX_SPREAD = 9 * (2 ** 32);
+    uint256 internal constant MAX_SPREAD = 9 * (2 ** 32);
 
     /// @notice The maximum allowed number of legs across all open positions for a user.
     uint64 internal constant MAX_OPEN_LEGS = 25;
@@ -292,6 +295,24 @@ contract PanopticPool is ERC1155Holder, Multicall {
     }
 
     /*//////////////////////////////////////////////////////////////
+                              EIP SUPPORT
+    //////////////////////////////////////////////////////////////*/
+
+    // note: this contract does not need to accept batch ERC1155 transfers from the SFPM or supply ERC-165 calls
+    // thus, `supportsInterface` and `onERC1155BatchReceived` are left unimplemented to reduce contract size
+
+    /// @notice Returns magic value when called by the `SemiFungiblePositionManager` contract to indicate that this contract supports ERC1155.
+    function onERC1155Received(
+        address,
+        address,
+        uint256,
+        uint256,
+        bytes memory
+    ) external pure returns (bytes4) {
+        return this.onERC1155Received.selector;
+    }
+
+    /*//////////////////////////////////////////////////////////////
                              QUERY HELPERS
     //////////////////////////////////////////////////////////////*/
 
@@ -314,11 +335,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @dev Reverts if account is not solvent with `BP_DECREASE_BUFFER`.
     /// @param user The account to check for collateral withdrawal eligibility
     /// @param positionIdList The list of all option positions held by `user`
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function validateCollateralWithdrawable(
         address user,
-        TokenId[] calldata positionIdList
+        TokenId[] calldata positionIdList,
+        bool usePremiaAsCollateral
     ) external view {
-        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER);
+        _validateSolvency(user, positionIdList, BP_DECREASE_BUFFER, usePremiaAsCollateral);
     }
 
     /// @notice Returns the total amount of premium accumulated for a list of positions and a list containing the corresponding `PositionBalance` information for each position.
@@ -341,7 +364,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             _calculateAccumulatedPremia(
                 user,
                 positionIdList,
-                COMPUTE_ALL_PREMIA,
+                COMPUTE_PREMIA_AS_COLLATERAL,
                 includePendingPremium,
                 currentTick
             );
@@ -350,7 +373,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice Calculate the accumulated premia owed from the option buyer to the option seller.
     /// @param user The holder of options
     /// @param positionIdList The list of all option positions held by user
-    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     /// @param includePendingPremium If true, include premium that is owed to the user but has not yet settled; if false, only include premium that is available to collect
     /// @param atTick The current tick of the Uniswap pool
     /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
@@ -359,7 +382,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function _calculateAccumulatedPremia(
         address user,
         TokenId[] calldata positionIdList,
-        bool computeAllPremia,
+        bool usePremiaAsCollateral,
         bool includePendingPremium,
         int24 atTick
     )
@@ -379,8 +402,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 k = 0; k < pLength; ) {
             TokenId tokenId = positionIdList[k];
 
-            balances[k][0] = TokenId.unwrap(tokenId);
-            balances[k][1] = PositionBalance.unwrap(s_positionBalance[c_user][tokenId]);
+            balances[k] = [
+                TokenId.unwrap(tokenId),
+                PositionBalance.unwrap(s_positionBalance[c_user][tokenId])
+            ];
 
             (
                 LeftRightSigned[4] memory premiaByLeg,
@@ -389,7 +414,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                     tokenId,
                     LeftRightUnsigned.wrap(balances[k][1]).rightSlot(),
                     c_user,
-                    computeAllPremia,
+                    usePremiaAsCollateral,
                     atTick
                 );
 
@@ -406,16 +431,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         );
 
                         (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
-                        LeftRightUnsigned availablePremium = _getAvailablePremium(
-                            totalLiquidity,
-                            s_settledTokens[chunkKey],
-                            s_grossPremiumLast[chunkKey],
-                            LeftRightUnsigned.wrap(
-                                uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
-                            ),
-                            premiumAccumulatorsByLeg[leg]
+                        shortPremium = shortPremium.add(
+                            _getAvailablePremium(
+                                totalLiquidity,
+                                s_settledTokens[chunkKey],
+                                s_grossPremiumLast[chunkKey],
+                                LeftRightUnsigned.wrap(
+                                    uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
+                                ),
+                                premiumAccumulatorsByLeg[leg]
+                            )
                         );
-                        shortPremium = shortPremium.add(availablePremium);
                     } else {
                         shortPremium = shortPremium.add(
                             LeftRightUnsigned.wrap(
@@ -480,14 +506,16 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        bool usePremiaAsCollateral
     ) external {
         _mintOptions(
             positionIdList,
             positionSize,
             effectiveLiquidityLimitX32,
             tickLimitLow,
-            tickLimitHigh
+            tickLimitHigh,
+            usePremiaAsCollateral
         );
     }
 
@@ -496,15 +524,22 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param newPositionIdList The new positionIdList without the token being burnt
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function burnOptions(
         TokenId tokenId,
         TokenId[] calldata newPositionIdList,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        bool usePremiaAsCollateral
     ) external {
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, msg.sender, tickLimitLow, tickLimitHigh);
 
-        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(
+            msg.sender,
+            newPositionIdList,
+            NO_BUFFER,
+            usePremiaAsCollateral
+        );
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -515,11 +550,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param newPositionIdList The new positionIdList without the token(s) being burnt
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function burnOptions(
         TokenId[] calldata positionIdList,
         TokenId[] calldata newPositionIdList,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        bool usePremiaAsCollateral
     ) external {
         _burnAllOptionsFrom(
             msg.sender,
@@ -529,7 +566,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             positionIdList
         );
 
-        uint256 medianData = _validateSolvency(msg.sender, newPositionIdList, NO_BUFFER);
+        uint256 medianData = _validateSolvency(
+            msg.sender,
+            newPositionIdList,
+            NO_BUFFER,
+            usePremiaAsCollateral
+        );
 
         // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
         if (medianData != 0) s_miniMedian = medianData;
@@ -546,12 +588,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function _mintOptions(
         TokenId[] calldata positionIdList,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        bool usePremiaAsCollateral
     ) internal {
         // the new tokenId will be the last element in `positionIdList`
         TokenId tokenId;
@@ -613,7 +657,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        _checkSolvency(msg.sender, positionIdList, tickData, BP_DECREASE_BUFFER);
+        _checkSolvency(
+            msg.sender,
+            positionIdList,
+            tickData,
+            BP_DECREASE_BUFFER,
+            usePremiaAsCollateral
+        );
 
         emit OptionMinted(msg.sender, tokenId, balanceData, commissions);
     }
@@ -778,11 +828,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
     /// @param buffer The buffer to apply to the collateral requirement for `user`
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     /// @return If nonzero (enough time has passed since last observation), the updated value for `s_miniMedian` with a new observation
     function _validateSolvency(
         address user,
         TokenId[] calldata positionIdList,
-        uint256 buffer
+        uint256 buffer,
+        bool usePremiaAsCollateral
     ) internal view returns (uint256) {
         (
             int24 currentTick,
@@ -799,7 +851,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             lastObservedTick
         );
 
-        _checkSolvency(user, positionIdList, tickData, buffer);
+        _checkSolvency(user, positionIdList, tickData, buffer, usePremiaAsCollateral);
 
         return medianData;
     }
@@ -809,11 +861,13 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param positionIdList The list of positions to validate solvency for
     /// @param tickData The packed tick data to check solvency at
     /// @param buffer The buffer to apply to the collateral requirement for `user`
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function _checkSolvency(
         address user,
         TokenId[] calldata positionIdList,
         uint96 tickData,
-        uint256 buffer
+        uint256 buffer,
+        bool usePremiaAsCollateral
     ) internal view {
         // check that the provided positionIdList matches the positions in memory
         _validatePositionList(user, positionIdList, 0);
@@ -848,7 +902,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
             atTicks[0] = fastOracleTick;
         }
 
-        _checkSolvencyAtTicks(user, positionIdList, currentTick, atTicks, buffer, ASSERT_SOLVENCY);
+        _checkSolvencyAtTicks(
+            user,
+            positionIdList,
+            currentTick,
+            atTicks,
+            buffer,
+            ASSERT_SOLVENCY,
+            usePremiaAsCollateral
+        );
     }
 
     /// @notice Burns and handles the exercise of options.
@@ -890,27 +952,25 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        {
-            int128 paid0 = s_collateralToken0.exercise(
-                owner,
-                longAmounts.rightSlot(),
-                shortAmounts.rightSlot(),
-                totalSwapped.rightSlot(),
-                realizedPremia.rightSlot()
+        paidAmounts = paidAmounts
+            .toRightSlot(
+                s_collateralToken0.exercise(
+                    owner,
+                    longAmounts.rightSlot(),
+                    shortAmounts.rightSlot(),
+                    totalSwapped.rightSlot(),
+                    realizedPremia.rightSlot()
+                )
+            )
+            .toLeftSlot(
+                s_collateralToken1.exercise(
+                    owner,
+                    longAmounts.leftSlot(),
+                    shortAmounts.leftSlot(),
+                    totalSwapped.leftSlot(),
+                    realizedPremia.leftSlot()
+                )
             );
-            paidAmounts = paidAmounts.toRightSlot(paid0);
-        }
-
-        {
-            int128 paid1 = s_collateralToken1.exercise(
-                owner,
-                longAmounts.leftSlot(),
-                shortAmounts.leftSlot(),
-                totalSwapped.leftSlot(),
-                realizedPremia.leftSlot()
-            );
-            paidAmounts = paidAmounts.toLeftSlot(paid1);
-        }
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -944,7 +1004,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             unchecked {
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
-                    revert Errors.StaleTWAP();
+                    revert Errors.StaleOracle();
             }
 
             // Ensure the account is insolvent at twapTick (in place of slowOracleTick), currentTick, fastOracleTick, and lastObservedTick
@@ -960,7 +1020,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 currentTick,
                 atTicks,
                 NO_BUFFER,
-                ASSERT_INSOLVENCY
+                ASSERT_INSOLVENCY,
+                COMPUTE_PREMIA_AS_COLLATERAL
             );
         }
 
@@ -973,7 +1034,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
                 positionIdList,
-                COMPUTE_ALL_PREMIA,
+                COMPUTE_PREMIA_AS_COLLATERAL,
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
@@ -1057,7 +1118,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
         s_collateralToken1.settleLiquidation(msg.sender, liquidatee, bonusAmounts.leftSlot());
 
         // ensure the liquidator is still solvent after the liquidation
-        _validateSolvency(msg.sender, positionIdListLiquidator, NO_BUFFER);
+        _validateSolvency(
+            msg.sender,
+            positionIdListLiquidator,
+            NO_BUFFER,
+            COMPUTE_PREMIA_AS_COLLATERAL
+        );
 
         emit AccountLiquidated(msg.sender, liquidatee, bonusAmounts);
     }
@@ -1067,24 +1133,39 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The position to be force exercised; this position must contain at least one out-of-range long leg
     /// @param positionIdListExercisee Post-burn list of open positions in the exercisee's (`account`) account
     /// @param positionIdListExercisor List of open positions in the exercisor's (`msg.sender`) account
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the exercisee(right slot)/exercisor(left slot) for collateral (>0), or just owed premia for long legs (0)
     function forceExercise(
         address account,
         TokenId tokenId,
         TokenId[] calldata positionIdListExercisee,
-        TokenId[] calldata positionIdListExercisor
+        TokenId[] calldata positionIdListExercisor,
+        LeftRightUnsigned usePremiaAsCollateral
     ) external {
         // validate the exercisor's position list (the exercisee's list will be evaluated after their position is force exercised)
         _validatePositionList(msg.sender, positionIdListExercisor, 0);
 
-        int24 twapTick = getUniV3TWAP();
+        int24 currentTick;
+        int24 lastObservedTick;
+        {
+            int24 fastOracleTick;
+            int24 slowOracleTick;
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = PanopticMath
+                .getOracleTicks(s_univ3pool, s_miniMedian);
+
+            if (
+                Math.abs(lastObservedTick - fastOracleTick) > MAX_TICK_DELTA_SUBSTITUTION ||
+                Math.abs(lastObservedTick - slowOracleTick) > MAX_TICK_DELTA_SUBSTITUTION
+            ) revert Errors.StaleOracle();
+        }
 
         // to be eligible for force exercise, the price *must* be outside the position's range for at least 1 leg
-        tokenId.validateIsExercisable(twapTick);
+        tokenId.validateIsExercisable(lastObservedTick);
+
+        CollateralTracker ct0 = s_collateralToken0;
+        CollateralTracker ct1 = s_collateralToken1;
 
         LeftRightSigned exerciseFees;
         {
-            (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
             uint128 positionSize = s_positionBalance[account][tokenId].positionSize();
 
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
@@ -1092,50 +1173,61 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 positionSize
             );
 
+            TokenId _tokenId = tokenId;
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
-            exerciseFees = s_collateralToken0.exerciseCost(
+            exerciseFees = ct0.exerciseCost(
                 currentTick,
-                twapTick,
-                tokenId,
+                lastObservedTick,
+                _tokenId,
                 positionSize,
                 longAmounts
             );
         }
 
         // The protocol delegates some virtual shares to ensure the burn can be settled.
-        s_collateralToken0.delegate(account);
-        s_collateralToken1.delegate(account);
+        ct0.delegate(account);
+        ct1.delegate(account);
 
         // Exercise the option
         // Turn off ITM swapping to prevent swap at potentially unfavorable price
         _burnOptions(COMMIT_LONG_SETTLED, tokenId, account, MIN_SWAP_TICK, MAX_SWAP_TICK);
 
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        LeftRightSigned refundAmounts = PanopticMath.getExerciseDeltas(
+        LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
             account,
             exerciseFees,
-            twapTick,
-            s_collateralToken0,
-            s_collateralToken1
+            lastObservedTick,
+            ct0,
+            ct1
         );
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
-        s_collateralToken0.refund(account, msg.sender, refundAmounts.rightSlot());
-        s_collateralToken1.refund(account, msg.sender, refundAmounts.leftSlot());
+        ct0.refund(account, msg.sender, refundAmounts.rightSlot());
+        ct1.refund(account, msg.sender, refundAmounts.leftSlot());
 
         // revoke the virtual shares that were delegated after settling the difference with the exercisor
-        s_collateralToken0.revoke(account);
-        s_collateralToken1.revoke(account);
+        ct0.revoke(account);
+        ct1.revoke(account);
 
-        _validateSolvency(account, positionIdListExercisee, NO_BUFFER);
+        _validateSolvency(
+            account,
+            positionIdListExercisee,
+            NO_BUFFER,
+            usePremiaAsCollateral.rightSlot() > 0
+        );
 
         // the exercisor's position list is validated above
         // we need to assert their solvency against their collateral requirement plus a buffer
         // force exercises involve a collateral decrease with open positions, so there is a higher standard for solvency
         // a similar buffer is also invoked when minting options, which also decreases the available collateral
         if (positionIdListExercisor.length > 0)
-            _validateSolvency(msg.sender, positionIdListExercisor, BP_DECREASE_BUFFER);
+            _validateSolvency(
+                msg.sender,
+                positionIdListExercisor,
+                BP_DECREASE_BUFFER,
+                usePremiaAsCollateral.leftSlot() > 0
+            );
 
         emit ForcedExercised(msg.sender, account, tokenId, exerciseFees);
     }
@@ -1152,13 +1244,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param atTicks An array of ticks to check solvency at
     /// @param buffer The buffer to apply to the collateral requirement
     /// @param expectedSolvent Whether the account is expected to be solvent (true) or insolvent (false) at all provided `atTicks`
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function _checkSolvencyAtTicks(
         address account,
         TokenId[] calldata positionIdList,
         int24 currentTick,
         int24[] memory atTicks,
         uint256 buffer,
-        bool expectedSolvent
+        bool expectedSolvent,
+        bool usePremiaAsCollateral
     ) internal view {
         (
             LeftRightUnsigned shortPremium,
@@ -1167,17 +1261,17 @@ contract PanopticPool is ERC1155Holder, Multicall {
         ) = _calculateAccumulatedPremia(
                 account,
                 positionIdList,
-                COMPUTE_ALL_PREMIA,
+                usePremiaAsCollateral,
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
 
         uint256 numberOfTicks = atTicks.length;
 
-        uint8 solvent;
+        uint256 solvent;
         for (uint256 i; i < numberOfTicks; ) {
             unchecked {
-                solvent += (
+                if (
                     _isAccountSolvent(
                         account,
                         atTicks[i],
@@ -1186,9 +1280,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
                         longPremium,
                         buffer
                     )
-                        ? uint8(1)
-                        : uint8(0)
-                );
+                ) ++solvent;
 
                 ++i;
             }
@@ -1214,24 +1306,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
-        LeftRightUnsigned tokenData0 = s_collateralToken0.getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium.rightSlot(),
-            longPremium.rightSlot()
-        );
-        LeftRightUnsigned tokenData1 = s_collateralToken1.getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium.leftSlot(),
-            longPremium.leftSlot()
-        );
-
         (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-            tokenData0,
-            tokenData1,
+            s_collateralToken0.getAccountMarginDetails(
+                account,
+                atTick,
+                positionBalanceArray,
+                shortPremium.rightSlot(),
+                longPremium.rightSlot()
+            ),
+            s_collateralToken1.getAccountMarginDetails(
+                account,
+                atTick,
+                positionBalanceArray,
+                shortPremium.leftSlot(),
+                longPremium.leftSlot()
+            ),
             Math.getSqrtRatioAtTick(atTick)
         );
 
@@ -1246,12 +1335,20 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 medianData = s_miniMedian;
         unchecked {
-            int24 medianTick = (int24(
-                uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
-            ) + int24(uint24(medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)))) / 2;
-
             // If ticks have recently deviated more than +/- ~10%, enforce covered mints
-            return Math.abs(currentTick - medianTick) > MAX_TICKS_DELTA;
+            return
+                Math.abs(
+                    currentTick -
+                        (int24(
+                            uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+                        ) +
+                            int24(
+                                uint24(
+                                    medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)
+                                )
+                            )) /
+                        2
+                ) > MAX_TICKS_DELTA;
         }
     }
 
@@ -1269,7 +1366,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 offset
     ) internal view {
         uint256 pLength;
-        uint256 currentHash = s_positionsHash[account];
 
         unchecked {
             pLength = positionIdList.length - offset;
@@ -1289,7 +1385,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         }
 
         // revert if fingerprint for provided `_positionIdList` does not match the one stored for the `_account`
-        if (fingerprintIncomingList != currentHash) revert Errors.InputListFail();
+        if (fingerprintIncomingList != s_positionsHash[account]) revert Errors.InputListFail();
     }
 
     /// @notice Updates the hash for all positions owned by an account. This fingerprints the list of all incoming options with a single hash.
@@ -1401,10 +1497,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
     function _checkLiquiditySpread(
         TokenId tokenId,
         uint256 leg,
-        uint64 effectiveLiquidityLimitX32
+        uint256 effectiveLiquidityLimitX32
     ) internal view returns (uint256 totalLiquidity) {
-        uint128 netLiquidity;
-        uint128 removedLiquidity;
+        uint256 netLiquidity;
+        uint256 removedLiquidity;
         (totalLiquidity, netLiquidity, removedLiquidity) = _getLiquidities(tokenId, leg);
 
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
@@ -1412,12 +1508,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
-            effectiveLiquidityFactorX32 = (uint256(removedLiquidity) * 2 ** 32) / netLiquidity;
+            effectiveLiquidityFactorX32 = (removedLiquidity * 2 ** 32) / netLiquidity;
         }
 
         // put a limit on how much new liquidity in one transaction can be deployed into this leg
         // the effective liquidity measures how many times more the newly added liquidity is compared to the existing/base liquidity
-        if (effectiveLiquidityFactorX32 > uint256(effectiveLiquidityLimitX32))
+        if (effectiveLiquidityFactorX32 > effectiveLiquidityLimitX32)
             revert Errors.EffectiveLiquidityAboveThreshold();
     }
 
@@ -1425,7 +1521,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tokenId The option position
     /// @param positionSize The number of contracts (size) of the option position
     /// @param owner The holder of the tokenId option
-    /// @param computeAllPremia Whether to compute accumulated premia for all legs held by the user (true), or just owed premia for long legs (false)
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     /// @param atTick The tick at which the premia is calculated -> use (`atTick < type(int24).max`) to compute it
     /// up to current block. `atTick = type(int24).max` will only consider fees as of the last on-chain transaction
     /// @return premiaByLeg The amount of premia owed to the user for each leg of the position
@@ -1434,7 +1530,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         TokenId tokenId,
         uint128 positionSize,
         address owner,
-        bool computeAllPremia,
+        bool usePremiaAsCollateral,
         int24 atTick
     )
         internal
@@ -1447,7 +1543,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint256 numLegs = tokenId.countLegs();
         for (uint256 leg = 0; leg < numLegs; ) {
             uint256 isLong = tokenId.isLong(leg);
-            if ((isLong == 1) || computeAllPremia) {
+            if ((isLong == 1) || usePremiaAsCollateral) {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
                     leg,
@@ -1507,20 +1603,32 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
     /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
-    /// @dev This feature is only available when `owner` is solvent and has the requisite tokens to settle the premium.
+    /// @dev This feature is only available when owner is solvent and has the requisite collateral (in either token) to settle the premium.
     /// @param positionIdList Exhaustive list of open positions for `owner` used for solvency checks where the tokenId to settle is placed at the last index
     /// @param owner The owner of the option position to make premium payments on
     /// @param legIndex the index of the leg in tokenId that is to be collected on (must be isLong=1)
+    /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the settlee for collateral (true), or just owed premia for long legs (false)
     function settleLongPremium(
         TokenId[] calldata positionIdList,
         address owner,
-        uint256 legIndex
+        uint256 legIndex,
+        bool usePremiaAsCollateral
     ) external {
         _validatePositionList(owner, positionIdList, 0);
 
-        TokenId tokenId = positionIdList[positionIdList.length - 1];
+        TokenId tokenId;
+        unchecked {
+            tokenId = positionIdList[positionIdList.length - 1];
+        }
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
+
+        CollateralTracker ct0 = s_collateralToken0;
+        CollateralTracker ct1 = s_collateralToken1;
+
+        // The protocol delegates some virtual shares to ensure the premia can be settled.
+        ct0.delegate(owner);
+        ct1.delegate(owner);
 
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
@@ -1532,11 +1640,10 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         LeftRightUnsigned accumulatedPremium;
         {
-            uint256 tokenType = tokenId.tokenType(legIndex);
             (uint128 premiumAccumulator0, uint128 premiumAccumulator1) = SFPM.getAccountPremium(
                 address(s_univ3pool),
                 address(this),
-                tokenType,
+                tokenId.tokenType(legIndex),
                 liquidityChunk.tickLower(),
                 liquidityChunk.tickUpper(),
                 currentTick,
@@ -1564,8 +1671,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
                 .toLeftSlot(int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64)));
 
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
-            s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
-            s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
+            ct0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
+            ct1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
 
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
@@ -1582,8 +1689,45 @@ contract PanopticPool is ERC1155Holder, Multicall {
             emit PremiumSettled(owner, tokenId, legIndex, realizedPremia);
         }
 
+        int24 lastObservedTick;
+        uint96 tickData;
+        {
+            int24 fastOracleTick;
+            int24 slowOracleTick;
+            (, fastOracleTick, slowOracleTick, lastObservedTick, ) = PanopticMath.getOracleTicks(
+                s_univ3pool,
+                s_miniMedian
+            );
+
+            if (
+                Math.abs(lastObservedTick - fastOracleTick) > MAX_TICK_DELTA_SUBSTITUTION ||
+                Math.abs(lastObservedTick - slowOracleTick) > MAX_TICK_DELTA_SUBSTITUTION
+            ) revert Errors.StaleOracle();
+            tickData = PositionBalanceLibrary.packTickData(
+                currentTick,
+                fastOracleTick,
+                slowOracleTick,
+                lastObservedTick
+            );
+        }
+
+        LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
+            owner,
+            LeftRightSigned.wrap(0),
+            lastObservedTick,
+            ct0,
+            ct1
+        );
+
+        // allow the caller to settle tokens owed to the protocol by the settlee in exchange for the surplus token
+        ct0.refund(owner, msg.sender, refundAmounts.rightSlot());
+        ct1.refund(owner, msg.sender, refundAmounts.leftSlot());
+
+        ct0.revoke(owner);
+        ct1.revoke(owner);
+
         // ensure the owner is solvent (insolvent accounts are not permitted to pay premium unless they are being liquidated)
-        _validateSolvency(owner, positionIdList, NO_BUFFER);
+        _checkSolvency(owner, positionIdList, tickData, NO_BUFFER, usePremiaAsCollateral);
     }
 
     /// @notice Adds collected tokens to `s_settledTokens` and adjusts `s_grossPremiumLast` for any liquidity added.
@@ -1644,7 +1788,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             uint256 totalLiquidity = _checkLiquiditySpread(
                 tokenId,
                 leg,
-                isLong == 0 ? MAX_SPREAD : uint64(Math.min(effectiveLiquidityLimitX32, MAX_SPREAD))
+                isLong == 0 ? MAX_SPREAD : Math.min(effectiveLiquidityLimitX32, MAX_SPREAD)
             );
 
             // if position is short, adjust `grossPremiumLast` upward to account for the increase in short liquidity
@@ -1801,7 +1945,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenId,
             positionSize,
             owner,
-            COMPUTE_ALL_PREMIA,
+            COMPUTE_PREMIA_AS_COLLATERAL,
             type(int24).max
         );
 
