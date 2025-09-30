@@ -452,6 +452,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         _accrueInterest(receiver);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
+
         shares = previewDeposit(assets);
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
@@ -510,6 +512,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         // transfer assets (underlying token funds) from the user/the LP to the PanopticPool
         // in return for the shares to be minted
@@ -566,6 +569,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external returns (uint256 shares) {
         _accrueInterest(owner);
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewWithdraw(assets);
 
@@ -613,6 +617,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external returns (uint256 shares) {
         _accrueInterest(owner);
         shares = previewWithdraw(assets);
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         // check/update allowance for approved withdraw
         if (msg.sender != owner) {
@@ -683,6 +688,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
 
         assets = previewRedeem(shares);
+        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         // burn collateral shares of the Panoptic Pool funds (this ERC20 token)
         _burn(owner, shares);
