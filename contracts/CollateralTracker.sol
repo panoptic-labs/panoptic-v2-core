@@ -176,19 +176,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Set immutable parameters for the Collateral Tracker.
     /// @param _commissionFee The commission fee, in basis points, collected from PLPs at option mint
-    /// @param _sellerCollateralRatio Required collateral ratio for selling options, represented as percentage * 10_000
-    /// @param _buyerCollateralRatio Required collateral ratio for buying options, represented as percentage * 10_000
-    /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise an out-of-range position
-    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000
-    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000
-    constructor(
-        uint256 _commissionFee,
-        uint256 _sellerCollateralRatio,
-        uint256 _buyerCollateralRatio,
-        int256 _forceExerciseCost,
-        uint256 _targetPoolUtilization,
-        uint256 _saturatedPoolUtilization
-    ) {
+    constructor(uint256 _commissionFee) {
         COMMISSION_FEE = _commissionFee;
     }
 

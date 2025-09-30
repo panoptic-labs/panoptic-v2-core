@@ -7,6 +7,7 @@ import "forge-std/Test.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Panoptic Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
@@ -118,6 +119,7 @@ contract PanopticFactoryTest is Test {
     address token1;
     uint24 fee;
     int24 tickSpacing;
+    RiskEngine riskEngine;
 
     // the amount that's deployed when initializing the SFPM against a new AMM pool.
     uint128 constant FULL_RANGE_LIQUIDITY_AMOUNT_WETH = 0.1 ether;
@@ -172,6 +174,14 @@ contract PanopticFactoryTest is Test {
         bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
+        RiskEngine riskEngine = new RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000
+        );
+
         for (uint256 i = 0; i < bytecodes.length; i++) {
             bytes memory code = bytecodes[i];
             address pointer;
@@ -222,7 +232,7 @@ contract PanopticFactoryTest is Test {
             sfpm,
             V3FACTORY,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000)),
+            address(new CollateralTracker(10)),
             props,
             indices,
             pointers
@@ -255,7 +265,13 @@ contract PanopticFactoryTest is Test {
         {
             // Deploy pool
             // links the Uniswap V3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+            PanopticPool deployedPool = panopticFactory.deployNewPool(
+                token0,
+                token1,
+                fee,
+                riskEngine,
+                salt
+            );
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -266,7 +282,10 @@ contract PanopticFactoryTest is Test {
             assertGt(size, 0);
 
             // check if pool is linked to the correct panoptic pool in factory
-            assertEq(address(panopticFactory.getPanopticPool(pool)), address(deployedPool));
+            assertEq(
+                address(panopticFactory.getPanopticPool(pool, riskEngine)),
+                address(deployedPool)
+            );
             // see if correct pool was linked in the panopticPool
             IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).univ3pool();
             address linkedPoolAddress = address(PanopticPool(preComputedPool).univ3pool());
@@ -286,7 +305,7 @@ contract PanopticFactoryTest is Test {
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt);
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -299,12 +318,12 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt);
 
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, salt + 1);
+            panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt + 1);
         }
     }
 
@@ -315,7 +334,13 @@ contract PanopticFactoryTest is Test {
     function test_Success_tokenURI_decodes() public {
         _initalizeWorldState(pools[1]);
         uint96 salt = uint96(block.timestamp);
-        PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+        PanopticPool deployedPool = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            riskEngine,
+            salt
+        );
         uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
         bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
         uint256 prefixLength = bytes("data:application/json;base64,").length;
