@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-import "forge-std/Test.sol";
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
@@ -734,7 +733,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             burntInterestValue = Math
                                 .mulDiv(userBalance, _totalAssets, totalSupply)
                                 .toUint128();
-
                             /// Insolvent case: Pay what you can
                             _burn(_owner, userBalance);
 
@@ -854,8 +852,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return Amount of interest owed based on last compounded index
     function _owedInterest(address owner) internal view returns (uint128) {
         LeftRightSigned userState = s_interestState[owner];
-        uint256 borrowIndex = uint256(uint96(s_interestRateAccumulator.rightSlot()));
-        return _getUserInterest(userState, borrowIndex);
+        (uint128 currentBorrowIndex, , , ) = _calculateCurrentInterestState(s_inAMM);
+        return _getUserInterest(userState, currentBorrowIndex);
     }
 
     /// @notice Calculates the current borrow index including uncompounded time
@@ -1121,8 +1119,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address liquidatee,
         int256 bonus
     ) external onlyPanopticPool {
-        _accrueInterest(liquidatee);
-        //_accrueInterest(liquidator);
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -1209,8 +1205,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param refundee The account being refunded to
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
-        _accrueInterest(refunder);
-        _accrueInterest(refundee);
         if (assets > 0) {
             _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
         } else {
@@ -1344,7 +1338,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 swappedAmount,
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
-        _accrueInterest(optionOwner);
         (, , int128 tokenPaid) = _updateBalancesAndSettle(
             false, // isCreation = false
             optionOwner,
