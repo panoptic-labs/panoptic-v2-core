@@ -1603,7 +1603,7 @@ contract PanopticPool is Multicall {
 
     /// @notice Settle unpaid premium for one `legIndex` on a position owned by `owner`.
     /// @dev Called by sellers on buyers of their chunk to increase the available premium for withdrawal (before closing their position).
-    /// @dev This feature is only available when `owner` is solvent and has the requisite tokens to settle the premium.
+    /// @dev This feature is only available when owner is solvent and has the requisite collateral (in either token) to settle the premium.
     /// @param positionIdList Exhaustive list of open positions for `owner` used for solvency checks where the tokenId to settle is placed at the last index
     /// @param owner The owner of the option position to make premium payments on
     /// @param legIndex the index of the leg in tokenId that is to be collected on (must be isLong=1)
