@@ -786,6 +786,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 .wrap(0)
                 .toRightSlot(userBorrowIndex)
                 .toLeftSlot(netBorrows);
+
+            s_interestRateAccumulator = LeftRightUnsigned
+                .wrap(0)
+                .toLeftSlot(unrealizedGlobalInterest)
+                .toRightSlot(uint128((currentTime << 96) + uint96(currentBorrowIndex)));
         }
     }
 
