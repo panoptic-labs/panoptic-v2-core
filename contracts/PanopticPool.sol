@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
+
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -499,7 +500,7 @@ contract PanopticPool is Multicall {
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
     /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
     /// denominated as X32 = (`ratioLimit * 2^32`)
-    /// @param tickLimits The lower and lower bounds of an acceptable open interval for the ending price
+    /// @param tickLimits The lower and upper bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
     function dispatch(
         TokenId[] calldata positionIdList,
