@@ -1149,7 +1149,7 @@ contract PanopticPool is Multicall {
         {
             int24 fastOracleTick;
             int24 slowOracleTick;
-            (fastOracleTick, slowOracleTick, lastObservedTick, currentTick, ) = PanopticMath
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = PanopticMath
                 .getOracleTicks(s_univ3pool, s_miniMedian);
 
             if (
@@ -1694,7 +1694,7 @@ contract PanopticPool is Multicall {
         {
             int24 fastOracleTick;
             int24 slowOracleTick;
-            (fastOracleTick, slowOracleTick, lastObservedTick, , ) = PanopticMath.getOracleTicks(
+            (, fastOracleTick, slowOracleTick, lastObservedTick, ) = PanopticMath.getOracleTicks(
                 s_univ3pool,
                 s_miniMedian
             );
