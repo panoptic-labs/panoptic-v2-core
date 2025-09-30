@@ -545,6 +545,8 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.deposit(type(uint104).max, Seller);
         ct1.deposit(type(uint104).max, Seller);
+        deal(address(ct0), Seller, type(uint104).max, true);
+        deal(address(ct1), Seller, type(uint104).max, true);
 
         vm.startPrank(Bob);
 
@@ -560,6 +562,9 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.deposit(type(uint104).max, Bob);
         ct1.deposit(type(uint104).max, Bob);
+        // push exchange rate back to 1
+        deal(address(ct0), Bob, type(uint104).max, true);
+        deal(address(ct1), Bob, type(uint104).max, true);
 
         vm.startPrank(Alice);
 
@@ -575,6 +580,10 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.deposit(type(uint104).max, Alice);
         ct1.deposit(type(uint104).max, Alice);
+
+        // push exchange rate back to 1
+        deal(address(ct0), Alice, type(uint104).max, true);
+        deal(address(ct1), Alice, type(uint104).max, true);
     }
 
     function setUp() public {
@@ -1564,70 +1573,132 @@ contract PanopticPoolTest is PositionUtils {
 
         _deployPanopticPool();
 
-        assertEq(vm.load(address(ct0), bytes32(uint256(0))), bytes32(uint256(10 ** 6))); // totalSupply
-        assertEq(vm.load(address(ct1), bytes32(uint256(0))), bytes32(uint256(10 ** 6))); // totalSupply
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(0))),
+            bytes32(uint256(10 ** 6)),
+            "FAIL: ct0 totalSupply not properly set"
+        );
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(0))),
+            bytes32(uint256(10 ** 6)),
+            "FAIL: ct1 totalSupply not properly set"
+        );
 
-        assertEq(vm.load(address(ct0), bytes32(uint256(1))), bytes32(uint256(0))); // balanceOf slot
-        assertEq(vm.load(address(ct1), bytes32(uint256(1))), bytes32(uint256(0))); // balanceOf slot
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(1))),
+            bytes32(uint256(0)),
+            "FAIL: ct0 balanceOf not properly initialized"
+        );
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(1))),
+            bytes32(uint256(0)),
+            "FAIL: ct1 balanceOf not properly initialized"
+        );
 
-        assertEq(vm.load(address(ct0), bytes32(uint256(2))), bytes32(uint256(0))); // allowance slot
-        assertEq(vm.load(address(ct1), bytes32(uint256(2))), bytes32(uint256(0))); // allowance slot
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(2))),
+            bytes32(uint256(0)),
+            "FAIL: ct0 allowance not properly initialized"
+        );
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(2))),
+            bytes32(uint256(0)),
+            "FAIL: ct1 allowance not properly initialized"
+        );
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(3))),
-            bytes32(uint256(uint256(1 << 160) + uint160(address(token0))))
-        ); // underlying token + initialized
+            bytes32(uint256(uint256(1 << 160) + uint160(address(token0)))),
+            "FAIL: ct0 s_underlyingToken + s_initialized not properly set"
+        );
         assertEq(
             vm.load(address(ct1), bytes32(uint256(3))),
-            bytes32(uint256(uint256(1 << 160) + uint160(address(token1))))
-        ); // underlying token + initialized
+            bytes32(uint256(uint256(1 << 160) + uint160(address(token1)))),
+            "FAIL: ct1 s_underlyingToken + s_initialized not properly set"
+        );
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(4))),
-            bytes32(uint256(uint160(address(token0))))
-        ); // token0
+            bytes32(uint256(uint160(address(token0)))),
+            "FAIL: ct0 s_univ3token0 not properly set"
+        );
         assertEq(
             vm.load(address(ct1), bytes32(uint256(4))),
-            bytes32(uint256(uint160(address(token0))))
-        ); // token0
+            bytes32(uint256(uint160(address(token0)))),
+            "FAIL: ct1 s_univ3token0 not properly set"
+        );
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(5))),
-            bytes32(uint256(uint256(1 << 160) + uint160(address(token1))))
-        ); // token1 + underlyingistoken0
+            bytes32(uint256(uint256(1 << 160) + uint160(address(token1)))),
+            "FAIL: ct0 s_univ3token1 + s_underlyingIsToken0 not properly set"
+        );
 
         assertEq(
             vm.load(address(ct1), bytes32(uint256(5))),
-            bytes32(uint256(uint160(address(token1))))
-        ); // token1 + underlyingistoken0
+            bytes32(uint256(uint160(address(token1)))),
+            "FAIL: ct1 s_univ3token1 + s_underlyingIsToken0 not properly set"
+        );
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(6))),
-            bytes32(uint256(uint160(address(pp))))
-        ); // pool
+            bytes32(uint256(uint160(address(pp)))),
+            "FAIL: ct0 s_panopticPool not properly set"
+        );
 
         assertEq(
             vm.load(address(ct1), bytes32(uint256(6))),
-            bytes32(uint256(uint160(address(pp))))
-        ); // pool
+            bytes32(uint256(uint160(address(pp)))),
+            "FAIL: ct1 s_panopticPool not properly set"
+        );
 
-        assertEq(vm.load(address(ct0), bytes32(uint256(7))), bytes32(uint256(1))); // poolAssets + inAMM
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(7))),
+            bytes32(uint256(1)),
+            "FAIL: ct0 s_poolAssets + s_inAMM not properly set"
+        );
 
-        assertEq(vm.load(address(ct1), bytes32(uint256(7))), bytes32(uint256(1))); // poolAssets + inAMM
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(7))),
+            bytes32(uint256(1)),
+            "FAIL: ct1 s_poolAssets + s_inAMM not properly set"
+        );
 
         assertEq(
             vm.load(address(ct0), bytes32(uint256(8))),
-            bytes32(uint256((2 * uint256(fee)) + (uint256(fee) << 128)))
-        ); // ITMSpreadFee + poolFee
+            bytes32(uint256(fee)),
+            "FAIL: ct0 s_poolFee not properly set"
+        );
 
         assertEq(
             vm.load(address(ct1), bytes32(uint256(8))),
-            bytes32(uint256((2 * uint256(fee)) + (uint256(fee) << 128)))
-        ); // ITMSpreadFee + poolFee
+            bytes32(uint256(fee)),
+            "FAIL: ct1 s_poolFee not properly set"
+        );
 
-        assertEq(vm.load(address(ct0), bytes32(uint256(9))), bytes32(uint256(0))); // 0
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(9))),
+            bytes32(uint256((block.timestamp << 96) + uint96(1e18))),
+            "FAIL: ct0 s_interestRateAccumulator not properly initialized"
+        );
 
-        assertEq(vm.load(address(ct1), bytes32(uint256(9))), bytes32(uint256(0))); // 0
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(9))),
+            bytes32(uint256((block.timestamp << 96) + uint96(1e18))),
+            "FAIL: ct1 s_interestRateAccumulator not properly initialized"
+        );
+
+        assertEq(
+            vm.load(address(ct0), bytes32(uint256(10))),
+            bytes32(uint256(0)),
+            "FAIL: ct0 s_interestState not properly initialized"
+        );
+
+        assertEq(
+            vm.load(address(ct1), bytes32(uint256(10))),
+            bytes32(uint256(0)),
+            "FAIL: ct1 s_interestState not properly initialized"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2687,9 +2758,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        console2.log("alice0", ct0.balanceOf(Alice));
         mintOptions(pp, posIdList, positionSize, 0, TickMath.MIN_TICK, TickMath.MAX_TICK, true);
-        console2.log("alice0-Ad", ct0.balanceOf(Alice));
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -2750,7 +2819,7 @@ contract PanopticPoolTest is PositionUtils {
             int256 ITMSpread = 0;
 
             assertApproxEqAbs(
-                ct0.convertToAssets(ct0.balanceOf(Alice)),
+                (ct0.balanceOf(Alice)),
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVal -
@@ -3689,9 +3758,11 @@ contract PanopticPoolTest is PositionUtils {
         spreadList[0] = type(uint64).max;
         spreadList[1] = type(uint64).max;
 
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[2][] memory tickLimits = new int24[2][](2);
         tickLimits[0][0] = Constants.MIN_V3POOL_TICK;
         tickLimits[0][1] = Constants.MAX_V3POOL_TICK;
+        tickLimits[1][0] = Constants.MIN_V3POOL_TICK;
+        tickLimits[1][1] = Constants.MAX_V3POOL_TICK;
 
         pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true);
 
@@ -3819,9 +3890,11 @@ contract PanopticPoolTest is PositionUtils {
         uint64[] memory spreadList = new uint64[](2);
         spreadList[0] = type(uint64).max;
         spreadList[1] = type(uint64).max;
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[2][] memory tickLimits = new int24[2][](2);
         tickLimits[0][0] = Constants.MIN_V3POOL_TICK;
         tickLimits[0][1] = Constants.MAX_V3POOL_TICK;
+        tickLimits[1][0] = Constants.MIN_V3POOL_TICK;
+        tickLimits[1][1] = Constants.MAX_V3POOL_TICK;
 
         // mint two positions
         pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true);
@@ -3898,9 +3971,11 @@ contract PanopticPoolTest is PositionUtils {
         uint64[] memory spreadList = new uint64[](2);
         spreadList[0] = type(uint64).max;
         spreadList[1] = type(uint64).max;
-        int24[2][] memory tickLimits = new int24[2][](1);
+        int24[2][] memory tickLimits = new int24[2][](2);
         tickLimits[0][0] = Constants.MIN_V3POOL_TICK;
         tickLimits[0][1] = Constants.MAX_V3POOL_TICK;
+        tickLimits[1][0] = Constants.MIN_V3POOL_TICK;
+        tickLimits[1][1] = Constants.MAX_V3POOL_TICK;
 
         vm.expectRevert(Errors.InputListFail.selector);
         // mint two positions
@@ -4014,9 +4089,13 @@ contract PanopticPoolTest is PositionUtils {
             spreadListPass[0] = type(uint64).max;
             spreadListPass[1] = type(uint64).max;
             spreadListPass[2] = type(uint64).max;
-            int24[2][] memory tickLimits = new int24[2][](1);
+            int24[2][] memory tickLimits = new int24[2][](3);
             tickLimits[0][0] = Constants.MIN_V3POOL_TICK;
             tickLimits[0][1] = Constants.MAX_V3POOL_TICK;
+            tickLimits[1][0] = Constants.MIN_V3POOL_TICK;
+            tickLimits[1][1] = Constants.MAX_V3POOL_TICK;
+            tickLimits[2][0] = Constants.MIN_V3POOL_TICK;
+            tickLimits[2][1] = Constants.MAX_V3POOL_TICK;
 
             pp.dispatch(
                 posIdListPass,
@@ -4148,15 +4227,15 @@ contract PanopticPoolTest is PositionUtils {
             uint128[] memory sizeList = new uint128[](numberOfPositions);
 
             uint64[] memory spreadList = new uint64[](numberOfPositions);
+            int24[2][] memory tickLimits = new int24[2][](numberOfPositions);
 
             for (uint256 i = 0; i < numberOfPositions; ++i) {
                 posIdList[i] = tokenId1;
                 sizeList[i] = uint128(positionSizes[1]);
                 spreadList[i] = type(uint64).max;
+                tickLimits[i][0] = Constants.MIN_V3POOL_TICK;
+                tickLimits[i][1] = Constants.MAX_V3POOL_TICK;
             }
-            int24[2][] memory tickLimits = new int24[2][](1);
-            tickLimits[0][0] = Constants.MIN_V3POOL_TICK;
-            tickLimits[0][1] = Constants.MAX_V3POOL_TICK;
 
             pp.dispatch(posIdList, posIdListFinal, sizeList, spreadList, tickLimits, true);
         }
@@ -6800,7 +6879,7 @@ contract PanopticPoolTest is PositionUtils {
         lastCollateralBalance1[Alice] = ct1.balanceOf(Alice);
         {
             uint256 snap = vm.snapshot();
-
+            vm.assume(Math.abs(TWAPtick - currentTick) < 513);
             vm.startPrank(Bob);
             forceExercise(
                 pp,

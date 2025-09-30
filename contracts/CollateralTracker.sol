@@ -984,8 +984,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _poolUtilization() internal view returns (uint256 poolUtilization) {
         unchecked {
             uint128 unrealizedGlobalInterest = s_interestRateAccumulator.leftSlot();
-            return
-                Math.mulDivRoundingUp(s_inAMM + unrealizedGlobalInterest, DECIMALS, totalAssets());
+            return Math.mulDiv(s_inAMM + unrealizedGlobalInterest, DECIMALS, totalAssets());
         }
     }
 
