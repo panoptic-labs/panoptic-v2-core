@@ -6494,18 +6494,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 $longPremia.leftSlot()
             );
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Bob, tokenId);
+            (, , uint256 utilization0) = collateralToken0.getPoolData();
+            (, , uint256 utilization1) = collateralToken1.getPoolData();
 
-            (, , , , int256 u0, int256 u1, ) = panopticPool.positionData(Bob, tokenId);
-            console2.log("u0", u0);
-            console2.log("u1", u1);
             // check user packed utilization
-            assertApproxEqAbs(targetUtilization, poolUtilization0, 1, "utilization ct 0");
-            assertApproxEqAbs(0, poolUtilization1, 1, "utilization ct 1");
+            assertApproxEqAbs(targetUtilization, utilization0, 1, "utilization ct 0");
+            assertApproxEqAbs(0, utilization1, 1, "utilization ct 1");
 
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
+            uint128 poolUtilizations = uint128(utilization0) + (uint128(utilization1) << 64);
 
             uint256[2] memory checkSingle = [uint256(0), uint256(0)];
             uint128 required = _tokensRequired(
