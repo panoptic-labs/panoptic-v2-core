@@ -1357,8 +1357,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // update the inAMM value, removing the part that was paid as interest (CHECK Math)
             {
-                int128 netBorrows = shortAmount - longAmount;
-                s_inAMM = uint256(int256(uint256(s_inAMM)) - netBorrows).toUint128();
+                // flip the sign of netBorrows since this is closing the position
+                int128 netBorrows = longAmount - shortAmount;
+                s_inAMM = uint256(int256(uint256(s_inAMM)) + netBorrows).toUint128();
                 s_interestState[optionOwner] = s_interestState[optionOwner].toLeftSlot(netBorrows);
             }
             return (int128(tokenToPay));
