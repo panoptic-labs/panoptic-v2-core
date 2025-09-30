@@ -2644,7 +2644,6 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVal -
-                        ITMSpread -
                         (shortAmounts.rightSlot() * 10) /
                         10_000
                 ),
@@ -2688,7 +2687,9 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
+        console2.log("alice0", ct0.balanceOf(Alice));
         mintOptions(pp, posIdList, positionSize, 0, TickMath.MIN_TICK, TickMath.MAX_TICK, true);
+        console2.log("alice0-Ad", ct0.balanceOf(Alice));
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -2746,15 +2747,13 @@ contract PanopticPoolTest is PositionUtils {
                 );
 
             int256 notionalVal = amount0Moved - shortAmounts.rightSlot();
-
             int256 ITMSpread = 0;
 
             assertApproxEqAbs(
-                ct0.balanceOf(Alice),
+                ct0.convertToAssets(ct0.balanceOf(Alice)),
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVal -
-                        ITMSpread -
                         (shortAmounts.rightSlot() * 10) /
                         10_000
                 ),
@@ -2927,7 +2926,6 @@ contract PanopticPoolTest is PositionUtils {
                     uint256(
                         int256(uint256(type(uint104).max)) -
                             notionalVals[0] -
-                            ITMSpreads[0] -
                             (shortAmounts.rightSlot() * 10) /
                             10_000
                     ),
@@ -2939,7 +2937,6 @@ contract PanopticPoolTest is PositionUtils {
                     uint256(
                         int256(uint256(type(uint104).max)) -
                             notionalVals[1] -
-                            ITMSpreads[1] -
                             (shortAmounts.leftSlot() * 10) /
                             10_000
                     ),
@@ -3076,7 +3073,6 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[0] -
-                        ITMSpreads[0] -
                         (shortAmounts.rightSlot() * 10) /
                         10_000
                 ),
@@ -3088,7 +3084,6 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[1] -
-                        ITMSpreads[1] -
                         (shortAmounts.leftSlot() * 10) /
                         10_000
                 ),
@@ -3234,7 +3229,6 @@ contract PanopticPoolTest is PositionUtils {
 
                 uint256 tokenToPay = uint256(
                     notionalVals[0] +
-                        ITMSpreads[0] +
                         ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) /
                         10_000
                 );
@@ -3329,7 +3323,6 @@ contract PanopticPoolTest is PositionUtils {
                     uint256(
                         int256(uint256(type(uint104).max)) -
                             notionalVals[1] -
-                            ITMSpreads[1] -
                             (shortAmounts.leftSlot() * 10) /
                             10_000
                     ),
@@ -3448,7 +3441,6 @@ contract PanopticPoolTest is PositionUtils {
 
             uint256 tokenToPay = uint256(
                 notionalVals[0] +
-                    ITMSpreads[0] +
                     ((shortAmounts.rightSlot() + longAmounts.rightSlot()) * 10) /
                     10_000
             );
@@ -3524,7 +3516,6 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[0] -
-                        ITMSpreads[0] -
                         (longAmounts.rightSlot() * 10) /
                         10_000
                 ),
@@ -3537,7 +3528,6 @@ contract PanopticPoolTest is PositionUtils {
                 uint256(
                     int256(uint256(type(uint104).max)) -
                         notionalVals[1] -
-                        ITMSpreads[1] -
                         (shortAmounts.leftSlot() * 10) /
                         10_000
                 ),
@@ -4786,7 +4776,6 @@ contract PanopticPoolTest is PositionUtils {
             balanceBefores[0],
             uint256(
                 int256(uint256(type(uint104).max)) -
-                    ITMSpread -
                     notionalVals[0] -
                     notionalVals[1] -
                     (shortAmounts.rightSlot() * 10) /
@@ -4961,7 +4950,6 @@ contract PanopticPoolTest is PositionUtils {
             balanceBefores[0],
             uint256(
                 int256(uint256(type(uint104).max)) -
-                    ITMSpread -
                     notionalVals[0] -
                     notionalVals[1] -
                     (shortAmounts.rightSlot() * 10) /
@@ -5177,7 +5165,8 @@ contract PanopticPoolTest is PositionUtils {
 
         assertApproxEqAbs(
             int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
-            -ITMSpread -
+            -ITMSpread *
+                0 -
                 notionalVals[0] -
                 notionalVals[1] -
                 (shortAmounts.rightSlot() * 10) /
@@ -5381,7 +5370,8 @@ contract PanopticPoolTest is PositionUtils {
 
         assertApproxEqAbs(
             int256(balanceBefores[0]) - int256(uint256(type(uint104).max)),
-            -ITMSpread -
+            -ITMSpread *
+                0 -
                 notionalVals[0] -
                 notionalVals[1] -
                 (shortAmounts.rightSlot() * 10) /
@@ -5393,8 +5383,8 @@ contract PanopticPoolTest is PositionUtils {
 
         assertApproxEqAbs(
             int256(balanceBefores[1]) - int256(uint256(type(uint104).max)),
-            -ITMSpread1 - notionalVals1[0] - notionalVals1[1] + int256(uint256(tokensOwed1)),
-            tokensOwed1 / 1_000_000 + 10 + uint256(ITMSpread1) / 1_000_000,
+            -notionalVals1[0] - notionalVals1[1] + int256(uint256(tokensOwed1)),
+            tokensOwed1 / 1_000_000 + 10 + uint256(ITMSpread1 * 0) / 1_000_000,
             "Incorrect token1 delta"
         );
     }

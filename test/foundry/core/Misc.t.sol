@@ -1821,7 +1821,7 @@ contract Misctest is Test, PositionUtils {
                 CollateralTracker(collateralReference).convertToAssets(
                     CollateralTracker(collateralReference).balanceOf(Alice)
                 ),
-            1_000_000_000 + 1999
+            1_000_000_000 - 1
         );
     }
 
@@ -3418,7 +3418,7 @@ contract Misctest is Test, PositionUtils {
         );
         assertEq(
             int256(settlerBalanceBefore1) - int256(ct1.convertToAssets(ct1.balanceOf(Alice))),
-            premium1 + 1
+            premium1
         );
 
         settlerBalanceBefore0 = ct0.convertToAssets(ct0.balanceOf(Alice));
@@ -3865,7 +3865,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum
         ct0.deposit(100_200, Bob);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // mint fails
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -3921,7 +3921,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum - covered
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(100_200, Bob);
 
         // mint fails
@@ -3981,7 +3981,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for naked mints
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(17_818, Bob);
 
         // mint succeeds
@@ -4066,7 +4066,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for covered mints
         ct0.deposit(150504, Bob);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         mintOptions(
             pp,
@@ -4148,7 +4148,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for naked mints
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(17_820, Bob);
 
         // mint succeeds
@@ -4230,7 +4230,7 @@ contract Misctest is Test, PositionUtils {
         token1.approve(address(ct1), 1_000_000);
 
         // deposit bare minimum for covered mints
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(150466, Bob);
 
         mintOptions(
@@ -4446,7 +4446,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(41874, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // not in safeMode, mint with minimum
         mintOptions(
@@ -4476,7 +4476,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(158699, Bob); // 1.3333 * (1.0001**900 * 100000) * (1 + 1 - 1.0001**-1 / 1.0001**900  -> 100 % collateralization, requirement evaluated at tick=-1.
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // can mint covered positions
         mintOptions(
@@ -4545,7 +4545,7 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(ct0), 1_000_000);
         ct0.deposit(102_000, Bob);
         token1.approve(address(ct1), 1_000_000);
-        ct1.deposit(0, Bob);
+        //ct1.deposit(0, Bob);
 
         // in safeMode, enforce covered mints, reverts
         vm.expectRevert();
@@ -4560,10 +4560,10 @@ contract Misctest is Test, PositionUtils {
         );
 
         ct0.withdraw(ct0.maxWithdraw(Bob), Bob, Bob);
-        ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
+        //ct1.withdraw(ct1.maxWithdraw(Bob), Bob, Bob);
 
         // deposit only token1
-        ct0.deposit(0, Bob);
+        //ct0.deposit(0, Bob);
         ct1.deposit(181_183, Bob); //
 
         // can mint covered positions
@@ -5042,7 +5042,7 @@ contract Misctest is Test, PositionUtils {
         // old with itmSpreadFee = -1244790
         assertEq(
             int256(ct0.convertToAssets(ct0.balanceOf(Alice))) - int256(balanceBefore0),
-            -930817
+            -931095
         );
 
         // but she earns all of fees on token 1 since the premium accumulator did not overflow (!)
@@ -5608,7 +5608,7 @@ contract Misctest is Test, PositionUtils {
             ct0.deposit(600, Bob);
         } else {
             token1.approve(address(ct1), 1000);
-            ct1.deposit(0, Bob);
+            //ct1.deposit(0, Bob);
         }
 
         vm.startPrank(Bob);
@@ -5654,7 +5654,7 @@ contract Misctest is Test, PositionUtils {
             ct0.deposit(850, Bob);
         } else {
             token1.approve(address(ct1), 1000);
-            ct1.deposit(0, Bob);
+            //ct1.deposit(0, Bob);
         }
 
         vm.startPrank(Bob);

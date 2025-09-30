@@ -1506,6 +1506,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (baseIndexAfter, netBorrowsAfter) = collateralToken0.interestState(Bob);
             uint256 balanceBobAfter = collateralToken0.balanceOf(Bob);
 
+            console2.log("bak;", balanceBobAfter, balanceBobBefore);
             assertTrue(balanceBobAfter < balanceBobBefore, "FAIL: Bob's balance did not decrease");
 
             assertTrue(
@@ -2768,27 +2769,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken1.deposit(assets, Bob);
     }
 
-    function test_Fail_deposit_BelowMinimumRedemption(uint256 x) public {
-        // initalize world state
-        _initWorld(x);
-
-        // Invoke all interactions with the Collateral Tracker from user Bob
-        vm.startPrank(Bob);
-
-        // give Bob the max amount of tokens
-        _grantTokens(Bob);
-
-        // approve collateral tracker to move tokens on the msg.senders behalf
-        IERC20Partial(token0).approve(address(collateralToken0), 0);
-        IERC20Partial(token1).approve(address(collateralToken1), 0);
-
-        // attempt to deposit zero assets
-        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken0.deposit(0, Bob);
-        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken1.deposit(0, Bob);
-    }
-
     /*//////////////////////////////////////////////////////////////
                         WITHDRAW TESTS
     //////////////////////////////////////////////////////////////*/
@@ -2963,34 +2943,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // fail as assets > maxWithdraw(owner)
         vm.expectRevert(Errors.ExceedsMaximumRedemption.selector);
         collateralToken0.withdraw(maxAssets + 1, Bob, Bob);
-    }
-
-    function test_Fail_withdraw_BelowMinimumRedemption(uint256 x, uint104 depositAssets) public {
-        // initalize world state
-        _initWorld(x);
-
-        // Ensure we have a non-zero deposit amount for setup
-        depositAssets = uint104(bound(depositAssets, 1, type(uint104).max));
-
-        // Invoke all interactions with the Collateral Tracker from user Bob
-        vm.startPrank(Bob);
-
-        // give Bob the max amount of tokens
-        _grantTokens(Bob);
-
-        // approve collateral tracker to move tokens on the msg.senders behalf
-        IERC20Partial(token0).approve(address(collateralToken0), depositAssets);
-        IERC20Partial(token1).approve(address(collateralToken1), depositAssets);
-
-        // First deposit some assets so we have something to withdraw
-        collateralToken0.deposit(depositAssets, Bob);
-        collateralToken1.deposit(depositAssets, Bob);
-
-        // attempt to withdraw zero assets
-        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken0.withdraw(0, Bob, Bob);
-        vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken1.withdraw(0, Bob, Bob);
     }
 
     function test_Fail_withdraw_ExceedsMax_PositionListSig(uint256 x) public {
@@ -3335,6 +3287,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 balanceBefore0 = IERC20Partial(token0).balanceOf(Alice);
         uint256 balanceBefore1 = IERC20Partial(token1).balanceOf(Alice);
 
+        vm.assume(assets > 0);
         // attempt to withdraw
         collateralToken0.withdraw(assets, Alice, Bob, new TokenId[](0), true);
         collateralToken1.withdraw(assets, Alice, Bob, new TokenId[](0), true);
@@ -3415,21 +3368,23 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // give Bob the max amount of tokens
         _grantTokens(Bob);
 
-        shares = uint104(bound(shares, 0, (uint256(type(uint104).max))));
+        shares = uint104(
+            bound(shares, collateralToken0.previewWithdraw(1), (uint256(type(uint104).max)))
+        );
 
         console2.log("test shares", shares);
         console2.log("test totalassets", collateralToken0.totalAssets());
         console2.log("test totalsupply", collateralToken0.totalSupply());
         // the amount of assets that would be deposited
         uint256 assetsToken0 = Math.mulDivRoundingUp(
-            uint256(shares) * 10_000,
+            uint256(shares),
             collateralToken0.totalAssets(),
-            collateralToken0.totalSupply() * 9_990
+            collateralToken0.totalSupply()
         );
         uint256 assetsToken1 = Math.mulDivRoundingUp(
-            uint256(shares) * 10_000,
+            uint256(shares),
             collateralToken1.totalAssets(),
-            collateralToken1.totalSupply() * 9_990
+            collateralToken1.totalSupply()
         );
 
         // approve collateral tracker to move tokens on Bob's behalf
@@ -3755,8 +3710,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // Bound the shares redemption to the maxRedeemable amount
-        uint256 shares0 = bound(shares, 0, collateralToken0.maxRedeem(Bob));
-        uint256 shares1 = bound(shares, 0, collateralToken1.maxRedeem(Bob));
+        uint256 shares0 = bound(
+            shares,
+            collateralToken0.previewWithdraw(1),
+            collateralToken0.maxRedeem(Bob)
+        );
+        uint256 shares1 = bound(
+            shares,
+            collateralToken1.previewWithdraw(1),
+            collateralToken1.maxRedeem(Bob)
+        );
 
         // amount of shares Bob held before burn
         uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
@@ -3920,8 +3883,16 @@ contract CollateralTrackerTest is Test, PositionUtils {
         }
 
         // Bound the shares redemption to the maxRedeemable amount
-        uint256 shares0 = bound(shares, 0, collateralToken0.maxRedeem(Bob));
-        uint256 shares1 = bound(shares, 0, collateralToken1.maxRedeem(Bob));
+        uint256 shares0 = bound(
+            shares,
+            collateralToken0.previewWithdraw(1),
+            collateralToken0.maxRedeem(Bob)
+        );
+        uint256 shares1 = bound(
+            shares,
+            collateralToken1.previewWithdraw(1),
+            collateralToken1.maxRedeem(Bob)
+        );
 
         // amount of shares Bob held before burn
         uint256 sharesBefore0 = collateralToken0.balanceOf(Bob);
@@ -3933,6 +3904,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
+        console2.log("sha", shares0, shares1);
         // execute redemption
         uint256 returnedAssets0 = collateralToken0.redeem(shares0, Alice, Bob);
         uint256 returnedAssets1 = collateralToken1.redeem(shares1, Alice, Bob);
@@ -6470,7 +6442,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 TickMath.MAX_TICK,
                 true
             );
-
             vm.revertTo(snapshot);
 
             // set utilization before minting
@@ -6526,6 +6497,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
                 .optionPositionInfo(panopticPool, Bob, tokenId);
 
+            (, , , , int256 u0, int256 u1, ) = panopticPool.positionData(Bob, tokenId);
+            console2.log("u0", u0);
+            console2.log("u1", u1);
             // check user packed utilization
             assertApproxEqAbs(targetUtilization, poolUtilization0, 1, "utilization ct 0");
             assertApproxEqAbs(0, poolUtilization1, 1, "utilization ct 1");

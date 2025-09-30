@@ -444,7 +444,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         _accrueInterest(receiver);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
-        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewDeposit(assets);
 
@@ -549,7 +548,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ) external returns (uint256 shares) {
         _accrueInterest(owner);
         if (assets > maxWithdraw(owner)) revert Errors.ExceedsMaximumRedemption();
-        if (assets == 0) revert Errors.BelowMinimumRedemption();
 
         shares = previewWithdraw(assets);
 
@@ -758,6 +756,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 .wrap(0)
                 .toRightSlot(userBorrowIndex)
                 .toLeftSlot(netBorrows);
+
+            s_interestRateAccumulator = LeftRightUnsigned
+                .wrap(0)
+                .toLeftSlot(unrealizedGlobalInterest)
+                .toRightSlot(uint128((currentTime << 96) + uint96(currentBorrowIndex)));
         }
     }
 
@@ -810,7 +813,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return The interest rate per second in 18 decimal precision
     function interestRate() public view returns (uint128) {
         uint256 utilization = _poolUtilization();
-        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+        return utilization == 0 ? uint128(0) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     /// @notice Calculates interest owed by a user based on their borrow state
@@ -981,7 +984,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _poolUtilization() internal view returns (uint256 poolUtilization) {
         unchecked {
             uint128 unrealizedGlobalInterest = s_interestRateAccumulator.leftSlot();
-            return ((s_inAMM + unrealizedGlobalInterest) * DECIMALS) / totalAssets();
+            return
+                Math.mulDivRoundingUp(s_inAMM + unrealizedGlobalInterest, DECIMALS, totalAssets());
         }
     }
 
@@ -1119,7 +1123,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int256 bonus
     ) external onlyPanopticPool {
         _accrueInterest(liquidatee);
-        _accrueInterest(liquidator);
+        //_accrueInterest(liquidator);
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -1374,6 +1378,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 shortPremium,
         uint128 longPremium
     ) public view returns (LeftRightUnsigned) {
+        uint128 bal = (convertToAssets(balanceOf[user]) + shortPremium).toUint128();
+        uint128 req = positionBalanceArray.length > 0
+            ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +
+                longPremium +
+                _owedInterest(user)).toUint128()
+            : 0;
         unchecked {
             return
                 LeftRightUnsigned
