@@ -546,14 +546,10 @@ contract PanopticPoolTest is PositionUtils {
         ct0.deposit(type(uint104).max, Seller);
         ct1.deposit(type(uint104).max, Seller);
 
-        // cancel out MEV tax and push exchange rate back to 1
-        deal(address(ct0), Seller, type(uint104).max, true);
-        deal(address(ct1), Seller, type(uint104).max, true);
-
         vm.startPrank(Bob);
-        // account for MEV tax
-        deal(token0, Bob, (type(uint104).max * uint256(1010)) / 1000);
-        deal(token1, Bob, (type(uint104).max * uint256(1010)) / 1000);
+
+        deal(token0, Bob, type(uint104).max);
+        deal(token1, Bob, type(uint104).max);
 
         IERC20Partial(token0).approve(address(router), type(uint256).max);
         IERC20Partial(token1).approve(address(router), type(uint256).max);
@@ -564,10 +560,6 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.deposit(type(uint104).max, Bob);
         ct1.deposit(type(uint104).max, Bob);
-
-        // cancel out MEV tax and push exchange rate back to 1
-        deal(address(ct0), Bob, type(uint104).max, true);
-        deal(address(ct1), Bob, type(uint104).max, true);
 
         vm.startPrank(Alice);
 
@@ -583,10 +575,6 @@ contract PanopticPoolTest is PositionUtils {
 
         ct0.deposit(type(uint104).max, Alice);
         ct1.deposit(type(uint104).max, Alice);
-
-        // cancel out MEV tax and push exchange rate back to 1
-        deal(address(ct0), Alice, type(uint104).max, true);
-        deal(address(ct1), Alice, type(uint104).max, true);
     }
 
     function setUp() public {

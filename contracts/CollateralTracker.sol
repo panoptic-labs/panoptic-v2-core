@@ -432,19 +432,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param assets The amount of assets to be deposited
     /// @return shares The amount of shares that can be minted
     function previewDeposit(uint256 assets) public view returns (uint256 shares) {
-        // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
-        unchecked {
-            shares = Math.mulDiv(
-                assets * (DECIMALS - COMMISSION_FEE),
-                totalSupply,
-                totalAssets() * DECIMALS
-            );
-        }
+        shares = Math.mulDiv(assets, totalSupply, totalAssets());
     }
 
     /// @notice Deposit underlying tokens (assets) to the Panoptic pool from the LP and mint corresponding amount of shares.
     /// @dev There is a maximum asset deposit limit of `2^104 - 1`.
-    /// @dev An "MEV tax" is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP (`receiver`).
     /// @param assets Amount of assets deposited
     /// @param receiver User to receive the shares
@@ -477,9 +469,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Returns the maximum shares received for a deposit.
     /// @return maxShares The maximum amount of shares that can be minted
     function maxMint(address) external view returns (uint256 maxShares) {
-        unchecked {
-            return (convertToShares(type(uint104).max) * (DECIMALS - COMMISSION_FEE)) / DECIMALS;
-        }
+        return convertToShares(type(uint104).max);
     }
 
     /// @notice Returns the amount of assets that would be deposited to mint a given amount of shares.
@@ -488,21 +478,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function previewMint(uint256 shares) public view returns (uint256 assets) {
         // round up depositing assets to avoid protocol loss
         // This prevents minting of shares where the assets provided is rounded down to zero
-        // compute the MEV tax, which is equal to a single payment of the commissionRate on the FINAL (post mev-tax) assets paid
-        // finalAssets - convertedAssets = commissionRate * finalAssets
-        // finalAssets - commissionRate * finalAssets = convertedAssets
-        // finalAssets * (1 - commissionRate) = convertedAssets
-        // finalAssets = convertedAssets / (1 - commissionRate)
-        assets = Math.mulDivRoundingUp(
-            shares * DECIMALS,
-            totalAssets(),
-            totalSupply * (DECIMALS - COMMISSION_FEE)
-        );
+        assets = Math.mulDivRoundingUp(shares, totalAssets(), totalSupply);
     }
 
     /// @notice Deposit required amount of assets to receive specified amount of shares.
     /// @dev There is a maximum asset deposit limit of `2^104 - 1`.
-    /// @dev An "MEV tax" is levied, which is equal to a single payment of the commissionRate BEFORE adding the funds.
     /// @dev Shares are minted and sent to the LP (`receiver`).
     /// @param shares Amount of shares to be minted
     /// @param receiver User to receive the shares

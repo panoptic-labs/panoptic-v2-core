@@ -956,12 +956,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         console2.log("mintOptions 1st");
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets / 2,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         vm.stopPrank();
@@ -1033,12 +1035,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             "FAIL: owed interest doesn match unrealized tracker"
         );
         console2.log("mintOptions 2nd");
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets / 4,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         actualAccumulator = collateralToken0._interestRateAccumulator();
 
@@ -1066,11 +1070,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             "FAIL: owed interest doesn match unrealized tracker"
         );
 
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             positionIdList,
             new TokenId[](0),
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         console2.log("DONE", Bob);
         actualAccumulator = collateralToken0._interestRateAccumulator();
@@ -1116,12 +1122,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         // Bob sell assets/2
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         vm.stopPrank();
@@ -1130,12 +1138,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.startPrank(Alice);
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, width);
         positionIdList1.push(tokenId);
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList1,
             assets / 2,
             2 ** 64 - 1,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         vm.stopPrank();
@@ -1191,11 +1201,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.previewRedeem(collateralToken0.balanceOf(Bob))
         );
         vm.startPrank(Alice);
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             positionIdList1,
             new TokenId[](0),
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         console2.log(
             "bb",
@@ -1207,11 +1219,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             positionIdList,
             new TokenId[](0),
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         console2.log(
@@ -1250,12 +1264,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("Alice mints");
 
         // Alice sell assets/2
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList1,
             assets / 2,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         vm.stopPrank();
@@ -1278,12 +1294,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("Bob mints");
 
         // Bob sell assets/4
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets / 8,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         strike = 198600 + 12000;
@@ -1292,12 +1310,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         // Bob buys assets/2
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets / 4,
             2 ** 64 - 1,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         vm.stopPrank();
@@ -1351,11 +1371,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("");
         console2.log("");
         console2.log("Bob Burns");
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             positionIdList,
             new TokenId[](0),
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         console2.log(
@@ -1370,11 +1392,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
         console2.log("Alice Burns");
 
         vm.startPrank(Alice);
-        panopticPool.burnOptions(
+        burnOptions(
+            panopticPool,
             positionIdList1,
             new TokenId[](0),
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         console2.log(
             "cc",
@@ -1416,12 +1440,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         // Bob sell assets/2
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             1,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -1528,12 +1554,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
             positionIdList.push(tokenId);
 
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 borrowAmount,
                 0,
                 Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MIN_V3POOL_TICK,
+                true
             );
         }
 
@@ -1609,12 +1637,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(assets, Alice);
 
         uint128 aliceBorrowAmount = 100 ether;
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             aliceBorrowAmount,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -1625,12 +1655,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(assets, Bob);
 
         uint128 bobBorrowAmount = 50 ether;
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             bobBorrowAmount,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -1641,12 +1673,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(assets, Charlie);
 
         uint128 charlieBorrowAmount = 50 ether;
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             charlieBorrowAmount,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
         uint256 initialTotalSupply = collateralToken0.totalSupply();
@@ -1929,12 +1963,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         width = 2;
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -1945,12 +1981,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.deposit(assets, Bob);
 
         // Bob sell assets/2
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         console2.log("inAMM", collateralToken0._inAMM());
@@ -2155,12 +2193,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         // Bob borrows by minting options
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             assets / 2,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -2254,12 +2294,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         positionIdList.push(tokenId);
 
         // Bob borrows a significant amount
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             100 ether, // Borrow same amount as deposit
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         // Reduce Bob's balance to make him insolvent when interest accrues
@@ -2328,12 +2370,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Bob borrows
         uint128 borrowAmount = assets / 2;
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             borrowAmount,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -2398,20 +2442,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
             vm.startPrank(Bob);
 
             // Bob increases his borrow
-            panopticPool.burnOptions(
+            burnOptions(
+                panopticPool,
                 positionIdList[0],
                 new TokenId[](0),
                 Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MIN_V3POOL_TICK,
+                true
             );
 
             // Bob increases his borrow
-            panopticPool.mintOptions(
+            mintOptions(
+                panopticPool,
                 positionIdList,
                 borrowAmount + borrowAmount / 4,
                 0,
                 Constants.MAX_V3POOL_TICK,
-                Constants.MIN_V3POOL_TICK
+                Constants.MIN_V3POOL_TICK,
+                true
             );
 
             // Move forward again
@@ -2484,12 +2532,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             borrowAmount,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -2499,12 +2549,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IERC20Partial(token0).approve(address(collateralToken0), depositAmount);
         collateralToken0.deposit(depositAmount, Charlie);
 
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             borrowAmount,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -2602,12 +2654,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Bob borrows near the maximum possible amount
         uint128 maxBorrow = uint128(maxAssets / 450000);
-        panopticPool.mintOptions(
+        mintOptions(
+            panopticPool,
             positionIdList,
             maxBorrow,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
         vm.stopPrank();
 
@@ -2660,14 +2714,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // the amount of shares that can be minted
         // supply == 0 ? assets : FullMath.mulDiv(assets, supply, totalAssets());
         uint256 sharesToken0 = FullMath.mulDiv(
-            uint256(assets) * 9_990,
+            uint256(assets),
             collateralToken0.totalSupply(),
-            collateralToken0.totalAssets() * 10_000
+            collateralToken0.totalAssets()
         );
         uint256 sharesToken1 = FullMath.mulDiv(
-            uint256(assets) * 9_990,
+            uint256(assets),
             collateralToken1.totalSupply(),
-            collateralToken1.totalAssets() * 10_000
+            collateralToken1.totalAssets()
         );
 
         // deposit a number of assets determined via fuzzing
@@ -2875,9 +2929,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // withdraw tokens
         vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken0.withdraw(0, Bob, Bob, new TokenId[](0));
+        collateralToken0.withdraw(0, Bob, Bob, new TokenId[](0), true);
         vm.expectRevert(Errors.BelowMinimumRedemption.selector);
-        collateralToken1.withdraw(0, Bob, Bob, new TokenId[](0));
+        collateralToken1.withdraw(0, Bob, Bob, new TokenId[](0), true);
     }
 
     // fail if attempting to withdraw more assets than the max withdraw amount
@@ -3361,7 +3415,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // give Bob the max amount of tokens
         _grantTokens(Bob);
 
-        shares = uint104(bound(shares, 0, (uint256(type(uint104).max) * 1000) / 1001));
+        shares = uint104(bound(shares, 0, (uint256(type(uint104).max))));
 
         console2.log("test shares", shares);
         console2.log("test totalassets", collateralToken0.totalAssets());
@@ -8281,7 +8335,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // real value
         uint256 actualValue = collateralToken0.previewWithdraw(1000);
 
-        assertEq(actualValue, 999001000);
+        assertEq(actualValue, 1000000000);
     }
 
     // maxWithdraw
@@ -8347,7 +8401,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // real value
         uint256 actualValue = collateralToken0.previewMint(shares);
 
-        assertApproxEqAbs(((expectedValue * 10_000) / 9_990), actualValue, 5);
+        assertApproxEqAbs(((expectedValue)), actualValue, 5);
     }
 
     // maxMint
@@ -8355,7 +8409,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _initWorld(x);
 
         // use a fixed amount for single test
-        uint256 expectedValue = (collateralToken0.convertToShares(type(uint104).max) * 999) / 1000;
+        uint256 expectedValue = (collateralToken0.convertToShares(type(uint104).max));
 
         // real value
         uint256 actualValue = collateralToken0.maxMint(Bob);
@@ -8373,7 +8427,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // real value
         uint256 actualValue = collateralToken0.previewDeposit(1000);
 
-        assertEq((expectedValue * 9_990) / 10_000, actualValue);
+        assertEq((expectedValue), actualValue);
     }
 
     // maxDeposit

@@ -1809,12 +1809,9 @@ contract Misctest is Test, PositionUtils {
         CollateralTracker(collateralReference).deposit(type(uint104).max, Bob);
 
         vm.startPrank(Alice);
-        token0.mint(Alice, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        token0.approve(collateralReference, (uint256(1_000_000_000_000_000) * 10_000) / 9_990);
-        CollateralTracker(collateralReference).deposit(
-            (uint256(1_000_000_000_000_000) * 10_000) / 9_990,
-            Alice
-        );
+        token0.mint(Alice, (uint256(1_000_000_000_000_000)));
+        token0.approve(collateralReference, (uint256(1_000_000_000_000_000)));
+        CollateralTracker(collateralReference).deposit((uint256(1_000_000_000_000_000)), Alice);
 
         vm.startPrank(address(pp));
         CollateralTracker(collateralReference).settleMint(Alice, 0, 0, 1_000_000_000);
@@ -1824,7 +1821,7 @@ contract Misctest is Test, PositionUtils {
                 CollateralTracker(collateralReference).convertToAssets(
                     CollateralTracker(collateralReference).balanceOf(Alice)
                 ),
-            1_000_000_000 + 2000 * 0
+            1_000_000_000 + 1999
         );
     }
 
