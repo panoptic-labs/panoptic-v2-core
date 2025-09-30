@@ -1565,6 +1565,25 @@ contract PanopticPoolTest is PositionUtils {
         pp.startPool(pool, token0, token1, ct0, ct1, re);
     }
 
+    /// @notice Tests that the riskEngine address is correctly set after initialization.
+    function test_Success_startPool_setsRiskEngine(uint256 x) public {
+        // Arrange: Deploy a fully initialized Panoptic Pool via the factory helper.
+        // This process calls `startPool` once internally.
+        _initWorld(x);
+
+        // Act: No action is needed, the action was the initialization itself.
+        // We just need to read the state.
+        RiskEngine configuredEngine = pp.riskEngine();
+
+        // Assert: The risk engine address stored in the PanopticPool
+        // must match the risk engine address used during setup.
+        assertEq(
+            address(configuredEngine),
+            address(re),
+            "Risk engine address was not set correctly"
+        );
+    }
+
     /*//////////////////////////////////////////////////////////////
                            SYSTEM PARAMETERS
     //////////////////////////////////////////////////////////////*/

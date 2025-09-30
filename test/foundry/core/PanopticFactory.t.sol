@@ -174,13 +174,7 @@ contract PanopticFactoryTest is Test {
         bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
-        RiskEngine riskEngine = new RiskEngine(
-            2_000_000,
-            1_000_000,
-            1_024_000,
-            5_000_000,
-            9_000_000
-        );
+        riskEngine = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
             bytes memory code = bytecodes[i];
@@ -255,7 +249,8 @@ contract PanopticFactoryTest is Test {
             bytes32(
                 abi.encodePacked(
                     uint80(uint160(address(this)) >> 80),
-                    uint80(uint160(address(pool)) >> 80),
+                    uint80(uint160(address(pool)) >> 40),
+                    uint80(uint160(address(riskEngine)) >> 40),
                     salt
                 )
             ),
@@ -353,6 +348,95 @@ contract PanopticFactoryTest is Test {
 
         // ensure the output URI is valid JSON
         JSONParserLib.parse(string(tokenURIDecoded));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            RISK ENGINES
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Tests that deploying a pool with a zero-address risk engine reverts.
+    function test_Fail_deployNewPool_zeroAddressRiskEngine() public {
+        _initalizeWorldState(pools[0]);
+
+        uint96 salt = 12345;
+
+        // Expect a revert, assuming you create an error like `ZeroAddressNotAllowed()`
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            RiskEngine(address(0)), // Pass address(0) casted to the type
+            salt
+        );
+    }
+
+    /// @notice Tests the core feature of the RiskEngine refactor: deploying multiple pools
+    /// for the same Uniswap pair by using different RiskEngine contracts.
+    function test_Success_deployMultiplePools_differentRiskEngines() public {
+        // Arrange: Setup world state and create a second, distinct RiskEngine
+        _initalizeWorldState(pools[0]); // Use a fixed pool, no fuzzing needed
+
+        // Create a second risk engine with slightly different parameters
+        RiskEngine riskEngineB = new RiskEngine(
+            2_500_000, // Different SCR
+            1_500_000, // Different BCR
+            1_024_000,
+            5_000_000,
+            9_000_000
+        );
+
+        uint96 salt = 12345;
+
+        // Act: Deploy two Panoptic pools for the same Uniswap pool but with different risk engines
+        PanopticPool poolA = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            riskEngine, // The default risk engine from setUp
+            salt
+        );
+
+        PanopticPool poolB = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            riskEngineB, // The new, second risk engine
+            salt // We can even use the same salt to prove the riskEngine makes it unique
+        );
+
+        // Assert: Verify that two distinct pools were created and configured correctly
+
+        // 1. The two pool addresses must be different.
+        assertNotEq(address(poolA), address(poolB), "Pool addresses should be different");
+
+        // 2. The factory's getter should return the correct pool for each risk engine.
+        assertEq(
+            address(panopticFactory.getPanopticPool(pool, riskEngine)),
+            address(poolA),
+            "Factory should map default riskEngine to poolA"
+        );
+        assertEq(
+            address(panopticFactory.getPanopticPool(pool, riskEngineB)),
+            address(poolB),
+            "Factory should map riskEngineB to poolB"
+        );
+
+        // 3. Each pool should be linked to its correct, respective risk engine.
+        assertEq(
+            address(poolA.riskEngine()),
+            address(riskEngine),
+            "Pool A should use default riskEngine"
+        );
+        assertEq(
+            address(poolB.riskEngine()),
+            address(riskEngineB),
+            "Pool B should use riskEngineB"
+        );
+
+        // 4. Sanity check: both pools should still point to the same underlying Uniswap pool.
+        assertEq(address(poolA.univ3pool()), address(pool), "Pool A should have correct univ3pool");
+        assertEq(address(poolB.univ3pool()), address(pool), "Pool B should have correct univ3pool");
     }
 
     /*//////////////////////////////////////////////////////////////
