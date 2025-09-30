@@ -1279,11 +1279,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             } else {
                 s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
             }
-            int128 netBorrows = shortAmount - longAmount;
+            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
             // Update s_inAMM
-            s_inAMM = uint256(int256(uint256(s_inAMM)) + (isCreation ? netBorrows : -netBorrows))
-                .toUint128();
+            s_inAMM = uint256(int256(uint256(s_inAMM)) + netBorrows).toUint128();
 
             {
                 address _optionOwner = optionOwner;
