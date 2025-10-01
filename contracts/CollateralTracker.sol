@@ -371,7 +371,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
         _accrueInterest(msg.sender);
-        _accrueInterest(recipient);
         // make sure the caller does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -392,7 +391,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
         _accrueInterest(from);
-        _accrueInterest(to);
         // make sure the sender does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -466,7 +464,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
-        _accrueInterest(receiver);
+        _accrueInterest(msg.sender);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
         shares = previewDeposit(assets);
 
@@ -522,7 +520,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        _accrueInterest(receiver);
+        _accrueInterest(msg.sender);
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -723,7 +721,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Accrues protocol-wide interest and makes `to` pay outstanding interest.
-    function accrueInterestTo(address to) public {
+    function accrueInterestTo(address to) external onlyPanopticPool {
         _accrueInterest(to);
     }
 
@@ -1355,7 +1353,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
             s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
 
-            // update the inAMM value, removing the part that was paid as interest (CHECK Math)
+            // update the inAMM value, removing the part that was paid as interest
             {
                 // flip the sign of netBorrows since this is closing the position
                 int128 netBorrows = longAmount - shortAmount;
