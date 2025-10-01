@@ -1024,9 +1024,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 _mint(optionOwner, sharesToMint);
             }
 
-            // TODO: I think it makes sense to mint to the protocol fee recipient _before_ updating s_poolAssets, not before -
+            // TODO: I think it makes sense to mint to the protocol fee recipient _before_ updating s_poolAssets, not after -
             // that way, the convertToShares math uses the same exchange rate given to the actual minter.
-            // Could be swayed, though - would be less greedy to do it _after_ updating s_poolAssets
+            // Could be swayed, though - would be less greedy to do it _after_ updating s_poolAssets.
             if (protocolCommission > 0) {
                 _mint(s_protocolFeeRecipient, convertToShares(protocolCommission));
             }
