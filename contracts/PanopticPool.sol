@@ -889,7 +889,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
-
         {
             int128 paid0 = s_collateralToken0.exercise(
                 owner,
@@ -1566,7 +1565,6 @@ contract PanopticPool is ERC1155Holder, Multicall {
             // deduct the paid premium tokens from the owner's balance and add them to the cumulative settled token delta
             s_collateralToken0.exercise(owner, 0, 0, 0, -realizedPremia.rightSlot());
             s_collateralToken1.exercise(owner, 0, 0, 0, -realizedPremia.leftSlot());
-
             bytes32 chunkKey = keccak256(
                 abi.encodePacked(
                     tokenId.strike(legIndex),

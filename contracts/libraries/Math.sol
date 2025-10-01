@@ -15,6 +15,8 @@ library Math {
     /// @notice This is equivalent to `type(uint256).max` — used in assembly blocks as a replacement.
     uint256 internal constant MAX_UINT256 = 2 ** 256 - 1;
 
+    uint256 constant WAD = 1e18;
+
     /*//////////////////////////////////////////////////////////////
                           GENERAL MATH HELPERS
     //////////////////////////////////////////////////////////////*/
@@ -1034,6 +1036,88 @@ library Math {
         }
     }
 
+    /// @notice Calculates `floor(a×b÷10^18)` with full precision. Throws if result overflows a uint256.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return The 256-bit result
+    /// @dev Optimized version of mulDiv for WAD (10^18) denominator
+    function mulDivWad(uint256 a, uint256 b) internal pure returns (uint256) {
+        unchecked {
+            // 512-bit multiply [prod1 prod0] = a * b
+            // Compute the product mod 2**256 and mod 2**256 - 1
+            // then use the Chinese Remainder Theorem to reconstruct
+            // the 512 bit result. The result is stored in two 256
+            // variables such that product = prod1 * 2**256 + prod0
+            uint256 prod0; // Least significant 256 bits of the product
+            uint256 prod1; // Most significant 256 bits of the product
+            assembly ("memory-safe") {
+                let mm := mulmod(a, b, not(0))
+                prod0 := mul(a, b)
+                prod1 := sub(sub(mm, prod0), lt(mm, prod0))
+            }
+
+            // Handle non-overflow cases, 256 by 256 division
+            if (prod1 == 0) {
+                uint256 res;
+                assembly ("memory-safe") {
+                    res := div(prod0, 1000000000000000000)
+                }
+                return res;
+            }
+
+            // Make sure the result is less than 2**256.
+            require(1000000000000000000 > prod1);
+
+            ///////////////////////////////////////////////
+            // 512 by 256 division.
+            ///////////////////////////////////////////////
+
+            // Make division exact by subtracting the remainder from [prod1 prod0]
+            // Compute remainder using mulmod
+            uint256 remainder;
+            assembly ("memory-safe") {
+                remainder := mulmod(a, b, 1000000000000000000)
+            }
+            // Subtract 256 bit number from 512 bit number
+            assembly ("memory-safe") {
+                prod1 := sub(prod1, gt(remainder, prod0))
+                prod0 := sub(prod0, remainder)
+            }
+
+            // Since 10^18 = 2^18 * 5^18, we need to handle both factors
+            // First divide by 2^18
+            assembly ("memory-safe") {
+                // Right shift by 18 is equivalent to division by 2^18
+                prod0 := shr(18, prod0)
+            }
+
+            // Shift in bits from prod1 into prod0
+            // We need 2^256 / 2^18 = 2^238
+            prod0 |= prod1 << 238;
+
+            // Now divide by 5^18 using modular inverse
+            // Precomputed modular inverse of 5^18 modulo 2^256
+            // This means: (5^18 * inv) mod 2^256 = 1
+            uint256 inv = 0xaccb18165bd6fe31ae1cf318dc5b51eee0e1ba569b88cd74c1773b91fac10669;
+
+            return prod0 * inv;
+        }
+    }
+
+    /// @notice Calculates `ceil(a×b÷10^18)` with full precision.
+    /// @param a The multiplicand
+    /// @param b The multiplier
+    /// @return result The 256-bit result
+    function mulDivWadRoundingUp(uint256 a, uint256 b) internal pure returns (uint256 result) {
+        unchecked {
+            result = mulDivWad(a, b);
+            if (mulmod(a, b, 10 ** 18) > 0) {
+                require(result < type(uint256).max);
+                result++;
+            }
+        }
+    }
+
     /// @notice Calculates `ceil(a÷b)`, returning 0 if `b == 0`.
     /// @param a The numerator
     /// @param b The denominator
@@ -1081,5 +1165,19 @@ library Math {
             quickSort(data, int256(0), int256(data.length - 1));
         }
         return data;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         EXPONENTIAL MATH
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev Returns the sum of the first three non-zero terms of a Taylor expansion of e^(nx) - 1, to approximate a
+    /// continuous compound interest rate. Source: https://github.com/morpho-org/morpho-blue/blob/main/src/libraries/MathLib.sol
+    function wTaylorCompounded(uint256 x, uint256 n) internal pure returns (uint256) {
+        uint256 firstTerm = x * n;
+        uint256 secondTerm = mulDiv(firstTerm, firstTerm, 2 * WAD);
+        uint256 thirdTerm = mulDiv(secondTerm, firstTerm, 3 * WAD);
+
+        return firstTerm + secondTerm + thirdTerm;
     }
 }

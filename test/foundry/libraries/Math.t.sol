@@ -10,6 +10,7 @@ import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {FullMath} from "v3-core/libraries/FullMath.sol";
 import {Tick} from "v3-core/libraries/Tick.sol";
 import "forge-std/Test.sol";
+import "forge-std/StdError.sol";
 
 /**
  * Test the Core Math library using Foundry and Fuzzing.
@@ -200,6 +201,20 @@ contract MathTest is Test {
         harness.mulDiv192(input, input);
     }
 
+    function test_Success_mulDivWad_Simple(uint128 a, uint128 b) public view {
+        uint256 expectedResult = FullMath.mulDiv(a, b, 1e18);
+        uint256 returnedResult = harness.mulDivWad(a, b);
+        assertEq(expectedResult, returnedResult);
+    }
+
+    function test_Fail_mulDivWad_Overflow() public {
+        uint256 a = 2 ** 128;
+        uint256 b = 2 ** 128 * 1_000_000_000_000_000_000;
+
+        vm.expectRevert();
+        harness.mulDivWad(a, b);
+    }
+
     function test_Success_mulDivCapped(uint256 a, uint256 b, uint256 c, uint256 power) public view {
         power = bound(power, 0, 255);
         vm.assume(c != 0);
@@ -353,5 +368,131 @@ contract MathTest is Test {
             .liquidity();
 
         assertEq(uniV3Result, returnedResult);
+    }
+
+    function test_wTaylorCompounded_SmallValues() public {
+        // Test with very small nx values where approximation should be nearly exact
+
+        uint256 x1 = 1; //
+        uint256 n1 = 1; //
+        uint256 result1 = Math.wTaylorCompounded(x1, n1);
+        uint256 expected1 = 1; // nx = 1e13, very close to first term
+
+        // For such small values, result should be equal to nx (first term)
+        assertEq(result1, expected1); // 0.0001% tolerance
+
+        // Case 2: x = 1000, n = 1 → nx = 0.01
+        uint256 x2 = 1e9; // 1e-9 * WAD
+        uint256 n2 = 1;
+        uint256 result2 = Math.wTaylorCompounded(x2, n2);
+        uint256 expected2 = x2; // nx = 1e13
+
+        assertEq(result2, expected2); // 0.0001% tolerance
+
+        // Case 3: Largest value for which output = n*x
+        uint256 x3 = 1414213562; // √2 * 1e-9 WAD
+        uint256 n3 = 1;
+        uint256 result3 = Math.wTaylorCompounded(x3, n3);
+        uint256 expected3 = x3; //
+
+        assertEq(result3, expected3); // output = input exactly
+
+        // Case 3: Largest value for which output = n*x
+        uint256 x4 = 1414213563; // (√2 * 1e-9 + 1) WAD
+        uint256 n4 = 1;
+        uint256 result4 = Math.wTaylorCompounded(x4, n4);
+        uint256 expected4 = x4 + 1; //
+
+        assertEq(result4, expected4); // output = input + 1
+    }
+
+    function test_wTaylorCompounded_LargeValues() public {
+        // Test with larger nx values (1.0 - 5.0) to understand degradation
+
+        // Case 1: nx = 1.0
+        uint256 x1 = 1e18; // 1.0 * WAD
+        uint256 n1 = 1;
+        uint256 result1 = Math.wTaylorCompounded(x1, n1);
+        // nx=1e18, (nx)²/(2*WAD) = 5e17, (nx)³/(6*WAD²) = 166666666666666666
+        uint256 expected1 = 1e18 + 5e17 + 166666666666666666; // 1.666666666666666666 * WAD
+        uint256 exact1 = 1718281828459045235;
+
+        assertEq(result1, expected1);
+        assertApproxEqRel(result1, exact1, 516e14); // within 0.0516%
+
+        // Case 1: nx = 10
+        uint256 x2 = 1e19; // 10 * WAD
+        uint256 n2 = 1;
+        uint256 result2 = Math.wTaylorCompounded(x2, n2);
+        // nx=10, first=10, second=50, third≈166.67
+        uint256 expected2 = 10e18 + 50e18 + 166666666666666666666; // 226.666... * WAD
+        uint256 exact2 = 22025465794806716516957;
+
+        assertEq(result2, expected2);
+        assertApproxEqRel(result2, exact2, 9898e14); // within 98.98%, so pretty bad
+    }
+
+    function test_wTaylorCompounded_VeryLargeInputs() public {
+        // Test behavior near uint256 limits
+
+        // Case 1: Maximum safe single input (√uint256_max ≈ 2^128)
+
+        uint256 maxVal = 88567974649812873576190202090484573885; // ~2^128
+        uint256 x1 = maxVal + 1;
+        uint256 n1 = 1;
+
+        vm.expectRevert(stdError.arithmeticError);
+        harness.wTaylorCompounded(maxVal + 1, 1);
+
+        // Case 2: At largest possible valuem should work
+        uint256 result2 = Math.wTaylorCompounded(maxVal, 1);
+
+        uint256 expectedFirst2 = type(uint256).max;
+        assertApproxEqRel(result2, expectedFirst2, 1);
+        assertLt(result2, type(uint256).max);
+    }
+
+    function testFuzz_wTaylorCompounded_MonotonicInX(uint256 x1, uint256 x2) public {
+        // Verify output increases with x when n is fixed
+
+        // Bound inputs to avoid overflow issues
+        x1 = bound(x1, 0, 88567974649812873576190202090484573885); // Max safe value from your previous test
+        x2 = bound(x2, 0, 88567974649812873576190202090484573885);
+
+        // Ensure x1 ≠ x2 for meaningful comparison
+        vm.assume(x1 != x2);
+
+        // Calculate results for both x values with same n
+        uint256 result1 = Math.wTaylorCompounded(x1, 1);
+        uint256 result2 = Math.wTaylorCompounded(x2, 1);
+
+        // Verify monotonicity: if x1 < x2, then result1 < result2
+        if (x1 < x2) {
+            assertLt(result1, result2, "Function should be strictly increasing in x");
+        } else {
+            // x1 > x2 (since we assumed x1 != x2)
+            assertGt(result1, result2, "Function should be strictly increasing in x");
+        }
+    }
+
+    function testFuzz_wTaylorCompounded_MonotonicInN(uint256 x1, uint256 n) public {
+        // Verify output increases with n when x is fixed
+
+        // First bound n to reasonable range
+        n = bound(n, 1, 1e20); // Much smaller range to avoid extreme cases
+
+        // Then bound x1 based on n to avoid overflow
+        uint256 maxSafeX = 88567974649812873576190202090484573885 / (2 * n);
+
+        // Ensure maxSafeX is at least 1, otherwise skip this test case
+        vm.assume(maxSafeX >= 1);
+
+        x1 = bound(x1, 1, maxSafeX);
+
+        // Calculate results for both n values with same x
+        uint256 result1 = Math.wTaylorCompounded(x1, n);
+        uint256 result2 = Math.wTaylorCompounded(x1, n + 1);
+
+        assertLt(result1, result2, "Function should be strictly increasing in n");
     }
 }
