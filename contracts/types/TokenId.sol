@@ -485,8 +485,6 @@ library TokenIdLibrary {
                     }
                 }
 
-                // The width cannot be 0; the minimum is 1
-                if ((self.width(i) == 0)) revert Errors.InvalidTokenIdParameter(5);
                 // Strike cannot be MIN_TICK or MAX_TICK
                 if (
                     (self.strike(i) == Constants.MIN_V3POOL_TICK) ||

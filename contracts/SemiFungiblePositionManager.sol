@@ -858,55 +858,72 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         uint256 numLegs = tokenId.countLegs();
 
         for (uint256 leg = 0; leg < numLegs; ) {
-            LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
-                tokenId,
-                leg,
-                positionSize
-            );
+            if (tokenId.width(leg) == 0) {
+                LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                    tokenId,
+                    positionSize,
+                    leg
+                );
+                int128 signMultiplier = isBurn ? -int128(1) : int128(1);
+                totalMoved = totalMoved.add(
+                    tokenId.tokenType(leg) == 0
+                        ? LeftRightSigned.wrap(0).toLeftSlot(
+                            signMultiplier * int128(amountsMoved.rightSlot())
+                        )
+                        : LeftRightSigned.wrap(0).toRightSlot(
+                            signMultiplier * int128(amountsMoved.leftSlot())
+                        )
+                );
+            } else {
+                LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
+                    tokenId,
+                    leg,
+                    positionSize
+                );
 
-            // validate tick range for newly minted positions
-            if (!isBurn) {
-                int24 tickSpacing = tokenId.tickSpacing();
-                int24 tickLower = liquidityChunk.tickLower();
-                int24 tickUpper = liquidityChunk.tickUpper();
+                // validate tick range for newly minted positions
+                if (!isBurn) {
+                    int24 tickSpacing = tokenId.tickSpacing();
+                    int24 tickLower = liquidityChunk.tickLower();
+                    int24 tickUpper = liquidityChunk.tickUpper();
 
-                // Revert if the upper/lower ticks are not multiples of tickSpacing
-                // This is an invalid state, and would revert silently later in `univ3Pool.mint`
-                // Revert if the tick range extends from the strike outside of the enforced tick range
-                if (
-                    tickLower % tickSpacing != 0 ||
-                    tickUpper % tickSpacing != 0 ||
-                    tickLower < poolData.minEnforcedTick ||
-                    tickUpper > poolData.maxEnforcedTick
-                ) revert Errors.InvalidTickBound();
+                    // Revert if the upper/lower ticks are not multiples of tickSpacing
+                    // This is an invalid state, and would revert silently later in `univ3Pool.mint`
+                    // Revert if the tick range extends from the strike outside of the enforced tick range
+                    if (
+                        tickLower % tickSpacing != 0 ||
+                        tickUpper % tickSpacing != 0 ||
+                        tickLower < poolData.minEnforcedTick ||
+                        tickUpper > poolData.maxEnforcedTick
+                    ) revert Errors.InvalidTickBound();
+                }
+
+                unchecked {
+                    // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
+                    amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
+                    amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
+                }
+
+                LeftRightSigned movedLeg;
+
+                (movedLeg, collectedByLeg[leg]) = _createLegInAMM(
+                    poolData.pool,
+                    tokenId,
+                    leg,
+                    liquidityChunk,
+                    isBurn
+                );
+
+                totalMoved = totalMoved.add(movedLeg);
+
+                // if tokenType is 1, and we transacted some token0: then this leg is ITM
+                // if tokenType is 0, and we transacted some token1: then this leg is ITM
+                itmAmounts = itmAmounts.add(
+                    tokenId.tokenType(leg) == 0
+                        ? LeftRightSigned.wrap(0).toLeftSlot(movedLeg.leftSlot())
+                        : LeftRightSigned.wrap(0).toRightSlot(movedLeg.rightSlot())
+                );
             }
-
-            unchecked {
-                // increment accumulators of the upper bound on tokens contained across all legs of the position at any given tick
-                amount0 += Math.getAmount0ForLiquidity(liquidityChunk);
-                amount1 += Math.getAmount1ForLiquidity(liquidityChunk);
-            }
-
-            LeftRightSigned movedLeg;
-
-            (movedLeg, collectedByLeg[leg]) = _createLegInAMM(
-                poolData.pool,
-                tokenId,
-                leg,
-                liquidityChunk,
-                isBurn
-            );
-
-            totalMoved = totalMoved.add(movedLeg);
-
-            // if tokenType is 1, and we transacted some token0: then this leg is ITM
-            // if tokenType is 0, and we transacted some token1: then this leg is ITM
-            itmAmounts = itmAmounts.add(
-                tokenId.tokenType(leg) == 0
-                    ? LeftRightSigned.wrap(0).toLeftSlot(movedLeg.leftSlot())
-                    : LeftRightSigned.wrap(0).toRightSlot(movedLeg.rightSlot())
-            );
-
             unchecked {
                 ++leg;
             }
