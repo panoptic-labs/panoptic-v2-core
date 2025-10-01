@@ -79,12 +79,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param recipient User that minted the option
     /// @param tokenId TokenId of the created option
     /// @param balanceData The `PositionBalance` data for `tokenId` containing the number of contracts, pool utilizations, and ticks at mint
-    /// @param commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
+    /// @param plpCommissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left) to PLPs
+    /// @param protocolCommissions The total amount of commissions paid for token0 (right) and token1 (left) to the protocol
     event OptionMinted(
         address indexed recipient,
         TokenId indexed tokenId,
         PositionBalance balanceData,
-        LeftRightUnsigned commissions
+        LeftRightUnsigned plpCommissions,
+        LeftRightUnsigned protocolCommissions
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -572,7 +574,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             revert Errors.PositionAlreadyMinted();
 
         // Mint in the SFPM and update state of collateral
-        (uint32 poolUtilizations, LeftRightUnsigned commissions) = _mintInSFPMAndUpdateCollateral(
+        (uint32 poolUtilizations, LeftRightUnsigned plpCommissions, LeftRightUnsigned protocolCommissions) = _mintInSFPMAndUpdateCollateral(
             tokenId,
             positionSize,
             effectiveLiquidityLimitX32,
@@ -615,7 +617,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
         _checkSolvency(msg.sender, positionIdList, tickData, BP_DECREASE_BUFFER);
 
-        emit OptionMinted(msg.sender, tokenId, balanceData, commissions);
+        emit OptionMinted(msg.sender, tokenId, balanceData, plpCommissions, protocolCommissions);
     }
 
     /// @notice Move all the required liquidity to/from the AMM and settle any required collateral deltas.
@@ -626,14 +628,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
     /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens
-    /// @return commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
+    /// @return commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left) to PLPs
+    /// @return commissions The total amount of commissions paid for token0 (right) and token1 (left) to the protocol
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (uint32 poolUtilizations, LeftRightUnsigned commissions) {
+    ) internal returns (uint32 poolUtilizations, LeftRightUnsigned plpCommissions, LeftRightUnsigned protocolCommissions,) {
         bool safeMode = isSafeMode();
 
         // if safeMode, enforce covered deployment
@@ -653,7 +656,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
             effectiveLiquidityLimitX32
         );
 
-        (poolUtilizations, commissions) = _payCommissionAndWriteData(
+        (poolUtilizations, plpCommissions, protocolCommissions) = _payCommissionAndWriteData(
             tokenId,
             positionSize,
             totalSwapped,
@@ -671,7 +674,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
-    /// @return The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
+    /// @return The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left) to PLPs
+    /// @return The total amount of commissions paid for token0 (right) and token1 (left) to the protocol
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
@@ -682,14 +686,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (uint32 utilization0, uint128 commission0) = s_collateralToken0.takeCommissionAddData(
+        (uint32 utilization0, uint128 commission0, uint128 protocolCommission0) = s_collateralToken0.takeCommissionAddData(
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot(),
             isCovered
         );
-        (uint32 utilization1, uint128 commission1) = s_collateralToken1.takeCommissionAddData(
+        (uint32 utilization1, uint128 commission1, uint128 protocolCommission0) = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -701,7 +705,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         unchecked {
             return (
                 utilization0 + (utilization1 << 16),
-                LeftRightUnsigned.wrap(commission0).toLeftSlot(commission1)
+                LeftRightUnsigned.wrap(commission0).toLeftSlot(commission1),
+                LeftRightUnsigned.wrap(protocolCommission0).toLeftSlot(protocolCommission1)
             );
         }
     }

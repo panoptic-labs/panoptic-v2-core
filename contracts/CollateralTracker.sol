@@ -80,6 +80,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev int type for composability with signed integer based mathematical operations.
     int128 internal constant DECIMALS_128 = 10_000;
 
+    /// @notice Address authorized to control fee switch parameters.
+    address FEE_SWITCH_CONTROLLER;
+
     /*//////////////////////////////////////////////////////////////
                            UNISWAP POOL DATA
     //////////////////////////////////////////////////////////////*/
@@ -119,6 +122,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
+
+    /// @notice Protocol fee recipient address for fee switch.
+    address internal s_protocolFeeRecipient;
+
+    /// @notice Protocol fee in basis points, charged on option mint.
+    uint256 internal s_protocolFee;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -160,6 +169,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Reverts if the associated Panoptic Pool is not the caller.
     modifier onlyPanopticPool() {
         if (msg.sender != address(s_panopticPool)) revert Errors.NotPanopticPool();
+        _;
+    }
+
+    /// @notice Reverts if the FEE_SWITCH_CONTROLLER is not the caller.
+    modifier onlyFeeSwitchController() {
+        if (msg.sender != FEE_SWITCH_CONTROLLER) revert Errors.NotAuthorized();
         _;
     }
 
@@ -206,7 +221,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address token0,
         address token1,
         uint24 fee,
-        PanopticPool panopticPool
+        PanopticPool panopticPool,
+        address _feeSwitchController
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
@@ -240,6 +256,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         unchecked {
             s_ITMSpreadFee = uint128((ITM_SPREAD_MULTIPLIER * fee) / DECIMALS);
         }
+
+        // Address permitted to alter protocol fee parameters
+        FEE_SWITCH_CONTROLLER = _feeSwitchController;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -969,19 +988,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The final utilization of the collateral vault
-    /// @return The total amount of commission (base rate + ITM spread) paid
+    /// @return The total amount of commission (base rate + ITM spread) paid to PLPs
+    /// @return The total amount of commission paid to the protocol
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) external onlyPanopticPool returns (uint32, uint128) {
+    ) external onlyPanopticPool returns (uint32, uint128, uint128) {
         unchecked {
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
 
-            (int256 tokenToPay, uint128 commission) = _getExchangedAmount(
+            (int256 tokenToPay, uint128 commission, uint256 protocolCommission) = _getExchangedAmount(
                 longAmount,
                 shortAmount,
                 swappedAmount,
@@ -1004,6 +1024,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 _mint(optionOwner, sharesToMint);
             }
 
+            // TODO: I think it makes sense to mint to the protocol fee recipient _before_ updating s_poolAssets, not before -
+            // that way, the convertToShares math uses the same exchange rate given to the actual minter.
+            // Could be swayed, though - would be less greedy to do it _after_ updating s_poolAssets
+            if (protocolCommission > 0) {
+                _mint(s_protocolFeeRecipient, convertToShares(protocolCommission));
+            }
+
             // update stored asset balances with net moved amounts
             // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
             // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
@@ -1011,7 +1038,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             s_poolAssets = uint256(updatedAssets).toUint128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
 
-            return (uint32(_poolUtilization()), commission);
+            return (uint32(_poolUtilization()), commission, uint128(protocolCommission));
         }
     }
 
@@ -1070,16 +1097,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
     /// @return The total commission (base rate + ITM spread) paid for minting the option
+    /// @return The protocol commission paid for minting the option
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) internal view returns (int256, uint128) {
+    ) internal view returns (int256, uint128, uint256) {
         unchecked {
             int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
-            // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
+            // the swap commission to PLPs is paid on the intrinsic value
+            // (if a swap occurred, that is; users who mint covered options with their own collateral do not pay this fee)
             uint256 commission = Math.unsafeDivRoundingUp(
                 uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
                 DECIMALS
@@ -1093,7 +1122,38 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         )
                 );
 
-            return (intrinsicValue + int256(commission), uint128(commission));
+            // then there is also a commission to pay to the protocol:
+            // TODO: Check that an MSTORE+2*MLOAD is cheaper than the two SLOADs of s_protocolFee we'd have to do otherwise
+            uint256 protocolFee = s_protocolFee;
+            if (protocolFee > 0) {
+                uint256 protocolCommission = Math.unsafeDivRoundingUp(
+                    uint256(uint128(shortAmount + longAmount)) * protocolFee,
+                    DECIMALS
+                );
+
+                // NOTE: Actually, I'm going to go with plan B here and return a `protocolFee var` - but here's the old impl
+                // in case you were curious:
+                /*
+                if (protocolCommission > 0) {
+                    address recipient = s_protocolFeeRecipient;
+
+                    // TODO: Check that minting here is a good way to hand the fee to the recipient -
+                    // 1. it is a little earlier than the mint/burn for the optionOwner
+                    // 2. and the math could be slightly off - we both increase the tokensToPay by protocolCommission, which
+                    // increases the totalAssets and the value of _all_ shares, but then try to award the protocolFeeRecipient the
+                    // share-converted amount of those tokens before they are added onto the totalAssets.
+                    // plan B would be to instead add a 3rd return value to this method for the protocolFee and
+                    // move this _mint step later in the flow
+                    // Or, plan C would be to actually do a transfer-out of underlying tokens, but that would be more
+                    // gas expensive for users, and it doesn't seem like a big deal to just have the fee recipient withdraw later
+                    _mint(recipient, convertToShares(protocolCommission));
+                    // If we switched to plan B or C above, then we should not increase `commission` here
+                    commission += protocolCommission;
+                }
+                */
+            }
+
+            return (intrinsicValue + int256(commission), uint128(commission), protocolCommission);
         }
     }
 
@@ -1307,7 +1367,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                            BUYING
                            POWER
                            REQUIREMENT
-                         
+
                                          ^               .         .
                                          |        <- ITM . <-ATM-> . OTM ->
                            100% + SCR% - |--__           .    .    .
@@ -1318,7 +1378,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                                          +----+----------+----+----+--->   current
                                          0   Liqui-     Pa  strike Pb       price
                                              dation
-                                             price = SCR*strike                                         
+                                             price = SCR*strike
                          */
 
                         uint256 c2 = Constants.FP96 - ratio;
@@ -1554,5 +1614,25 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     poolUtilization
                 );
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      PROTOCOL FEE PARAMETERS
+    //////////////////////////////////////////////////////////////*/
+
+    // @notice Update the protocol fee recipient.
+    /// @dev Only callable by the fee switch controller.
+    /// @param newRecipient The new protocol fee recipient address
+    function setProtocolFeeRecipient(address newRecipient) external onlyFeeSwitchController {
+        s_protocolFeeRecipient = newRecipient;
+    }
+
+    /// @notice Update the protocol fee.
+    /// @dev Only callable by the fee switch controller.
+    /// @param newFee The new protocol fee in basis points
+    function setProtocolFee(uint256 newFee) external onlyFeeSwitchController {
+        // TODO: If we want to minimise the importance of the admin key, we could put controls in here,
+        // like only allowing the fee to be 1% at max, or only change 0.1% at a time.
+        s_protocolFee = newFee;
     }
 }

@@ -1,0 +1,28 @@
+panoptic-next-core-private:$ gd foundry.toml 
+diff --git a/foundry.toml b/foundry.toml
+index ee307b1..e253720 100644
+--- a/foundry.toml
++++ b/foundry.toml
+@@ -9,13 +9,13 @@ optimizer = true
+ optimizer_runs = 9_999_999
+ viaIR = false  # Keep this false
+ gas_limit = 9223372036854775807
+-eth_rpc_url = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"
++eth_rpc_url = "https://eth-mainnet.g.alchemy.com/v2/VN5K96b647acOyIXfX45zBdO53Dx7ZKm"
+ fs_permissions = [{ access = "read", path = "./"}]
+ [profile.prod]
+ test='DO_NOT_COMPILE'
+ script="DO_NOT_COMPILE"
+ [profile.ci_test]
+-fork_block_number = 18963715
++# fork_block_number = 23233685
+ [profile.ci_sizes]
+ optimizer_runs = 833
+ test = 'DO_NOT_COMPILE'
+@@ -43,5 +43,5 @@ yulDetails = { stackAllocation = true, optimizerSteps = "dhfoDgvulfnTUtnIf" }
+ runs = 30
+ max_test_rejects = 9_999_999
+ [rpc_endpoints]
+-mainnet = "https://mainnet.infura.io/v3/901ff66ce2bd4fa89b01c5fd38f0ccc9"  # Add this for your test
++mainnet = "https://eth-mainnet.g.alchemy.com/v2/VN5K96b647acOyIXfX45zBdO53Dx7ZKm"  # Add this for your test
+ sepolia = 'https://sepolia.infura.io/v3/c5fc9ed5bfae494f9cac22bce8fb3b47'
