@@ -78,6 +78,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         _burn(owner, shares);
     }
 
+    function mintShares(address owner, uint256 shares) external {
+        _mint(owner, shares);
+    }
+
     function setPoolAssets(uint256 amount) external {
         s_poolAssets = uint128(amount);
     }
@@ -2353,6 +2357,334 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertLt(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
     }
 
+    function test_Success_accrueInterest_liquidation_barelyInsolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+            .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia.rightSlot(),
+            $longPremia.rightSlot()
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        // Reduce Bob's balance to make him insolvent when interest accrues
+        collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
+        collateralToken0.mintShares(Bob, collateralToken0.previewDeposit(tokenData0.leftSlot()));
+
+        tokenData0 = collateralToken0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia.rightSlot(),
+            $longPremia.rightSlot()
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        vm.stopPrank();
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent but can pau
+        assertLt(
+            sharesOwed,
+            bobBalance,
+            "Interest owed in shares should be less than Bob's balance"
+        );
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertLt(previewedInterest, maxBobCanPay, "Preview shows that Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (tokenData0.leftSlot() - tokenData0.rightSlot())
+        );
+        console.log("expectedBonus", expectedBonus);
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter - charlieAssetsBefore,
+            (previewedInterest * charlieAssetsBefore) / (charlieAssetsBefore + bobAssetsBefore),
+            1,
+            "FAIL: charlie did not get his share of the interests"
+        );
+
+        assertApproxEqAbs(
+            bobAssetsAfter,
+            bobAssetsBefore -
+                expectedBonus -
+                previewedInterest +
+                (previewedInterest * bobAssetsBefore) /
+                (charlieAssetsBefore + bobAssetsBefore),
+            1,
+            "FAIL: bob did not get his share of the interests"
+        );
+
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Success_accrueInterest_liquidation_noProtocolLossInsolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+            .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia.rightSlot(),
+            $longPremia.rightSlot()
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        // Reduce Bob's balance to make him insolvent when interest accrues
+        collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
+        // reduce balance so the account has barely any shares left
+        collateralToken0.mintShares(
+            Bob,
+            collateralToken0.previewDeposit(tokenData0.leftSlot() - 9932835926210985458)
+        );
+
+        tokenData0 = collateralToken0.getAccountMarginDetails(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia.rightSlot(),
+            $longPremia.rightSlot()
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        vm.stopPrank();
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent but can pau
+        assertLt(
+            sharesOwed,
+            bobBalance,
+            "Interest owed in shares should be less than Bob's balance"
+        );
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertLt(previewedInterest, maxBobCanPay, "Preview shows that Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (tokenData0.leftSlot() - tokenData0.rightSlot())
+        );
+        console.log("expectedBonus", expectedBonus);
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+        assertGt(bobAssetsAfter, 0, "FAIL: Bob has no shares left");
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter - charlieAssetsBefore,
+            (previewedInterest * charlieAssetsBefore) / (charlieAssetsBefore + bobAssetsBefore),
+            1,
+            "FAIL: charlie did not get his share of the interests"
+        );
+
+        console2.log("previewIn", expectedBonus, previewedInterest);
+        {
+            uint256 deltaInt = (previewedInterest * charlieAssetsBefore) /
+                (charlieAssetsBefore + bobAssetsBefore) +
+                expectedBonus;
+            assertApproxEqAbs(
+                bobAssetsAfter,
+                bobAssetsBefore - deltaInt,
+                10,
+                "FAIL: bob did not get his share of the interests"
+            );
+        }
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
     function test_Success_accrueInterest_liquidation_insolventUser() public {
         _initWorld(0);
         uint104 assets = 1000 ether;
@@ -2464,6 +2796,131 @@ contract CollateralTrackerTest is Test, PositionUtils {
             bobAssetsBefore - expectedBonus,
             1,
             "FAIL: charlie did not get his share of the interests"
+        );
+
+        vm.stopPrank();
+
+        // Bob's balance should be wiped out
+        uint256 bobBalanceAfter = collateralToken0.balanceOf(Bob);
+        assertEq(bobBalanceAfter, 0, "Insolvent Bob should have 0 balance after accrual");
+
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Success_accrueInterest_liquidation_100percent_insolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        // Reduce Bob's balance to ZERO
+        collateralToken0.burnShares(Bob, collateralToken0.balanceOf(Bob));
+        vm.stopPrank();
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent
+        assertGt(sharesOwed, bobBalance, "Interest owed in shares should exceed Bob's balance");
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertGt(previewedInterest, maxBobCanPay, "Preview shows more than Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (previewedInterest - bobAssetsBefore)
+        );
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter,
+            charlieAssetsBefore,
+            1,
+            "FAIL: Charlie's balance changed"
         );
 
         vm.stopPrank();
