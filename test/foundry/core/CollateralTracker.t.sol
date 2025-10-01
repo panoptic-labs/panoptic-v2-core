@@ -58,6 +58,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_inAMM;
     }
 
+    function _poolAssets() external view returns (uint256) {
+        return s_poolAssets;
+    }
+
     function _interestRateAccumulator() external view returns (uint256) {
         return LeftRightUnsigned.unwrap(s_interestRateAccumulator);
     }
@@ -68,6 +72,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
     function _availableAssets() external view returns (uint256) {
         return s_poolAssets;
+    }
+
+    function burnShares(address owner, uint256 shares) external {
+        _burn(owner, shares);
     }
 
     function setPoolAssets(uint256 amount) external {
@@ -2349,11 +2357,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _initWorld(0);
         uint104 assets = 1000 ether;
 
-        // Alice deposits to provide liquidity
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
         vm.startPrank(Alice);
         _grantTokens(Alice);
         IERC20Partial(token0).approve(address(collateralToken0), assets);
-        collateralToken0.deposit(assets, Alice);
+        //collateralToken0.deposit(assets, Alice);
         vm.stopPrank();
 
         // Setup Bob with a small balance and large borrow
@@ -2380,7 +2395,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // Reduce Bob's balance to make him insolvent when interest accrues
-        collateralToken0.setBalance(Bob, 1 ether); // Set very low balance
+        collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(99 ether));
         vm.stopPrank();
 
         // Move forward significantly to generate high interest
@@ -2404,7 +2419,53 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         vm.startPrank(Alice);
         // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (previewedInterest - bobAssetsBefore)
+        );
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
         liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter - charlieAssetsBefore,
+            bobAssetsBefore - expectedBonus,
+            1,
+            "FAIL: charlie did not get his share of the interests"
+        );
+
         vm.stopPrank();
 
         // Bob's balance should be wiped out
