@@ -864,13 +864,24 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                     positionSize,
                     leg
                 );
-                int128 signMultiplier = isBurn ? -int128(1) : int128(1);
+                int128 signMultiplier = tokenId.isLong(leg) != 0 ? int128(1) : int128(-1);
+
                 totalMoved = totalMoved.add(
                     tokenId.tokenType(leg) == 0
-                        ? LeftRightSigned.wrap(0).toLeftSlot(
+                        ? LeftRightSigned.wrap(0).toRightSlot(
                             signMultiplier * int128(amountsMoved.rightSlot())
                         )
-                        : LeftRightSigned.wrap(0).toRightSlot(
+                        : LeftRightSigned.wrap(0).toLeftSlot(
+                            signMultiplier * int128(amountsMoved.leftSlot())
+                        )
+                );
+
+                itmAmounts = itmAmounts.add(
+                    tokenId.tokenType(leg) == 0
+                        ? LeftRightSigned.wrap(0).toRightSlot(
+                            signMultiplier * int128(amountsMoved.rightSlot())
+                        )
+                        : LeftRightSigned.wrap(0).toLeftSlot(
                             signMultiplier * int128(amountsMoved.leftSlot())
                         )
                 );
