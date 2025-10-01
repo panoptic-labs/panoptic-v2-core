@@ -374,7 +374,7 @@ contract PanopticPoolTest is PositionUtils {
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
+            address(factory.deployNewPool(token0, token1, fee, address(0), address(0), 0, uint96(block.timestamp)))
         );
 
         ct0 = pp.collateralToken0();

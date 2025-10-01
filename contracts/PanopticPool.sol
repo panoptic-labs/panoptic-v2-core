@@ -628,15 +628,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     /// @return poolUtilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool) at the time of minting,
     /// right 64bits for token0 and left 64bits for token1. When safeMode is active, it returns 100% pool utilization for both tokens
-    /// @return commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left) to PLPs
-    /// @return commissions The total amount of commissions paid for token0 (right) and token1 (left) to the protocol
+    /// @return plpCommissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left) to PLPs
+    /// @return protocolCommissions The total amount of commissions paid for token0 (right) and token1 (left) to the protocol
     function _mintInSFPMAndUpdateCollateral(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         int24 tickLimitLow,
         int24 tickLimitHigh
-    ) internal returns (uint32 poolUtilizations, LeftRightUnsigned plpCommissions, LeftRightUnsigned protocolCommissions,) {
+    ) internal returns (uint32 poolUtilizations, LeftRightUnsigned plpCommissions, LeftRightUnsigned protocolCommissions) {
         bool safeMode = isSafeMode();
 
         // if safeMode, enforce covered deployment
@@ -681,7 +681,7 @@ contract PanopticPool is ERC1155Holder, Multicall {
         uint128 positionSize,
         LeftRightSigned totalSwapped,
         bool isCovered
-    ) internal returns (uint32, LeftRightUnsigned) {
+    ) internal returns (uint32, LeftRightUnsigned, LeftRightUnsigned) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);

@@ -174,7 +174,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Reverts if the FEE_SWITCH_CONTROLLER is not the caller.
     modifier onlyFeeSwitchController() {
-        if (msg.sender != FEE_SWITCH_CONTROLLER) revert Errors.NotAuthorized();
+        if (msg.sender != FEE_SWITCH_CONTROLLER) revert Errors.NotFeeSwitchController();
         _;
     }
 
@@ -216,13 +216,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param token1 Token 1 of the Uniswap pool
     /// @param fee The fee of the Uniswap pool
     /// @param panopticPool The address of the Panoptic Pool being created and linked to this Collateral Tracker
+    /// @param feeSwitchController The address permitted to modify protocol fee parameters
     function startToken(
         bool underlyingIsToken0,
         address token0,
         address token1,
         uint24 fee,
         PanopticPool panopticPool,
-        address _feeSwitchController
+        address feeSwitchController
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
@@ -258,7 +259,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
 
         // Address permitted to alter protocol fee parameters
-        FEE_SWITCH_CONTROLLER = _feeSwitchController;
+        FEE_SWITCH_CONTROLLER = feeSwitchController;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1096,8 +1097,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
-    /// @return The total commission (base rate + ITM spread) paid for minting the option
-    /// @return The protocol commission paid for minting the option
+    /// @return The commission (base rate + ITM spread) paid to PLPs for minting the option
+    /// @return The commission paid to the protocol for minting the option
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
@@ -1109,7 +1110,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             // the swap commission to PLPs is paid on the intrinsic value
             // (if a swap occurred, that is; users who mint covered options with their own collateral do not pay this fee)
-            uint256 commission = Math.unsafeDivRoundingUp(
+            uint256 plpCommission = Math.unsafeDivRoundingUp(
                 uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
                 DECIMALS
             ) +
@@ -1125,15 +1126,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             // then there is also a commission to pay to the protocol:
             // TODO: Check that an MSTORE+2*MLOAD is cheaper than the two SLOADs of s_protocolFee we'd have to do otherwise
             uint256 protocolFee = s_protocolFee;
+            uint256 protocolCommission = protocolFee > 0 ?
+              Math.unsafeDivRoundingUp(
+                  uint256(uint128(shortAmount + longAmount)) * protocolFee,
+                  DECIMALS
+              ) : 0;
+
+            /* // NOTE: Actually, I'm going to go with plan B listted below and return a `protocolFee var` - but here's the old impl
+            // in case you were curious:
             if (protocolFee > 0) {
-                uint256 protocolCommission = Math.unsafeDivRoundingUp(
+                protocolCommission = Math.unsafeDivRoundingUp(
                     uint256(uint128(shortAmount + longAmount)) * protocolFee,
                     DECIMALS
                 );
 
-                // NOTE: Actually, I'm going to go with plan B here and return a `protocolFee var` - but here's the old impl
-                // in case you were curious:
-                /*
                 if (protocolCommission > 0) {
                     address recipient = s_protocolFeeRecipient;
 
@@ -1150,10 +1156,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     // If we switched to plan B or C above, then we should not increase `commission` here
                     commission += protocolCommission;
                 }
-                */
             }
+            */
 
-            return (intrinsicValue + int256(commission), uint128(commission), protocolCommission);
+            return (intrinsicValue + int256(plpCommission), uint128(plpCommission), protocolCommission);
         }
     }
 
