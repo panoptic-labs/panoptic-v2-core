@@ -12,6 +12,9 @@ library Errors {
     /// @dev e.g. uint128(uint256(a)) fails
     error CastingError();
 
+    /// @notice CollateralTracker: Attempted to withdraw/redeem less than a single asset
+    error BelowMinimumRedemption();
+
     /// @notice CollateralTracker: Collateral token has already been initialized
     error CollateralTokenAlreadyInitialized();
 
@@ -69,8 +72,8 @@ library Errors {
     error PriceBoundFail();
 
     /// @notice An oracle price is too far away from another oracle price or the current tick
-    /// @dev This is a safeguard against price manipulation during option mints, burns, and liquidations
-    error StaleTWAP();
+    /// @dev This is a safeguard against price manipulation during option mints, burns, liquidations, force exercises, and premium settlements
+    error StaleOracle();
 
     /// @notice PanopticPool: The position being minted would increase the total amount of legs open for the account above the maximum
     error TooManyLegsOpen();

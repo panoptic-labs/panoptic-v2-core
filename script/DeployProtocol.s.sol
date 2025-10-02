@@ -82,7 +82,7 @@ contract DeployProtocol is Script {
             sfpm,
             uniFactory,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000, 20_000)),
+            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000)),
             props,
             indices,
             pointers
