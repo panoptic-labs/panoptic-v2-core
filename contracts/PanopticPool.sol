@@ -612,13 +612,12 @@ contract PanopticPool is Multicall {
 
         if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
 
-        uint96 tickData;
         // update the users options balance of position `tokenId`
         // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
         PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
             positionSize,
             poolUtilizations,
-            tickData
+            0
         );
 
         s_positionBalance[owner][tokenId] = balanceData;
@@ -647,21 +646,27 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        uint32 utilizations;
-        LeftRightUnsigned plpCommissions;
-        LeftRightUnsigned protocolCommissions;
-        LeftRightSigned paidAmounts;
+        (
+            uint32 utilizations,
+            LeftRightUnsigned plpCommissions,
+            LeftRightUnsigned protocolCommissions,
+            LeftRightSigned paidAmounts
+        ) = _settleMints(owner, longAmounts, shortAmounts, totalSwapped);
+    }
 
-        // stack too deep
-        LeftRightSigned _totalSwapped = totalSwapped;
-
+    function _settleMints(address owner, LeftRightSigned longAmounts, LeftRightSigned shortAmounts, LeftRightSigned totalSwapped) internal returns (
+        uint32 utilizations,
+        LeftRightUnsigned plpCommissions,
+        LeftRightUnsigned protocolCommissions,
+        LeftRightSigned paidAmounts
+    ) {
         {
             (LeftRightUnsigned utilizationAndCommissions0, int128 paid0) = s_collateralToken0
                 .settleMint(
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
-                    _totalSwapped.rightSlot()
+                    totalSwapped.rightSlot()
                 );
             plpCommissions = plpCommissions.toRightSlot(utilizationAndCommissions0.rightSlot());
             protocolCommissions = protocolCommissions.toRightSlot(uint128(uint96(utilizationAndCommissions0.leftSlot())));
@@ -674,7 +679,7 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
-                    _totalSwapped.leftSlot()
+                    totalSwapped.leftSlot()
                 );
             plpCommissions.toLeftSlot(utilizationAndCommissions1.rightSlot());
             protocolCommissions.toLeftSlot(uint128(uint96(utilizationAndCommissions1.leftSlot())));
@@ -683,9 +688,7 @@ contract PanopticPool is Multicall {
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
-        unchecked {
-            return (utilizations, plpCommissions, protocolCommissions, paidAmounts);
-        }
+        return (utilizations, plpCommissions, protocolCommissions, paidAmounts);
     }
 
     /*//////////////////////////////////////////////////////////////
