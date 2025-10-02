@@ -77,12 +77,14 @@ contract PanopticPool is Multicall {
     /// @param recipient User that minted the option
     /// @param tokenId TokenId of the created option
     /// @param balanceData The `PositionBalance` data for `tokenId` containing the number of contracts, pool utilizations, and ticks at mint
-    /// @param commissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left)
+    /// @param plpCommissions The total amount of commissions (base rate + ITM spread) paid for token0 (right) and token1 (left) to PLPs
+    /// @param protocolCommissions The total amount of commissions paid for token0 (right) and token1 (left) to the protocol
     event OptionMinted(
         address indexed recipient,
         TokenId indexed tokenId,
         PositionBalance balanceData,
-        LeftRightUnsigned commissions
+        LeftRightUnsigned plpCommissions
+        LeftRightUnsigned protocolCommissions
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -600,7 +602,7 @@ contract PanopticPool is Multicall {
         uint32 poolUtilizations;
         LeftRightUnsigned commissions;
 
-        (poolUtilizations, commissions, paidAmounts) = _payCommissionAndWriteData(
+        (poolUtilizations, plpCommissions, protocolCommissions, paidAmounts) = _payCommissionAndWriteData(
             tokenId,
             positionSize,
             owner,
@@ -620,7 +622,7 @@ contract PanopticPool is Multicall {
 
         s_positionBalance[owner][tokenId] = balanceData;
 
-        emit OptionMinted(owner, tokenId, balanceData, commissions);
+        emit OptionMinted(owner, tokenId, balanceData, plpCommissions, protocolCommissions);
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
@@ -631,19 +633,21 @@ contract PanopticPool is Multicall {
     /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
-    /// @return The total amount of commissions (base rate) paid for token0 (right) and token1 (left)
+    /// @return The total amount of commissions (base rate) paid for token0 (right) and token1 (left) to PLPs
+    /// @return The total amount of commissions (base rate) paid for token0 (right) and token1 (left) to the protocol
     /// @return The amount of tokens paid when creating that option for token0 (right) and token1 (left)
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
         address owner,
         LeftRightSigned totalSwapped
-    ) internal returns (uint32, LeftRightUnsigned, LeftRightSigned) {
+    ) internal returns (uint32, LeftRightUnsigned, LeftRightUnsigned, LeftRightSigned) {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        uint32 commissions;
+        LeftRightUnsigned plpCommissions;
+        LeftRightUnsigned protocolCommissions;
         LeftRightUnsigned utilizations;
         LeftRightSigned paidAmounts;
 
@@ -651,33 +655,35 @@ contract PanopticPool is Multicall {
         LeftRightSigned _totalSwapped = totalSwapped;
 
         {
-            (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
+            (LeftRightUnsigned utilizationAndCommissions0, int128 paid0) = s_collateralToken0
                 .settleMint(
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
                     _totalSwapped.rightSlot()
                 );
-            commissions = uint32(utilizationAndCommission0.rightSlot());
+            plpCommissions = plpCommissions.wrap(utilizationAndCommissions0.rightSlot());
+            protocolCommissions = protocolCommissions.wrap(uint128(uint96(utilizationAndCommissions0.leftSlot())));
             utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
         {
-            (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = s_collateralToken1
+            (LeftRightUnsigned utilizationAndCommissions1, int128 paid1) = s_collateralToken1
                 .settleMint(
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
                     _totalSwapped.leftSlot()
                 );
-            commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
+            plpCommissions.toLeftSlot(utilizationAndCommissions1.rightSlot());
+            protocolCommissions.toLeftSlot(uint128(uint96(utilizationAndCommissions1.leftSlot())));
             utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
-            return (commissions, utilizations, paidAmounts);
+            return (utilizations, plpCommissions, protocolCommissions, paidAmounts);
         }
     }
 
