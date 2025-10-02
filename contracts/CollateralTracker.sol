@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-import "forge-std/Test.sol";
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
@@ -1250,7 +1249,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             if (isCreation) {
                 {
                     int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
-
                     // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
                     commission = uint128(
                         Math.unsafeDivRoundingUp(
@@ -1258,7 +1256,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             DECIMALS
                         )
                     );
-
                     tokenToPay = intrinsicValue + int128(commission);
                 }
             } else {
@@ -1298,7 +1295,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 );
             }
             uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
-
             return (utilization, commission, int128(tokenToPay));
         }
     }

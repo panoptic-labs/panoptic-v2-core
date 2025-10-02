@@ -482,9 +482,37 @@ library PanopticMath {
                 leg
             );
 
-            longAmounts = longAmounts.add(longs);
-            shortAmounts = shortAmounts.add(shorts);
+            if (tokenId.width(leg) != 0) {
+                longAmounts = longAmounts.add(longs);
+                shortAmounts = shortAmounts.add(shorts);
+            }
+            unchecked {
+                ++leg;
+            }
+        }
+    }
 
+    /// @notice Compute the amount of notional value of the loans in the position.
+    /// @param tokenId The option position id
+    /// @param positionSize The number of contracts of the option
+    /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
+    /// @return shortAmounts Left-right packed word where where rightSlot = token0 and leftSlot = token1 borrowed to create short legs
+    function computeLoanAmounts(
+        TokenId tokenId,
+        uint128 positionSize
+    ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
+        uint256 numLegs = tokenId.countLegs();
+        for (uint256 leg = 0; leg < numLegs; ) {
+            (LeftRightSigned longs, LeftRightSigned shorts) = _calculateIOAmounts(
+                tokenId,
+                positionSize,
+                leg
+            );
+
+            if (tokenId.width(leg) == 0) {
+                longAmounts = longAmounts.add(longs);
+                shortAmounts = shortAmounts.add(shorts);
+            }
             unchecked {
                 ++leg;
             }

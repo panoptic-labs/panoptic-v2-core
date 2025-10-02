@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -859,30 +858,21 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         for (uint256 leg = 0; leg < numLegs; ) {
             if (tokenId.width(leg) == 0) {
-                LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
                     tokenId,
                     positionSize,
                     leg
                 );
                 int128 signMultiplier = tokenId.isLong(leg) != 0 ? int128(1) : int128(-1);
-
-                totalMoved = totalMoved.add(
-                    tokenId.tokenType(leg) == 0
-                        ? LeftRightSigned.wrap(0).toRightSlot(
-                            signMultiplier * int128(amountsMoved.rightSlot())
-                        )
-                        : LeftRightSigned.wrap(0).toLeftSlot(
-                            signMultiplier * int128(amountsMoved.leftSlot())
-                        )
-                );
+                //totalMoved = totalMoved.add(longs).sub(shorts);
 
                 itmAmounts = itmAmounts.add(
                     tokenId.tokenType(leg) == 0
                         ? LeftRightSigned.wrap(0).toRightSlot(
-                            signMultiplier * int128(amountsMoved.rightSlot())
+                            signMultiplier * int128(shorts.rightSlot())
                         )
                         : LeftRightSigned.wrap(0).toLeftSlot(
-                            signMultiplier * int128(amountsMoved.leftSlot())
+                            signMultiplier * int128(shorts.leftSlot())
                         )
                 );
             } else {
