@@ -8039,6 +8039,7 @@ contract PanopticPoolTest is PositionUtils {
             "incorrect amount of premium was haircut"
         );
 
+        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
         assertApproxEqAbs(
             $protocolLoss0Actual,
             $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
@@ -8268,6 +8269,9 @@ contract PanopticPoolTest is PositionUtils {
             ct1.delegate(Alice);
 
             shareDeltasLiquidatee = [int256(ct0.balanceOf(Alice)), int256(ct1.balanceOf(Alice))];
+            $owedInterest0 = (ct0.convertToShares(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToShares(uint256(ct1.owedInterest(Alice))));
+            console2.log("o0", $owedInterest0);
 
             vm.startPrank(Alice);
             (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = pp
@@ -8281,9 +8285,6 @@ contract PanopticPoolTest is PositionUtils {
                 int256(ct0.balanceOf(Alice)) - shareDeltasLiquidatee[0],
                 int256(ct1.balanceOf(Alice)) - shareDeltasLiquidatee[1]
             ];
-            $owedInterest0 = (ct0.convertToShares(uint256(ct0.owedInterest(Alice))));
-            $owedInterest1 = (ct1.convertToShares(uint256(ct1.owedInterest(Alice))));
-            console2.log("o0", $owedInterest0);
             console2.log("o1", $owedInterest1);
 
             (, currentTickFinal, , , , , ) = pool.slot0();
@@ -8617,12 +8618,12 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         $balance0CombinedPostBurn =
-            int256(uint256($tokenData0.rightSlot()) + $owedInterest0) +
+            int256(uint256($tokenData0.rightSlot()) + $owedInterest0) -
             int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot() + $owedInterest1)) +
+                    int256(uint256($tokenData1.rightSlot() + $owedInterest1)) -
                         int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
