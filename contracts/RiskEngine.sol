@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 import {CollateralTracker} from "./CollateralTracker.sol";
@@ -279,7 +278,7 @@ contract RiskEngine {
             // the result is rounded DOWN and NOT toward zero
             // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
             // subtract 1 from max half ranges from strike so fee starts at FORCE_EXERCISE_COST when moving OTM
-            int256 fee = int256(FORCE_EXERCISE_COST >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
+            int256 fee = int256(-int256(FORCE_EXERCISE_COST) >> (maxNumRangesFromStrike - 1)); // exponential decay of fee based on number of half ranges away from the price
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
@@ -432,7 +431,8 @@ contract RiskEngine {
     /// @param longPremia The total amount of premium owed by the long legs of `user`
     /// @param ct0 The Address of the CollateralTracker for token0
     /// @param ct1 The Address of the CollateralTracker for token1
-    /// @return Information collected for the tokens about the health of the account
+    /// @return tokenData0 Information collected for the token0 about the health of the account
+    /// @return tokenData1 Information collected for the token1 about the health of the account
     /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
     function getMargin(
         address user,
@@ -442,23 +442,31 @@ contract RiskEngine {
         LeftRightUnsigned longPremia,
         CollateralTracker ct0,
         CollateralTracker ct1
-    ) external view returns (LeftRightUnsigned, LeftRightUnsigned) {
-        uint256 balance0 = ct0.assetsOf(user) + shortPremia.rightSlot();
-        uint256 balance1 = ct1.assetsOf(user) + shortPremia.leftSlot();
-
-        uint256 requirement0 = positionBalanceArray.length > 0
-            ? _getTotalRequiredCollateral(atTick, positionBalanceArray, true) +
-                longPremia.rightSlot()
-            : 0;
-        uint256 requirement1 = positionBalanceArray.length > 0
-            ? _getTotalRequiredCollateral(atTick, positionBalanceArray, false) +
-                longPremia.leftSlot()
-            : 0;
-
-        return (
-            LeftRightUnsigned.wrap(balance0.toUint128()).toLeftSlot(requirement0.toUint128()),
-            LeftRightUnsigned.wrap(balance1.toUint128()).toLeftSlot(requirement1.toUint128())
-        );
+    ) external view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+        {
+            uint256 balance0 = ct0.assetsOf(user) + shortPremia.rightSlot();
+            uint256 owedInterest0 = ct0.owedInterest(user);
+            uint256 requirement0 = positionBalanceArray.length > 0
+                ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, true) +
+                    longPremia.rightSlot() +
+                    owedInterest0).toUint128()
+                : 0;
+            tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).toLeftSlot(
+                requirement0.toUint128()
+            );
+        }
+        {
+            uint256 balance1 = ct1.assetsOf(user) + shortPremia.leftSlot();
+            uint256 owedInterest1 = ct1.owedInterest(user);
+            uint256 requirement1 = positionBalanceArray.length > 0
+                ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, false) +
+                    longPremia.leftSlot() +
+                    owedInterest1).toUint128()
+                : 0;
+            tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).toLeftSlot(
+                requirement1.toUint128()
+            );
+        }
     }
 
     /// @notice Get the total required amount of collateral tokens of a user/account across all active positions to stay above the margin requirement.

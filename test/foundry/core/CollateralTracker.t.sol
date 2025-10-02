@@ -445,6 +445,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     uint256[2][] posBalanceArray;
 
+    uint256 DECIMALS = 10_000;
+    int256 DECIMALS128 = 10_000;
+
     function mintOptions(
         PanopticPool pp,
         TokenId[] memory positionIdList,
@@ -8089,10 +8092,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(strike - rangeUp - atTick)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8230,10 +8233,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(strike - rangeUp - atTick)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8371,10 +8374,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(atTick - strike - rangeUp)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8512,10 +8515,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(atTick - strike - rangeUp)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
