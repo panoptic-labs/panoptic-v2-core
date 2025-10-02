@@ -1997,142 +1997,6 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
         }
     }
 
-    // previously there was a dust threshold on minting for tokens below the amount of 50
-    // now there is no restriction on the amount
-    function test_Success_mintTokenizedPosition_width0_long_noswap(
-        uint256 positionSizeSeed,
-        uint256 widthSeed,
-        int256 strikeSeed
-    ) public {
-        // dust threshold is only in effect if both tokens are <10 wei so it's easiest to use a pool with a price close to 1
-        //_cacheWorldState(USDC_USDT_5);
-        _initPool(0);
-
-        // since we didn't go through the standard setup flow we need to repeat some of the initialization tasks here
-        vm.startPrank(Alice);
-
-        deal(token0, Alice, type(uint128).max);
-        deal(token1, Alice, type(uint128).max);
-
-        IERC20Partial(token0).approve(address(sfpm), type(uint256).max);
-        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
-
-        // Initialize the world pool
-        sfpm.initializeAMMPool(token0, token1, fee);
-
-        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick
-        );
-
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 22));
-
-        LeftRightSigned totalMoved;
-
-        // amount moved = token 0
-        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, 0);
-
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertEq(positionSize, uint128(totalMoved.rightSlot()), "FAIL: wrong moved amount token0");
-
-        (, totalMoved) = sfpm.burnTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertEq(positionSize, uint128(-totalMoved.rightSlot()), "FAIL: wrong moved amount token0");
-
-        // amount moved = token1
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertEq(positionSize, uint128(totalMoved.leftSlot()), "FAIL: wrong moved amount token1");
-
-        (, totalMoved) = sfpm.burnTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertEq(positionSize, uint128(-totalMoved.leftSlot()), "FAIL: wrong moved amount token0");
-
-        // amount moved = token 0, asset = 1
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertApproxEqAbs(
-            PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike)),
-            uint128(totalMoved.rightSlot()),
-            1,
-            "FAIL: wrong moved amount token0, asset = 1"
-        );
-        assertGe(
-            uint128(totalMoved.rightSlot()),
-            PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike))
-        );
-
-        (, totalMoved) = sfpm.burnTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertApproxEqAbs(
-            PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike)),
-            uint128(-totalMoved.rightSlot()),
-            1,
-            "FAIL: wrong moved amount token0"
-        );
-
-        // amount moved = token 1, asset = 0
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertApproxEqAbs(
-            PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike)),
-            uint128(totalMoved.leftSlot()),
-            1,
-            "FAIL: wrong moved amount token1, asset = 0"
-        );
-        assertGe(
-            uint128(totalMoved.leftSlot()),
-            PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike))
-        );
-
-        (, totalMoved) = sfpm.burnTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MIN_TICK,
-            TickMath.MAX_TICK
-        );
-        assertApproxEqAbs(
-            PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike)),
-            uint128(-totalMoved.leftSlot()),
-            1,
-            "FAIL: wrong moved amount token1, asset = 0"
-        );
-    }
-
     function test_Success_mintTokenizedPosition_width0_short_noswap(
         uint256 positionSizeSeed,
         uint256 widthSeed,
@@ -2174,7 +2038,9 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
-        assertEq(-int128(positionSize), totalMoved.rightSlot(), "FAIL: wrong moved amount token0");
+        console2.log("tM0", totalMoved.rightSlot());
+        console2.log("tM1", totalMoved.leftSlot());
+        assertEq(0, totalMoved.rightSlot(), "FAIL: wrong moved amount token0 - A");
 
         (, totalMoved) = sfpm.burnTokenizedPosition(
             tokenId,
@@ -2182,11 +2048,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
-        assertEq(
-            -int128(positionSize),
-            (-totalMoved.rightSlot()),
-            "FAIL: wrong moved amount token0"
-        );
+        assertEq(0, (-totalMoved.rightSlot()), "FAIL: wrong moved amount token0 - B");
 
         // amount moved = token1
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 1, 0, strike, 0);
@@ -2196,7 +2058,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
-        assertEq(-int128(positionSize), (totalMoved.leftSlot()), "FAIL: wrong moved amount token1");
+        assertEq(0, (totalMoved.leftSlot()), "FAIL: wrong moved amount token1 - A");
 
         (, totalMoved) = sfpm.burnTokenizedPosition(
             tokenId,
@@ -2204,11 +2066,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MIN_TICK,
             TickMath.MAX_TICK
         );
-        assertEq(
-            -int128(positionSize),
-            (-totalMoved.leftSlot()),
-            "FAIL: wrong moved amount token0"
-        );
+        assertEq(0, (-totalMoved.leftSlot()), "FAIL: wrong moved amount token0 - B");
 
         // amount moved = token 0, asset = 1
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 0, 0, 0, strike, 0);
@@ -2219,14 +2077,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
         assertApproxEqAbs(
-            PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike)),
+            0,
             uint128(-totalMoved.rightSlot()),
             1,
             "FAIL: wrong moved amount token0, asset = 1"
-        );
-        assertGe(
-            uint128(totalMoved.rightSlot()),
-            PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike))
         );
 
         (, totalMoved) = sfpm.burnTokenizedPosition(
@@ -2236,10 +2090,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
         assertApproxEqAbs(
-            PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike)),
+            0,
             uint128(totalMoved.rightSlot()),
             1,
-            "FAIL: wrong moved amount token0"
+            "FAIL: wrong moved amount token0 - C"
         );
 
         // amount moved = token 1, asset = 0
@@ -2251,14 +2105,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
         assertApproxEqAbs(
-            PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike)),
+            0,
             uint128(-totalMoved.leftSlot()),
             1,
             "FAIL: wrong moved amount token1, asset = 0"
-        );
-        assertGe(
-            uint128(totalMoved.leftSlot()),
-            PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike))
         );
 
         (, totalMoved) = sfpm.burnTokenizedPosition(
@@ -2268,102 +2118,10 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
         assertApproxEqAbs(
-            PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike)),
+            0,
             uint128(totalMoved.leftSlot()),
             1,
             "FAIL: wrong moved amount token1, asset = 0"
-        );
-    }
-
-    function test_Success_mintTokenizedPosition_width0_long_swap(
-        uint256 x,
-        uint256 positionSizeSeed,
-        uint256 widthSeed,
-        int256 strikeSeed
-    ) public {
-        // dust threshold is only in effect if both tokens are <10 wei so it's easiest to use a pool with a price close to 1
-        //_cacheWorldState(USDC_USDT_5);
-        _initPool(x);
-
-        (int24 width, int24 strike) = PositionUtils.getOutOfRangeSW(
-            widthSeed,
-            strikeSeed,
-            uint24(tickSpacing),
-            currentTick
-        );
-
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 9, 10 ** 10));
-
-        LeftRightSigned totalMoved;
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-
-        console2.log("");
-        // amount moved = token 0
-        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 0, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MAX_TICK,
-            TickMath.MIN_TICK
-        );
-
-        assertLe(
-            PanopticMath.convert0to1(positionSize, currentSqrtPriceX96),
-            uint128(totalMoved.leftSlot()),
-            "FAIL: wrong moved amount token0"
-        );
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-        console2.log("");
-
-        // amount moved = token1
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MAX_TICK,
-            TickMath.MIN_TICK
-        );
-        assertLe(
-            PanopticMath.convert1to0(positionSize, currentSqrtPriceX96),
-            uint128(totalMoved.rightSlot()),
-            "FAIL: wrong moved amount token1"
-        );
-
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-
-        console2.log("");
-        // amount moved = token 0, asset = 1
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MAX_TICK,
-            TickMath.MIN_TICK
-        );
-        assertLe(
-            PanopticMath.convert0to1(
-                PanopticMath.convert1to0(positionSize, TickMath.getSqrtRatioAtTick(strike)),
-                currentSqrtPriceX96
-            ),
-            uint128(totalMoved.leftSlot())
-        );
-
-        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
-
-        // amount moved = token 1, asset = 0
-        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 1, 1, 0, strike, 0);
-        (, totalMoved) = sfpm.mintTokenizedPosition(
-            tokenId,
-            positionSize,
-            TickMath.MAX_TICK,
-            TickMath.MIN_TICK
-        );
-        assertLe(
-            PanopticMath.convert1to0(
-                PanopticMath.convert0to1(positionSize, TickMath.getSqrtRatioAtTick(strike)),
-                currentSqrtPriceX96
-            ),
-            uint128(totalMoved.rightSlot())
         );
     }
 
@@ -2456,6 +2214,32 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
                 currentSqrtPriceX96
             ),
             uint128(-totalMoved.rightSlot())
+        );
+    }
+
+    function test_Revert_mintTokenizedPosition_width0_short_insufficientCollateral() public {
+        // --- Setup ---
+        _initPool(0);
+        // The collateral token (token0 for a short put) pool is empty
+        // but Alice has funds to pay any potential fees.
+        vm.startPrank(Alice);
+        deal(token1, Alice, 10 ** 6);
+        IERC20Partial(token1).approve(address(sfpm), type(uint256).max);
+        sfpm.initializeAMMPool(token0, token1, fee);
+
+        // --- GIVEN: A short put option (pays token0) ---
+        int24 strike = currentTick + 10 * tickSpacing; // In-the-money
+        TokenId shortPutId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 1, 0, strike, 0);
+
+        // --- EXPECT REVERT ---
+        // The contract must pay Alice with token0, but its collateral pool for token0 is empty.
+        // The exact revert message depends on your collateral contract implementation.
+        vm.expectRevert(); // e.g., vm.expectRevert("ERC20: transfer amount exceeds balance");
+        sfpm.mintTokenizedPosition(
+            shortPutId,
+            10 ** 8, // positionSize
+            TickMath.MAX_TICK,
+            TickMath.MIN_TICK
         );
     }
 

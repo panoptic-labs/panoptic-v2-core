@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
+import "forge-std/Test.sol";
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
@@ -1257,12 +1258,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         )
                     );
                     tokenToPay = intrinsicValue + int128(commission);
+                    console2.log("swa", swappedAmount);
+                    console2.log("long", longAmount);
+                    console2.log("shoer", shortAmount);
+                    console2.log("intr", intrinsicValue);
                 }
             } else {
                 // add premium and token deltas not covered by swap to be paid/collected on position close
                 tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
             }
 
+            console2.log("tokenTo", tokenToPay);
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
@@ -1284,6 +1290,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
             int128 netBorrows = shortAmount - longAmount;
 
+            console2.log("netBorrows", netBorrows);
             // Update s_inAMM
             s_inAMM = uint256(int256(uint256(s_inAMM)) + (isCreation ? netBorrows : -netBorrows))
                 .toUint128();
