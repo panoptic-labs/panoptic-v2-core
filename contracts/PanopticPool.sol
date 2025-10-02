@@ -83,7 +83,7 @@ contract PanopticPool is Multicall {
         address indexed recipient,
         TokenId indexed tokenId,
         PositionBalance balanceData,
-        LeftRightUnsigned plpCommissions
+        LeftRightUnsigned plpCommissions,
         LeftRightUnsigned protocolCommissions
     );
 
@@ -600,7 +600,8 @@ contract PanopticPool is Multicall {
         );
 
         uint32 poolUtilizations;
-        LeftRightUnsigned commissions;
+        LeftRightUnsigned plpCommissions;
+        LeftRightUnsigned protocolCommissions;
 
         (poolUtilizations, plpCommissions, protocolCommissions, paidAmounts) = _payCommissionAndWriteData(
             tokenId,
@@ -646,9 +647,9 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
+        uint32 utilizations;
         LeftRightUnsigned plpCommissions;
         LeftRightUnsigned protocolCommissions;
-        LeftRightUnsigned utilizations;
         LeftRightSigned paidAmounts;
 
         // stack too deep
@@ -662,9 +663,9 @@ contract PanopticPool is Multicall {
                     shortAmounts.rightSlot(),
                     _totalSwapped.rightSlot()
                 );
-            plpCommissions = plpCommissions.wrap(utilizationAndCommissions0.rightSlot());
-            protocolCommissions = protocolCommissions.wrap(uint128(uint96(utilizationAndCommissions0.leftSlot())));
-            utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
+            plpCommissions = plpCommissions.toRightSlot(utilizationAndCommissions0.rightSlot());
+            protocolCommissions = protocolCommissions.toRightSlot(uint128(uint96(utilizationAndCommissions0.leftSlot())));
+            utilizations = uint32(utilizationAndCommissions0.leftSlot() >> 96);
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
         {
@@ -677,7 +678,7 @@ contract PanopticPool is Multicall {
                 );
             plpCommissions.toLeftSlot(utilizationAndCommissions1.rightSlot());
             protocolCommissions.toLeftSlot(uint128(uint96(utilizationAndCommissions1.leftSlot())));
-            utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
+            utilizations += uint32(utilizationAndCommissions1.leftSlot() >> 96) << 16;
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 

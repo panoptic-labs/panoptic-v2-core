@@ -1270,7 +1270,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                                 uint256(uint128(shortAmount + longAmount)) * s_protocolFee,
                                 DECIMALS
                             )
-                          : 0
+                          : 0;
 
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;

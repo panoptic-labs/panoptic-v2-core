@@ -336,6 +336,9 @@ contract Misctest is Test, PositionUtils {
                     address(token0),
                     address(token1),
                     500,
+                    address(0),
+                    address(0),
+                    0,
                     uint96(block.timestamp)
                 )
             )
@@ -1800,7 +1803,8 @@ contract Misctest is Test, PositionUtils {
             address(token0),
             address(token1),
             1,
-            pp
+            pp,
+            address(0)
         );
 
         vm.startPrank(Bob);
