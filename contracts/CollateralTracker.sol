@@ -1339,8 +1339,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
-    /// @return The final utilization of the collateral vault (rightSlot, first 32 bits), the commissions paid to the protocol (rightSlot, last 96 bits)
-    ///         and the total amount of commission (base rate + ITM spread) paid (leftSlot)
+    /// @return The final utilization of the collateral vault (leftSlot, first 32 bits), the commissions paid to the protocol (leftSlot, last 96 bits)
+    ///         and the total amount of commission (base rate + ITM spread) paid (rightSlot)
     function settleMint(
         address optionOwner,
         int128 longAmount,
@@ -1356,7 +1356,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             0 // realizedPremium not used
         );
         return (
-            LeftRightUnsigned.wrap(0).toRightSlot(utilization >> 32 + uint96(commissions.leftSlot())).toLeftSlot(commissions.rightSlot()),
+            LeftRightUnsigned
+                .wrap(0)
+                .toRightSlot(commissions.rightSlot())
+                .toLeftSlot((uint128(utilization) << 96) | uint128(uint96(commissions.leftSlot()))),
             tokenPaid
         );
     }

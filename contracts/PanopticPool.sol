@@ -646,15 +646,25 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (
-            uint32 utilizations,
-            LeftRightUnsigned plpCommissions,
-            LeftRightUnsigned protocolCommissions,
-            LeftRightSigned paidAmounts
-        ) = _settleMints(owner, longAmounts, shortAmounts, totalSwapped);
+        return _settleMints(owner, longAmounts, shortAmounts, totalSwapped);
     }
 
-    function _settleMints(address owner, LeftRightSigned longAmounts, LeftRightSigned shortAmounts, LeftRightSigned totalSwapped) internal returns (
+    /// @notice Settles mint operations with both collateral trackers and aggregates utilization and commission data.
+    /// @dev Helper function to manage stack depth in _payCommissionAndWriteData by handling CollateralTracker interactions.
+    /// @param owner The address minting the position
+    /// @param longAmounts The long amounts for each token (token0 in right slot, token1 in left slot)
+    /// @param shortAmounts The short amounts for each token (token0 in right slot, token1 in left slot)
+    /// @param totalSwapped The amount of tokens swapped during position creation (token0 in right slot, token1 in left slot)
+    /// @return utilizations Packed pool utilizations as two uint16 values (token1 utilization in high 16 bits, token0 in low 16 bits)
+    /// @return plpCommissions The total commissions paid to PLPs for token0 (right slot) and token1 (left slot)
+    /// @return protocolCommissions The total protocol commissions for token0 (right slot) and token1 (left slot)
+    /// @return paidAmounts The net amounts paid for token0 (right slot) and token1 (left slot)
+    function _settleMints(
+        address owner,
+        LeftRightSigned longAmounts,
+        LeftRightSigned shortAmounts,
+        LeftRightSigned totalSwapped
+    ) internal returns (
         uint32 utilizations,
         LeftRightUnsigned plpCommissions,
         LeftRightUnsigned protocolCommissions,
@@ -681,8 +691,8 @@ contract PanopticPool is Multicall {
                     shortAmounts.leftSlot(),
                     totalSwapped.leftSlot()
                 );
-            plpCommissions.toLeftSlot(utilizationAndCommissions1.rightSlot());
-            protocolCommissions.toLeftSlot(uint128(uint96(utilizationAndCommissions1.leftSlot())));
+            plpCommissions = plpCommissions.toLeftSlot(utilizationAndCommissions1.rightSlot());
+            protocolCommissions = protocolCommissions.toLeftSlot(uint128(uint96(utilizationAndCommissions1.leftSlot())));
             utilizations += uint32(utilizationAndCommissions1.leftSlot() >> 96) << 16;
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
