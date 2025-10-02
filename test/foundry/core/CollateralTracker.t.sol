@@ -2409,12 +2409,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // Move forward significantly to generate high interest
         vm.warp(block.timestamp + 365 days);
 
-        LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
             posBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
         );
         console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
 
@@ -2422,12 +2424,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
         collateralToken0.mintShares(Bob, collateralToken0.previewDeposit(tokenData0.leftSlot()));
 
-        tokenData0 = collateralToken0.getAccountMarginDetails(
+        (tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
             posBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
         );
         console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
 
@@ -2574,12 +2578,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
         assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
 
-        LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
             posBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
         );
         console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
 
@@ -2591,12 +2597,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             collateralToken0.previewDeposit(tokenData0.leftSlot() - 9932835926210985458)
         );
 
-        tokenData0 = collateralToken0.getAccountMarginDetails(
+        (tokenData0, ) = riskEngine.getMargin(
             Bob,
             currentTick,
             posBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
         );
         console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
 
