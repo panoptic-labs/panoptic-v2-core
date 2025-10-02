@@ -989,58 +989,82 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The final utilization of the collateral vault
-    /// @return The total amount of commission (base rate + ITM spread) paid to PLPs
-    /// @return The total amount of commission paid to the protocol
+    /// @return The total amount of commission paid to PLPs (right) and to the protocol (left)
     function takeCommissionAddData(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) external onlyPanopticPool returns (uint32, uint128, uint128) {
+    ) external onlyPanopticPool returns (uint32, LeftRightUnsigned) {
         unchecked {
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
-
-            (int256 tokenToPay, uint128 commission, uint256 protocolCommission) = _getExchangedAmount(
+            (int256 tokenToPay, LeftRightUnsigned commissions) = _getExchangedAmount(
                 longAmount,
                 shortAmount,
                 swappedAmount,
                 isCovered
             );
 
-            // compute tokens to be paid due to swap
+            // compute tokens & commissions to be paid due to swap
             // mint or burn tokens due to minting in-the-money
-            if (tokenToPay > 0) {
-                // if user must pay tokens, burn them from user balance
-                uint256 sharesToBurn = Math.mulDivRoundingUp(
-                    uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
-                );
-                _burn(optionOwner, sharesToBurn);
-            } else if (tokenToPay < 0) {
-                // if user must receive tokens, mint them
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
+            {
+                _settleTokenDelta(optionOwner, tokenToPay);
             }
 
             // TODO: I think it makes sense to mint to the protocol fee recipient _before_ updating s_poolAssets, not after -
             // that way, the convertToShares math uses the same exchange rate given to the actual minter.
             // Could be swayed, though - would be less greedy to do it _after_ updating s_poolAssets.
-            if (protocolCommission > 0) {
-                _mint(s_protocolFeeRecipient, convertToShares(protocolCommission));
+            {
+                if (commissions.leftSlot() > 0) {
+                    _mint(s_protocolFeeRecipient, convertToShares(commissions.leftSlot()));
+                }
             }
 
-            // update stored asset balances with net moved amounts
-            // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
-            // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
-            // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint256(updatedAssets).toUint128();
-            s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
+            {
+                /*
+                // update stored asset balances with net moved amounts
+                // Use the updated s_poolAssets: current available assets belonging to PLPs (updated after settlement) excluding any premium paid
+                s_poolAssets = uint256(int256(uint256(s_poolAssets)) - swappedAmount).toUint128();
+                // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
+                // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
+                // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
+                s_inAMM = uint256(int256(uint256(s_inAMM)) + (shortAmount - longAmount)).toUint128();
+                */
+                _updatePoolStateForOptionOpenOrClose(swappedAmount, shortAmount - longAmount);
+            }
 
-            return (uint32(_poolUtilization()), commission, uint128(protocolCommission));
+            return (uint32(_poolUtilization()), commissions);
         }
+    }
+
+    /// @notice Settle ITM amounts on option creation or close.
+    /// @param optionOwner The user minting the option
+    /// @param tokenToPay The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
+    function _settleTokenDelta(address optionOwner, int256 tokenToPay) internal {
+        if (tokenToPay > 0) {
+            // if user must pay tokens, burn them from user balance
+            _burn(optionOwner, Math.mulDivRoundingUp(
+                uint256(tokenToPay),
+                totalSupply,
+                totalAssets()
+            ));
+        } else if (tokenToPay < 0) {
+            // if user must receive tokens, mint them
+            _mint(optionOwner, convertToShares(uint256(-tokenToPay)));
+        }
+    }
+
+    /// @notice Update pool state following an option mint or close
+    /// @param reductionAgainstPoolAssets The amount to reduce s_poolAssets by
+    /// @param additionToInAMM The amount to increase s_inAMM by
+    function _updatePoolStateForOptionOpenOrClose(int256 reductionAgainstPoolAssets, int256 additionToInAMM) internal {
+        // update stored asset balances with net moved amounts
+        // Use the updated s_poolAssets: current available assets belonging to PLPs (updated after settlement) excluding any premium paid
+        s_poolAssets = uint256(int256(uint256(s_poolAssets)) - reductionAgainstPoolAssets).toUint128();
+        // the inflow or outflow of pool assets is defined by the swappedAmount: it includes both the ITM swap amounts and the short/long amounts used to create the position
+        // however, any intrinsic value is paid for by the users, so we only add the portion that comes from PLPs: the short/long amounts
+        // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
+        s_inAMM = uint256(int256(uint256(s_inAMM)) + additionToInAMM).toUint128();
     }
 
     /// @notice Exercise an option and pay to the seller what is owed from the buyer.
@@ -1059,33 +1083,23 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
         unchecked {
-            // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
-            int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
-
             // add premium and token deltas not covered by swap to be paid/collected on position close
             int256 tokenToPay = int256(swappedAmount) -
                 (longAmount - shortAmount) -
                 realizedPremium;
-
-            if (tokenToPay > 0) {
-                // if user must pay tokens, burn them from user balance (revert if balance too small)
-                uint256 sharesToBurn = Math.mulDivRoundingUp(
-                    uint256(tokenToPay),
-                    totalSupply,
-                    totalAssets()
-                );
-                _burn(optionOwner, sharesToBurn);
-            } else if (tokenToPay < 0) {
-                // if user must receive tokens, mint them
-                uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
-                _mint(optionOwner, sharesToMint);
+            {
+                _settleTokenDelta(optionOwner, tokenToPay);
             }
 
+            /*
             // update stored asset balances with net moved amounts
+            // Use the updated s_poolAssets, with swapped amounts removed
             // any intrinsic value is paid for by the users, so we do not add it to s_inAMM
             // premia is not included in the balance since it is the property of options buyers and sellers, not PLPs
-            s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
+            s_poolAssets = uint256(int256(uint256(s_poolAssets)) - swappedAmount + realizedPremium).toUint128();
             s_inAMM = uint256(int256(uint256(s_inAMM)) - (shortAmount - longAmount)).toUint128();
+            */
+            _updatePoolStateForOptionOpenOrClose(swappedAmount - realizedPremium, shortAmount - longAmount);
 
             return (int128(tokenToPay));
         }
@@ -1097,14 +1111,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param swappedAmount The amount of tokens moved during creation of the option position
     /// @param isCovered Whether the option was minted as covered (no swap occurred if ITM)
     /// @return The amount of funds to be exchanged for minting an option (includes commission, swapFee, and intrinsic value)
-    /// @return The commission (base rate + ITM spread) paid to PLPs for minting the option
-    /// @return The commission paid to the protocol for minting the option
+    /// @return The commission paid to PLPs (right) and the protocol (left) for minting the option
     function _getExchangedAmount(
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount,
         bool isCovered
-    ) internal view returns (int256, uint128, uint256) {
+    ) internal view returns (int256, LeftRightUnsigned) {
         unchecked {
             int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
@@ -1123,43 +1136,21 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         )
                 );
 
-            // then there is also a commission to pay to the protocol:
-            // TODO: Check that an MSTORE+2*MLOAD is cheaper than the two SLOADs of s_protocolFee we'd have to do otherwise
-            uint256 protocolFee = s_protocolFee;
-            uint256 protocolCommission = protocolFee > 0 ?
-              Math.unsafeDivRoundingUp(
-                  uint256(uint128(shortAmount + longAmount)) * protocolFee,
-                  DECIMALS
-              ) : 0;
-
-            /* // NOTE: Actually, I'm going to go with plan B listted below and return a `protocolFee var` - but here's the old impl
-            // in case you were curious:
-            if (protocolFee > 0) {
-                protocolCommission = Math.unsafeDivRoundingUp(
-                    uint256(uint128(shortAmount + longAmount)) * protocolFee,
-                    DECIMALS
-                );
-
-                if (protocolCommission > 0) {
-                    address recipient = s_protocolFeeRecipient;
-
-                    // TODO: Check that minting here is a good way to hand the fee to the recipient -
-                    // 1. it is a little earlier than the mint/burn for the optionOwner
-                    // 2. and the math could be slightly off - we both increase the tokensToPay by protocolCommission, which
-                    // increases the totalAssets and the value of _all_ shares, but then try to award the protocolFeeRecipient the
-                    // share-converted amount of those tokens before they are added onto the totalAssets.
-                    // plan B would be to instead add a 3rd return value to this method for the protocolFee and
-                    // move this _mint step later in the flow
-                    // Or, plan C would be to actually do a transfer-out of underlying tokens, but that would be more
-                    // gas expensive for users, and it doesn't seem like a big deal to just have the fee recipient withdraw later
-                    _mint(recipient, convertToShares(protocolCommission));
-                    // If we switched to plan B or C above, then we should not increase `commission` here
-                    commission += protocolCommission;
-                }
-            }
-            */
-
-            return (intrinsicValue + int256(plpCommission), uint128(plpCommission), protocolCommission);
+            return (
+              intrinsicValue + int256(plpCommission),
+              LeftRightUnsigned
+                  .wrap(uint128(plpCommission))
+                  .toLeftSlot(
+                      s_protocolFee > 0 ?
+                          uint128(
+                              Math.unsafeDivRoundingUp(
+                                  uint256(uint128(shortAmount + longAmount)) * s_protocolFee,
+                                  DECIMALS
+                              )
+                          )
+                          : 0
+                  )
+            );
         }
     }
 

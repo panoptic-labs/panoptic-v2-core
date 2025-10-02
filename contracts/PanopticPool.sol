@@ -686,14 +686,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        (uint32 utilization0, uint128 plpCommission0, uint128 protocolCommission0) = s_collateralToken0.takeCommissionAddData(
+        (uint32 utilization0, LeftRightUnsigned commission0) = s_collateralToken0.takeCommissionAddData(
             msg.sender,
             longAmounts.rightSlot(),
             shortAmounts.rightSlot(),
             totalSwapped.rightSlot(),
             isCovered
         );
-        (uint32 utilization1, uint128 plpCommission1, uint128 protocolCommission1) = s_collateralToken1.takeCommissionAddData(
+        (uint32 utilization1, LeftRightUnsigned commission1) = s_collateralToken1.takeCommissionAddData(
             msg.sender,
             longAmounts.leftSlot(),
             shortAmounts.leftSlot(),
@@ -705,8 +705,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         unchecked {
             return (
                 utilization0 + (utilization1 << 16),
-                LeftRightUnsigned.wrap(plpCommission0).toLeftSlot(plpCommission1),
-                LeftRightUnsigned.wrap(protocolCommission0).toLeftSlot(protocolCommission1)
+                LeftRightUnsigned.wrap(commission0.rightSlot()).toLeftSlot(commission1.rightSlot()),
+                LeftRightUnsigned.wrap(commission0.leftSlot()).toLeftSlot(commission1.leftSlot())
             );
         }
     }
