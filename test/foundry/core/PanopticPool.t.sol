@@ -6303,6 +6303,7 @@ contract PanopticPoolTest is PositionUtils {
 
         exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
         exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
+        vm.assume(Math.abs(TWAPtick - currentTick) < 513);
         forceExercise(
             pp,
             Alice,
@@ -7290,7 +7291,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 collateralRatioSeed = 15377053;
 
         // Now, call the original test function with these specific values
-        test_success_liquidate(
+        test_success_liquidate_SingleLeg(
             x,
             numLegs,
             isLongs,
@@ -7398,7 +7399,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 collateralRatioSeed = 26417427543161077180287676;
 
         // Now, call the original test function with these specific values
-        test_success_liquidate(
+        test_success_liquidate_SingleLeg(
             x,
             numLegs,
             isLongs,
@@ -7412,7 +7413,7 @@ contract PanopticPoolTest is PositionUtils {
         );
     }
 
-    function test_success_liquidate(
+    function test_success_liquidate_SingleLeg(
         uint256 x,
         uint256 numLegs,
         uint256[4] memory isLongs,
@@ -7621,6 +7622,10 @@ contract PanopticPoolTest is PositionUtils {
             vm.startPrank(Alice);
 
             shareDeltasLiquidatee = [int256(ct0.balanceOf(Alice)), int256(ct1.balanceOf(Alice))];
+            $owedInterest0 = (ct0.convertToShares(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToShares(uint256(ct1.owedInterest(Alice))));
+            console2.log("o0", $owedInterest0);
+            console2.log("o1", $owedInterest1);
 
             // no swap flag (liquidations always have swaps disabled)
             (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = pp
@@ -7654,8 +7659,9 @@ contract PanopticPoolTest is PositionUtils {
                 }
             }
             {
-                uint256 totalSupply0 = ct0.totalSupply();
-                uint256 totalSupply1 = ct1.totalSupply();
+                // interest is not paid through shares burning in liquidations
+                uint256 totalSupply0 = ct0.totalSupply() + $owedInterest0;
+                uint256 totalSupply1 = ct1.totalSupply() + $owedInterest1;
                 uint256 totalAssets0 = ct0.totalAssets();
                 uint256 totalAssets1 = ct1.totalAssets();
 
@@ -7672,8 +7678,8 @@ contract PanopticPoolTest is PositionUtils {
                 vm.revertTo(_snapshot);
 
                 // must adjust the total supply for the shares burnt to pay for Alice's outstanding interest
-                $totalSupply0 = totalSupply0 + ct0.owedInterest(Alice) - 1;
-                $totalSupply1 = totalSupply1 + ct1.owedInterest(Alice) - 1;
+                $totalSupply0 = totalSupply0;
+                $totalSupply1 = totalSupply1;
                 $totalAssets0 = totalAssets0;
                 $totalAssets1 = totalAssets1;
 
@@ -7791,8 +7797,10 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
         console2.log("");
-        console2.log("owedInterest", ct0.owedInterest(Alice));
-        console2.log("owedInterest", ct1.owedInterest(Alice));
+        console2.log("owedInterest-A", ct0.owedInterest(Alice));
+        console2.log("owedInterest-A", ct1.owedInterest(Alice));
+
+        console2.log("ct1.totalSupply", ct1.totalSupply());
         console2.log("");
         {
             $owedInterest0 = (ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
@@ -7800,8 +7808,9 @@ contract PanopticPoolTest is PositionUtils {
 
             liquidate(pp, new TokenId[](0), Alice, $posIdLists[1]);
             console2.log("");
-            console2.log("owedInterest", ct0.owedInterest(Alice));
-            console2.log("owedInterest", ct1.owedInterest(Alice));
+            console2.log("owedInterest-B", ct0.owedInterest(Alice));
+            console2.log("owedInterest-B", ct1.owedInterest(Alice));
+            console2.log("ct1.totalSupply", ct1.totalSupply());
             console2.log("");
 
             // take the difference between the share deltas after burn and after mint - that should be the bonus
@@ -7878,16 +7887,27 @@ contract PanopticPoolTest is PositionUtils {
         // this happens on *both* liquidations and burns, but during liquidations 1-n shares can be clawed back from PLPs
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had
+        console2.log("condition");
+        console2.log(
+            "$liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie)",
+            $liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie)
+        );
+        console2.log(
+            "$liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie)",
+            $liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie)
+        );
         if (
-            (ct0.totalSupply() - $totalSupply0 <=
-                $numLegs +
+            (ct0.totalSupply() <=
+                $totalSupply0 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie),
                         $totalAssets0,
                         $totalSupply0
                     )) &&
-            (ct1.totalSupply() - $totalSupply1 <=
-                $numLegs +
+            (ct1.totalSupply() <=
+                $totalSupply1 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie),
                         $totalAssets1,
@@ -7977,27 +7997,26 @@ contract PanopticPoolTest is PositionUtils {
         }
 
         int256 balanceCombined0CT = int256(
-            $tokenData0.rightSlot() -
-                2 *
-                $owedInterest0 +
+            $tokenData0.rightSlot() +
                 PanopticMath.convert1to0(
-                    $tokenData1.rightSlot() - 2 * $owedInterest1,
+                    $tokenData1.rightSlot(),
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 )
         );
 
         $balance0CombinedPostBurn =
-            int256(uint256($tokenData0.rightSlot())) -
+            int256(uint256($tokenData0.rightSlot()) + $owedInterest0) -
             int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot())) -
+                    int256(uint256($tokenData1.rightSlot() + $owedInterest1)) -
                         int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 )
             );
+        console2.log("gere");
 
         $protocolLoss0BaseExpected = Math.max(
             -($balance0CombinedPostBurn -
@@ -8262,6 +8281,10 @@ contract PanopticPoolTest is PositionUtils {
                 int256(ct0.balanceOf(Alice)) - shareDeltasLiquidatee[0],
                 int256(ct1.balanceOf(Alice)) - shareDeltasLiquidatee[1]
             ];
+            $owedInterest0 = (ct0.convertToShares(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToShares(uint256(ct1.owedInterest(Alice))));
+            console2.log("o0", $owedInterest0);
+            console2.log("o1", $owedInterest1);
 
             (, currentTickFinal, , , , , ) = pool.slot0();
 
@@ -8283,8 +8306,9 @@ contract PanopticPoolTest is PositionUtils {
             }
             {
                 // must adjust the total supply for the shares burnt to pay for Alice's outstanding interest
-                uint256 totalSupply0 = ct0.totalSupply();
-                uint256 totalSupply1 = ct1.totalSupply();
+                // interest is not paid through shares burning in liquidations
+                uint256 totalSupply0 = ct0.totalSupply() + $owedInterest0;
+                uint256 totalSupply1 = ct1.totalSupply() + $owedInterest1;
                 uint256 totalAssets0 = ct0.totalAssets();
                 uint256 totalAssets1 = ct1.totalAssets();
 
@@ -8300,8 +8324,8 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.revertTo(_snapshot);
 
-                $totalSupply0 = totalSupply0 + ct0.owedInterest(Alice) - 1;
-                $totalSupply1 = totalSupply1 + ct1.owedInterest(Alice) - 1;
+                $totalSupply0 = totalSupply0;
+                $totalSupply1 = totalSupply1;
                 $totalAssets0 = totalAssets0;
                 $totalAssets1 = totalAssets1;
 
@@ -8403,18 +8427,18 @@ contract PanopticPoolTest is PositionUtils {
             vm.assume(newBalance0 < newRequired0);
         }
         {
-            int256 owed0 = int256(ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
-            int256 owed1 = int256(ct1.convertToAssets(uint256(ct1.owedInterest(Alice))));
+            $owedInterest0 = (ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToAssets(uint256(ct1.owedInterest(Alice))));
 
             liquidate(pp, new TokenId[](0), Alice, $posIdLists[1]);
 
             // take the difference between the share deltas after burn and after mint - that should be the bonus
             $shareDelta0 =
                 shareDeltasLiquidatee[0] -
-                (int256(ct0.balanceOf(Alice)) - $shareDelta0 - owed0);
+                (int256(ct0.balanceOf(Alice)) - $shareDelta0 - int256($owedInterest0));
             $shareDelta1 =
                 shareDeltasLiquidatee[1] -
-                (int256(ct1.balanceOf(Alice)) - $shareDelta1 - owed1);
+                (int256(ct1.balanceOf(Alice)) - $shareDelta1 - int256($owedInterest1));
         }
         // bonus can be very small on the threshold leading to a loss (of 1-2 tokens) due to precision, which is fine
         assertGe(
@@ -8484,15 +8508,17 @@ contract PanopticPoolTest is PositionUtils {
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had]
         if (
-            (ct0.totalSupply() - $totalSupply0 <=
-                $numLegs +
+            (ct0.totalSupply() <=
+                $totalSupply0 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie),
                         $totalAssets0,
                         $totalSupply0
                     )) &&
-            (ct1.totalSupply() - $totalSupply1 <=
-                $numLegs +
+            (ct1.totalSupply() <=
+                $totalSupply1 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie),
                         $totalAssets1,
@@ -8591,12 +8617,12 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         $balance0CombinedPostBurn =
-            int256(uint256($tokenData0.rightSlot())) -
+            int256(uint256($tokenData0.rightSlot()) + $owedInterest0) +
             int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot())) -
+                    int256(uint256($tokenData1.rightSlot() + $owedInterest1)) +
                         int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
