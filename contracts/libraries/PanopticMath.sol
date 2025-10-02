@@ -482,10 +482,8 @@ library PanopticMath {
                 leg
             );
 
-            if (tokenId.width(leg) != 0) {
-                longAmounts = longAmounts.add(longs);
-                shortAmounts = shortAmounts.add(shorts);
-            }
+            longAmounts = longAmounts.add(longs);
+            shortAmounts = shortAmounts.add(shorts);
             unchecked {
                 ++leg;
             }
