@@ -174,7 +174,15 @@ contract PanopticFactoryTest is Test {
         bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
-        riskEngine = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+        riskEngine = new RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000,
+            10_000_000,
+            10_000_000
+        );
 
         for (uint256 i = 0; i < bytecodes.length; i++) {
             bytes memory code = bytecodes[i];
@@ -383,7 +391,9 @@ contract PanopticFactoryTest is Test {
             1_500_000, // Different BCR
             1_024_000,
             5_000_000,
-            9_000_000
+            9_000_000,
+            10_000_000,
+            10_000_000
         );
 
         uint96 salt = 12345;

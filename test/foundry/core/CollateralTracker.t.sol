@@ -212,7 +212,9 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 }
 
 contract RiskEngineHarness is RiskEngine {
-    constructor() RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000) {}
+    constructor()
+        RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000, 10_000_000, 10_000_000)
+    {}
 
     function getRequiredCollateralAtUtilization(
         uint128 amount,

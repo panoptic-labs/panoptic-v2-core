@@ -502,7 +502,15 @@ contract PanopticPoolTest is PositionUtils {
             new Pointer[][](0)
         );
 
-        re = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+        re = new RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000,
+            10_000_000,
+            10_000_000
+        );
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
