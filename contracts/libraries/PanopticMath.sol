@@ -309,7 +309,7 @@ library PanopticMath {
                 differentEpoch = currentEpoch != recordedEpoch;
                 timeDelta = int256(uint256(uint24(currentEpoch - recordedEpoch))) * 64;
             }
-
+            updatedMedianData = medianData;
             // only proceed if last entry is in a different epoch (takes care of looping edge case in a way that ">" doesn't)
             if (differentEpoch) {
                 int24 clampedTick = clampTick(currentTick, medianData);
