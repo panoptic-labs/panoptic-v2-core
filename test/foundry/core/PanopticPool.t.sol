@@ -2930,12 +2930,7 @@ contract PanopticPoolTest is PositionUtils {
                 1
             );
 
-            (slowOracleTick, ) = PanopticMath.computeInternalMedian(
-                observationIndex,
-                observationCardinality,
-                pp.miniMedian(),
-                pool
-            );
+            (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.miniMedian(), currentTick);
 
             assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -3086,12 +3081,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            pp.miniMedian(),
-            pool
-        );
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.miniMedian(), currentTick);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -3240,12 +3230,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            pp.miniMedian(),
-            pool
-        );
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.miniMedian(), currentTick);
 
         updatePositionDataLong();
 
@@ -3479,12 +3464,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            pp.miniMedian(),
-            pool
-        );
+        (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.miniMedian(), currentTick);
 
         updatePositionDataLong();
 

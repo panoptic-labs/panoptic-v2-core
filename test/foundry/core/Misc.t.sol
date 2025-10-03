@@ -4894,6 +4894,8 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
         (currentTick, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        vm.warp(0);
+        vm.roll(block.number + 1);
 
         // setup mini-median price array
         for (uint256 i = 0; i < 10; ++i) {
@@ -4904,8 +4906,9 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
-        vm.warp(2 ** 28 - 1);
+        vm.warp(2 ** 30 - 1);
         vm.roll(block.number + 1);
+        console2.log("START");
         pp.pokeMedian();
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
@@ -4924,12 +4927,14 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Alice);
 
-        pp.mintOptions(
+        mintOptions(
+            pp,
             $posIdList,
             500_000,
             0,
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
@@ -4940,11 +4945,13 @@ contract Misctest is Test, PositionUtils {
         vm.warp(block.timestamp + 2);
         vm.roll(block.number + 1);
 
-        pp.burnOptions(
+        burnOptions(
+            pp,
             $posIdList[0],
             new TokenId[](0),
             Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK
+            Constants.MIN_V3POOL_TICK,
+            true
         );
 
         (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();

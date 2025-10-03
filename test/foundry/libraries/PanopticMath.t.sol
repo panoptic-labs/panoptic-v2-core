@@ -1641,10 +1641,8 @@ contract PanopticMathTest is Test, PositionUtils {
         // ACT
         vm.warp(10 * 64);
         (, uint256 updatedData) = harness.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
             initialData,
-            IUniswapV3Pool(address(mockPool))
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
         );
 
         // ASSERT
@@ -1698,10 +1696,8 @@ contract PanopticMathTest is Test, PositionUtils {
         // ACT
         vm.warp(10 * 64);
         (, uint256 updatedData) = harness.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
             initialData,
-            IUniswapV3Pool(address(mockPool))
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
         );
 
         // ASSERT
@@ -1749,10 +1745,8 @@ contract PanopticMathTest is Test, PositionUtils {
             vm.warp(block.timestamp + 128);
             vm.roll(block.number + 1);
             (, uint256 _updatedData) = harness.computeInternalMedian(
-                observationIndex,
-                observationCardinality,
                 updatedData,
-                IUniswapV3Pool(address(mockPool))
+                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
             );
             updatedData = _updatedData;
         }
@@ -1770,12 +1764,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         // ACT: Set timestamp to be in the same epoch as the initial data.
         vm.warp(INITIAL_EPOCH * 64 + 1); // e.g., timestamp >> 6 will still be 5
-        (, uint256 updatedData) = harness.computeInternalMedian(
-            0,
-            100,
-            initialData,
-            IUniswapV3Pool(address(mockPool))
-        );
+        (, uint256 updatedData) = harness.computeInternalMedian(initialData, REFERENCE_TICK);
 
         // ASSERT: The function should return 0 for updatedMedianData.
         assertEq(updatedData, 0, "Update should not happen in the same epoch");

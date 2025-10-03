@@ -205,17 +205,9 @@ contract PanopticMathHarness is Test {
     }
 
     function computeInternalMedian(
-        uint256 observationIndex,
-        uint256 observationCardinality,
         uint256 medianData,
-        IUniswapV3Pool univ3pool
+        int24 currentTick
     ) public view returns (int24, uint256) {
-        return
-            PanopticMath.computeInternalMedian(
-                observationIndex,
-                observationCardinality,
-                medianData,
-                univ3pool
-            );
+        return PanopticMath.computeInternalMedian(medianData, currentTick);
     }
 }
