@@ -452,12 +452,12 @@ contract RiskEngine {
         uint256 bal1 = tokenData1.rightSlot();
 
         uint256 scaledSurplusToken0 = Math.mulDiv(
-            Math.max(0, bal0 - maintReq0),
+            bal0 > maintReq0 ? bal0 - maintReq0 : 0,
             CROSS_BUFFER_0,
             DECIMALS
         );
         uint256 scaledSurplusToken1 = Math.mulDiv(
-            Math.max(0, bal1 - maintReq1),
+            bal1 > maintReq1 ? bal1 - maintReq1 : 0,
             CROSS_BUFFER_1,
             DECIMALS
         );
@@ -505,7 +505,7 @@ contract RiskEngine {
             uint256 requirement0 = positionBalanceArray.length > 0
                 ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, true) +
                     longPremia.rightSlot() +
-                    owedInterest0).toUint128()
+                    owedInterest0)
                 : 0;
             tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).toLeftSlot(
                 requirement0.toUint128()
@@ -517,7 +517,7 @@ contract RiskEngine {
             uint256 requirement1 = positionBalanceArray.length > 0
                 ? (_getTotalRequiredCollateral(atTick, positionBalanceArray, false) +
                     longPremia.leftSlot() +
-                    owedInterest1).toUint128()
+                    owedInterest1)
                 : 0;
             tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).toLeftSlot(
                 requirement1.toUint128()
@@ -541,8 +541,6 @@ contract RiskEngine {
             TokenId tokenId = TokenId.wrap(positionBalanceArray[i][0]);
 
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
-
-            //bool underlyingIsToken0 = s_underlyingIsToken0;
 
             int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
@@ -1012,7 +1010,7 @@ contract RiskEngine {
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
     /// @return buyCollateralRatio The buy collateral ratio at `utilization`
     function _buyCollateralRatio(
-        uint16 utilization
+        uint256 utilization
     ) internal view returns (uint256 buyCollateralRatio) {
         // linear from BUY to BUY/2 between 50% and 90%
         // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
