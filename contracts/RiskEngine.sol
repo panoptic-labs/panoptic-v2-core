@@ -49,11 +49,11 @@ contract RiskEngine {
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Required collateral ratios for selling options, represented as percentage * 10_000.
+    /// @notice Required collateral ratios for selling options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 20% -> 0.2 * 10_000_000 = 2_000_000.
     uint256 immutable SELLER_COLLATERAL_RATIO;
 
-    /// @notice Required collateral ratios for buying options, represented as percentage * 10_000.
+    /// @notice Required collateral ratios for buying options, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 10% -> 0.1 * 10_000_000 = 1_000_000.
     uint256 immutable BUYER_COLLATERAL_RATIO;
 
@@ -61,36 +61,43 @@ contract RiskEngine {
     uint256 immutable FORCE_EXERCISE_COST;
 
     // Targets a pool utilization (balance between buying and selling)
-    /// @notice Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000.
+    /// @notice Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 50% -> 0.5 * 10_000_000 = 5_000_000.
     uint256 immutable TARGET_POOL_UTIL;
 
-    /// @notice Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
+    /// @notice Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
     uint256 immutable SATURATED_POOL_UTIL;
+
+    uint256 immutable CROSS_BUFFER_0;
+    uint256 immutable CROSS_BUFFER_1;
 
     /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Set immutable parameters for the Collateral Tracker.
-    /// @param _sellerCollateralRatio Required collateral ratio for selling options, represented as percentage * 10_000
-    /// @param _buyerCollateralRatio Required collateral ratio for buying options, represented as percentage * 10_000
+    /// @param _sellerCollateralRatio Required collateral ratio for selling options, fraction of 1, scaled by 10_000_000
+    /// @param _buyerCollateralRatio Required collateral ratio for buying options, fraction of 1, scaled by 10_000_000
     /// @param _forceExerciseCost Basal cost (in bps of notional) to force exercise an out-of-range position
-    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, represented as percentage * 10_000
-    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000
+    /// @param _targetPoolUtilization Target pool utilization below which buying+selling is optimal, fraction of 1, scaled by 10_000_000
+    /// @param _saturatedPoolUtilization Pool utilization above which selling is 100% collateral backed, fraction of 1, scaled by 10_000_000
     constructor(
         uint256 _sellerCollateralRatio,
         uint256 _buyerCollateralRatio,
         uint256 _forceExerciseCost,
         uint256 _targetPoolUtilization,
-        uint256 _saturatedPoolUtilization
+        uint256 _saturatedPoolUtilization,
+        uint256 _crossBuffer0,
+        uint256 _crossBuffer1
     ) {
         SELLER_COLLATERAL_RATIO = _sellerCollateralRatio;
         BUYER_COLLATERAL_RATIO = _buyerCollateralRatio;
         FORCE_EXERCISE_COST = _forceExerciseCost;
         TARGET_POOL_UTIL = _targetPoolUtilization;
         SATURATED_POOL_UTIL = _saturatedPoolUtilization;
+        CROSS_BUFFER_0 = _crossBuffer0;
+        CROSS_BUFFER_1 = _crossBuffer1;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -416,6 +423,59 @@ contract RiskEngine {
     /*//////////////////////////////////////////////////////////////
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
+
+    function isAccountSolvent(
+        address user,
+        int24 atTick,
+        uint256[2][] memory positionBalanceArray,
+        LeftRightUnsigned shortPremia,
+        LeftRightUnsigned longPremia,
+        CollateralTracker ct0,
+        CollateralTracker ct1,
+        uint256 buffer
+    ) external view returns (bool) {
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = this.getMargin(
+            user,
+            atTick,
+            positionBalanceArray,
+            shortPremia,
+            longPremia,
+            ct0,
+            ct1
+        );
+        uint160 sqrtPriceX96 = Math.getSqrtRatioAtTick(atTick);
+
+        uint256 maintReq0 = Math.mulDivRoundingUp(tokenData0.leftSlot(), buffer, DECIMALS);
+        uint256 maintReq1 = Math.mulDivRoundingUp(tokenData1.leftSlot(), buffer, DECIMALS);
+
+        uint256 bal0 = tokenData0.rightSlot();
+        uint256 bal1 = tokenData1.rightSlot();
+
+        uint256 scaledSurplusToken0 = Math.mulDiv(
+            Math.max(0, bal0 - maintReq0),
+            CROSS_BUFFER_0,
+            DECIMALS
+        );
+        uint256 scaledSurplusToken1 = Math.mulDiv(
+            Math.max(0, bal1 - maintReq1),
+            CROSS_BUFFER_1,
+            DECIMALS
+        );
+
+        if (sqrtPriceX96 < Constants.FP96) {
+            bool isSolvent0 = bal0 + PanopticMath.convert1to0(scaledSurplusToken1, sqrtPriceX96) >=
+                maintReq0;
+            bool isSolvent1 = PanopticMath.convert1to0(bal1, sqrtPriceX96) + scaledSurplusToken0 >=
+                PanopticMath.convert1to0RoundingUp(maintReq1, sqrtPriceX96);
+            return isSolvent0 && isSolvent1;
+        } else {
+            bool isSolvent0 = PanopticMath.convert0to1(bal0, sqrtPriceX96) + scaledSurplusToken1 >=
+                PanopticMath.convert0to1RoundingUp(maintReq0, sqrtPriceX96);
+            bool isSolvent1 = bal1 + PanopticMath.convert0to1(scaledSurplusToken0, sqrtPriceX96) >=
+                maintReq1;
+            return isSolvent0 && isSolvent1;
+        }
+    }
 
     /// @notice Get the collateral status/margin details of an account/user.
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
