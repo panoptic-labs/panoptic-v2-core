@@ -445,8 +445,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     uint256[2][] posBalanceArray;
 
-    uint256 DECIMALS = 10_000;
-    int256 DECIMALS128 = 10_000;
+    uint128 DECIMALS = 10_000_000;
+    int128 DECIMALS128 = 10_000_000;
 
     function mintOptions(
         PanopticPool pp,
@@ -5111,26 +5111,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? int128(
-                    10_000 *
+                    DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
                         )
-                ) / 10_000
+                ) / int128(DECIMALS)
                 : int128(0);
             required += int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
 
@@ -5310,26 +5310,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -5511,26 +5511,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? int128(
-                    10_000 *
+                    DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
                         )
-                ) / 10_000
+                ) / int128(DECIMALS)
                 : int128(0);
             required += int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
 
@@ -5745,26 +5745,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
 
@@ -5989,25 +5989,25 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.rightSlot())) <
                     0
                     ? int128(
-                        10_000 *
+                        DECIMALS *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.rightSlot())) -
                                         int256(uint256($longPremia.rightSlot()))
                                 )
                             )
-                    ) / 10_000
+                    ) / int128(DECIMALS)
                     : int128(0)
             );
             uint128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (int128(10_000) *
+                    (int128(DECIMALS) *
                         -int128(
                             int256(uint256($shortPremia.leftSlot())) -
                                 int256(uint256($longPremia.leftSlot()))
-                        )) / 10_000
+                        )) / int128(DECIMALS)
                 )
                 : 0;
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -6209,26 +6209,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -6437,26 +6437,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -6652,25 +6652,25 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.rightSlot())) <
                     0
                     ? int128(
-                        10_000 *
+                        DECIMALS *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.rightSlot())) -
                                         int256(uint256($longPremia.rightSlot()))
                                 )
                             )
-                    ) / 10_000
+                    ) / int128(DECIMALS)
                     : int128(0)
             );
             uint128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (int128(10_000) *
+                    (int128(DECIMALS) *
                         -int128(
                             int256(uint256($shortPremia.leftSlot())) -
                                 int256(uint256($longPremia.leftSlot()))
-                        )) / 10_000
+                        )) / int128(DECIMALS)
                 )
                 : 0;
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -6845,11 +6845,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? ((int128(10_000) *
+                ? ((int128(DECIMALS) *
                     -int128(
                         int256(uint256($shortPremia.leftSlot())) -
                             int256(uint256($longPremia.leftSlot()))
-                    )) / 10_000)
+                    )) / int128(DECIMALS))
                 : int8(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
@@ -7020,26 +7020,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             required += int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -7208,26 +7208,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -7389,31 +7389,32 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 checkSingle
             );
 
+            console2.log("required", required);
             // only add premium requirement if there is net premia owed
             int128 premium0 = int128(
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             required += int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -7577,13 +7578,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -7745,26 +7746,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             required += int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -7920,26 +7921,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / (DECIMALS)
                 )
                 : 0;
             int128 premium0 = int128(
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / (DECIMALS)
                 )
                 : int128(0);
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -8094,8 +8095,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8235,8 +8236,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8376,8 +8377,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8517,8 +8518,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
             int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
             LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
@@ -8546,18 +8547,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
         //        totalAssets() = z + inAMM
         //
         //
-        // DECIMALS = 10_000
+        // DECIMALS = DECIMALS
         //
         // utilization = (inAMM * DECIMALS) / ((PanopticPoolBal - lockedFunds) + inAMM)
         //      z = (PanopticPoolBal - lockedFunds)
         //      utilization =  (inAMM * DECIMALS) / z + inAMM
-        //      inAMM = (utilization * z) / (10_000 - utilization)
-        //      inAMM / z = utilization / (10_000 - utilization)
+        //      inAMM = (utilization * z) / (DECIMALS - utilization)
+        //      inAMM / z = utilization / (DECIMALS - utilization)
         //
-        // inAMM / (PanopticPoolBal - lockedFunds) = (utilization / (10_000(DECIMALS) - utilization))
+        // inAMM / (PanopticPoolBal - lockedFunds) = (utilization / (DECIMALS(DECIMALS) - utilization))
         //
         // i.e utilization of 9_000
-        //    inAMM / (PanopticPoolBal - lockedFunds) = 9_000 / 10_000 - 9_000
+        //    inAMM / (PanopticPoolBal - lockedFunds) = 9_000 / DECIMALS - 9_000
         //    inAMM / (PanopticPoolBal - lockedFunds) = 9
         //    assume bal of (pool > lockedFunds) and (bal pool - lockedFunds) + inAMM > 0)
         //
@@ -8573,7 +8574,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // let poolBalance and lockedFunds be fuzzed
         // inAMM = utilization * (PanopticPoolBal - lockedFunds) / (10_000 - utilization)
         vm.assume(_poolBalance < type(int128).max);
-        int256 inAMM = (targetUtilization * (_poolBalance)) / (10_000 - targetUtilization);
+        int256 inAMM = (targetUtilization * (_poolBalance)) / (int128(10_000) - targetUtilization);
         isBuy ? inAMM += int128(int256((inAMMOffset))) : inAMM -= int128(int256((inAMMOffset)));
 
         // set states
@@ -9251,7 +9252,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         LeftRightUnsigned tokenData,
         LeftRightUnsigned otherTokenData,
         uint160 sqrtPriceX96
-    ) internal pure returns (LeftRightSigned bonusAmounts) {
+    ) internal view returns (LeftRightSigned bonusAmounts) {
         uint256 token1TotalValue;
         uint256 tokenValue;
         token1TotalValue = (tokenData.rightSlot() * Constants.FP96) / sqrtPriceX96;
@@ -9264,15 +9265,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Math.mulDiv96(otherTokenData.leftSlot(), sqrtPriceX96);
 
         uint256 valueRatio1;
-        valueRatio1 = (tokenData.rightSlot() * Constants.FP96 * 10_000) / tokenValue / sqrtPriceX96;
+        valueRatio1 =
+            (tokenData.rightSlot() * Constants.FP96 * DECIMALS) /
+            tokenValue /
+            sqrtPriceX96;
 
         int128 bonus0;
         int128 bonus1;
         bonus0 = int128(
             int256(
                 otherTokenData.leftSlot() < otherTokenData.rightSlot()
-                    ? ((tokenValue) * (10_000 - valueRatio1) * Constants.FP96) / sqrtPriceX96
-                    : ((requiredValue - tokenValue) * (10_000 - valueRatio1) * Constants.FP96) /
+                    ? ((tokenValue) * (DECIMALS - valueRatio1) * Constants.FP96) / sqrtPriceX96
+                    : ((requiredValue - tokenValue) * (DECIMALS - valueRatio1) * Constants.FP96) /
                         sqrtPriceX96
             )
         );
@@ -9286,7 +9290,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // store bonus amounts as actual amounts by dividing by DECIMALS_128
-        bonusAmounts = bonusAmounts.toRightSlot(bonus0 / 10_000).toLeftSlot(bonus1 / 10_000);
+        bonusAmounts = bonusAmounts.toRightSlot(bonus0 / int128(DECIMALS)).toLeftSlot(
+            bonus1 / int128(DECIMALS)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -9344,7 +9350,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 // pos is short
                 // base
                 tokensRequired = uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, DECIMALS)
                 );
                 // OTM
                 if (
@@ -9386,7 +9392,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 // pos is long
                 // base
                 tokensRequired += uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, DECIMALS)
                 );
             }
         }
@@ -9564,8 +9570,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int128 targetPoolUtilization = 5_000;
                 int128 saturatedPoolUtilization = 9_000;
 
-                buyCollateralRatio = 1_000;
-                sellCollateralRatio = 2_000;
+                buyCollateralRatio = 1_000_000;
+                sellCollateralRatio = 2_000_000;
 
                 // if selling
                 sellCollateralRatio = utilization != 0
@@ -9575,14 +9581,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 if (utilization < targetPoolUtilization) {
                     baseCollateralRatio = int128(int256(sellCollateralRatio));
                 } else if (utilization > saturatedPoolUtilization) {
-                    baseCollateralRatio = 10_000;
+                    baseCollateralRatio = int128(DECIMALS);
                 } else {
                     baseCollateralRatio =
                         int128(int256(sellCollateralRatio)) +
                         int128(
                             int256(
-                                (uint256(int256(10_000 - int128(int256(sellCollateralRatio)))) *
-                                    uint256(int256(utilization - targetPoolUtilization))) /
+                                (uint256(
+                                    int256(int128(DECIMALS) - int128(int256(sellCollateralRatio)))
+                                ) * uint256(int256(utilization - targetPoolUtilization))) /
                                     uint256(
                                         int256(saturatedPoolUtilization - targetPoolUtilization)
                                     )
@@ -9591,7 +9598,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 }
 
                 tokensRequired = uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, uint128(baseCollateralRatio), 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, uint128(baseCollateralRatio), DECIMALS)
                 );
 
                 // OTM
@@ -9638,13 +9645,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.rightSlot())) <
                     0
                     ? tokensRequired += uint128(
-                        (uint128(10_000) *
+                        (uint128(DECIMALS) *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.rightSlot())) -
                                         int256(uint256($longPremia.rightSlot()))
                                 )
-                            )) / 10_000
+                            )) / uint128(DECIMALS)
                     )
                     : tokensRequired;
                 tokensRequired = 0;
@@ -9653,13 +9660,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.leftSlot())) <
                     0
                     ? tokensRequired += uint128(
-                        (uint128(10_000) *
+                        (uint128(DECIMALS) *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.leftSlot())) -
                                         int256(uint256($longPremia.leftSlot()))
                                 )
-                            )) / 10_000
+                            )) / uint128(DECIMALS)
                     )
                     : tokensRequired;
                 tokensRequired = 0; // reset temp
