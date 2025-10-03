@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
+import {RiskEngine} from "./RiskEngine.sol";
 // Inherited implementations
 import {ERC20Minimal} from "@tokens/ERC20Minimal.sol";
 import {Multicall} from "@base/Multicall.sol";
@@ -105,6 +106,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice The Collateral Tracker keeps a reference to the Panoptic Pool using it.
     PanopticPool internal s_panopticPool;
 
+    /// @notice The Collateral Tracker keeps a reference to the RiskEngine used by the PanopticPool
+    RiskEngine internal s_riskEngine;
+
     /// @notice Cached amount of assets accounted to be held by the Panoptic Pool — ignores donations, pending fee payouts, and other untracked balance changes.
     uint128 internal s_poolAssets;
 
@@ -191,7 +195,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address token0,
         address token1,
         uint24 fee,
-        PanopticPool panopticPool
+        PanopticPool panopticPool,
+        RiskEngine riskEngine
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
@@ -210,6 +215,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // store the Panoptic pool for this collateral token
         s_panopticPool = panopticPool;
+
+        // store the riskEngine for this PanopticPool
+        s_riskEngine = riskEngine;
 
         // cache the pool fee in hundredths of basis points
         s_poolFee = fee;
