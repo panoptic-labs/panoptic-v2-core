@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-import "forge-std/Test.sol";
 // Interfaces
 import {PanopticPool} from "./PanopticPool.sol";
 // Inherited implementations
@@ -355,7 +354,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
         _accrueInterest(msg.sender);
-        _accrueInterest(recipient);
         // make sure the caller does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -376,7 +374,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint256 amount
     ) public override(ERC20Minimal) returns (bool) {
         _accrueInterest(from);
-        _accrueInterest(to);
         // make sure the sender does not have any open option positions
         // if they do: we don't want them sending panoptic pool shares to others
         // as this would reduce their amount of collateral against the opened positions
@@ -442,7 +439,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return shares The amount of Panoptic pool shares that were minted to the recipient
     function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
-        _accrueInterest(receiver);
+        _accrueInterest(msg.sender);
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
 
         shares = previewDeposit(assets);
@@ -487,7 +484,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param receiver User to receive the shares
     /// @return assets The amount of assets deposited to mint the desired amount of shares
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        _accrueInterest(receiver);
+        _accrueInterest(msg.sender);
         assets = previewMint(shares);
 
         if (assets > type(uint104).max) revert Errors.DepositTooLarge();
@@ -693,7 +690,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     }
 
     /// @notice Accrues protocol-wide interest and makes `to` pay outstanding interest.
-    function accrueInterestTo(address to) public {
+    function accrueInterestTo(address to) external onlyPanopticPool {
         _accrueInterest(to);
     }
 
@@ -734,7 +731,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                             burntInterestValue = Math
                                 .mulDiv(userBalance, _totalAssets, totalSupply)
                                 .toUint128();
-
                             /// Insolvent case: Pay what you can
                             _burn(_owner, userBalance);
 
@@ -854,8 +850,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return Amount of interest owed based on last compounded index
     function _owedInterest(address owner) internal view returns (uint128) {
         LeftRightSigned userState = s_interestState[owner];
-        uint256 borrowIndex = uint256(uint96(s_interestRateAccumulator.rightSlot()));
-        return _getUserInterest(userState, borrowIndex);
+        (uint128 currentBorrowIndex, , , ) = _calculateCurrentInterestState(s_inAMM);
+        return _getUserInterest(userState, currentBorrowIndex);
     }
 
     /// @notice Calculates the current borrow index including uncompounded time
@@ -1121,8 +1117,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         address liquidatee,
         int256 bonus
     ) external onlyPanopticPool {
-        _accrueInterest(liquidatee);
-        //_accrueInterest(liquidator);
         if (bonus < 0) {
             uint256 bonusAbs;
 
@@ -1161,7 +1155,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     liquidateeBalance -= type(uint248).max;
                 }
             }
-
             balanceOf[liquidatee] = liquidateeBalance;
 
             uint256 bonusShares = convertToShares(uint256(bonus));
@@ -1209,8 +1202,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param refundee The account being refunded to
     /// @param assets The amount of assets to refund. Positive means a transfer from refunder to refundee, vice versa for negative
     function refund(address refunder, address refundee, int256 assets) external onlyPanopticPool {
-        _accrueInterest(refunder);
-        _accrueInterest(refundee);
         if (assets > 0) {
             _transferFrom(refunder, refundee, convertToShares(uint256(assets)));
         } else {
@@ -1285,11 +1276,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             } else {
                 s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
             }
-            int128 netBorrows = shortAmount - longAmount;
+            int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
             // Update s_inAMM
-            s_inAMM = uint256(int256(uint256(s_inAMM)) + (isCreation ? netBorrows : -netBorrows))
-                .toUint128();
+            s_inAMM = uint256(int256(uint256(s_inAMM)) + netBorrows).toUint128();
 
             {
                 address _optionOwner = optionOwner;
@@ -1344,7 +1334,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 swappedAmount,
         int128 realizedPremium
     ) external onlyPanopticPool returns (int128) {
-        _accrueInterest(optionOwner);
         (, , int128 tokenPaid) = _updateBalancesAndSettle(
             false, // isCreation = false
             optionOwner,
@@ -1377,12 +1366,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         uint128 shortPremium,
         uint128 longPremium
     ) public view returns (LeftRightUnsigned) {
-        uint128 bal = (convertToAssets(balanceOf[user]) + shortPremium).toUint128();
-        uint128 req = positionBalanceArray.length > 0
-            ? (_getTotalRequiredCollateral(atTick, positionBalanceArray) +
-                longPremium +
-                _owedInterest(user)).toUint128()
-            : 0;
         unchecked {
             return
                 LeftRightUnsigned
