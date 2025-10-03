@@ -928,6 +928,7 @@ contract RiskEngine {
             }
         }
 
+        utilization *= 1_000;
         // return the basal sell ratio if pool utilization is lower than target
         if (uint256(utilization) < TARGET_POOL_UTIL) {
             return min_sell_ratio;
@@ -976,6 +977,7 @@ contract RiskEngine {
                           50%    90% 100%      UTILIZATION
          */
 
+        utilization *= 1_000;
         // return the basal buy ratio if pool utilization is lower than target
         if (utilization < TARGET_POOL_UTIL) {
             return BUYER_COLLATERAL_RATIO;
