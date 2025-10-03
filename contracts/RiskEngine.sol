@@ -45,10 +45,6 @@ contract RiskEngine {
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000_000;
 
-    /// @notice Decimals for computation (1 millitick (1/1000th of a basis point) precision: 1e-7 = 0.00001%).
-    /// @dev int type for composability with signed integer based mathematical operations.
-    int128 internal constant DECIMALS_128 = 10_000_000;
-
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -282,8 +278,8 @@ contract RiskEngine {
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
-                .toRightSlot(int128((longAmounts.rightSlot() * fee) / DECIMALS_128))
-                .toLeftSlot(int128((longAmounts.leftSlot() * fee) / DECIMALS_128));
+                .toRightSlot(int128((longAmounts.rightSlot() * fee) / int256(DECIMALS)))
+                .toLeftSlot(int128((longAmounts.leftSlot() * fee) / int256(DECIMALS)));
         }
     }
 

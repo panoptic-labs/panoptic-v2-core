@@ -71,13 +71,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Prefix for the token name (i.e POPT-V1 USDC LP on ETH/USDC 30bps).
     string internal constant NAME_PREFIX = "POPT-V1";
 
-    /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%).
+    /// @notice Decimals for computation (1 bps (1 basis point) precision: 0.01%).
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000;
-
-    /// @notice Decimals for computation (1 bps (basis point) precision: 0.01%).
-    /// @dev int type for composability with signed integer based mathematical operations.
-    int128 internal constant DECIMALS_128 = 10_000;
 
     /*//////////////////////////////////////////////////////////////
                            UNISWAP POOL DATA
