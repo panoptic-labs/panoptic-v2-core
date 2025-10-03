@@ -998,4 +998,12 @@ contract RiskEngine {
                     (SATURATED_POOL_UTIL - TARGET_POOL_UTIL)) / 2; // do the division by 2 at the end after all addition and multiplication; b/c y1 = buyCollateralRatio / 2
         }
     }
+
+    /*//////////////////////////////////////////////////////////////
+                  ADAPTIVE INTEREST RATE MODEL
+    //////////////////////////////////////////////////////////////*/
+
+    function getInterestRate(uint256 utilization) external pure returns (uint128) {
+        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
 }

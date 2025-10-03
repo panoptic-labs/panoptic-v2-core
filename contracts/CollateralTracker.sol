@@ -776,8 +776,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice Returns the interest rate per second based on pool utilization
     /// @return The interest rate per second in 18 decimal precision
     function interestRate() public view returns (uint128) {
-        uint256 utilization = _poolUtilization();
-        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+        return s_riskEngine.getInterestRate(_poolUtilization());
     }
 
     /// @notice Calculates interest owed by a user based on their borrow state
