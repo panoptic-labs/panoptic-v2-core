@@ -240,6 +240,32 @@ contract PanopticPool is Multicall {
     //  |<---------------------- 256 bits ------------------------------>|
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
+    // Store caps as LeftRightUnsigned (token0 cap in right slot, token1 cap in left slot)
+    // TODO: Can we store this in the TokenId?
+    mapping(address => mapping(TokenId => LeftRightUnsigned)) s_premiaCaps;
+    uint256 constant PREMIA_OVERAGE_REWARD_BPS = 100; // 1% reward threshold
+
+    /// @notice If the long-premia cap is exceeded by at least this many bps, the caller earns a reward.
+    /// @dev UI passes (X - PREMIA_CAP_REWARD_BPS) to offer "I want to pay X" experience.
+    uint256 internal constant PREMIA_CAP_REWARD_BPS = 100; // 1.00%
+
+    /// @notice Exceedance threshold (>=) to *trigger* a reward siphon from sellers.
+    /// @dev Using the same value as reward size is reasonable and simple; can be set independently if you prefer.
+    uint256 internal constant PREMIA_CAP_REWARD_THRESHOLD_BPS = 100; // 1.00%
+
+    /// @notice Emitted when a position is force-closed due to hitting its premia cap.
+    event PositionForceClosed(
+        address indexed owner,
+        address indexed caller,
+        TokenId indexed tokenId,
+        LeftRightUnsigned totalLongPremia,     // what the buyer owed at close (token0 right, token1 left)
+        LeftRightUnsigned premiaCap,           // configured caps (token0 right, token1 left)
+        LeftRightUnsigned callerReward         // reward paid to the caller siphoned from sellers (token0 right, token1 left)
+    );
+
+    /// @notice Revert when owner tries to burn before reaching their premia cap.
+    error PremiaCapNotReached();
+
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
     //////////////////////////////////////////////////////////////*/
@@ -571,18 +597,10 @@ contract PanopticPool is Multicall {
                          POSITION MINTING LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Validates the current options of the user, and mints a new position.
-    /// @param tokenId The tokenId of the newly minted position
-    /// @param positionSize The size of the position to be minted, expressed in terms of the asset
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
-    /// denominated as X32 = (`ratioLimit * 2^32`)
-    /// @param owner The owner of the option position to be minted
-    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
-    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
+        LeftRightUnsigned premiaCaps, // cap on token0 premia across all long legs in right slot, cap on token1 in left slot
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
@@ -591,11 +609,13 @@ contract PanopticPool is Multicall {
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
+        // Store the premia caps & checkpointed accumulator values for this position
+        s_premiaCaps[owner][tokenId] = premiaCaps;
+
         _updateSettlementPostMint(
             tokenId,
             collectedByLeg,
             positionSize,
-            effectiveLiquidityLimitX32,
             owner
         );
 
@@ -1664,13 +1684,11 @@ contract PanopticPool is Multicall {
     /// @param tokenId The option position that was minted
     /// @param collectedByLeg The amount of tokens collected in the corresponding chunk for each leg of the position
     /// @param positionSize The size of the position, expressed in terms of the asset
-    /// @param effectiveLiquidityLimitX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity`
     /// @param owner The owner of the option position to be minted
     function _updateSettlementPostMint(
         TokenId tokenId,
         LeftRightUnsigned[4] memory collectedByLeg,
         uint128 positionSize,
-        uint64 effectiveLiquidityLimitX32,
         address owner
     ) internal {
         // ADD the current tokenId to the position list hash (hash = XOR of all keccak256(tokenId))
@@ -1714,13 +1732,14 @@ contract PanopticPool is Multicall {
                     .toLeftSlot(uint128(grossCurrent1));
             }
 
-            // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
-            // new totalLiquidity (total sold) = removedLiquidity + netLiquidity (R + N)
-            uint256 totalLiquidity = _checkLiquiditySpread(
-                tokenId,
-                leg,
-                isLong == 0 ? MAX_SPREAD : Math.min(effectiveLiquidityLimitX32, MAX_SPREAD)
-            );
+            // No longer enforcing a liquidity limit at mint - instead, reproduce _checkLiquiditySpread's internal logic
+            uint256 totalLiquidity;
+            {
+                (, uint128 netLiquidity, uint128 removedLiquidity) = _getLiquidities(tokenId, leg);
+                unchecked {
+                    totalLiquidity = netLiquidity + removedLiquidity;
+                }
+            }
 
             // if position is short, adjust `grossPremiumLast` upward to account for the increase in short liquidity
             if (isLong == 0) {
@@ -1774,6 +1793,143 @@ contract PanopticPool is Multicall {
             }
         }
     }
+
+    /// @notice Force close a position that has exceeded its premia cap
+    /// @param owner The owner of the position to close
+    /// @param tokenId The position to potentially close
+    /// @return reward The reward paid to the caller for closing the position
+    function exercisePositionExceedingPremiaCap(
+        address owner,
+        TokenId tokenId
+    ) external returns (uint128 reward) {
+        // Sanity: must be an active position
+        uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+        if (positionSize == 0) revert Errors.InvalidTokenIdParameter(0);
+
+        LeftRightUnsigned cap = s_premiaCaps[owner][tokenId];
+        // Must have a cap configured
+        if (LeftRightUnsigned.unwrap(cap) == 0) revert Errors.InputListFail();
+
+        // Calculate current accumulated premia for long legs
+        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        TokenId[] single = new TokenId[](1);
+        single[0] = tokenId;
+        (, LeftRightUnsigned longPremium, uint256[2][] positionBalance) = _calculateAccumulatedPremia(owner, single, false, true, currentTick);
+        uint128 token0Cap = s_premiaCaps[owner][tokenId].rightSlot();
+        uint128 token1Cap = s_premiaCaps[owner][tokenId].leftSlot();
+        uint128 owedPremia0 = owedPremia.rightSlot() * positionBalance[0][1]
+        uint128 owedPremia1 = owedPremia.rightSlot() * positionBalance[0][1]
+
+        if (owedPremia0 > token0Cap || owedPremia1 > token1Cap) {
+            // Close the position either way:
+            (LeftRightSigned paidAmounts, LeftRightSigned[4] premiaByLeg) = _burnOptions(
+                tokenId,
+                positionSize,
+                MIN_SWAP_TICK,
+                MAX_SWAP_TICK,
+                owner,
+                COMMIT_LONG_SETTLED
+            );
+
+            uint128 token0Overage = owedPremia0 - token0Cap;
+            uint128 token1Overage = owedPremia1 - token1Cap;
+
+            // this is equivalent to: if overage >= 1% of cap, pay out a reward
+            // overage / token0Cap >= 0.01 <=> overage >= token0Cap * 0.01 <=> overage / 0.01 >= token0Cap <=> overage * 100 >= token0Cap
+            bool rewardEligible0 = token0Overage * 100 >= token0Cap;
+            bool rewardEligible1 = token1Overage * 100 >= token1Cap;
+
+            // Get seller premia:
+            uint256 totalAvail0;
+            uint256 totalAvail1;
+            {
+                uint256 n = tokenId.countLegs();
+                for (uint256 i = 0; i < n; ) {
+                    if (tokenId.isLong(i) == 0) {
+                        LeftRightSigned avail = premiaByLeg[i];
+                        if (avail.rightSlot() > 0) totalAvail0 += uint128(uint256(int256(avail.rightSlot())));
+                        if (avail.leftSlot()  > 0) totalAvail1 += uint128(uint256(int256(avail.leftSlot())));
+                    }
+                    unchecked { ++i; }
+                }
+            }
+
+            uint128 reward0 = (rewardEligible0 && totalAvail0 > 0)
+                ? uint128((totalAvail0 * PREMIA_CAP_REWARD_BPS) / 10_000)
+                : 0;
+
+            uint128 reward1 = (rewardEligible1 && totalAvail1 > 0)
+                ? uint128((totalAvail1 * PREMIA_CAP_REWARD_BPS) / 10_000)
+                : 0;
+
+            if (reward0 > 0 || reward1 > 0) {
+                // 6) Delegate so we can pay the caller via CT.refund(...) within this scope
+                s_collateralToken0.delegate(owner);
+                s_collateralToken1.delegate(owner);
+                uint256 remaining0 = reward0;
+                uint256 remaining1 = reward1;
+
+                for (uint256 i = 0; i < tokenId.countLegs(); ) {
+                    if (tokenId.isLong(i) == 0) {
+                        // Identify the chunk
+                        bytes32 chunkKey = keccak256(
+                            abi.encodePacked(tokenId.strike(i), tokenId.width(i), tokenId.tokenType(i))
+                        );
+                        // Per-leg available amounts
+                        LeftRightSigned avail = premiaByLeg[i];
+                        uint256 avail0 = (avail.rightSlot() > 0) ? uint128(uint256(int256(avail.rightSlot()))) : 0;
+                        uint256 avail1 = (avail.leftSlot()  > 0) ? uint128(uint256(int256(avail.leftSlot())))  : 0;
+
+                        // Pro-rata slice for this chunk
+                        uint256 take0 = (totalAvail0 == 0 || remaining0 == 0) ? 0 : (avail0 * reward0) / totalAvail0;
+                        uint256 take1 = (totalAvail1 == 0 || remaining1 == 0) ? 0 : (avail1 * reward1) / totalAvail1;
+
+                        // Last-chunk rounding fix
+                        if (i == n - 1) {
+                            if (take0 < remaining0) take0 = remaining0;
+                            if (take1 < remaining1) take1 = remaining1;
+                        }
+
+                        // Reduce sellers' settled pool for this chunk
+                        LeftRightUnsigned st = s_settledTokens[chunkKey];
+                        s_settledTokens[chunkKey] = LeftRightUnsigned
+                            .wrap(uint128(st.rightSlot() > take0 ? st.rightSlot() - uint128(take0) : 0))
+                            .toLeftSlot(uint128(st.leftSlot()  > take1 ? st.leftSlot()  - uint128(take1) : 0));
+
+                        // Track what's left to allocate
+                        if (take0 <= remaining0) remaining0 -= take0; else remaining0 = 0;
+                        if (take1 <= remaining1) remaining1 -= take1; else remaining1 = 0;
+                    }
+                    unchecked { ++i; }
+                }
+
+                // Pay the caller now (tokens come from the same pool that the buyer just funded via premia)
+                if (reward0 > 0) s_collateralToken0.refund(owner, msg.sender, int128(reward0));
+                if (reward1 > 0) s_collateralToken1.refund(owner, msg.sender, int128(reward1));
+
+                // 11) Revoke delegation
+                s_collateralToken0.revoke(owner);
+                s_collateralToken1.revoke(owner);
+            }
+
+            // Clean up storage
+            delete s_premiaCaps[owner][tokenId];
+
+            emit PositionForceClosed(
+                owner,
+                msg.sender,
+                tokenId,
+                totalPremiaOwed,
+                premiaCap,
+                reward
+            );
+        } else {
+          // no-op
+        }
+    }
+
+    // TODO: must also delete s_premiaCaps[owner][tokenId]; everywhere else we close a position
+
 
     /// @notice Query the amount of premium available for withdrawal given a certain `premiumOwed` for a chunk.
     /// @dev Based on the ratio between `settledTokens` and the total premium owed to sellers in a chunk.
