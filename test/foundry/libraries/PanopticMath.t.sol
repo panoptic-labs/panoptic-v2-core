@@ -58,8 +58,8 @@ contract PanopticMathTest is Test, PositionUtils {
                     COMPUTE INTERNAL MEDIAN HELPERS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Encodes a set of offsets into the packed medianData format for testing.
-    function _encodeMedianData(int16[] memory offsets) internal pure returns (uint256) {
+    /// @notice Encodes a set of offsets into the packed oraclePack format for testing.
+    function _encodeOraclePack(int16[] memory offsets) internal pure returns (uint256) {
         // Assume the input offsets are sorted and create a simple orderMap (0->0, 1->1, etc.)
         uint256 data;
         data |= INITIAL_EPOCH << 232;
@@ -1627,7 +1627,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         int24 deltaTick = int24(bound(x, -149, 149));
 
-        uint256 initialData = _encodeMedianData(_generateSortedOffsets(x));
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
@@ -1684,7 +1684,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         deltaTick = x % 2 == 0 ? -deltaTick : deltaTick;
 
-        uint256 initialData = _encodeMedianData(_generateSortedOffsets(x));
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
 
         // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
         int56 tickCumulative = int56(
@@ -1730,7 +1730,7 @@ contract PanopticMathTest is Test, PositionUtils {
 
         uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / Constants.MAX_MEDIAN_DELTA)) + 1;
 
-        uint256 updatedData = _encodeMedianData(_generateSortedOffsets(0));
+        uint256 updatedData = _encodeOraclePack(_generateSortedOffsets(0));
 
         int24 referenceTick = int24(uint24(updatedData >> 96));
         for (uint256 i; i < n; ++i) {
@@ -1760,13 +1760,13 @@ contract PanopticMathTest is Test, PositionUtils {
     function test_NoUpdateInSameEpoch() public {
         // ARRANGE
         UniPoolObservationMock mockPool = new UniPoolObservationMock(100);
-        uint256 initialData = _encodeMedianData(_generateSortedOffsets(0));
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(0));
 
         // ACT: Set timestamp to be in the same epoch as the initial data.
         vm.warp(INITIAL_EPOCH * 64 + 1); // e.g., timestamp >> 6 will still be 5
         (, uint256 updatedData) = harness.computeInternalMedian(initialData, REFERENCE_TICK);
 
-        // ASSERT: The function should return 0 for updatedMedianData.
+        // ASSERT: The function should return 0 for updatedOraclePack.
         assertEq(updatedData, 0, "Update should not happen in the same epoch");
     }
 }

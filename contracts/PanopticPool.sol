@@ -196,7 +196,7 @@ contract PanopticPool is Multicall {
     //
     // [0 = CURRENT TICK] [3]
     // (000000000000) // dynamic
-    uint256 internal s_miniMedian;
+    uint256 internal s_oraclePack;
 
     // ERC4626 vaults that users collateralize their positions with
     // Each token has its own vault, listed in the same order as the tokens in the pool
@@ -276,10 +276,10 @@ contract PanopticPool is Multicall {
 
         // Store the median data
         unchecked {
-            s_miniMedian =
+            s_oraclePack =
                 (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
+                // see comment on s_oraclePack initialization for format of this magic number
                 (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
                 // EMA1D at bits 207-186
                 (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
@@ -498,9 +498,9 @@ contract PanopticPool is Multicall {
 
         ) = s_univ3pool.slot0();
 
-        (, uint256 medianData) = PanopticMath.computeInternalMedian(s_miniMedian, currentTick);
+        (, uint256 oraclePack) = PanopticMath.computeInternalMedian(s_oraclePack, currentTick);
 
-        if (medianData != 0) s_miniMedian = medianData;
+        if (oraclePack != 0) s_oraclePack = oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -568,15 +568,15 @@ contract PanopticPool is Multicall {
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        uint256 medianData = _validateSolvency(
+        uint256 oraclePack = _validateSolvency(
             msg.sender,
             finalPositionIdList,
             BP_DECREASE_BUFFER,
             usePremiaAsCollateral
         );
 
-        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
-        if (medianData != 0) s_miniMedian = medianData;
+        // Update `s_oraclePack` with a new observation if the last observation is old enough (returned oraclePack is nonzero)
+        if (oraclePack != 0) s_oraclePack = oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -797,7 +797,7 @@ contract PanopticPool is Multicall {
     /// @param positionIdList The list of positions to validate solvency for
     /// @param buffer The buffer to apply to the collateral requirement for `user`
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    /// @return If nonzero (enough time has passed since last observation), the updated value for `s_miniMedian` with a new observation
+    /// @return If nonzero (enough time has passed since last observation), the updated value for `s_oraclePack` with a new observation
     function _validateSolvency(
         address user,
         TokenId[] calldata positionIdList,
@@ -809,8 +809,8 @@ contract PanopticPool is Multicall {
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 lastObservedTick,
-            uint256 medianData
-        ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+            uint256 oraclePack
+        ) = PanopticMath.getOracleTicks(s_univ3pool, s_oraclePack);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
@@ -821,7 +821,7 @@ contract PanopticPool is Multicall {
 
         _checkSolvency(user, positionIdList, tickData, buffer, usePremiaAsCollateral);
 
-        return medianData;
+        return oraclePack;
     }
 
     /// @notice Validates the solvency of `user` from tickData.
@@ -913,7 +913,7 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned usePremiaAsCollateral
     ) external {
         // Assert the account we are liquidating is actually insolvent
-        int24 twapTick = getUniV3TWAP();
+        int24 twapTick = getTWAP();
         int24 currentTick;
 
         TokenId tokenId;
@@ -928,7 +928,7 @@ contract PanopticPool is Multicall {
             int24 lastObservedTick;
             (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
                 s_univ3pool,
-                s_miniMedian
+                s_oraclePack
             );
 
             unchecked {
@@ -1395,10 +1395,10 @@ contract PanopticPool is Multicall {
     /// @return Whether the protocol should be in Safe Mode.
     function isSafeMode() public view returns (bool) {
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-        uint256 medianData = s_miniMedian;
+        uint256 oraclePack = s_oraclePack;
 
-        // Extract the relevant EMAs from the packed medianData
-        (, , int24 EMA1H, int24 EMA10m) = PanopticMath.getEMAs(medianData);
+        // Extract the relevant EMAs from oraclePack
+        (, , int24 EMA1H, int24 EMA10m) = PanopticMath.getEMAs(oraclePack);
 
         // Condition 1: Check for a sudden deviation of the spot price from the fast-moving EMA.
         // This is your primary defense against a flash crash or single-block manipulation.
@@ -1491,7 +1491,7 @@ contract PanopticPool is Multicall {
     /// @return fastOracleTick The fast oracle tick, sourced from the internal 10-minute EMA.
     /// @return slowOracleTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
     /// @return latestObservation The reconstructed absolute tick of the latest observation stored in the internal oracle.
-    /// @return medianData The current value of the 8-slot internal observation queue (`s_miniMedian`)
+    /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
     function getOracleTicks()
         external
         view
@@ -1500,12 +1500,12 @@ contract PanopticPool is Multicall {
             int24 fastOracleTick,
             int24 slowOracleTick,
             int24 latestObservation,
-            uint256 medianData
+            uint256 oraclePack
         )
     {
         (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath
-            .getOracleTicks(s_univ3pool, s_miniMedian);
-        medianData = s_miniMedian;
+            .getOracleTicks(s_univ3pool, s_oraclePack);
+        oraclePack = s_oraclePack;
     }
 
     /// @notice Get the current number of legs across all open positions for an account.
@@ -1534,8 +1534,8 @@ contract PanopticPool is Multicall {
 
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
-    function getUniV3TWAP() internal view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapEMA(s_miniMedian);
+    function getTWAP() internal view returns (int24 twapTick) {
+        twapTick = PanopticMath.twapEMA(s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////

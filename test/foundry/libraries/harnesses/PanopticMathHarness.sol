@@ -205,9 +205,9 @@ contract PanopticMathHarness is Test {
     }
 
     function computeInternalMedian(
-        uint256 medianData,
+        uint256 oraclePack,
         int24 currentTick
     ) public view returns (int24, uint256) {
-        return PanopticMath.computeInternalMedian(medianData, currentTick);
+        return PanopticMath.computeInternalMedian(oraclePack, currentTick);
     }
 }

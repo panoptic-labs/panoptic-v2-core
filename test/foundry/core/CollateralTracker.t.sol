@@ -157,10 +157,10 @@ contract PanopticPoolHarness is PanopticPool {
         (, int24 currentTick, , , , , ) = uniswapPool.slot0();
 
         unchecked {
-            s_miniMedian =
+            s_oraclePack =
                 (uint256(block.number) << 216) +
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
+                // see comment on s_oraclePack initialization for format of this magic number
                 (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
                 (uint256(uint24(currentTick)) << 24) + // add to slot 4
                 (uint256(uint24(currentTick))); // add to slot 3
@@ -205,10 +205,6 @@ contract PanopticPoolHarness is PanopticPool {
 
     function revoke(address delegatee, CollateralTracker collateralToken) external {
         collateralToken.revoke(delegatee);
-    }
-
-    function getTWAP() external view returns (int24 twapTick) {
-        return PanopticPool.getUniV3TWAP();
     }
 
     function positionBalance(

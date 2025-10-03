@@ -149,7 +149,7 @@ contract Misctest is Test, PositionUtils {
     int24 fastOracleTick;
     int24 lastObservedTick;
 
-    uint256 medianData;
+    uint256 oraclePack;
 
     uint256 assetsBefore0;
     uint256 assetsBefore1;
@@ -4149,7 +4149,7 @@ contract Misctest is Test, PositionUtils {
 
         // deposit bare minimum for naked mints
         //ct0.deposit(0, Bob);
-        ct1.deposit(17_820, Bob);
+        ct1.deposit(17_850, Bob);
 
         // mint succeeds
         mintOptions(
@@ -4187,9 +4187,9 @@ contract Misctest is Test, PositionUtils {
         vm.startPrank(Swapper);
 
         // setup mini-median price array
-        for (uint256 i = 0; i < 10; ++i) {
+        for (uint256 i = 0; i < 60; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 120);
+            vm.warp(block.timestamp + 120); // 2 mins steps
             vm.roll(block.number + 1);
             pp.pokeMedian();
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
@@ -4202,6 +4202,10 @@ contract Misctest is Test, PositionUtils {
 
         IERC20Partial(ct0.asset()).approve(address(ct0), 1_000_000);
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
+
+        (currentTick, , , , oraclePack) = pp.getOracleTicks();
+        int24 TWAPtick = PanopticMath.twapEMA(oraclePack);
+        console2.log("TWAPtick", TWAPtick);
 
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
@@ -4701,7 +4705,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -4734,10 +4738,10 @@ contract Misctest is Test, PositionUtils {
             Constants.MIN_V3POOL_TICK,
             true
         );
-        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update 1");
-        assertEq(medianData, medianDataStale, "no slow oracle update 2");
+        assertEq(oraclePack, oraclePackStale, "no slow oracle update 2");
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
@@ -4752,37 +4756,37 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update 3");
-        assertTrue(medianData != medianDataStale, "oracle median data update 4");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update 4");
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data update");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data update");
     }
 
     function test_Success_OraclePoke_burn() public {
@@ -4808,7 +4812,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -4836,10 +4840,10 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(medianData, medianDataStale, "no slow oracle update");
+        assertEq(oraclePack, oraclePackStale, "no slow oracle update");
 
         vm.warp(block.timestamp + 1);
         vm.roll(block.number + 1);
@@ -4853,37 +4857,37 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
 
         vm.warp(block.timestamp + 64);
         vm.roll(block.number + 1);
         pp.pokeMedian();
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick != slowOracleTickStale, "slow oracle updated");
-        assertTrue(medianData != medianDataStale, "oracle median data updated");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated");
     }
 
     function test_Success_OraclePoke_loop() public {
@@ -4893,7 +4897,7 @@ contract Misctest is Test, PositionUtils {
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-        (currentTick, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        (currentTick, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
         vm.warp(0);
         vm.roll(block.number + 1);
 
@@ -4913,7 +4917,7 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -10, 10, 10 ** 18);
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        (, , slowOracleTick, , medianData) = pp.getOracleTicks();
+        (, , slowOracleTick, , oraclePack) = pp.getOracleTicks();
 
         // mint OTM position
         $posIdList.push(
@@ -4937,10 +4941,10 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , int24 slowOracleTickStale, , uint256 medianDataStale) = pp.getOracleTicks();
+        (, , int24 slowOracleTickStale, , uint256 oraclePackStale) = pp.getOracleTicks();
 
         assertEq(slowOracleTick, slowOracleTickStale, "no slow oracle update");
-        assertEq(medianData, medianDataStale, "no slow oracle update");
+        assertEq(oraclePack, oraclePackStale, "no slow oracle update");
 
         vm.warp(block.timestamp + 2);
         vm.roll(block.number + 1);
@@ -4954,10 +4958,10 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        (, , slowOracleTickStale, , medianDataStale) = pp.getOracleTicks();
+        (, , slowOracleTickStale, , oraclePackStale) = pp.getOracleTicks();
 
         assertTrue(slowOracleTick == slowOracleTickStale, "no slow oracle update here?");
-        assertTrue(medianData != medianDataStale, "oracle median data updated here?");
+        assertTrue(oraclePack != oraclePackStale, "oracle median data updated here?");
     }
 
     function test_Success_OraclePoke_Max_Deviation() public {
@@ -4977,7 +4981,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10, 10, 10 ** 18);
         }
 
-        (currentTick, , , , medianData) = pp.getOracleTicks();
+        (currentTick, , , , oraclePack) = pp.getOracleTicks();
 
         // swap to more than MAX_MEDIAN_DELTA ticks away
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-Constants.MAX_MEDIAN_DELTA - 10));
@@ -4987,12 +4991,12 @@ contract Misctest is Test, PositionUtils {
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
         pp.pokeMedian();
 
-        (int24 currentTickNew, , int24 slowOracleTickNew, , uint256 medianDataNew) = pp
+        (int24 currentTickNew, , int24 slowOracleTickNew, , uint256 oraclePackNew) = pp
             .getOracleTicks();
 
         assertEq(
-            int24(uint24(medianData)) - Constants.MAX_MEDIAN_DELTA,
-            int24(uint24(medianDataNew)),
+            int24(uint24(oraclePack)) - Constants.MAX_MEDIAN_DELTA,
+            int24(uint24(oraclePackNew)),
             "uncapped slow oracle update"
         );
     }
