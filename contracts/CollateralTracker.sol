@@ -143,6 +143,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ///      A user's current debt = originalDebt * (currentBorrowIndex / userBorrowIndexSnapshot)
     LeftRightUnsigned internal s_interestRateAccumulator;
 
+    /*//////////////////////////////////////////////////////////////
+                                STORAGE
+    //////////////////////////////////////////////////////////////*/
+
     /// @notice Tracks each user's borrowing state and last interaction checkpoint
     /// @dev Packed layout:
     ///      - Left slot (128 bits): Net borrows = netShorts - netLongs
@@ -680,7 +684,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 uint128 currentBorrowIndex,
                 uint128 _unrealizedGlobalInterest,
                 uint256 currentTime
-            ) = _calculateCurrentInterestState(inAMM);
+            ) = _calculateCurrentInterestState(inAMM, _updateInterestRate());
 
             // USER
             LeftRightSigned userState = s_interestState[owner];
@@ -742,7 +746,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return _unrealizedGlobalInterest Total unrealized interest including new accrual
     /// @return currentTime Current block timestamp
     function _calculateCurrentInterestState(
-        uint128 inAMM
+        uint128 inAMM,
+        uint128 interestRate
     )
         internal
         view
@@ -758,7 +763,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             _unrealizedGlobalInterest = accumulator.leftSlot();
             if (deltaTime > 0) {
                 // Calculate interest growth
-                uint128 rawInterest = (Math.wTaylorCompounded(interestRate(), uint128(deltaTime)))
+                uint128 rawInterest = (Math.wTaylorCompounded(interestRate, uint128(deltaTime)))
                     .toUint128();
                 // Calculate interest owed on borrowed amount
                 uint128 interestOwed = Math.mulDivWadRoundingUp(inAMM, rawInterest).toUint128();
@@ -775,8 +780,20 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice Returns the interest rate per second based on pool utilization
     /// @return The interest rate per second in 18 decimal precision
-    function interestRate() public view returns (uint128) {
-        return s_riskEngine.getInterestRate(_poolUtilization());
+    function interestRate() external view returns (uint128) {
+        return s_riskEngine.interestRateView(_poolUtilizationWAD());
+    }
+
+    /// @notice Returns the interest rate per second based on pool utilization
+    /// @return The interest rate per second in 18 decimal precision
+    function _interestRateView() internal view returns (uint128) {
+        return s_riskEngine.interestRateView(_poolUtilizationWAD());
+    }
+
+    /// @notice Returns the interest rate per second based on pool utilization
+    /// @return The interest rate per second in 18 decimal precision
+    function _updateInterestRate() internal returns (uint128) {
+        return s_riskEngine.interestRate(_poolUtilizationWAD());
     }
 
     /// @notice Calculates interest owed by a user based on their borrow state
@@ -817,7 +834,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @return Amount of interest owed based on last compounded index
     function _owedInterest(address owner) internal view returns (uint128) {
         LeftRightSigned userState = s_interestState[owner];
-        (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(s_inAMM);
+        (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
+            s_inAMM,
+            _interestRateView()
+        );
         return _getUserInterest(userState, currentBorrowIndex);
     }
 
@@ -825,7 +845,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev Simulates interest accrual up to the current block timestamp
     /// @return The borrow index as if interest was compounded at current timestamp
     function _calculateCurrentBorrowIndex() internal view returns (uint256) {
-        (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(s_inAMM);
+        (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
+            s_inAMM,
+            _interestRateView()
+        );
         return currentBorrowIndex;
     }
 
@@ -851,6 +874,19 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 Math.mulDivRoundingUp(
                     s_inAMM + s_interestRateAccumulator.leftSlot(),
                     DECIMALS,
+                    totalAssets()
+                );
+        }
+    }
+
+    /// @notice Get the pool utilization defined by the ratio of assets in the AMM to total assets.
+    /// @return poolUtilization The pool utilization in WAD
+    function _poolUtilizationWAD() internal view returns (uint256 poolUtilization) {
+        unchecked {
+            return
+                Math.mulDivRoundingUp(
+                    s_inAMM + s_interestRateAccumulator.leftSlot(),
+                    WAD,
                     totalAssets()
                 );
         }

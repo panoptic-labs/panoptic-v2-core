@@ -37,6 +37,13 @@ import {TokenId} from "@types/TokenId.sol";
 contract RiskEngine {
     using Math for uint256;
 
+    /// @notice Emitted when a borrow rate is updated.
+    event BorrowRateUpdated(
+        address indexed collateralToken,
+        uint256 avgBorrowRate,
+        uint256 rateAtTarget
+    );
+
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -68,6 +75,12 @@ contract RiskEngine {
     /// @notice Pool utilization above which selling is 100% collateral backed, represented as percentage * 10_000.
     /// @dev i.e 90% -> 0.9 * 10_000_000 = 9_000_000.
     uint256 immutable SATURATED_POOL_UTIL;
+
+    /*//////////////////////////////////////////////////////////////
+                                STORAGE
+    //////////////////////////////////////////////////////////////*/
+
+    mapping(CollateralTracker collaterakTracker => int128 rateAtTarget) public s_rateAtTarget;
 
     /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
@@ -1003,7 +1016,11 @@ contract RiskEngine {
                   ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
 
-    function getInterestRate(uint256 utilization) external pure returns (uint128) {
+    function interestRateView(uint256 utilization) external view returns (uint128) {
+        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
+
+    function interestRate(uint256 utilization) external returns (uint128) {
         return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 }
