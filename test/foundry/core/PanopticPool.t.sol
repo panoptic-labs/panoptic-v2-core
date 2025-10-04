@@ -2618,6 +2618,142 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    function test_Success_mintOptions_ITMShortPut_0(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            1
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        uint256 expectedSwap1;
+        {
+            int256 amount0Required = SqrtPriceMath.getAmount0Delta(
+                currentSqrtPriceX96 < sqrtLower ? sqrtLower : currentSqrtPriceX96,
+                sqrtUpper,
+                int128(expectedLiq)
+            );
+
+            console2.log("amount0R", amount0Required);
+            (, expectedSwap1) = PositionUtils.simulateSwap(
+                pool,
+                tickLower,
+                tickUpper,
+                expectedLiq,
+                router,
+                token0,
+                token1,
+                fee,
+                false,
+                -amount0Required
+            );
+            console2.log("expectedSwap1", expectedSwap1);
+            vm.startPrank(Alice);
+        }
+
+        console2.log("positionSize", positionSize);
+        {
+            TokenId[] memory posIdList = new TokenId[](1);
+            posIdList[0] = tokenId;
+
+            // reversing the tick limits here to make sure they get entered into the SFPM properly
+            // this test will fail if it does not (because no ITM swaps will occur)
+            mintOptions(pp, posIdList, positionSize, 0, TickMath.MAX_TICK, TickMath.MIN_TICK, true);
+        }
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
+
+        console2.log("expectedLi", expectedLiq);
+        uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(
+            sqrtLower,
+            sqrtUpper,
+            expectedLiq
+        );
+
+        {
+            (, uint256 inAMM, ) = ct0.getPoolData();
+            assertEq(inAMM, 0, "inAMM0");
+        }
+
+        {
+            (, uint256 inAMM, ) = ct1.getPoolData();
+            assertApproxEqAbs(inAMM, amount1, 10, "inAMM1");
+        }
+
+        {
+            assertEq(
+                pp.positionsHash(Alice),
+                uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+            );
+
+            assertEq(pp.numberOfLegs(Alice), 1);
+
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
+
+            assertEq(balance, positionSize, "balance");
+            assertEq(poolUtilization1, (amount1 * 10000) / ct1.totalSupply(), "utilization 1");
+            assertEq(poolUtilization0, 0, "utilization 0");
+        }
+
+        {
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                positionSize
+            );
+
+            int256 amount1Moved = currentSqrtPriceX96 < sqrtLower
+                ? int256(0)
+                : SqrtPriceMath.getAmount1Delta(
+                    sqrtLower,
+                    currentSqrtPriceX96 > sqrtUpper ? sqrtUpper : currentSqrtPriceX96,
+                    int128(expectedLiq)
+                );
+
+            int256 notionalVal = int256(expectedSwap1) + amount1Moved - shortAmounts.leftSlot();
+
+            // set itm spread fee to 0
+            int256 ITMSpread = notionalVal > 0
+                ? (notionalVal * int24(2 * ((0 * fee) / 100))) / 10_000
+                : -(notionalVal * int24(2 * ((0 * fee) / 100))) / 10_000;
+
+            assertApproxEqAbs(
+                ct1.balanceOf(Alice),
+                uint256(
+                    int256(uint256(type(uint104).max)) -
+                        notionalVal -
+                        (shortAmounts.leftSlot() * 10) /
+                        10_000
+                ),
+                uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
+                "alice balance 1"
+            );
+
+            assertEq(ct0.balanceOf(Alice), uint256(type(uint104).max), "alice balance 0");
+        }
+    }
+
     function test_Success_mintOptions_ITMShortCall(
         uint256 x,
         uint256 widthSeed,
@@ -2654,6 +2790,7 @@ contract PanopticPoolTest is PositionUtils {
                 sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
                 int128(expectedLiq)
             );
+            console2.log("amount1R", amount1Required);
 
             (expectedSwap0, ) = PositionUtils.simulateSwap(
                 pool,
@@ -2668,6 +2805,7 @@ contract PanopticPoolTest is PositionUtils {
                 -amount1Required
             );
 
+            console2.log("expectedSwap0", expectedSwap0);
             vm.startPrank(Alice);
         }
 
