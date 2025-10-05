@@ -283,6 +283,42 @@ library Math {
     /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
     /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
     /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
+    function getAmount0ForLiquidityUp(
+        LiquidityChunk liquidityChunk
+    ) internal pure returns (uint256) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
+        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+        unchecked {
+            return
+                mulDivRoundingUp(
+                    mulDivRoundingUp(
+                        uint256(liquidityChunk.liquidity()) << 96,
+                        highPriceX96 - lowPriceX96,
+                        highPriceX96
+                    ),
+                    1,
+                    lowPriceX96
+                );
+        }
+    }
+
+    /// @notice Calculates the amount of token1 received for a given LiquidityChunk.
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token1 represented by `liquidityChunk` when `currentTick > tickUpper`
+    function getAmount1ForLiquidityUp(
+        LiquidityChunk liquidityChunk
+    ) internal pure returns (uint256) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
+        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+
+        unchecked {
+            return mulDiv96RoundingUp(liquidityChunk.liquidity(), highPriceX96 - lowPriceX96);
+        }
+    }
+
+    /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
     function getAmount0ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
