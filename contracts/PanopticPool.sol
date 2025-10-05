@@ -649,8 +649,8 @@ contract PanopticPool is Multicall {
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
-        uint32 commissions;
-        LeftRightUnsigned utilizations;
+        uint32 utilizations;
+        LeftRightUnsigned commissions;
         LeftRightSigned paidAmounts;
 
         // stack too deep
@@ -664,8 +664,8 @@ contract PanopticPool is Multicall {
                     shortAmounts.rightSlot(),
                     _totalSwapped.rightSlot()
                 );
-            commissions = uint32(utilizationAndCommission0.rightSlot());
-            utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
+            utilizations = uint32(utilizationAndCommission0.rightSlot());
+            commissions = commissions.toRightSlot(utilizationAndCommission0.leftSlot());
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
         {
@@ -676,14 +676,14 @@ contract PanopticPool is Multicall {
                     shortAmounts.leftSlot(),
                     _totalSwapped.leftSlot()
                 );
-            commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
-            utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
+            utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
+            commissions = commissions.toLeftSlot(utilizationAndCommission1.leftSlot());
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
-            return (commissions, utilizations, paidAmounts);
+            return (utilizations, commissions, paidAmounts);
         }
     }
 
