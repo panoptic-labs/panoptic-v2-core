@@ -5422,8 +5422,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 positionSize0 / 2
             );
 
-            collateralToken1.withdraw(
-                collateralToken1.maxWithdraw(Alice) - uint128(shortAmounts.leftSlot()) / 1000 - 1,
+            collateralToken0.withdraw(
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
                 Alice,
                 Alice
             );
@@ -9591,7 +9591,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 expectedTotalBalance = expectedBal + expectedInAMM;
 
         // _inAMM() * DECIMALS) / totalAssets()
-        uint256 expectedPoolUtilization = (expectedInAMM * 10_000) / expectedTotalBalance;
+        uint256 expectedPoolUtilization = Math.mulDivRoundingUp(
+            expectedInAMM,
+            10_000,
+            expectedTotalBalance
+        );
 
         (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
             .getPoolData();
