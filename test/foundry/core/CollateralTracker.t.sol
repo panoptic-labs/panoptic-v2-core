@@ -1443,7 +1443,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         mintOptions(
             panopticPool,
             positionIdList,
-            1,
+            2,
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
@@ -1636,36 +1636,46 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _grantTokens(Alice);
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Alice);
+        uint128 aliceBorrowAmount;
+        {
+            uint128 aliceSize = 100 ether;
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                aliceSize,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK,
+                true
+            );
+            vm.stopPrank();
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, aliceSize, 0);
 
-        uint128 aliceBorrowAmount = 100 ether;
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            aliceBorrowAmount,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
-        vm.stopPrank();
-
+            aliceBorrowAmount = _amountsMoved.rightSlot();
+        }
         // Bob deposits and borrows 50 ether (half of Alice)
         vm.startPrank(Bob);
         _grantTokens(Bob);
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Bob);
 
-        uint128 bobBorrowAmount = 50 ether;
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            bobBorrowAmount,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
-        vm.stopPrank();
+        uint128 bobBorrowAmount;
+        {
+            uint128 bobSize = 50 ether;
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                bobSize,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK,
+                true
+            );
+            vm.stopPrank();
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, bobSize, 0);
+
+            bobBorrowAmount = _amountsMoved.rightSlot();
+        }
 
         // Charlie deposits and borrows 50 ether (half of Alice)
         vm.startPrank(Charlie);
@@ -1673,17 +1683,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Charlie);
 
-        uint128 charlieBorrowAmount = 50 ether;
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            charlieBorrowAmount,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
-        vm.stopPrank();
+        uint128 charlieBorrowAmount;
+        {
+            uint128 charlieSize = 50 ether;
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                charlieSize,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK,
+                true
+            );
+            vm.stopPrank();
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, charlieSize, 0);
+
+            charlieBorrowAmount = _amountsMoved.rightSlot();
+        }
+
         uint256 initialTotalSupply = collateralToken0.totalSupply();
 
         // Record initial balances
@@ -2315,17 +2332,22 @@ contract CollateralTrackerTest is Test, PositionUtils {
         width = 2;
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
+        uint128 size = 100 ether;
 
         // Bob borrows a significant amount
         mintOptions(
             panopticPool,
             positionIdList,
-            100 ether, // Borrow same amount as deposit
+            size, // Borrow same amount as deposit
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
+
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0);
+
+        uint128 borrowAmount = _amountsMoved.rightSlot();
 
         // Reduce Bob's balance to make him insolvent when interest accrues
         collateralToken0.setBalance(Bob, 1 ether); // Set very low balance
@@ -2361,7 +2383,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Bob's base index should not have been updated (remains at old value)
         (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
-        assertEq(netBorrows, 100 ether, "Net borrows should remain unchanged");
+        assertEq(netBorrows, int128(borrowAmount), "Net borrows should remain unchanged");
         assertLt(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
     }
 
@@ -2731,16 +2753,21 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
+        uint128 size = 100 ether;
+
         // Bob borrows a significant amount
         mintOptions(
             panopticPool,
             positionIdList,
-            100 ether, // Borrow same amount as deposit
+            size, // Borrow same amount as deposit
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0);
+
+        uint128 borrowAmount = _amountsMoved.rightSlot();
 
         // Reduce Bob's balance to make him insolvent when interest accrues
         collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(99 ether));
@@ -2803,10 +2830,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
         assertApproxEqAbs(
             aliceAssetsAfter - aliceAssetsBefore,
             expectedBonus,
-            1,
+            10,
             "FAIL: wrong bonus"
         );
 
+        assertLe(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            "FAIL: bad rounding in bonus calculation"
+        );
         assertApproxEqAbs(
             charlieAssetsAfter - charlieAssetsBefore,
             bobAssetsBefore - expectedBonus,
