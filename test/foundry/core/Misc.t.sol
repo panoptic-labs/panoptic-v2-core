@@ -4890,13 +4890,24 @@ contract Misctest is Test, PositionUtils {
             TokenId
                 .wrap(0)
                 .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 0, 0, 1, 0, int24(-665450), 2)
+                .addLeg(0, 1, 0, 0, 1, 0, int24(-654470), 2)
         );
 
         vm.startPrank(Bob);
 
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
         mintOptions(pp, $posIdList, 2 ** 95, 0, int24(887272), int24(-887272), true);
 
+        $posIdList.pop();
+
+        $posIdList.push(
+            TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+                .addLeg(0, 1, 0, 0, 1, 0, int24(-654470 + uniPool.tickSpacing()), 2)
+        );
+
+        mintOptions(pp, $posIdList, 2 ** 95, 0, int24(887272), int24(-887272), true);
         (, , uint256[2][] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
             Bob,
             false,
