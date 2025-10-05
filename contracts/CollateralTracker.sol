@@ -1105,4 +1105,5 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
         return tokenPaid;
     }
+
 }
