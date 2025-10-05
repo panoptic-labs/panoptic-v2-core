@@ -6,6 +6,7 @@ import {stdMath} from "forge-std/StdMath.sol";
 import {Errors} from "@libraries/Errors.sol";
 import {Math} from "@libraries/Math.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
+import {LiquidityChunk} from "@types/LiquidityChunk.sol";
 import {CallbackLib} from "@libraries/CallbackLib.sol";
 import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
@@ -32,6 +33,10 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 
     function addrToPoolId(address pool) public view returns (uint256) {
         return s_AddrToPoolIdData[pool];
+    }
+
+    function poolIdToPoolData(uint64 poolId) public view returns (PoolData memory) {
+        return s_poolIdToPoolData[poolId];
     }
 }
 
@@ -2666,6 +2671,205 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             int256(balance1Before) + amount1MovedsBurn[0] + amount1MovedsBurn[1],
             10
         );
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         FUZZ: MINT/BURN AMOUNTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Fuzz_mint_burn_TokenizedPosition_amountsMoved(uint256 x) public {
+        _initPool(x);
+
+        SemiFungiblePositionManager.PoolData memory poolData;
+        poolData = sfpm.poolIdToPoolData(poolId);
+
+        int24 width = int24(uint24(((x >> 48) % 2047) + 1));
+        int24 strike = int24(
+            bound(
+                int256(x >> 64),
+                poolData.minEnforcedTick + (width * tickSpacing) / 2,
+                poolData.maxEnforcedTick - (width * tickSpacing) / 2
+            )
+        );
+        strike = (strike / tickSpacing) * tickSpacing + (tickSpacing / 2) * (width % 2);
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+
+        vm.assume(
+            (strike - (width * tickSpacing) / 2 > currentTick) ||
+                (strike + (width * tickSpacing) / 2) < currentTick
+        );
+
+        positionSize = uint128(x >> 128);
+
+        uint256 asset = (x >> 1) % 2;
+        uint128 ratio = uint128((x % 127) + 1); // ratio
+        uint256 tokenType = (x >> 2) % 2;
+        tickLower = int24(strike - (width * tickSpacing) / 2);
+        tickUpper = int24(strike + (width * tickSpacing) / 2);
+        sqrtLower = TickMath.getSqrtRatioAtTick(tickLower);
+        sqrtUpper = TickMath.getSqrtRatioAtTick(tickUpper);
+
+        //console2.log('dd', getContractsForAmountAtTick(currentTick, tickLower, tickUpper, asset, positionSize));
+
+        //positionSize = uint128(
+        //    getContractsForAmountAtTick(currentTick, tickLower, tickUpper, asset, positionSize)
+        //)/ratio;
+
+        positionSize = uint128(bound(positionSize, 1, type(uint128).max)) / ratio;
+        console2.log("ss", positionSize, ratio);
+        {
+            uint256 explicitLiq = asset == 0
+                ? Math.mulDiv(
+                    positionSize * ratio,
+                    Math.mulDiv(sqrtLower, sqrtUpper, 2 ** 96),
+                    sqrtUpper - sqrtLower
+                )
+                : Math.mulDiv(positionSize * ratio, 2 ** 96, sqrtUpper - sqrtLower);
+            console2.log("exp", explicitLiq);
+
+            expectedLiq = uint128(explicitLiq);
+        }
+        vm.assume(expectedLiq < pool.maxLiquidityPerTick());
+        vm.assume(expectedLiq > 0);
+
+        int256 amountMoved0 = SqrtPriceMath.getAmount0Delta(
+            sqrtLower < currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtLower,
+            sqrtUpper,
+            int128(expectedLiq * ratio)
+        );
+        int256 amountMoved1 = SqrtPriceMath.getAmount1Delta(
+            sqrtLower,
+            sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
+            int128(expectedLiq * ratio)
+        );
+
+        vm.assume((amountMoved0 <= type(int128).max - 4) && (amountMoved1 < type(int128).max - 4));
+
+        console2.log("aM0", amountMoved0);
+        console2.log("aM1", amountMoved1);
+        /// position size is denominated in the opposite of asset, so we do it in the token that is not WETH
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0, // index
+            ratio, // ratio
+            asset, // asset
+            0, // isLong
+            tokenType, // tokenType
+            0, // riskPartnet
+            strike,
+            width
+        );
+
+        uint256 aliceBefore0 = IERC20Partial(token0).balanceOf(Alice);
+        uint256 aliceBefore1 = IERC20Partial(token1).balanceOf(Alice);
+
+        (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = sfpm
+            .mintTokenizedPosition(
+                tokenId,
+                uint128(positionSize),
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK
+            );
+
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, 0);
+
+        assertEq(
+            totalSwapped.rightSlot(),
+            currentTick < tickLower ? int128(_amountsMoved.rightSlot()) : int256(0),
+            "amount moved 0"
+        );
+        assertEq(
+            totalSwapped.leftSlot(),
+            currentTick > tickUpper ? int128(_amountsMoved.leftSlot()) : int256(0),
+            "amount moved 1"
+        );
+
+        uint256 aliceAfter0 = IERC20Partial(token0).balanceOf(Alice);
+        uint256 aliceAfter1 = IERC20Partial(token1).balanceOf(Alice);
+
+        assertEq(
+            (aliceBefore0 - aliceAfter0),
+            currentTick < tickLower ? _amountsMoved.rightSlot() : 0,
+            "balance delta 0"
+        );
+        assertEq(
+            (aliceBefore1 - aliceAfter1),
+            currentTick > tickUpper ? _amountsMoved.leftSlot() : 0,
+            "balance delta 1"
+        );
+
+        assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), positionSize, "pSize");
+
+        accountLiquidities = sfpm.getAccountLiquidity(
+            address(pool),
+            Alice,
+            tokenType,
+            tickLower,
+            tickUpper
+        );
+
+        assertEq(accountLiquidities.leftSlot(), 0, "account liquidities");
+        assertEq(accountLiquidities.rightSlot(), expectedLiq, "expectedLiq");
+
+        (uint256 realLiq, , , , ) = pool.positions(
+            keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
+        );
+
+        assertEq(realLiq, expectedLiq);
+
+        (collectedByLeg, totalSwapped) = sfpm.burnTokenizedPosition(
+            tokenId,
+            uint128(positionSize),
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK
+        );
+
+        _amountsMoved = PanopticMath.getAmountsMoved(tokenId.flipToBurnToken(), positionSize, 0);
+
+        assertEq(
+            totalSwapped.rightSlot(),
+            currentTick < tickLower ? -int128(_amountsMoved.rightSlot()) : int256(0),
+            "amount moved 0"
+        );
+        assertEq(
+            totalSwapped.leftSlot(),
+            currentTick > tickUpper ? -int128(_amountsMoved.leftSlot()) : int256(0),
+            "amount moved 1"
+        );
+
+        {
+            uint256 aliceAfterBurn0 = IERC20Partial(token0).balanceOf(Alice);
+            uint256 aliceAfterBurn1 = IERC20Partial(token1).balanceOf(Alice);
+            assertEq(
+                (aliceAfterBurn0 - aliceAfter0),
+                currentTick < tickLower ? _amountsMoved.rightSlot() : 0,
+                "balance delta 0"
+            );
+            assertEq(
+                (aliceAfterBurn1 - aliceAfter1),
+                currentTick > tickUpper ? _amountsMoved.leftSlot() : 0,
+                "balance delta 1"
+            );
+        }
+        assertEq(sfpm.balanceOf(Alice, TokenId.unwrap(tokenId)), 0, "pSize");
+
+        {
+            accountLiquidities = sfpm.getAccountLiquidity(
+                address(pool),
+                Alice,
+                tokenType,
+                tickLower,
+                tickUpper
+            );
+
+            assertEq(accountLiquidities.leftSlot(), 0, "account liquidities");
+            assertEq(accountLiquidities.rightSlot(), 0, "expectedLiq");
+        }
+        (realLiq, , , , ) = pool.positions(
+            keccak256(abi.encodePacked(address(sfpm), tickLower, tickUpper))
+        );
+
+        assertEq(realLiq, 0);
     }
 
     /*//////////////////////////////////////////////////////////////
