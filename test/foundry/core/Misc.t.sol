@@ -3725,7 +3725,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266263));
+        editCollateral(ct0, Bob, ct0.convertToShares(266269));
         editCollateral(ct1, Bob, 0);
 
         pp.validateCollateralWithdrawable(Bob, $posIdList, true);
@@ -3762,7 +3762,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266263, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 266269, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_validateCollateralWithdrawable() public {
