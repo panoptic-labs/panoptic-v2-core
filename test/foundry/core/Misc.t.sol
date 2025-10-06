@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
@@ -142,6 +143,7 @@ contract Misctest is Test, PositionUtils {
     CollateralTracker ct0;
     CollateralTracker ct1;
     PanopticHelper ph;
+    RiskEngine re;
 
     int24 currentTick;
     int256 twapTick;
@@ -201,12 +203,12 @@ contract Misctest is Test, PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPool(sfpm));
-        collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000)
-        );
+        collateralReference = address(new CollateralTracker(10));
         token0 = new ERC20S("token0", "T0", 18);
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
+
+        re = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
 
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -336,6 +338,7 @@ contract Misctest is Test, PositionUtils {
                     address(token0),
                     address(token1),
                     500,
+                    re,
                     uint96(block.timestamp)
                 )
             )
@@ -4905,21 +4908,16 @@ contract Misctest is Test, PositionUtils {
 
         (, currentTick, , , , , ) = uniPool.slot0();
 
-        LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
             Bob,
             currentTick,
             positionBalanceArray,
-            0,
-            0
+            LeftRightUnsigned.wrap(0),
+            LeftRightUnsigned.wrap(0),
+            ct0,
+            ct1
         );
 
-        LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
-            Bob,
-            currentTick,
-            positionBalanceArray,
-            0,
-            0
-        );
         (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
             tokenData0,
             tokenData1,

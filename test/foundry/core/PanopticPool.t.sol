@@ -22,6 +22,7 @@ import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
@@ -158,6 +159,7 @@ contract PanopticPoolTest is PositionUtils {
     PanopticPoolHarness pp;
     CollateralTracker ct0;
     CollateralTracker ct1;
+    RiskEngine re;
 
     PanopticHelper ph;
 
@@ -500,13 +502,15 @@ contract PanopticPoolTest is PositionUtils {
             new Pointer[][](0)
         );
 
+        re = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
         IERC20Partial(token0).approve(address(factory), type(uint104).max);
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
+            address(factory.deployNewPool(token0, token1, fee, re, uint96(block.timestamp)))
         );
 
         ct0 = pp.collateralToken0();
@@ -596,9 +600,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
-        collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000)
-        );
+        collateralReference = address(new CollateralTracker(10));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1563,7 +1565,26 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, token0, token1, ct0, ct1);
+        pp.startPool(pool, token0, token1, ct0, ct1, re);
+    }
+
+    /// @notice Tests that the riskEngine address is correctly set after initialization.
+    function test_Success_startPool_setsRiskEngine(uint256 x) public {
+        // Arrange: Deploy a fully initialized Panoptic Pool via the factory helper.
+        // This process calls `startPool` once internally.
+        _initWorld(x);
+
+        // Act: No action is needed, the action was the initialization itself.
+        // We just need to read the state.
+        RiskEngine configuredEngine = pp.riskEngine();
+
+        // Assert: The risk engine address stored in the PanopticPool
+        // must match the risk engine address used during setup.
+        assertEq(
+            address(configuredEngine),
+            address(re),
+            "Risk engine address was not set correctly"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -6299,10 +6320,10 @@ contract PanopticPoolTest is PositionUtils {
         // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
         // the result is rounded DOWN and NOT toward zero
         // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-        int256 exerciseFee = int256(-1024) >> uint256(rangesFromStrike);
+        int256 exerciseFee = int256(-1024000) >> uint256(rangesFromStrike);
 
-        exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
-        exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
+        exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000_000;
+        exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000_000;
         vm.assume(Math.abs(TWAPtick - currentTick) < 513);
         forceExercise(
             pp,
@@ -6436,7 +6457,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(ct0.balanceOf(Charlie)) -
                 int256(ct0.convertToShares(uint256(-refund0)));
 
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
+            LeftRightSigned refundAmounts = re.getRefundAmounts(
                 Charlie,
                 LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
                 int24(atTick),
@@ -7581,20 +7602,14 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        $tokenData0 = ct0.getAccountMarginDetails(
+        ($tokenData0, $tokenData1) = re.getMargin(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
-        );
-
-        $tokenData1 = ct1.getAccountMarginDetails(
-            Alice,
-            TWAPtick,
-            $positionBalanceArray,
-            $shortPremia.leftSlot(),
-            $longPremia.leftSlot()
+            $shortPremia,
+            $longPremia,
+            ct0,
+            ct1
         );
 
         // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
@@ -7728,7 +7743,7 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             LeftRightSigned bonusAmounts;
-            (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+            (bonusAmounts, ) = re.getLiquidationBonus(
                 $tokenData0,
                 $tokenData1,
                 Math.getSqrtRatioAtTick(TWAPtick),
@@ -7742,7 +7757,7 @@ contract PanopticPoolTest is PositionUtils {
                 $posIdLists[1]
             );
 
-            (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+            (bonusAmounts, ) = re.getLiquidationBonus(
                 $tokenData0,
                 $tokenData1,
                 Math.getSqrtRatioAtTick(TWAPtick),
@@ -8230,20 +8245,14 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        $tokenData0 = ct0.getAccountMarginDetails(
+        ($tokenData0, $tokenData1) = re.getMargin(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
-        );
-
-        $tokenData1 = ct1.getAccountMarginDetails(
-            Alice,
-            TWAPtick,
-            $positionBalanceArray,
-            $shortPremia.leftSlot(),
-            $longPremia.leftSlot()
+            $shortPremia,
+            $longPremia,
+            ct0,
+            ct1
         );
 
         // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
@@ -8374,7 +8383,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         LeftRightSigned bonusAmounts;
-        (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+        (bonusAmounts, ) = re.getLiquidationBonus(
             $tokenData0,
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
