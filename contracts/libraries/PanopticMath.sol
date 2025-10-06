@@ -662,7 +662,8 @@ library PanopticMath {
 
         LiquidityChunk liquidityChunk = getLiquidityChunk(tokenId, legIndex, positionSize);
 
-        // Add branching here for isLong rounding Up/Down to match Uniswap's moved token amounts
+        // Shorts round UP to ensure user pays enough (conservative for protocol)
+        // Longs round DOWN to ensure user receives correct amount (conservative for protocol)
         if (tokenId.isLong(legIndex) == 0) {
             amount0 = uint128(Math.getAmount0ForLiquidityUp(liquidityChunk));
             amount1 = uint128(Math.getAmount1ForLiquidityUp(liquidityChunk));
