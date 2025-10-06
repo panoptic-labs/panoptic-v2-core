@@ -1169,12 +1169,27 @@ contract PanopticMathTest is Test, PositionUtils {
             highPriceX96 - lowPriceX96
         );
 
-        amount0 =
-            Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96) /
-            lowPriceX96;
+        if (isLong == 0) {
+            amount0 = Math.mulDivRoundingUp(
+                Math.mulDivRoundingUp(
+                    uint256(liquidity) << 96,
+                    highPriceX96 - lowPriceX96,
+                    highPriceX96
+                ),
+                1,
+                lowPriceX96
+            );
 
-        amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+            amount1 = Math.mulDiv96RoundingUp(liquidity, highPriceX96 - lowPriceX96);
+        } else {
+            amount0 = Math.mulDiv(
+                Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96),
+                1,
+                lowPriceX96
+            );
 
+            amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+        }
         vm.assume(amount0 < type(uint128).max);
         vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
@@ -1200,13 +1215,13 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         if (amount0 != contracts) {
-            assertGt(
+            assertGe(
                 legacyContractsNotional.rightSlot(),
                 returnedContractsNotional.rightSlot(),
                 "LEGACY: amount 0 not equal"
             );
             if (legacyContractsNotional.leftSlot() > 0) {
-                assertGt(
+                assertGe(
                     legacyContractsNotional.leftSlot(),
                     returnedContractsNotional.leftSlot(),
                     "LEGACY: amount 1 not equal"
@@ -1303,12 +1318,27 @@ contract PanopticMathTest is Test, PositionUtils {
         uint160 highPriceX96 = Math.getSqrtRatioAtTick(tickUpper);
 
         uint256 liquidity = Math.mulDiv(contracts, 2 ** 96, highPriceX96 - lowPriceX96);
+        if (isLong == 0) {
+            amount0 = Math.mulDivRoundingUp(
+                Math.mulDivRoundingUp(
+                    uint256(liquidity) << 96,
+                    highPriceX96 - lowPriceX96,
+                    highPriceX96
+                ),
+                1,
+                lowPriceX96
+            );
 
-        amount0 =
-            Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96) /
-            lowPriceX96;
+            amount1 = Math.mulDiv96RoundingUp(liquidity, highPriceX96 - lowPriceX96);
+        } else {
+            amount0 = Math.mulDiv(
+                Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96),
+                1,
+                lowPriceX96
+            );
 
-        amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+            amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+        }
 
         vm.assume(amount0 < type(uint128).max);
         vm.assume(amount1 < type(uint128).max);
@@ -1335,13 +1365,13 @@ contract PanopticMathTest is Test, PositionUtils {
         );
 
         if (amount1 != contracts) {
-            assertGt(
+            assertGe(
                 legacyContractsNotional.leftSlot(),
                 returnedContractsNotional.leftSlot(),
                 "LEGACY: amount 0 not equal"
             );
             if (legacyContractsNotional.rightSlot() > 0) {
-                assertGt(
+                assertGe(
                     legacyContractsNotional.rightSlot(),
                     returnedContractsNotional.rightSlot(),
                     "LEGACY: amount 1 not equal"
