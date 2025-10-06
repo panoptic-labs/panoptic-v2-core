@@ -1540,7 +1540,7 @@ contract PanopticPool is Multicall {
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
         if (netLiquidity == 0 && removedLiquidity == 0) return totalLiquidity;
 
-        if (netLiquidity == 0) revert Errors.NotEnoughLiquidity();
+        if (netLiquidity == 0) revert Errors.NetLiquidityZero();
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
