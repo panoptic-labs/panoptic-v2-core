@@ -2279,7 +2279,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(stdError.divisionError);
+        vm.expectRevert(Errors.NetLiquidityZero.selector);
         mintOptions(
             pp,
             $tempIdList,
@@ -3319,13 +3319,13 @@ contract Misctest is Test, PositionUtils {
             // the positive premium is from the dummy short chunk
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(107) : int256(108),
+                i == 0 ? int256(104) : int256(105),
                 "Buyer paid premium twice"
             );
 
             assertEq(
                 ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                1085,
+                1083,
                 "Buyer paid premium twice"
             );
         }

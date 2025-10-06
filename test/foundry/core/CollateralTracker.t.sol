@@ -1435,7 +1435,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         mintOptions(
             panopticPool,
             positionIdList,
-            2,
+            1,
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
