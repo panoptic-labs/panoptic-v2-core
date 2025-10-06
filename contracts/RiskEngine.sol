@@ -1047,11 +1047,32 @@ contract RiskEngine {
         return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
+    function interestRate(
+        uint256 utilization,
+        uint256 adaptiveIRMState
+    ) external view returns (uint128) {
+        (uint256 avgRate, ) = _borrowRate(utilization, adaptiveIRMState);
+        return uint128(avgRate);
+        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
+
+    function updateInterestRate(
+        uint256 utilization,
+        uint256 adaptiveIRMState
+    ) external returns (uint128, uint256) {
+        (uint256 avgRate, int256 endRateAtTarget) = _borrowRate(utilization, adaptiveIRMState);
+        return (
+            uint128(avgRate),
+            uint256(uint128((block.timestamp << 96) + uint96(uint256(endRateAtTarget))))
+        );
+        //return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
+    }
+
     /// @dev Returns avgRate and endRateAtTarget.
     /// @dev Assumes that the inputs `marketParams` and `id` match.
     function _borrowRate(
         uint256 utilization,
-        LeftRightSigned adaptiveIRMState
+        uint256 adaptiveIRMState
     ) internal view returns (uint256, int256) {
         // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
 
@@ -1060,8 +1081,8 @@ contract RiskEngine {
             ? WAD - TARGET_UTILIZATION
             : TARGET_UTILIZATION;
         int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
-        int256 startRateAtTarget = int256(adaptiveIRMState.rightSlot() % 2 ** 96);
-        uint256 previousTime = uint128(adaptiveIRMState.rightSlot() >> 96);
+        int256 startRateAtTarget = int256(adaptiveIRMState % 2 ** 96);
+        uint256 previousTime = uint32(adaptiveIRMState >> 96);
 
         int256 avgRateAtTarget;
         int256 endRateAtTarget;
