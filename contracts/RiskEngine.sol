@@ -952,7 +952,7 @@ contract RiskEngine {
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
     /// @return buyCollateralRatio The buy collateral ratio at `utilization`
     function _buyCollateralRatio(
-        uint16 utilization
+        uint256 utilization
     ) internal view returns (uint256 buyCollateralRatio) {
         // linear from BUY to BUY/2 between 50% and 90%
         // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):
