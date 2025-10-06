@@ -34,6 +34,9 @@ library Errors {
     /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
     error InvalidTick();
 
+    /// @notice Liquidity in a chunk is above 2**128
+    error LiquidityTooHigh();
+
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
@@ -49,6 +52,9 @@ library Errors {
 
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)
     error NotEnoughLiquidity();
+
+    /// @notice CollateralTracker: The user does not own enough assets to open/close a position
+    error NotEnoughTokens(address tokenAddress, uint256 assetsRequested, uint256 assetBalance);
 
     /// @notice PanopticPool: Position is still solvent and cannot be liquidated
     error NotMarginCalled();
@@ -94,6 +100,9 @@ library Errors {
 
     /// @notice PanopticFactory: the zero address was supplied as a parameter
     error ZeroAddress();
+
+    /// @notice CollateralTracker: Mints/burns of a position returns no collateral requirement
+    error ZeroCollateralRequirement();
 
     /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
     error ZeroLiquidity();
