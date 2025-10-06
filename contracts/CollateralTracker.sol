@@ -118,6 +118,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
 
+    /*//////////////////////////////////////////////////////////////
+                                STORAGE
+    //////////////////////////////////////////////////////////////*/
+
     /**
      * @notice How the Borrow Index Works
      *
@@ -143,10 +147,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ///      A user's current debt = originalDebt * (currentBorrowIndex / userBorrowIndexSnapshot)
     LeftRightUnsigned internal s_interestRateAccumulator;
 
-    /*//////////////////////////////////////////////////////////////
-                                STORAGE
-    //////////////////////////////////////////////////////////////*/
-
     /// @notice Tracks each user's borrowing state and last interaction checkpoint
     /// @dev Packed layout:
     ///      - Left slot (128 bits): Net borrows = netShorts - netLongs
@@ -156,6 +156,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     ///        The global borrow index value when this user last accrued interest
     /// @dev Interest calculation: interestOwed = netBorrows * (currentIndex - userIndex) / userIndex
     mapping(address account => LeftRightSigned interestState) internal s_interestState;
+
+    /// @notice Tracks the state of the adaptive interest rate model
+    /// @dev Packed Layout:
+    ///     - Left slot (128 bits): nothing
+    ///     - Right slot upper 32 bits: last update timestamp
+    ///     - Right slot lower 96 bits: the rateAtTarget value in WAD
+    uint256 internal s_adaptiveIRMState;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -778,16 +785,16 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Returns the interest rate per second based on pool utilization
-    /// @return The interest rate per second in 18 decimal precision
-    function interestRate() external view returns (uint128) {
-        return s_riskEngine.interestRateView(_poolUtilizationWAD());
+    /*//////////////////////////////////////////////////////////////
+                  ADAPTIVE INTEREST RATE MODEL
+    //////////////////////////////////////////////////////////////*/
+
+    function _interestRateView(uint256 utilization) internal view returns (uint128) {
+        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
-    /// @notice Returns the interest rate per second based on pool utilization
-    /// @return The interest rate per second in 18 decimal precision
-    function _interestRateView() internal view returns (uint128) {
-        return s_riskEngine.interestRateView(_poolUtilizationWAD());
+    function _interestRate(uint256 utilization) internal returns (uint128) {
+        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     /// @notice Returns the interest rate per second based on pool utilization
@@ -836,7 +843,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         LeftRightSigned userState = s_interestState[owner];
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
             s_inAMM,
-            _interestRateView()
+            _interestRateView(_poolUtilizationWAD())
         );
         return _getUserInterest(userState, currentBorrowIndex);
     }
@@ -847,7 +854,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     function _calculateCurrentBorrowIndex() internal view returns (uint256) {
         (uint128 currentBorrowIndex, , ) = _calculateCurrentInterestState(
             s_inAMM,
-            _interestRateView()
+            _interestRateView(_poolUtilizationWAD())
         );
         return currentBorrowIndex;
     }

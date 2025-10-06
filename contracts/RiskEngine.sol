@@ -110,12 +110,6 @@ contract RiskEngine {
     int256 public constant ADJUSTMENT_SPEED = 50 ether / int256(365 days);
 
     /*//////////////////////////////////////////////////////////////
-                                STORAGE
-    //////////////////////////////////////////////////////////////*/
-
-    mapping(address collaterakTracker => int128 rateAtTarget) public s_rateAtTarget;
-
-    /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
 
@@ -1049,28 +1043,25 @@ contract RiskEngine {
                   ADAPTIVE INTEREST RATE MODEL
     //////////////////////////////////////////////////////////////*/
 
-    function interestRateView(uint256 utilization) external view returns (uint128) {
-        return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
-    }
-
     function interestRate(uint256 utilization) external returns (uint128) {
         return utilization == 0 ? uint128(1) : uint128(6341958396); // 0.2 * 10**18/(365*24*60*60) = 20% per year;
     }
 
     /// @dev Returns avgRate and endRateAtTarget.
     /// @dev Assumes that the inputs `marketParams` and `id` match.
-    /*
-    function _borrowRate(uint256 utilization) internal view returns (uint256, int256) {
+    function _borrowRate(
+        uint256 utilization,
+        LeftRightSigned adaptiveIRMState
+    ) internal view returns (uint256, int256) {
         // Safe "unchecked" cast because the utilization is smaller than 1 (scaled by WAD).
-    
 
         int256 _utilization = int256(utilization);
-        int256 errNormFactor = utilization > TARGET_UTILIZATION
+        int256 errNormFactor = int256(_utilization) > TARGET_UTILIZATION
             ? WAD - TARGET_UTILIZATION
             : TARGET_UTILIZATION;
-        int256 err = Math.wDivToZero(utilization - TARGET_UTILIZATION, errNormFactor);
-
-        int256 startRateAtTarget = s_rateAtTarget[msg.sender];
+        int256 err = Math.wDivToZero(_utilization - TARGET_UTILIZATION, errNormFactor);
+        int256 startRateAtTarget = int256(adaptiveIRMState.rightSlot() % 2 ** 96);
+        uint256 previousTime = uint128(adaptiveIRMState.rightSlot() >> 96);
 
         int256 avgRateAtTarget;
         int256 endRateAtTarget;
@@ -1083,9 +1074,8 @@ contract RiskEngine {
             // The speed is assumed constant between two updates, but it is in fact not constant because of interest.
             // So the rate is always underestimated.
             int256 speed = Math.wMulToZero(ADJUSTMENT_SPEED, err);
-            // market.lastUpdate != 0 because it is not the first interaction with this market.
             // Safe "unchecked" cast because block.timestamp - market.lastUpdate <= block.timestamp <= type(int256).max.
-            int256 elapsed = int256(block.timestamp - market.lastUpdate);
+            int256 elapsed = int256(block.timestamp - previousTime);
             int256 linearAdaptation = speed * elapsed;
 
             if (linearAdaptation == 0) {
@@ -1115,7 +1105,6 @@ contract RiskEngine {
         // Safe "unchecked" cast because avgRateAtTarget >= 0.
         return (uint256(_curve(avgRateAtTarget, err)), endRateAtTarget);
     }
-    */
 
     /// @dev Returns the rate for a given `_rateAtTarget` and an `err`.
     /// The formula of the curve is the following:
