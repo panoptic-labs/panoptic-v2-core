@@ -21,6 +21,9 @@ library Errors {
     /// @notice CollateralTracker: The amount of shares (or assets) deposited is larger than the maximum permitted
     error DepositTooLarge();
 
+    /// @notice PanopticPool: The list of provided TokenIds has a duplicate entry
+    error DuplicateTokenId();
+
     /// @notice PanopticPool: The effective liquidity (X32) is greater than min(`MAX_SPREAD`, `USER_PROVIDED_THRESHOLD`) during a long mint or short burn
     /// @dev Effective liquidity measures how much new liquidity is minted relative to how much is already in the pool
     error EffectiveLiquidityAboveThreshold();
@@ -74,6 +77,9 @@ library Errors {
     /// @notice CollateralTracker: The user has open/active option positions, so they cannot transfer collateral shares
     error PositionCountNotZero();
 
+    /// @notice PanopticPool: A position with the given token ID is not owned by the user and has positionSize=0
+    error PositionNotOwned();
+
     /// @notice SFPM: The maximum token deltas (excluding swaps) for a position exceed (2^127 - 5) at some valid price
     error PositionTooLarge();
 
@@ -106,6 +112,9 @@ library Errors {
 
     /// @notice CollateralTracker: Mints/burns of a position returns no collateral requirement
     error ZeroCollateralRequirement();
+
+    /// @notice PanopticMath: The supplied tokenId has no valid legs
+    error ZeroLegs();
 
     /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
     error ZeroLiquidity();

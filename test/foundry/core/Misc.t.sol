@@ -2322,9 +2322,16 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        TokenId[] memory longPositionList = new TokenId[](257);
+        TokenId[] memory longPositionList = new TokenId[](256);
 
-        for (uint256 i; i < 257; ++i) longPositionList[i] = $posIdList[0];
+        for (uint256 i; i < 256; ++i) {
+            TokenId tempTokenId = TokenId
+                .wrap(0)
+                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
+                .addLeg(0, 1, 1, 0, 0, 0, int24(int256(10 * i)), 2);
+
+            longPositionList[i] = tempTokenId;
+        }
 
         vm.expectRevert(stdError.arithmeticError);
         mintOptions(

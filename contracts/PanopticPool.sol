@@ -544,9 +544,12 @@ contract PanopticPool is Multicall {
                     tickLimitHigh
                 );
             } else {
+                uint128 positionSize = positionBalanceData.positionSize();
+                if (positionSize == 0) revert Errors.PositionNotOwned();
+
                 _burnOptions(
                     tokenId,
-                    positionBalanceData.positionSize(),
+                    positionSize,
                     tickLimitLow,
                     tickLimitHigh,
                     msg.sender,
@@ -705,6 +708,9 @@ contract PanopticPool is Multicall {
         premiasByLeg = new LeftRightSigned[4][](positionIdList.length);
         for (uint256 i = 0; i < positionIdList.length; ) {
             uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
+
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             LeftRightSigned paidAmounts;
             (paidAmounts, premiasByLeg[i]) = _burnOptions(
                 positionIdList[i],
@@ -1121,6 +1127,8 @@ contract PanopticPool is Multicall {
         {
             positionSize = s_positionBalance[account][tokenId].positionSize();
 
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
                 positionSize
@@ -1186,6 +1194,8 @@ contract PanopticPool is Multicall {
         ct1.delegate(owner);
 
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+
+        if (positionSize == 0) revert Errors.PositionNotOwned();
 
         for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.isLong(leg) != 0) {
@@ -1402,6 +1412,11 @@ contract PanopticPool is Multicall {
         uint256 pLength = positionIdList.length;
 
         uint256 fingerprintIncomingList;
+
+        // verify it has no duplicated elements
+        if (!PanopticMath.hasNoDuplicateTokenIds(positionIdList)) {
+            revert Errors.DuplicateTokenId();
+        }
 
         for (uint256 i = 0; i < pLength; ) {
             fingerprintIncomingList = PanopticMath.updatePositionsHash(

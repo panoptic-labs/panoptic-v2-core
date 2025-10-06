@@ -50,6 +50,24 @@ contract PanopticPoolHarness is PanopticPool {
         return s_miniMedian;
     }
 
+    function setPositionsHash(address user, uint256 hash) external {
+        s_positionsHash[user] = hash;
+    }
+
+    function generatePositionsHash(TokenId[] memory positionIdList) external returns (uint256) {
+        uint256 fingerprintIncomingList;
+        uint256 pLength = positionIdList.length;
+
+        for (uint256 i = 0; i < pLength; ++i) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+        }
+        return fingerprintIncomingList;
+    }
+
     /**
      * @notice compute the TWAP price from the last 600s = 10mins
      * @return twapTick the TWAP price in ticks
@@ -4142,7 +4160,7 @@ contract PanopticPoolTest is PositionUtils {
         tickLimits[1][0] = Constants.MIN_V3POOL_TICK;
         tickLimits[1][1] = Constants.MAX_V3POOL_TICK;
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         // mint two positions
         pp.dispatch(posIdList, posIdListWrong, sizeList, spreadList, tickLimits, true);
 
@@ -4150,7 +4168,7 @@ contract PanopticPoolTest is PositionUtils {
         // mint two positions
         pp.dispatch(posIdListWrong, posIdList, sizeList, spreadList, tickLimits, true);
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         // mint two positions
         pp.dispatch(posIdListWrong, posIdListWrong, sizeList, spreadList, tickLimits, true);
     }
@@ -4242,7 +4260,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdListPass[1] = tokenId1;
             posIdListPass[2] = tokenId1;
 
-            TokenId[] memory posIdListFinal = new TokenId[](3);
+            TokenId[] memory posIdListFinal = new TokenId[](1);
             posIdListFinal[0] = tokenId0;
 
             uint128[] memory sizeListPass = new uint128[](3);
@@ -4615,7 +4633,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
         posIdList[1] = tokenId;
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         mintOptions(
             pp,
             posIdList,
@@ -7361,7 +7379,7 @@ contract PanopticPoolTest is PositionUtils {
         forceExercise(
             pp,
             Alice,
-            TokenId.wrap(0),
+            tokenId2,
             new TokenId[](0),
             posIdList,
             LeftRightUnsigned.wrap(1).toLeftSlot(1)
@@ -9322,6 +9340,73 @@ contract PanopticPoolTest is PositionUtils {
                 (bytes4(reason) == Errors.NotMarginCalled.selector) ||
                     (bytes4(reason) == Errors.NoLegsExercisable.selector)
             );
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           SPOOFING LIST TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fail_positions_hash(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        vm.startPrank(Bob);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        console2.log("a");
+
+        // mint option from another account to change the effective liquidity
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize * 2,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        {
+            assertEq(pp.positionsHash(Bob), uint248(uint256(keccak256(abi.encodePacked(tokenId)))));
+            assertEq(pp.numberOfLegs(Bob), 1);
+
+            pp.setPositionsHash(Bob, 0);
+            assertEq(pp.positionsHash(Bob), uint248(uint256(0)));
+            assertEq(pp.numberOfLegs(Bob), 0);
+
+            uint256 newPositionsHash = pp.generatePositionsHash(posIdList);
+
+            pp.setPositionsHash(Bob, newPositionsHash);
+
+            assertEq(pp.positionsHash(Bob), uint248(uint256(newPositionsHash)));
+            assertEq(pp.numberOfLegs(Bob), 1);
         }
     }
 
