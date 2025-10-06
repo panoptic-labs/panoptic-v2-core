@@ -1505,6 +1505,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
+        // revert if the position did not move any token
         if (amountMoved == 0) revert Errors.ZeroLiquidity();
 
         uint256 isLong = tokenId.isLong(index);
