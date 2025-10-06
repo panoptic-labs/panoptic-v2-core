@@ -4910,13 +4910,15 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
         uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+
         uint256 n;
         int24 minTick;
         {
-            int24 maxTick;
-            (minTick, maxTick) = sfpm.getEnforcedTickLimits(poolId);
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
             n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
         }
+
         vm.startPrank(Bob);
         uint128 positionSize = uint128(_boundLog(positionSizeSeed, 0, 128));
 
@@ -4981,6 +4983,8 @@ contract Misctest is Test, PositionUtils {
 
                     if (receivedSelector == Errors.ZeroLiquidity.selector) {
                         console2.log("ZeroLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", strike);
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
@@ -5012,8 +5016,8 @@ contract Misctest is Test, PositionUtils {
         uint256 n;
         int24 minTick;
         {
-            int24 maxTick;
-            (minTick, maxTick) = sfpm.getEnforcedTickLimits(poolId);
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
             n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
         }
         vm.startPrank(Bob);
@@ -5021,7 +5025,7 @@ contract Misctest is Test, PositionUtils {
 
         for (uint256 i = 0; i < n; ++i) {
             // mint OTM position
-            int24 strike = int24(minTick + int256(i + 1) * 1000 * uniPool.tickSpacing());
+            int24 strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
 
             $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
                 0,
@@ -5143,6 +5147,8 @@ contract Misctest is Test, PositionUtils {
 
                     if (receivedSelector == Errors.ZeroLiquidity.selector) {
                         console2.log("ZeroLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", strike);
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
