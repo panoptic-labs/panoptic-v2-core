@@ -44,6 +44,9 @@ library Errors {
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
     error InvalidUniswapCallback();
 
+    /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannotbe used to compute the liquiditySpread
+    error NetLiquidityZero();
+
     /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all either short or ATM long)
     error NoLegsExercisable();
 
