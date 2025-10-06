@@ -34,12 +34,18 @@ library Errors {
     /// @notice Tick is not between `MIN_TICK` and `MAX_TICK`
     error InvalidTick();
 
+    /// @notice Liquidity in a chunk is above 2**128
+    error LiquidityTooHigh();
+
     /// @notice The TokenId provided by the user is malformed or invalid
     /// @param parameterType poolId=0, ratio=1, tokenType=2, risk_partner=3, strike=4, width=5, two identical strike/width/tokenType chunks=6
     error InvalidTokenIdParameter(uint256 parameterType);
 
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
     error InvalidUniswapCallback();
+
+    /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannotbe used to compute the liquiditySpread
+    error NetLiquidityZero();
 
     /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all either short or ATM long)
     error NoLegsExercisable();
@@ -49,6 +55,9 @@ library Errors {
 
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)
     error NotEnoughLiquidity();
+
+    /// @notice CollateralTracker: The user does not own enough assets to open/close a position
+    error NotEnoughTokens(address tokenAddress, uint256 assetsRequested, uint256 assetBalance);
 
     /// @notice PanopticPool: Position is still solvent and cannot be liquidated
     error NotMarginCalled();
@@ -91,6 +100,9 @@ library Errors {
 
     /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or have a PanopticPool created for it by the factory
     error UniswapPoolNotInitialized();
+
+    /// @notice CollateralTracker: Mints/burns of a position returns no collateral requirement
+    error ZeroCollateralRequirement();
 
     /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
     error ZeroLiquidity();

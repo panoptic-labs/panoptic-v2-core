@@ -628,27 +628,23 @@ contract PanopticPool is Multicall {
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param owner The owner of the option position to be minted
     /// @param totalSwapped The amount of tokens moved during creation of the option position
-    /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
+    /// @return utilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
-    /// @return The total amount of commissions (base rate) paid for token0 (right) and token1 (left)
-    /// @return The amount of tokens paid when creating that option for token0 (right) and token1 (left)
+    /// @return commissions The total amount of commissions (base rate) paid for token0 (right) and token1 (left)
+    /// @return paidAmounts The amount of tokens paid when creating that option for token0 (right) and token1 (left)
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
         address owner,
         LeftRightSigned totalSwapped
-    ) internal returns (uint32, LeftRightUnsigned, LeftRightSigned) {
+    )
+        internal
+        returns (uint32 utilizations, LeftRightUnsigned commissions, LeftRightSigned paidAmounts)
+    {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
-
-        uint32 commissions;
-        LeftRightUnsigned utilizations;
-        LeftRightSigned paidAmounts;
-
-        // stack too deep
-        LeftRightSigned _totalSwapped = totalSwapped;
 
         {
             (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
@@ -656,10 +652,10 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
-                    _totalSwapped.rightSlot()
+                    totalSwapped.rightSlot()
                 );
-            commissions = uint32(utilizationAndCommission0.rightSlot());
-            utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
+            utilizations = uint32(utilizationAndCommission0.rightSlot());
+            commissions = commissions.toRightSlot(utilizationAndCommission0.leftSlot());
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
         {
@@ -668,16 +664,16 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
-                    _totalSwapped.leftSlot()
+                    totalSwapped.leftSlot()
                 );
-            commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
-            utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
+            utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
+            commissions = commissions.toLeftSlot(utilizationAndCommission1.leftSlot());
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
-            return (commissions, utilizations, paidAmounts);
+            return (utilizations, commissions, paidAmounts);
         }
     }
 
@@ -1543,6 +1539,8 @@ contract PanopticPool is Multicall {
 
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
         if (netLiquidity == 0 && removedLiquidity == 0) return totalLiquidity;
+
+        if (netLiquidity == 0) revert Errors.NetLiquidityZero();
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {

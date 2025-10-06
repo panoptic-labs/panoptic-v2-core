@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.24;
-
 // Libraries
 import {Errors} from "@libraries/Errors.sol";
 import {Constants} from "@libraries/Constants.sol";
@@ -283,6 +282,42 @@ library Math {
     /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
     /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
     /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
+    function getAmount0ForLiquidityUp(
+        LiquidityChunk liquidityChunk
+    ) internal pure returns (uint256) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
+        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+        unchecked {
+            return
+                mulDivRoundingUp(
+                    mulDivRoundingUp(
+                        uint256(liquidityChunk.liquidity()) << 96,
+                        highPriceX96 - lowPriceX96,
+                        highPriceX96
+                    ),
+                    1,
+                    lowPriceX96
+                );
+        }
+    }
+
+    /// @notice Calculates the amount of token1 received for a given LiquidityChunk.
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token1 represented by `liquidityChunk` when `currentTick > tickUpper`
+    function getAmount1ForLiquidityUp(
+        LiquidityChunk liquidityChunk
+    ) internal pure returns (uint256) {
+        uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
+        uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
+
+        unchecked {
+            return mulDiv96RoundingUp(liquidityChunk.liquidity(), highPriceX96 - lowPriceX96);
+        }
+    }
+
+    /// @notice Calculates the amount of token0 received for a given LiquidityChunk.
+    /// @param liquidityChunk A specification for a liquidity chunk in Uniswap containing `liquidity`, `tickLower`, and `tickUpper`
+    /// @return The amount of token0 represented by `liquidityChunk` when `currentTick < tickLower`
     function getAmount0ForLiquidity(LiquidityChunk liquidityChunk) internal pure returns (uint256) {
         uint160 lowPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickLower());
         uint160 highPriceX96 = getSqrtRatioAtTick(liquidityChunk.tickUpper());
@@ -337,22 +372,20 @@ library Math {
         int24 tickUpper,
         uint256 amount0
     ) internal pure returns (LiquidityChunk) {
-        uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
-
         unchecked {
-            return
-                LiquidityChunkLibrary.createChunk(
-                    tickLower,
-                    tickUpper,
-                    toUint128(
-                        mulDiv(
-                            amount0,
-                            mulDiv96(highPriceX96, lowPriceX96),
-                            highPriceX96 - lowPriceX96
-                        )
-                    )
-                );
+            uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
+            uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
+
+            uint256 liquidity = mulDiv(
+                amount0,
+                mulDiv96(highPriceX96, lowPriceX96),
+                highPriceX96 - lowPriceX96
+            );
+
+            // This check guarantees the following uint128 cast is safe.
+            if (liquidity > type(uint128).max) revert Errors.LiquidityTooHigh();
+
+            return LiquidityChunkLibrary.createChunk(tickLower, tickUpper, uint128(liquidity));
         }
     }
 
@@ -366,16 +399,16 @@ library Math {
         int24 tickUpper,
         uint256 amount1
     ) internal pure returns (LiquidityChunk) {
-        uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
-        uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
-
         unchecked {
-            return
-                LiquidityChunkLibrary.createChunk(
-                    tickLower,
-                    tickUpper,
-                    toUint128(mulDiv(amount1, Constants.FP96, highPriceX96 - lowPriceX96))
-                );
+            uint160 lowPriceX96 = getSqrtRatioAtTick(tickLower);
+            uint160 highPriceX96 = getSqrtRatioAtTick(tickUpper);
+
+            uint256 liquidity = mulDiv(amount1, Constants.FP96, highPriceX96 - lowPriceX96);
+
+            // This check guarantees the following uint128 cast is safe.
+            if (liquidity > type(uint128).max) revert Errors.LiquidityTooHigh();
+
+            return LiquidityChunkLibrary.createChunk(tickLower, tickUpper, uint128(liquidity));
         }
     }
 

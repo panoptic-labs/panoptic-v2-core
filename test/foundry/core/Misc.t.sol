@@ -181,6 +181,8 @@ contract Misctest is Test, PositionUtils {
     address[] Buyer;
     SwapperC swapperc;
 
+    TokenId $tokenIdShort;
+    TokenId $tokenIdLong;
     TokenId[] $setupIdList;
     TokenId[] $posIdList;
     TokenId[][] $posIdLists;
@@ -191,6 +193,25 @@ contract Misctest is Test, PositionUtils {
     TokenId[][] tokenIds;
     TokenId[][] positionIdLists;
     TokenId[][] collateralIdLists;
+
+    function _boundLog(
+        uint256 x,
+        uint8 min,
+        uint8 max
+    ) internal pure virtual returns (uint256 result) {
+        require(min <= max, "StdUtils boundLog(uint256,uint8,uint8): Max is less than min.");
+
+        // If x is between min and max, DO NOT return x directly. This is to ensure that the sampling remains uniform in log space
+
+        // select an exponent between [min, max]
+        uint256 range = uint256(max) - uint256(min) + 1;
+        uint256 m0 = min + (x % range);
+
+        // randomize the input value, use it to generate a number between 2 ** m0 and 2 **(m0+1)-1
+        x = uint256(keccak256(abi.encode(x)));
+        uint256 m1 = x % 2 ** max;
+        result = 2 ** m0 + (m1 >> (max - m0));
+    }
 
     function setUp() public {
         vm.startPrank(Deployer);
@@ -2258,7 +2279,7 @@ contract Misctest is Test, PositionUtils {
 
         vm.startPrank(Bob);
 
-        vm.expectRevert(stdError.divisionError);
+        vm.expectRevert(Errors.NetLiquidityZero.selector);
         mintOptions(
             pp,
             $tempIdList,
@@ -3298,13 +3319,13 @@ contract Misctest is Test, PositionUtils {
             // the positive premium is from the dummy short chunk
             assertEq(
                 int256(ct0.convertToAssets(ct0.balanceOf(Buyers[i]))) - int256(assetsBefore0),
-                i == 0 ? int256(107) : int256(108),
+                i == 0 ? int256(104) : int256(105),
                 "Buyer paid premium twice"
             );
 
             assertEq(
                 ct1.convertToAssets(ct1.balanceOf(Buyers[i])) - assetsBefore1,
-                1085,
+                1083,
                 "Buyer paid premium twice"
             );
         }
@@ -4878,58 +4899,281 @@ contract Misctest is Test, PositionUtils {
         assertTrue(medianData != medianDataStale, "oracle median data updated");
     }
 
-    function test_success_NotionalRounding() public {
+    function test_Fuzz_NotionalReverts_shorts(uint128 positionSizeSeed, uint8 x) public {
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
         token0.mint(Swapper, type(uint128).max);
         token1.mint(Swapper, type(uint128).max);
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
-        // mint OTM position
-        $posIdList.push(
-            TokenId
-                .wrap(0)
-                .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
-                .addLeg(0, 1, 0, 0, 1, 0, int24(-665450), 2)
-        );
+        uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+
+        uint256 n;
+        int24 minTick;
+        {
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+        }
 
         vm.startPrank(Bob);
+        uint128 positionSize = uint128(_boundLog(positionSizeSeed, 0, 128));
 
-        mintOptions(pp, $posIdList, 2 ** 95, 0, int24(887272), int24(-887272), true);
+        for (uint256 i = 0; i < n; ++i) {
+            // mint OTM position
+            int24 strike = int24(minTick + int256(i + 1) * 1000 * uniPool.tickSpacing());
 
-        (, , uint256[2][] memory positionBalanceArray) = pp.getAccumulatedFeesAndPositionsData(
-            Bob,
-            false,
-            $posIdList
-        );
+            $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                1,
+                x % 2,
+                0,
+                (x >> 1) % 2,
+                0,
+                strike,
+                2
+            );
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
+            TokenId[] memory mintList = new TokenId[](1);
+            int24[2][] memory tickLimits = new int24[2][](1);
 
-        (, currentTick, , , , , ) = uniPool.slot0();
+            sizeList[0] = positionSize;
+            spreadList[0] = 0;
+            mintList[0] = $tokenIdShort;
+            tickLimits[0][0] = int24(-887272);
+            tickLimits[0][1] = int24(887272);
 
-        LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
-            Bob,
-            currentTick,
-            positionBalanceArray,
-            0,
-            0
-        );
+            // Try to mint and check if it reverts
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                // SUCCESS CASE - mintOptions didn't revert
+                console2.log("Found non-reverting strike:", strike);
 
-        LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
-            Bob,
-            currentTick,
-            positionBalanceArray,
-            0,
-            0
-        );
-        (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(currentTick)
-        );
+                (, , uint256[2][] memory positionBalanceArray) = pp
+                    .getAccumulatedFeesAndPositionsData(Bob, false, mintList);
 
-        assertTrue(requiredCross > 0, "zero collateral requirement");
-        assertTrue(requiredCross <= balanceCross, "account is solvent");
+                (, currentTick, , , , , ) = uniPool.slot0();
 
-        burnOptions(pp, $posIdList[0], new TokenId[](0), int24(887272), int24(-887272), true);
+                LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
+                    Bob,
+                    currentTick,
+                    positionBalanceArray,
+                    0,
+                    0
+                );
+
+                LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
+                    Bob,
+                    currentTick,
+                    positionBalanceArray,
+                    0,
+                    0
+                );
+
+                (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
+                    tokenData0,
+                    tokenData1,
+                    Math.getSqrtRatioAtTick(currentTick)
+                );
+
+                assertTrue(requiredCross > 0, "zero collateral requirement");
+                assertTrue(requiredCross <= balanceCross, "account is solvent");
+
+                burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
+            } catch (bytes memory reason) {
+                if (reason.length >= 4) {
+                    bytes4 receivedSelector = bytes4(reason);
+
+                    if (receivedSelector == Errors.ZeroLiquidity.selector) {
+                        console2.log("ZeroLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", strike);
+                    } else if (receivedSelector == 0x08c379a0) {
+                        console2.log("Uniswap constraint at strike:", strike);
+                    } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
+                        console2.log("LiquidityTooHigh at strike:", strike);
+                    } else if (receivedSelector == Errors.AccountInsolvent.selector) {
+                        console2.log("AccountInsolvent at strike:", strike);
+                    } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                        console2.log("PositionTooLarge at strike:", strike);
+                        // Position size exceeds protocol limits
+                    } else {
+                        // Unexpected error
+                        console2.logBytes4(receivedSelector);
+                        console2.logBytes(reason);
+                        revert(string(abi.encodePacked("Unexpected error")));
+                    }
+                }
+            }
+        }
+    }
+
+    function test_Fuzz_NotionalReverts_longs(uint128 positionSizeSeed, uint8 x) public {
+        swapperc = new SwapperC();
+        vm.startPrank(Swapper);
+        token0.mint(Swapper, type(uint128).max);
+        token1.mint(Swapper, type(uint128).max);
+        token0.approve(address(swapperc), type(uint128).max);
+        token1.approve(address(swapperc), type(uint128).max);
+        uint64 poolId = PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing());
+        uint256 n;
+        int24 minTick;
+        {
+            minTick = (-887272 / uniPool.tickSpacing() + 1) * uniPool.tickSpacing();
+            int24 maxTick = (887272 / uniPool.tickSpacing()) * uniPool.tickSpacing();
+            n = uint256(uint24(maxTick - minTick)) / uint24(1000 * uniPool.tickSpacing());
+        }
+        vm.startPrank(Bob);
+        uint128 positionSize = uint128(_boundLog(positionSizeSeed, 0, 128));
+
+        for (uint256 i = 0; i < n; ++i) {
+            // mint OTM position
+            int24 strike = int24(-887270 + int256(i + 1) * 1000 * uniPool.tickSpacing());
+
+            $tokenIdShort = TokenId.wrap(0).addPoolId(poolId).addLeg(
+                0,
+                10,
+                x % 2,
+                0,
+                (x >> 1) % 2,
+                0,
+                strike,
+                2
+            );
+            uint128[] memory sizeList = new uint128[](1);
+            uint64[] memory spreadList = new uint64[](1);
+            TokenId[] memory mintList = new TokenId[](1);
+            int24[2][] memory tickLimits = new int24[2][](1);
+
+            sizeList[0] = positionSize;
+            spreadList[0] = type(uint64).max;
+            mintList[0] = $tokenIdShort;
+            tickLimits[0][0] = int24(-887272);
+            tickLimits[0][1] = int24(887272);
+
+            // Try to mint and check if it reverts
+            try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                // SUCCESS CASE - mintOptions didn't revert
+
+                // Alice Buys
+                vm.startPrank(Alice);
+
+                {
+                    uint256 asset = x % 2;
+                    uint256 tokenType;
+                    uint64 _poolId = poolId;
+                    $tokenIdLong = TokenId.wrap(0).addPoolId(_poolId).addLeg(
+                        0,
+                        9,
+                        asset,
+                        1,
+                        tokenType,
+                        0,
+                        strike,
+                        2
+                    );
+                }
+                mintList[0] = $tokenIdLong;
+                try pp.dispatch(mintList, mintList, sizeList, spreadList, tickLimits, true) {
+                    console2.log("Found non-reverting strike:", strike);
+                    (, , uint256[2][] memory positionBalanceArray) = pp
+                        .getAccumulatedFeesAndPositionsData(Alice, false, mintList);
+
+                    (, currentTick, , , , , ) = uniPool.slot0();
+
+                    LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
+                        Alice,
+                        currentTick,
+                        positionBalanceArray,
+                        0,
+                        0
+                    );
+
+                    LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
+                        Alice,
+                        currentTick,
+                        positionBalanceArray,
+                        0,
+                        0
+                    );
+
+                    (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
+                        tokenData0,
+                        tokenData1,
+                        Math.getSqrtRatioAtTick(currentTick)
+                    );
+
+                    assertTrue(requiredCross > 0, "zero collateral requirement");
+                    assertTrue(requiredCross <= balanceCross, "account is solvent");
+
+                    burnOptions(
+                        pp,
+                        mintList,
+                        new TokenId[](0),
+                        int24(-887272),
+                        int24(887272),
+                        true
+                    );
+                } catch (bytes memory reason) {
+                    if (reason.length >= 4) {
+                        bytes4 receivedSelector = bytes4(reason);
+                        if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
+                            console2.log("LONG: NotEnoughLiquidity at strike:", strike);
+                        } else if (
+                            receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
+                        ) {
+                            console2.log(
+                                "LONG: EffectiveLiquidityAboveThreshold at strike:",
+                                strike
+                            );
+                        } else if (receivedSelector == Errors.NotEnoughTokens.selector) {
+                            console2.log("LONG: NotEnoughTokens at strike:", strike);
+                        } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
+                            console2.log("LONG: ZeroCollateralRequirement at strike:", strike);
+                        } else if (receivedSelector == Errors.ZeroLiquidity.selector) {
+                            console2.log("LONG: ZeroLiquidity at strike:", strike);
+                        } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
+                            console2.log("LONG: NetLiquidityZero at strike:", strike);
+                        } else {
+                            // Unexpected error
+                            console2.logBytes4(receivedSelector);
+                            console2.logBytes(reason);
+                            revert(string(abi.encodePacked("Unexpected error")));
+                        }
+                    }
+                }
+
+                vm.startPrank(Bob);
+                mintList[0] = $tokenIdShort;
+                burnOptions(pp, mintList, new TokenId[](0), int24(-887272), int24(887272), true);
+            } catch (bytes memory reason) {
+                if (reason.length >= 4) {
+                    bytes4 receivedSelector = bytes4(reason);
+
+                    if (receivedSelector == Errors.ZeroLiquidity.selector) {
+                        console2.log("ZeroLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.InvalidTickBound.selector) {
+                        console2.log("InvalidTickBound at strike:", strike);
+                    } else if (receivedSelector == 0x08c379a0) {
+                        console2.log("Uniswap constraint at strike:", strike);
+                    } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
+                        console2.log("LiquidityTooHigh at strike:", strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
+                        console2.log("NotEnoughLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.AccountInsolvent.selector) {
+                        console2.log("AccountInsolvent at strike:", strike);
+                    } else if (receivedSelector == Errors.PositionTooLarge.selector) {
+                        console2.log("PositionTooLarge at strike:", strike);
+                        // Position size exceeds protocol limits
+                    } else {
+                        // Unexpected error
+                        console2.logBytes4(receivedSelector);
+                        console2.logBytes(reason);
+                        revert(string(abi.encodePacked("Unexpected error")));
+                    }
+                }
+            }
+        }
     }
 
     function test_success_PremiumRollover() public {

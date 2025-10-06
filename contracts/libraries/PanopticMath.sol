@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -661,21 +660,16 @@ library PanopticMath {
         uint128 amount0;
         uint128 amount1;
 
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
+        LiquidityChunk liquidityChunk = getLiquidityChunk(tokenId, legIndex, positionSize);
 
-        // effective strike price of the option (avg. price over LP range)
-        // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
-        uint256 geometricMeanPriceX96 = Math.mulDiv96(
-            Math.getSqrtRatioAtTick(tickLower),
-            Math.getSqrtRatioAtTick(tickUpper)
-        );
-
-        if (tokenId.asset(legIndex) == 0) {
-            amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
-            amount1 = Math.mulDiv96RoundingUp(amount0, geometricMeanPriceX96).toUint128();
+        // Shorts round UP to ensure user pays enough (conservative for protocol)
+        // Longs round DOWN to ensure user receives correct amount (conservative for protocol)
+        if (tokenId.isLong(legIndex) == 0) {
+            amount0 = uint128(Math.getAmount0ForLiquidityUp(liquidityChunk));
+            amount1 = uint128(Math.getAmount1ForLiquidityUp(liquidityChunk));
         } else {
-            amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
-            amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
+            amount0 = uint128(Math.getAmount0ForLiquidity(liquidityChunk));
+            amount1 = uint128(Math.getAmount1ForLiquidity(liquidityChunk));
         }
 
         return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);
