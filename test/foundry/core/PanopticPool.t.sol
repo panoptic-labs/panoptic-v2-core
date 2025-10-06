@@ -154,6 +154,9 @@ contract PanopticPoolTest is PositionUtils {
     int256 rangesFromStrike;
     int256[2] exerciseFeeAmounts;
 
+    LeftRightSigned $longAmounts;
+    LeftRightSigned $shortAmounts;
+
     PanopticFactory factory;
     PanopticPoolHarness pp;
     CollateralTracker ct0;
@@ -6303,21 +6306,24 @@ contract PanopticPoolTest is PositionUtils {
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
 
         for (uint256 i = 0; i < numLegs; ++i) {
-            tokenId = tokenId.addLeg(i, 1, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]);
+            tokenId = tokenId.addLeg(i, 2, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]); // option ratio = 2
         }
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
+        console2.log("mint Short option(s)");
         mintOptions(
             pp,
             posIdList,
-            positionSize * 2,
+            positionSize,
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
+
+        ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
         // now we can mint the long option we are force exercising
         vm.startPrank(Alice);
@@ -6340,7 +6346,7 @@ contract PanopticPoolTest is PositionUtils {
 
         posIdList[0] = tokenId;
 
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+        (LeftRightSigned longAmountsAlice, LeftRightSigned shortAmountsAlice) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
         {
@@ -6352,6 +6358,7 @@ contract PanopticPoolTest is PositionUtils {
             int24[2][] memory tickLimits = new int24[2][](1);
             tickLimits[0][0] = Constants.MAX_V3POOL_TICK;
             tickLimits[0][1] = Constants.MIN_V3POOL_TICK;
+            console2.log("mint Long option(s)");
             try pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true) {} catch (
                 bytes memory reason
             ) {
@@ -6373,7 +6380,7 @@ contract PanopticPoolTest is PositionUtils {
         updatePositionDataVariable(numLegs, isLongs);
 
         updateITMAmountsBurn(numLegs, tokenTypes);
-        updateIntrinsicValueBurn(longAmounts, shortAmounts);
+        updateIntrinsicValueBurn(longAmountsAlice, shortAmountsAlice);
 
         ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
@@ -6439,9 +6446,10 @@ contract PanopticPoolTest is PositionUtils {
         // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
         int256 exerciseFee = int256(-1024) >> uint256(rangesFromStrike);
 
-        exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
-        exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
+        exerciseFeeAmounts[0] += (longAmountsAlice.rightSlot() * (-exerciseFee)) / 10_000;
+        exerciseFeeAmounts[1] += (longAmountsAlice.leftSlot() * (-exerciseFee)) / 10_000;
         vm.assume(Math.abs(TWAPtick - currentTick) < 513);
+        console2.log("force exercise option(s)");
         forceExercise(
             pp,
             Alice,
@@ -6470,20 +6478,14 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(longAmounts.rightSlot() + shortAmounts.rightSlot()) * 2,
-                10
-            );
+            uint128 tokenFlow0 = uint128($shortAmounts.rightSlot() - $longAmounts.rightSlot());
+            assertApproxEqAbs(inAMM, tokenFlow0, 10, "fail: inAMM0");
         }
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(longAmounts.leftSlot() + shortAmounts.leftSlot()) * 2,
-                10
-            );
+            uint128 tokenFlow1 = uint128($shortAmounts.leftSlot() - $longAmounts.leftSlot());
+            assertApproxEqAbs(inAMM, tokenFlow1, 10, "fail: inAMM1");
         }
         {
             assertEq(pp.positionsHash(Alice), 0);
@@ -6524,7 +6526,11 @@ contract PanopticPoolTest is PositionUtils {
                     int256(lastCollateralBalance0[Alice]),
                 $balanceDelta0,
                 uint256(
-                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_00_000 + 10)
+                    int256(
+                        (longAmountsAlice.rightSlot() + shortAmountsAlice.rightSlot()) /
+                            1_00_000 +
+                            10
+                    )
                 ),
                 "Incorrect balance delta for token0 (Force Exercisee)"
             );
@@ -6533,7 +6539,11 @@ contract PanopticPoolTest is PositionUtils {
                     int256(lastCollateralBalance1[Alice]),
                 $balanceDelta1,
                 uint256(
-                    int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10)
+                    int256(
+                        (longAmountsAlice.leftSlot() + shortAmountsAlice.leftSlot()) /
+                            1_000_000 +
+                            10
+                    )
                 ),
                 "Incorrect balance delta for token1 (Force Exercisee)"
             );

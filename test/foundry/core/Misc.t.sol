@@ -5132,6 +5132,8 @@ contract Misctest is Test, PositionUtils {
                             console2.log("LONG: ZeroCollateralRequirement at strike:", strike);
                         } else if (receivedSelector == Errors.ZeroLiquidity.selector) {
                             console2.log("LONG: ZeroLiquidity at strike:", strike);
+                        } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
+                            console2.log("LONG: NetLiquidityZero at strike:", strike);
                         } else {
                             // Unexpected error
                             console2.logBytes4(receivedSelector);
