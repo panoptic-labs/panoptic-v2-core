@@ -1124,6 +1124,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 bonusAbs = uint256(-bonus);
             }
 
+            uint256 underlyingTokenBalance = ERC20Minimal(s_underlyingToken).balanceOf(liquidator);
+            if (underlyingTokenBalance < bonusAbs)
+                revert Errors.NotEnoughTokens(s_underlyingToken, bonusAbs, underlyingTokenBalance);
             SafeTransferLib.safeTransferFrom(s_underlyingToken, liquidator, msg.sender, bonusAbs);
 
             _mint(liquidatee, convertToShares(bonusAbs));
@@ -1264,6 +1267,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
+                address _optionOwner = optionOwner;
+                if (balanceOf[_optionOwner] < sharesToBurn)
+                    revert Errors.NotEnoughTokens(
+                        address(this),
+                        uint256(tokenToPay),
+                        convertToAssets(balanceOf[_optionOwner])
+                    );
+
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
@@ -1505,9 +1516,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         // amount moved is right slot if tokenType=0, left slot otherwise
         uint128 amountMoved = tokenType == 0 ? amountsMoved.rightSlot() : amountsMoved.leftSlot();
 
-        // revert if the position did not move any token
-        if (amountMoved == 0) revert Errors.ZeroLiquidity();
-
         uint256 isLong = tokenId.isLong(index);
 
         // start with base requirement, which is based on isLong value
@@ -1598,6 +1606,8 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 }
             }
         }
+        // revert if the position does not require any collateral
+        if (required == 0) revert Errors.ZeroCollateralRequirement();
     }
 
     /// @notice Calculate the required amount of collateral for leg `index` for position `tokenId` accounting for its partner leg.
