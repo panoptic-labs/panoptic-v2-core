@@ -360,6 +360,7 @@ library PanopticMath {
 
             uint24 newOrderMap;
             {
+                uint256 _oraclePack = oraclePack;
                 uint24 shift = 1;
                 bool below = true;
                 uint24 rank;
@@ -374,7 +375,7 @@ library PanopticMath {
                     }
 
                     // read the corresponding entry
-                    entry = int12toInt24((oraclePack >> (rank * 12)) & 0x0FFF); // mod 2**12
+                    entry = int12toInt24((_oraclePack >> (rank * 12)) & 0x0FFF); // mod 2**12
                     if ((below) && (lastResidual > entry)) {
                         shift += 1;
                         below = false;
