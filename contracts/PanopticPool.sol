@@ -1470,6 +1470,7 @@ contract PanopticPool is Multicall {
         isSolvent = isSolvent && balanceCrossExcludingCappedPremiumCommitments >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
 
         // 3. And, must have premia available to pay off capped premium commitments, even when removing the collateral requirement for uncapped positions.
+        // (Fairly sure this is redundant with 2 - just a rearrangement of terms + removal of buffer - but including for now for explicitness)
         isSolvent = isSolvent && balanceCross - thresholdCross >= crossCappedPremiumCommitment;
     }
 
