@@ -9553,7 +9553,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 expectedTotalBalance = expectedBal + expectedInAMM;
 
         // _inAMM() * DECIMALS) / totalAssets()
-        uint256 expectedPoolUtilization = (expectedInAMM * 10_000) / expectedTotalBalance;
+        uint256 expectedPoolUtilization = Math.mulDivRoundingUp(
+            expectedInAMM,
+            10_000,
+            expectedTotalBalance
+        );
 
         (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
             .getPoolData();

@@ -1953,7 +1953,7 @@ contract PanopticPoolTest is PositionUtils {
             );
             assertEq(posBalanceArray[0][0], TokenId.unwrap(tokenId));
             assertEq(PositionBalance.wrap(posBalanceArray[0][1]).positionSize(), positionSizes[0]);
-            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).utilizations(), 0);
+            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).utilizations(), 1);
             assertEq(posBalanceArray[1][0], TokenId.unwrap(tokenId2));
             assertEq(LeftRightUnsigned.wrap(posBalanceArray[1][1]).rightSlot(), positionSizes[1]);
             assertEq(
@@ -2170,7 +2170,7 @@ contract PanopticPoolTest is PositionUtils {
 
             (, uint256 inAMM0, ) = ct0.getPoolData();
 
-            assertEq(poolUtilization0, (inAMM0 * 10000) / ct0.totalSupply());
+            assertEq(poolUtilization0, Math.mulDivRoundingUp(inAMM0, 10000, ct0.totalSupply()));
             assertEq(poolUtilization1, 0);
         }
 
@@ -2293,7 +2293,7 @@ contract PanopticPoolTest is PositionUtils {
 
             (, uint256 inAMM0, ) = ct0.getPoolData();
 
-            assertEq(poolUtilization0, (inAMM0 * 10000) / ct0.totalSupply());
+            assertEq(poolUtilization0, Math.mulDivRoundingUp(inAMM0, 10000, ct0.totalSupply()));
 
             assertEq(poolUtilization1, 0);
         }
@@ -2428,7 +2428,7 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize);
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply());
+            assertEq(poolUtilization0, Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()));
             assertEq(poolUtilization1, 0);
         }
 
@@ -2523,7 +2523,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "user balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "pu 0"
+            );
             assertEq(poolUtilization1, 0, "pu 1");
         }
 
@@ -2734,7 +2738,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
-            assertEq(poolUtilization1, (amount1 * 10000) / ct1.totalSupply(), "utilization 1");
+            assertEq(
+                poolUtilization1,
+                Math.mulDivRoundingUp(amount1, 10000, ct1.totalSupply()),
+                "utilization 1"
+            );
             assertEq(poolUtilization0, 0, "utilization 0");
         }
 
@@ -2868,7 +2876,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "utilization 1"
+            );
             assertEq(poolUtilization1, 0, "utilization 0");
         }
 
@@ -2972,7 +2984,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "utilization 1"
+            );
             assertEq(poolUtilization1, 0, "utilization 0");
         }
 
@@ -3146,15 +3162,21 @@ contract PanopticPoolTest is PositionUtils {
                     poolUtilization0,
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                         ? 10_001
-                        : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) /
+                        : Math.mulDivRoundingUp(
+                            uint256($amount0Moveds[0] + $amount0Moveds[1]),
+                            10000,
                             ct0.totalSupply()
+                        )
                 );
                 assertEq(
                     poolUtilization1,
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                         ? 10_001
-                        : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) /
+                        : Math.mulDivRoundingUp(
+                            uint256($amount1Moveds[0] + $amount1Moveds[1]),
+                            10000,
                             ct1.totalSupply()
+                        )
                 );
             }
 
@@ -3303,13 +3325,21 @@ contract PanopticPoolTest is PositionUtils {
                 poolUtilization0,
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
-                    : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) / ct0.totalSupply()
+                    : Math.mulDivRoundingUp(
+                        uint256($amount0Moveds[0] + $amount0Moveds[1]),
+                        10000,
+                        ct0.totalSupply()
+                    )
             );
             assertEq(
                 poolUtilization1,
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
-                    : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) / ct1.totalSupply()
+                    : Math.mulDivRoundingUp(
+                        uint256($amount1Moveds[0] + $amount1Moveds[1]),
+                        10000,
+                        ct1.totalSupply()
+                    )
             );
         }
 
@@ -3552,19 +3582,25 @@ contract PanopticPoolTest is PositionUtils {
 
                 assertEq(balance, positionSizes[1], "FAIL: wrong balance for Alice");
                 assertEq(
-                    int64(poolUtilization0),
+                    (poolUtilization0),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                        ? int64(10_001)
-                        : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
-                            int256(ct0.totalSupply()),
-                    "FAIL: werong pool utiliation0"
+                        ? (10_001)
+                        : Math.mulDivRoundingUp(
+                            uint256($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2]),
+                            10000,
+                            (ct0.totalSupply())
+                        ),
+                    "FAIL: wrong pool utiliation0"
                 );
                 assertEq(
-                    int64(poolUtilization1),
+                    (poolUtilization1),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                        ? int64(10_001)
-                        : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
-                            int256(ct1.totalSupply()),
+                        ? (10_001)
+                        : Math.mulDivRoundingUp(
+                            uint256($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2]),
+                            10000,
+                            (ct1.totalSupply())
+                        ),
                     "FAIL: wrong pool utilzation1"
                 );
             }
@@ -3747,18 +3783,24 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(balance, positionSizes[1]);
             assertEq(
-                int64(poolUtilization0),
+                (poolUtilization0),
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? int64(10_001)
-                    : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
-                        int256(ct0.totalSupply())
+                    ? (10_001)
+                    : Math.mulDivRoundingUp(
+                        uint256($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2]),
+                        10000,
+                        (ct0.totalSupply())
+                    )
             );
             assertEq(
-                int64(poolUtilization1),
+                (poolUtilization1),
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? int64(10_001)
-                    : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
-                        int256(ct1.totalSupply())
+                    ? (10_001)
+                    : Math.mulDivRoundingUp(
+                        uint256($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2]),
+                        10000,
+                        (ct1.totalSupply())
+                    )
             );
         }
 
@@ -3861,7 +3903,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "user balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "pu 0"
+            );
             assertEq(poolUtilization1, 0, "pu 1");
         }
 
@@ -3983,7 +4029,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId0);
 
             assertEq(balance, positionSizes[0], "user balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "pu 0"
+            );
             assertEq(poolUtilization1, 0, "pu 1");
         }
 
@@ -4330,7 +4380,11 @@ contract PanopticPoolTest is PositionUtils {
                     .optionPositionInfo(pp, Alice, tokenId0);
 
                 assertEq(balance, positionSizes[0], "user balance");
-                assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+                assertEq(
+                    poolUtilization0,
+                    Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                    "pu 0"
+                );
                 assertEq(poolUtilization1, 0, "pu 1");
             }
         }
@@ -6487,7 +6541,7 @@ contract PanopticPoolTest is PositionUtils {
 
         exerciseFeeAmounts[0] += (longAmountsAlice.rightSlot() * (-exerciseFee)) / 10_000_000;
         exerciseFeeAmounts[1] += (longAmountsAlice.leftSlot() * (-exerciseFee)) / 10_000_000;
-        
+
         vm.assume(Math.abs(TWAPtick - currentTick) < 513);
         console2.log("force exercise option(s)");
         forceExercise(

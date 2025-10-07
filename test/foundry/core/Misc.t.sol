@@ -5085,20 +5085,14 @@ contract Misctest is Test, PositionUtils {
 
                     (, currentTick, , , , , ) = uniPool.slot0();
 
-                    LeftRightUnsigned tokenData0 = ct0.getAccountMarginDetails(
-                        Alice,
+                    (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = re.getMargin(
+                        Bob,
                         currentTick,
                         positionBalanceArray,
-                        0,
-                        0
-                    );
-
-                    LeftRightUnsigned tokenData1 = ct1.getAccountMarginDetails(
-                        Alice,
-                        currentTick,
-                        positionBalanceArray,
-                        0,
-                        0
+                        LeftRightUnsigned.wrap(0),
+                        LeftRightUnsigned.wrap(0),
+                        ct0,
+                        ct1
                     );
 
                     (uint256 balanceCross, uint256 requiredCross) = PanopticMath.getCrossBalances(
