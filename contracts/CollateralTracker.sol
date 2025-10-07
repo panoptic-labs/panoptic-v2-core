@@ -1013,17 +1013,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                         )
                     );
                     tokenToPay = intrinsicValue + int128(commission);
-                    console2.log("swa", swappedAmount);
-                    console2.log("long", longAmount);
-                    console2.log("shoer", shortAmount);
-                    console2.log("intr", intrinsicValue);
                 }
             } else {
                 // add premium and token deltas not covered by swap to be paid/collected on position close
                 tokenToPay = int256(swappedAmount) - (longAmount - shortAmount) - realizedPremium;
             }
 
-            console2.log("tokenTo", tokenToPay);
             // Mint/Burn Shares
             if (tokenToPay > 0) {
                 uint256 sharesToBurn = Math.mulDivRoundingUp(
@@ -1053,9 +1048,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
             int128 netBorrows = isCreation ? shortAmount - longAmount : longAmount - shortAmount;
 
-            console2.log("netBorrows", netBorrows);
+            int256 _inAMM = int256(uint256(s_inAMM));
+
+            if (_inAMM + netBorrows < 0) revert Errors.InsufficientLiquidity();
+
             // Update s_inAMM
-            s_inAMM = uint256(int256(uint256(s_inAMM)) + netBorrows).toUint128();
+            s_inAMM = uint256(_inAMM + netBorrows).toUint128();
 
             {
                 address _optionOwner = optionOwner;
@@ -1119,5 +1117,4 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
         return tokenPaid;
     }
-
 }

@@ -2068,9 +2068,9 @@ contract PanopticPoolTest is PositionUtils {
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1 + (x % 127),
-            0, //(x >> 1) % 2,
+            (x >> 1) % 2,
             0,
-            0, //(x >> 2) % 2,
+            (x >> 2) % 2,
             0,
             (currentTick / tickSpacing) * tickSpacing,
             0 // width = 0 means a loan
@@ -2079,13 +2079,13 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 5, 10 ** 24));
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 5, 10 ** 18));
 
         uint256 bobBefore0 = (ct0.balanceOf(Bob));
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeLoanAmounts(tokenId, uint128(positionSize));
+            ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
@@ -2102,14 +2102,8 @@ contract PanopticPoolTest is PositionUtils {
                         ct1.totalAssets()
                 )
             );
-            console2.log("newSh0", newSharesFromLoan0);
-            console2.log("newSh1", newSharesFromLoan1);
         }
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
-        console2.log("pp bal0", IERC20Partial(token0).balanceOf(address(pp)));
-        console2.log("pp bal1", IERC20Partial(token1).balanceOf(address(pp)));
-        console2.log("shares0", ct0.totalSupply(), ct0.totalAssets());
-        console2.log("shares1", ct1.totalSupply(), ct1.totalAssets());
         mintOptions(
             pp,
             posIdList,
@@ -2119,14 +2113,8 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MAX_V3POOL_TICK,
             true
         );
-        console2.log("shares0", ct0.totalSupply(), ct0.totalAssets());
-        console2.log("shares1", ct1.totalSupply(), ct1.totalAssets());
-        console2.log("pp bal0", IERC20Partial(token0).balanceOf(address(pp)));
-        console2.log("pp bal1", IERC20Partial(token1).balanceOf(address(pp)));
         uint256 bobAfter0 = (ct0.balanceOf(Bob));
         uint256 bobAfter1 = (ct1.balanceOf(Bob));
-        console2.log("bob0", bobBefore0, bobAfter0);
-        console2.log("bob1", bobBefore1, bobAfter1);
 
         assertEq(
             sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)),
@@ -2146,8 +2134,6 @@ contract PanopticPoolTest is PositionUtils {
             10,
             "FAIL: incorrect loan amount token1"
         );
-        //console2.log('condition0', bobAfter0, bobBefore0 + newSharesFromLoan0);
-        //console2.log('condition1', bobAfter1, bobBefore1 + newSharesFromLoan1);
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
@@ -2162,14 +2148,12 @@ contract PanopticPoolTest is PositionUtils {
         assertEq(pp.numberOfLegs(Bob), 1);
 
         int256 repaidSharesForLoan0 = int256(
-            (uint128(shortAmounts.rightSlot()) * ct1.totalSupply()) / ct1.totalAssets()
+            (uint128(shortAmounts.rightSlot()) * ct0.totalSupply()) / ct0.totalAssets()
         );
         int256 repaidSharesForLoan1 = int256(
             (uint128(shortAmounts.leftSlot()) * ct1.totalSupply()) / ct1.totalAssets()
         );
 
-        console2.log("burn");
-        console2.log("");
         burnOptions(
             pp,
             posIdList,
@@ -2203,9 +2187,9 @@ contract PanopticPoolTest is PositionUtils {
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
             1 + (x % 127),
-            1, //(x >> 1) % 2,
+            (x >> 1) % 2,
             0,
-            0, //(x >> 2) % 2,
+            (x >> 2) % 2,
             0,
             (currentTick / tickSpacing) * tickSpacing,
             0 // width = 0 means a loan
@@ -2214,30 +2198,29 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 10));
+        positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 15));
 
         uint256 bobBefore0 = (ct0.balanceOf(Bob));
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
-        (, LeftRightSigned shortAmounts) = PanopticMath.computeLoanAmounts(
+        (, LeftRightSigned amountsMoved) = PanopticMath._calculateIOAmounts(
             tokenId,
-            uint128(positionSize)
+            uint128(positionSize),
+            0
         );
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
         {
-            console2.log("shortAmount.r", shortAmounts.rightSlot());
-            console2.log("shortAmount.l", shortAmounts.leftSlot());
             newSharesFromLoan0 = -int256(
                 uint256(
-                    ((uint128(shortAmounts.rightSlot() * 10) / 10000) * ct1.totalSupply()) /
+                    ((uint128(amountsMoved.rightSlot() * 10) / 10000) * ct1.totalSupply()) /
                         ct1.totalAssets()
                 )
             );
             newSharesFromLoan1 = -int256(
                 uint256(
-                    ((uint128(shortAmounts.leftSlot() * 10) / 10000) * ct1.totalSupply()) /
+                    ((uint128(amountsMoved.leftSlot() * 10) / 10000) * ct1.totalSupply()) /
                         ct1.totalAssets()
                 )
             );
@@ -2256,37 +2239,28 @@ contract PanopticPoolTest is PositionUtils {
 
                 expectedSwap0 = totalMoved.rightSlot();
                 expectedSwap1 = totalMoved.leftSlot();
-                console2.log("expec0", expectedSwap0);
-                console2.log("expec1", expectedSwap1);
                 vm.stopPrank();
                 vm.revertTo(snapshot);
             }
 
-            if (newSharesFromLoan0 == 0) {
+            if (amountsMoved.rightSlot() == 0) {
                 newSharesFromLoan0 =
                     -(expectedSwap0 * int256(ct0.totalSupply())) /
                     int256(ct0.totalAssets());
-            } else if (newSharesFromLoan1 == 0) {
+            }
+            if (amountsMoved.leftSlot() == 0) {
                 newSharesFromLoan1 =
                     -(expectedSwap1 * int256(ct1.totalSupply())) /
                     int256(ct1.totalAssets());
             }
-            console2.log("newSh0", newSharesFromLoan0);
-            console2.log("newSh1", newSharesFromLoan1);
         }
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
 
         {
             (uint256 poolAssets, uint256 inAMM, ) = ct0.getPoolData();
-            console2.log("poolAssets0", poolAssets);
-            console2.log("inAMM0", inAMM);
-            console2.log("ppBal0", IERC20Partial(token0).balanceOf(address(pp)));
         }
         {
             (uint256 poolAssets, uint256 inAMM, ) = ct1.getPoolData();
-            console2.log("poolAssets1", poolAssets);
-            console2.log("inAMM1", inAMM);
-            console2.log("ppBal1", IERC20Partial(token1).balanceOf(address(pp)));
         }
         vm.startPrank(Bob);
         mintOptions(
@@ -2300,8 +2274,6 @@ contract PanopticPoolTest is PositionUtils {
         );
         uint256 bobAfter0 = (ct0.balanceOf(Bob));
         uint256 bobAfter1 = (ct1.balanceOf(Bob));
-        console2.log("bob0", bobBefore0, bobAfter0);
-        console2.log("bob1", bobBefore1, bobAfter1);
 
         assertEq(
             sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)),
@@ -2321,36 +2293,26 @@ contract PanopticPoolTest is PositionUtils {
             10,
             "FAIL: incorrect loan amount token1"
         );
-        //console2.log('condition0', bobAfter0, bobBefore0 + newSharesFromLoan0);
-        //console2.log('condition1', bobAfter1, bobBefore1 + newSharesFromLoan1);
 
         {
             (uint256 poolAssets, uint256 inAMM, ) = ct0.getPoolData();
-            console2.log("poolAssets0", poolAssets);
-            console2.log("inAMM0", inAMM);
-            console2.log("ppBal0", IERC20Partial(token0).balanceOf(address(pp)));
-            assertApproxEqAbs(inAMM, uint128(shortAmounts.rightSlot()), 10, "in AMM 0");
+            assertApproxEqAbs(inAMM, uint128(amountsMoved.rightSlot()), 10, "in AMM 0");
         }
         {
             (uint256 poolAssets, uint256 inAMM, ) = ct1.getPoolData();
-            console2.log("poolAssets1", poolAssets);
-            console2.log("inAMM1", inAMM);
-            console2.log("ppBal1", IERC20Partial(token1).balanceOf(address(pp)));
-            assertApproxEqAbs(inAMM, uint128(shortAmounts.leftSlot()), 10, "in AMM 1");
+            assertApproxEqAbs(inAMM, uint128(amountsMoved.leftSlot()), 10, "in AMM 1");
         }
 
         assertEq(pp.positionsHash(Bob), uint248(uint256(keccak256(abi.encodePacked(tokenId)))));
         assertEq(pp.numberOfLegs(Bob), 1);
 
         int256 repaidSharesForLoan0 = int256(
-            (uint128(shortAmounts.rightSlot()) * ct1.totalSupply()) / ct1.totalAssets()
+            (uint128(amountsMoved.rightSlot()) * ct0.totalSupply()) / ct0.totalAssets()
         );
         int256 repaidSharesForLoan1 = int256(
-            (uint128(shortAmounts.leftSlot()) * ct1.totalSupply()) / ct1.totalAssets()
+            (uint128(amountsMoved.leftSlot()) * ct1.totalSupply()) / ct1.totalAssets()
         );
 
-        console2.log("burn");
-        console2.log("");
         burnOptions(
             pp,
             posIdList,
@@ -2377,7 +2339,7 @@ contract PanopticPoolTest is PositionUtils {
         );
     }
 
-    function test_Success_mintOptions_Loan_long_noSwap(uint256 x, uint256 positionSizeSeed) public {
+    function test_Success_mintOptions_Credit_noSwap(uint256 x, uint256 positionSizeSeed) public {
         _initPool(x);
 
         positionSize = uint128(bound(positionSizeSeed, 10 ** 8, 10 ** 12));
@@ -2408,9 +2370,10 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MAX_V3POOL_TICK,
             true
         );
-        (, LeftRightSigned shortAmountsAlice) = PanopticMath.computeLoanAmounts(
+        (, $shortAmounts) = PanopticMath._calculateIOAmounts(
             tokenIdA,
-            uint128(positionSize * 10)
+            uint128(positionSize * 10),
+            0
         );
 
         vm.stopPrank();
@@ -2435,7 +2398,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeLoanAmounts(tokenId, uint128(positionSize));
+            ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
@@ -2452,12 +2415,8 @@ contract PanopticPoolTest is PositionUtils {
                         ct1.totalAssets()
                 )
             );
-            console2.log("newSh0", newSharesFromLoan0);
-            console2.log("newSh1", newSharesFromLoan1);
         }
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
-        console2.log("pp bal0", IERC20Partial(token0).balanceOf(address(pp)));
-        console2.log("pp bal1", IERC20Partial(token1).balanceOf(address(pp)));
         mintOptions(
             pp,
             posIdList,
@@ -2467,12 +2426,8 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MAX_V3POOL_TICK,
             true
         );
-        console2.log("pp bal0", IERC20Partial(token0).balanceOf(address(pp)));
-        console2.log("pp bal1", IERC20Partial(token1).balanceOf(address(pp)));
         uint256 bobAfter0 = (ct0.balanceOf(Bob));
         uint256 bobAfter1 = (ct1.balanceOf(Bob));
-        console2.log("bob0", bobBefore0, bobAfter0);
-        console2.log("bob1", bobBefore1, bobAfter1);
 
         assertEq(
             sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)),
@@ -2492,24 +2447,24 @@ contract PanopticPoolTest is PositionUtils {
             10,
             "FAIL: incorrect loan amount token1"
         );
-        //console2.log('condition0', bobAfter0, bobBefore0 + newSharesFromLoan0);
-        //console2.log('condition1', bobAfter1, bobBefore1 + newSharesFromLoan1);
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(
+            assertEq(
                 inAMM,
-                uint128(shortAmountsAlice.rightSlot()) - uint128(longAmounts.rightSlot()),
-                10,
+                uint128($shortAmounts.rightSlot()) +
+                    uint128(shortAmounts.rightSlot()) -
+                    uint128(longAmounts.rightSlot()),
                 "in AMM 0"
             );
         }
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(
+            assertEq(
                 inAMM,
-                uint128(shortAmountsAlice.leftSlot()) - uint128(longAmounts.leftSlot()),
-                10,
+                uint128($shortAmounts.leftSlot()) +
+                    uint128(shortAmounts.leftSlot()) -
+                    uint128(longAmounts.leftSlot()),
                 "in AMM 1"
             );
         }
@@ -2524,8 +2479,6 @@ contract PanopticPoolTest is PositionUtils {
             (uint128(longAmounts.leftSlot()) * ct1.totalSupply()) / ct1.totalAssets()
         );
 
-        console2.log("burn");
-        console2.log("");
         burnOptions(
             pp,
             posIdList,
@@ -2552,7 +2505,7 @@ contract PanopticPoolTest is PositionUtils {
         );
     }
 
-    function test_Success_mintOptions_Loan_long_swap(uint256 x, uint256 positionSizeSeed) public {
+    function test_Success_mintOptions_Credit_swap(uint256 x, uint256 positionSizeSeed) public {
         _initPool(x);
 
         positionSize = uint128(bound(positionSizeSeed, 10 ** 10, 5 * 10 ** 10));
@@ -2579,19 +2532,18 @@ contract PanopticPoolTest is PositionUtils {
             posIdListA,
             positionSize * 10,
             type(uint64).max,
-            Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
+            Constants.MAX_V3POOL_TICK,
             true
         );
-        (, LeftRightSigned shortAmountsAlice) = PanopticMath.computeLoanAmounts(
+        (, $shortAmounts) = PanopticMath._calculateIOAmounts(
             tokenIdA,
-            uint128(positionSize * 10)
+            uint128(positionSize * 10),
+            0
         );
 
         vm.stopPrank();
 
-        console2.log("");
-        console2.log("Bob");
         // long loan
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
             0,
@@ -2611,7 +2563,7 @@ contract PanopticPoolTest is PositionUtils {
         uint256 bobBefore1 = (ct1.balanceOf(Bob));
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-            .computeLoanAmounts(tokenId, uint128(positionSize));
+            ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
@@ -2628,8 +2580,6 @@ contract PanopticPoolTest is PositionUtils {
                         ct1.totalAssets()
                 )
             );
-            console2.log("newSh0", newSharesFromLoan0);
-            console2.log("newSh1", newSharesFromLoan1);
 
             int256 expectedSwap0;
             int256 expectedSwap1;
@@ -2646,37 +2596,22 @@ contract PanopticPoolTest is PositionUtils {
 
                 expectedSwap0 = totalMoved.rightSlot();
                 expectedSwap1 = totalMoved.leftSlot();
-                console2.log("expec0", expectedSwap0);
-                console2.log("expec1", expectedSwap1);
                 vm.stopPrank();
                 vm.revertTo(snapshot);
             }
-            if (newSharesFromLoan0 == 0) {
-                newSharesFromLoan1 +=
-                    (0 * (expectedSwap1 * int256(ct1.totalSupply()))) /
-                    int256(ct1.totalAssets());
+            if (longAmounts.rightSlot() == 0) {
                 newSharesFromLoan0 =
                     -(expectedSwap0 * int256(ct0.totalSupply())) /
                     int256(ct0.totalAssets());
-            } else if (newSharesFromLoan1 == 0) {
-                newSharesFromLoan0 +=
-                    (0 * (expectedSwap0 * int256(ct0.totalSupply()))) /
-                    int256(ct0.totalAssets());
+            }
+            if (longAmounts.leftSlot() == 0) {
                 newSharesFromLoan1 =
                     -(expectedSwap1 * int256(ct1.totalSupply())) /
                     int256(ct1.totalAssets());
             }
-
-            console2.log("newSh0", newSharesFromLoan0);
-            console2.log("newSh1", newSharesFromLoan1);
         }
         // type(uint64).max = no limit, ensure the operation works given the changed liquidity limit
         vm.startPrank(Bob);
-        console2.log("pp bal0", IERC20Partial(token0).balanceOf(address(pp)));
-        console2.log("pp bal1", IERC20Partial(token1).balanceOf(address(pp)));
-        console2.log("Bob bal0", bobBefore0);
-        console2.log("Bob bal1", bobBefore1);
-        console2.log("Bob", Bob);
         mintOptions(
             pp,
             posIdList,
@@ -2686,12 +2621,8 @@ contract PanopticPoolTest is PositionUtils {
             Constants.MIN_V3POOL_TICK,
             true
         );
-        console2.log("pp bal0", IERC20Partial(token0).balanceOf(address(pp)));
-        console2.log("pp bal1", IERC20Partial(token1).balanceOf(address(pp)));
         uint256 bobAfter0 = (ct0.balanceOf(Bob));
         uint256 bobAfter1 = (ct1.balanceOf(Bob));
-        console2.log("bob0", bobBefore0, bobAfter0);
-        console2.log("bob1", bobBefore1, bobAfter1);
 
         assertEq(
             sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)),
@@ -2711,24 +2642,24 @@ contract PanopticPoolTest is PositionUtils {
             10,
             "FAIL: incorrect loan amount token1"
         );
-        //console2.log('condition0', bobAfter0, bobBefore0 + newSharesFromLoan0);
-        //console2.log('condition1', bobAfter1, bobBefore1 + newSharesFromLoan1);
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(
+            assertEq(
                 inAMM,
-                uint128(shortAmountsAlice.rightSlot()) - uint128(longAmounts.rightSlot()),
-                10,
+                uint128($shortAmounts.rightSlot()) +
+                    uint128(shortAmounts.rightSlot()) -
+                    uint128(longAmounts.rightSlot()),
                 "in AMM 0"
             );
         }
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(
+            assertEq(
                 inAMM,
-                uint128(shortAmountsAlice.leftSlot()) - uint128(longAmounts.leftSlot()),
-                10,
+                uint128($shortAmounts.leftSlot()) +
+                    uint128(shortAmounts.leftSlot()) -
+                    uint128(longAmounts.leftSlot()),
                 "in AMM 1"
             );
         }
@@ -2743,8 +2674,6 @@ contract PanopticPoolTest is PositionUtils {
             (uint128(longAmounts.leftSlot()) * ct1.totalSupply()) / ct1.totalAssets()
         );
 
-        console2.log("burn");
-        console2.log("");
         burnOptions(
             pp,
             posIdList,
@@ -3433,7 +3362,6 @@ contract PanopticPoolTest is PositionUtils {
                 int128(expectedLiq)
             );
 
-            console2.log("amount0R", amount0Required);
             (, expectedSwap1) = PositionUtils.simulateSwap(
                 pool,
                 tickLower,
@@ -3446,11 +3374,9 @@ contract PanopticPoolTest is PositionUtils {
                 false,
                 -amount0Required
             );
-            console2.log("expectedSwap1", expectedSwap1);
             vm.startPrank(Alice);
         }
 
-        console2.log("positionSize", positionSize);
         {
             TokenId[] memory posIdList = new TokenId[](1);
             posIdList[0] = tokenId;
@@ -3462,7 +3388,6 @@ contract PanopticPoolTest is PositionUtils {
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
-        console2.log("expectedLi", expectedLiq);
         uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(
             sqrtLower,
             sqrtUpper,

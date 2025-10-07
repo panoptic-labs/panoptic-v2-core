@@ -615,33 +615,6 @@ library PanopticMath {
         }
     }
 
-    /// @notice Compute the amount of notional value of the loans in the position.
-    /// @param tokenId The option position id
-    /// @param positionSize The number of contracts of the option
-    /// @return longAmounts Left-right packed word where rightSlot = token0 and leftSlot = token1 held against borrowed Uniswap liquidity for long legs
-    /// @return shortAmounts Left-right packed word where where rightSlot = token0 and leftSlot = token1 borrowed to create short legs
-    function computeLoanAmounts(
-        TokenId tokenId,
-        uint128 positionSize
-    ) internal pure returns (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) {
-        uint256 numLegs = tokenId.countLegs();
-        for (uint256 leg = 0; leg < numLegs; ) {
-            (LeftRightSigned longs, LeftRightSigned shorts) = _calculateIOAmounts(
-                tokenId,
-                positionSize,
-                leg
-            );
-
-            if (tokenId.width(leg) == 0) {
-                longAmounts = longAmounts.add(longs);
-                shortAmounts = shortAmounts.add(shorts);
-            }
-            unchecked {
-                ++leg;
-            }
-        }
-    }
-
     /// @notice Convert an amount of token0 into an amount of token1 given the sqrtPriceX96 in a Uniswap pool defined as `sqrt(1/0)*2^96`.
     /// @dev Uses reduced precision after tick 443636 in order to accommodate the full range of ticks
     /// @param amount The amount of token0 to convert into token1
@@ -812,6 +785,12 @@ library PanopticMath {
         uint128 amount0;
         uint128 amount1;
 
+        // if the width is zero, add 1 to the width to allow liquidity amounts to be computes
+        /// @dev this is just for accounting purposes, the actual tokenId will remain with a width = 0
+        if (tokenId.width(legIndex) == 0) {
+            tokenId = tokenId.addWidth(2, legIndex);
+        }
+
         LiquidityChunk liquidityChunk = getLiquidityChunk(tokenId, legIndex, positionSize);
 
         // Shorts round UP to ensure user pays enough (conservative for protocol)
@@ -823,7 +802,6 @@ library PanopticMath {
             amount0 = uint128(Math.getAmount0ForLiquidity(liquidityChunk));
             amount1 = uint128(Math.getAmount1ForLiquidity(liquidityChunk));
         }
-
         return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);
     }
 

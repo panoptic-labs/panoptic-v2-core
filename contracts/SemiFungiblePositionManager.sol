@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-import "forge-std/Test.sol";
 // Interfaces
 import {IERC20Partial} from "@tokens/interfaces/IERC20Partial.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -825,8 +824,6 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             totalSwapped = LeftRightSigned.wrap(0).toRightSlot(swap0.toInt128()).toLeftSlot(
                 swap1.toInt128()
             );
-            console2.log("swap0", swap0);
-            console2.log("swap1", swap1);
         }
     }
 
@@ -861,34 +858,25 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
         for (uint256 leg = 0; leg < numLegs; ) {
             if (tokenId.width(leg) == 0) {
-                (LeftRightSigned longs, LeftRightSigned shorts) = PanopticMath._calculateIOAmounts(
+                LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
                     tokenId,
                     positionSize,
                     leg
                 );
+
                 int128 signMultiplier = tokenId.isLong(leg) != 0 ? int128(1) : int128(-1);
 
-                console2.log("short.r", shorts.rightSlot());
-                console2.log("short.l", shorts.leftSlot());
-                console2.log("long.r", longs.rightSlot());
-                console2.log("long.l", longs.leftSlot());
-                itmAmounts = itmAmounts.add(
-                    tokenId.tokenType(leg) == 0
-                        ? LeftRightSigned.wrap(0).toRightSlot(
-                            signMultiplier *
-                                (int128(shorts.rightSlot())) +
-                                signMultiplier *
-                                (int128(longs.rightSlot()))
-                        )
-                        : LeftRightSigned.wrap(0).toLeftSlot(
-                            signMultiplier *
-                                (int128(shorts.leftSlot())) +
-                                signMultiplier *
-                                (int128(longs.leftSlot()))
-                        )
-                );
-                console2.log("itm0", itmAmounts.rightSlot());
-                console2.log("itm1", itmAmounts.leftSlot());
+                {
+                    int128 itm0 = tokenId.tokenType(leg) == 1
+                        ? int128(0)
+                        : signMultiplier * int128(amountsMoved.rightSlot());
+
+                    int128 itm1 = tokenId.tokenType(leg) == 0
+                        ? int128(0)
+                        : signMultiplier * int128(amountsMoved.leftSlot());
+
+                    itmAmounts = itmAmounts.toRightSlot(itm0).toLeftSlot(itm1);
+                }
             } else {
                 LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
                     tokenId,
