@@ -59,20 +59,16 @@ contract PanopticHelper {
             uint256[2][] memory positionBalanceArray
         ) = pool.getAccumulatedFeesAndPositionsData(account, false, positionIdList);
 
+        PanopticPool _pool = pool;
         // Query the current and required collateral amounts for the two tokens
-        LeftRightUnsigned tokenData0 = pool.collateralToken0().getAccountMarginDetails(
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = pool.riskEngine().getMargin(
             account,
             atTick,
             positionBalanceArray,
-            shortPremium.rightSlot(),
-            longPremium.rightSlot()
-        );
-        LeftRightUnsigned tokenData1 = pool.collateralToken1().getAccountMarginDetails(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium.leftSlot(),
-            longPremium.leftSlot()
+            shortPremium,
+            longPremium,
+            _pool.collateralToken0(),
+            _pool.collateralToken1()
         );
 
         // convert (using atTick) and return the total collateral balance and required balance in terms of tokenType

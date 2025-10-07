@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Inherited implementations
@@ -207,6 +208,9 @@ contract PanopticPool is Multicall {
     /// @notice Collateral vault for token1 in the Uniswap pool.
     CollateralTracker internal s_collateralToken1;
 
+    /// @notice Risk Engine powering this PanopticPool
+    RiskEngine internal s_riskEngine;
+
     /// @notice Nested mapping that tracks the option formation: address => tokenId => leg => premiaGrowth.
     /// @dev Premia growth is taking a snapshot of the chunk premium in SFPM, which is measuring the amount of fees
     /// collected for every chunk per unit of liquidity (net or short, depending on the isLong value of the specific leg index).
@@ -264,7 +268,8 @@ contract PanopticPool is Multicall {
         address token0,
         address token1,
         CollateralTracker collateralTracker0,
-        CollateralTracker collateralTracker1
+        CollateralTracker collateralTracker1,
+        RiskEngine _riskEngine
     ) external {
         // reverts if the Uniswap pool has already been initialized
         if (address(s_univ3pool) != address(0)) revert Errors.PoolAlreadyInitialized();
@@ -296,6 +301,9 @@ contract PanopticPool is Multicall {
         // Store the collateral token0
         s_collateralToken0 = collateralTracker0;
         s_collateralToken1 = collateralTracker1;
+
+        // store the risk engine
+        s_riskEngine = _riskEngine;
 
         // consolidate all 4 approval calls to one library delegatecall in order to reduce bytecode size
         // approves:
@@ -334,10 +342,8 @@ contract PanopticPool is Multicall {
     function assertMinCollateralValues(uint256 minValue0, uint256 minValue1) external view {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
-        if (
-            ct0.convertToAssets(ct0.balanceOf(msg.sender)) < minValue0 ||
-            ct1.convertToAssets(ct1.balanceOf(msg.sender)) < minValue1
-        ) revert Errors.AccountInsolvent();
+        if (ct0.assetsOf(msg.sender) < minValue0 || ct1.assetsOf(msg.sender) < minValue1)
+            revert Errors.AccountInsolvent();
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -552,9 +558,12 @@ contract PanopticPool is Multicall {
                     tickLimitHigh
                 );
             } else {
+                uint128 positionSize = positionBalanceData.positionSize();
+                if (positionSize == 0) revert Errors.PositionNotOwned();
+
                 _burnOptions(
                     tokenId,
-                    positionBalanceData.positionSize(),
+                    positionSize,
                     tickLimitLow,
                     tickLimitHigh,
                     msg.sender,
@@ -642,27 +651,23 @@ contract PanopticPool is Multicall {
     /// @param positionSize The size of the position, expressed in terms of the asset
     /// @param owner The owner of the option position to be minted
     /// @param totalSwapped The amount of tokens moved during creation of the option position
-    /// @return Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
+    /// @return utilizations Packing of the pool utilization (how much funds are in the Panoptic pool versus the AMM pool at the time of minting),
     /// right 64bits for token0 and left 64bits for token1, defined as `(inAMM * 10_000) / totalAssets()`
     /// where totalAssets is the total tracked assets in the AMM and PanopticPool minus fees and donations to the Panoptic pool
-    /// @return The total amount of commissions (base rate) paid for token0 (right) and token1 (left)
-    /// @return The amount of tokens paid when creating that option for token0 (right) and token1 (left)
+    /// @return commissions The total amount of commissions (base rate) paid for token0 (right) and token1 (left)
+    /// @return paidAmounts The amount of tokens paid when creating that option for token0 (right) and token1 (left)
     function _payCommissionAndWriteData(
         TokenId tokenId,
         uint128 positionSize,
         address owner,
         LeftRightSigned totalSwapped
-    ) internal returns (uint32, LeftRightUnsigned, LeftRightSigned) {
+    )
+        internal
+        returns (uint32 utilizations, LeftRightUnsigned commissions, LeftRightSigned paidAmounts)
+    {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
-
-        uint32 commissions;
-        LeftRightUnsigned utilizations;
-        LeftRightSigned paidAmounts;
-
-        // stack too deep
-        LeftRightSigned _totalSwapped = totalSwapped;
 
         {
             (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
@@ -670,10 +675,10 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.rightSlot(),
                     shortAmounts.rightSlot(),
-                    _totalSwapped.rightSlot()
+                    totalSwapped.rightSlot()
                 );
-            commissions = uint32(utilizationAndCommission0.rightSlot());
-            utilizations = utilizations.toRightSlot(utilizationAndCommission0.leftSlot());
+            utilizations = uint32(utilizationAndCommission0.rightSlot());
+            commissions = commissions.toRightSlot(utilizationAndCommission0.leftSlot());
             paidAmounts = paidAmounts.toRightSlot(paid0);
         }
         {
@@ -682,16 +687,16 @@ contract PanopticPool is Multicall {
                     owner,
                     longAmounts.leftSlot(),
                     shortAmounts.leftSlot(),
-                    _totalSwapped.leftSlot()
+                    totalSwapped.leftSlot()
                 );
-            commissions = uint32(utilizationAndCommission1.rightSlot() << 16);
-            utilizations = utilizations.toLeftSlot(utilizationAndCommission1.leftSlot());
+            utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
+            commissions = commissions.toLeftSlot(utilizationAndCommission1.leftSlot());
             paidAmounts = paidAmounts.toLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
         unchecked {
-            return (commissions, utilizations, paidAmounts);
+            return (utilizations, commissions, paidAmounts);
         }
     }
 
@@ -717,6 +722,9 @@ contract PanopticPool is Multicall {
         premiasByLeg = new LeftRightSigned[4][](positionIdList.length);
         for (uint256 i = 0; i < positionIdList.length; ) {
             uint128 positionSize = s_positionBalance[owner][positionIdList[i]].positionSize();
+
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             LeftRightSigned paidAmounts;
             (paidAmounts, premiasByLeg[i]) = _burnOptions(
                 positionIdList[i],
@@ -1044,21 +1052,14 @@ contract PanopticPool is Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
-
-            tokenData0 = s_collateralToken0.getAccountMarginDetails(
+            (tokenData0, tokenData1) = s_riskEngine.getMargin(
                 liquidatee,
                 twapTick,
                 positionBalanceArray,
-                shortPremium.rightSlot(),
-                longPremium.rightSlot()
-            );
-
-            tokenData1 = s_collateralToken1.getAccountMarginDetails(
-                liquidatee,
-                twapTick,
-                positionBalanceArray,
-                shortPremium.leftSlot(),
-                longPremium.leftSlot()
+                shortPremium,
+                longPremium,
+                s_collateralToken0,
+                s_collateralToken1
             );
         }
 
@@ -1084,7 +1085,7 @@ contract PanopticPool is Multicall {
 
             LeftRightSigned collateralRemaining;
             // compute bonus amounts using latest tick data
-            (bonusAmounts, collateralRemaining) = PanopticMath.getLiquidationBonus(
+            (bonusAmounts, collateralRemaining) = s_riskEngine.getLiquidationBonus(
                 tokenData0,
                 tokenData1,
                 Math.getSqrtRatioAtTick(twapTick),
@@ -1142,6 +1143,8 @@ contract PanopticPool is Multicall {
         {
             positionSize = s_positionBalance[account][tokenId].positionSize();
 
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
                 positionSize
@@ -1149,7 +1152,7 @@ contract PanopticPool is Multicall {
 
             // Compute the exerciseFee, this will decrease the further away the price is from the exercised position
             // Include any deltas in long legs between the current and oracle tick in the exercise fee
-            exerciseFees = ct0.exerciseCost(
+            exerciseFees = s_riskEngine.exerciseCost(
                 currentTick,
                 twapTick,
                 tokenId,
@@ -1175,7 +1178,7 @@ contract PanopticPool is Multicall {
             );
         }
         // redistribute token composition of refund amounts if user doesn't have enough of one token to pay
-        refundAmounts = PanopticMath.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
+        refundAmounts = s_riskEngine.getRefundAmounts(account, exerciseFees, twapTick, ct0, ct1);
 
         // settle difference between delegated amounts (from the protocol) and exercise fees/substituted tokens
         ct0.refund(account, msg.sender, refundAmounts.rightSlot());
@@ -1207,6 +1210,8 @@ contract PanopticPool is Multicall {
         ct1.delegate(owner);
 
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+
+        if (positionSize == 0) revert Errors.PositionNotOwned();
 
         for (uint256 leg = 0; leg < tokenId.countLegs(); ) {
             if (tokenId.isLong(leg) != 0) {
@@ -1277,7 +1282,7 @@ contract PanopticPool is Multicall {
                         LeftRightUnsigned.wrap(uint256(LeftRightSigned.unwrap(realizedPremia)))
                     );
                 }
-                refundAmounts = PanopticMath
+                refundAmounts = s_riskEngine
                     .getRefundAmounts(owner, LeftRightSigned.wrap(0), twapTick, ct0, ct1)
                     .add(refundAmounts);
                 emit PremiumSettled(owner, tokenId, leg, realizedPremia);
@@ -1366,21 +1371,18 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = s_riskEngine.getMargin(
+            account,
+            atTick,
+            positionBalanceArray,
+            shortPremium,
+            longPremium,
+            s_collateralToken0,
+            s_collateralToken1
+        );
         (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-            s_collateralToken0.getAccountMarginDetails(
-                account,
-                atTick,
-                positionBalanceArray,
-                shortPremium.rightSlot(),
-                longPremium.rightSlot()
-            ),
-            s_collateralToken1.getAccountMarginDetails(
-                account,
-                atTick,
-                positionBalanceArray,
-                shortPremium.leftSlot(),
-                longPremium.leftSlot()
-            ),
+            tokenData0,
+            tokenData1,
             Math.getSqrtRatioAtTick(atTick)
         );
 
@@ -1426,6 +1428,11 @@ contract PanopticPool is Multicall {
         uint256 pLength = positionIdList.length;
 
         uint256 fingerprintIncomingList;
+
+        // verify it has no duplicated elements
+        if (!PanopticMath.hasNoDuplicateTokenIds(positionIdList)) {
+            revert Errors.DuplicateTokenId();
+        }
 
         for (uint256 i = 0; i < pLength; ) {
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
@@ -1484,6 +1491,12 @@ contract PanopticPool is Multicall {
     /// @return Collateral token corresponding to token1 in the AMM
     function collateralToken1() external view returns (CollateralTracker) {
         return s_collateralToken1;
+    }
+
+    /// @notice Get the address of the risk engine powering this PanopticPool.
+    /// @return RiskEngine address of the risk engine
+    function riskEngine() external view returns (RiskEngine) {
+        return s_riskEngine;
     }
 
     /// @notice Computes and returns all oracle ticks.
@@ -1559,6 +1572,8 @@ contract PanopticPool is Multicall {
 
         // compute and return effective liquidity. Return if short=net=0, which is closing short position
         if (netLiquidity == 0 && removedLiquidity == 0) return totalLiquidity;
+
+        if (netLiquidity == 0) revert Errors.NetLiquidityZero();
 
         uint256 effectiveLiquidityFactorX32;
         unchecked {
