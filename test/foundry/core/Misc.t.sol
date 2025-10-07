@@ -4220,9 +4220,13 @@ contract Misctest is Test, PositionUtils {
         // setup mini-median price array
         for (uint256 i = 0; i < 60; ++i) {
             swapperc.mint(uniPool, -100000, 100000, 10 ** 18);
-            vm.warp(block.timestamp + 120); // 2 mins steps
+            vm.warp(block.timestamp + 60); // 1 mins steps
             vm.roll(block.number + 1);
             pp.pokeMedian();
+            (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
+                .getOracleTicks();
+            int24 TWAPtick = re.twapEMA(oraclePack);
+            console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
 
@@ -4235,8 +4239,9 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
-        int24 TWAPtick = PanopticMath.twapEMA(oraclePack);
+        int24 TWAPtick = re.twapEMA(oraclePack);
         console2.log("TWAPtick", TWAPtick);
+        assertTrue(false);
 
         liquidate(pp, new TokenId[](0), Bob, $posIdList);
 
