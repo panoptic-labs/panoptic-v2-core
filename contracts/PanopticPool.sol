@@ -362,8 +362,7 @@ contract PanopticPool is Multicall {
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
             _calculateAccumulatedPremia(
@@ -482,7 +481,9 @@ contract PanopticPool is Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeMedian() external {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = s_univ3pool.slot0();
+        (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
+            s_univ3pool
+        );
 
         (, uint256 medianData) = PanopticMath.computeInternalMedian(
             observationIndex,
@@ -1377,8 +1378,7 @@ contract PanopticPool is Multicall {
     /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
     /// @return Whether the current tick has deviated from the median by `> MAX_TICKS_DELTA`
     function isSafeMode() public view returns (bool) {
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 medianData = s_miniMedian;
         unchecked {
             // If ticks have recently deviated more than +/- ~10%, enforce covered mints
