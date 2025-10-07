@@ -1083,7 +1083,7 @@ contract PanopticPool is Multicall {
             // It is kind of funky that if liquidatable account owned a position was in the grace period window, third parties have the option
             // of claiming that cap-accumulated bonus there first, then liquidating the account, and getting a different sum bonus
             // than if they had just liquidated
-            (shortPremium, longPremium, , positionBalanceArray) = _calculateAccumulatedPremia(
+            (shortPremium, longPremium, , positionBalanceArray,) = _calculateAccumulatedPremia(
                 liquidatee,
                 positionIdList,
                 COMPUTE_PREMIA_AS_COLLATERAL,
@@ -1880,13 +1880,14 @@ contract PanopticPool is Multicall {
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
         TokenId[] single = new TokenId[](1);
         single[0] = tokenId;
-        (, LeftRightUnsigned longPremium, uint256[2][] positionBalance) = _calculateAccumulatedPremia(owner, single, false, true, currentTick);
+        (, LeftRightUnsigned longPremium, , ,) = _calculateAccumulatedPremia(owner, single, false, true, currentTick);
         uint128 token0Cap = s_premiaCaps[owner][tokenId].rightSlot();
         uint128 token1Cap = s_premiaCaps[owner][tokenId].leftSlot();
-        uint128 owedPremia0 = owedPremia.rightSlot() * positionBalance[0][1]
-        uint128 owedPremia1 = owedPremia.rightSlot() * positionBalance[0][1]
+        uint128 accumulatedPremium0 = longPremium.rightSlot();
+        uint128 accumulatedPremium1 = longPremium.leftSlot();
 
-        if (owedPremia0 > token0Cap || owedPremia1 > token1Cap) {
+        // Caps start getting enforced within 1% (TODO: Can change this later)
+        if (accumulatedPremium0 > (token0Cap * 99 / 100 ) || accumulatedPremium1 > (token1Cap * 99 / 100)) {
             // Close the position either way:
             (LeftRightSigned paidAmounts, LeftRightSigned[4] premiaByLeg) = _burnOptions(
                 tokenId,
@@ -1897,86 +1898,110 @@ contract PanopticPool is Multicall {
                 COMMIT_LONG_SETTLED
             );
 
-            uint128 token0Overage = owedPremia0 - token0Cap;
-            uint128 token1Overage = owedPremia1 - token1Cap;
+            // If we actually exceeded the cap (e.g., {accumulated > cap > gracePeriodStart}),
+            // we want the buyer to shortchange the sellers and pay exactly {cap}
+            // However, _burnOptions paid {accumulated} to the sellers already - Therefore, we have to fix this:
+            // - Move {cap-gracePeriodStart} from the sellers to the caller, as a reward
+            // - Move {accumulated-gracePeriodStart} from the sellers to the buyer
+            // - Let the sellers keep {gracePeriodStart}
 
-            // this is equivalent to: if overage >= 1% of cap, pay out a reward
-            // overage / token0Cap >= 0.01 <=> overage >= token0Cap * 0.01 <=> overage / 0.01 >= token0Cap <=> overage * 100 >= token0Cap
-            bool rewardEligible0 = token0Overage * 100 >= token0Cap;
-            bool rewardEligible1 = token1Overage * 100 >= token1Cap;
+            // If we are in the grace period window, the buyer is going to pay exactly {cap}
+            // _burnOptions moved `accumulated` to the sellers already, so now we are going to:
+            // - Move {cap-accumulated} from buyer to caller
+            // - Let sellers keep {accumulated}
 
-            // Get seller premia:
-            uint256 totalAvail0;
-            uint256 totalAvail1;
-            {
-                uint256 n = tokenId.countLegs();
-                for (uint256 i = 0; i < n; ) {
-                    if (tokenId.isLong(i) == 0) {
-                        LeftRightSigned avail = premiaByLeg[i];
-                        if (avail.rightSlot() > 0) totalAvail0 += uint128(uint256(int256(avail.rightSlot())));
-                        if (avail.leftSlot()  > 0) totalAvail1 += uint128(uint256(int256(avail.leftSlot())));
-                    }
-                    unchecked { ++i; }
-                }
+            uint128 reward0;
+            uint128 reward1;
+            int128 buyerRefund0;
+            int128 buyerRefund1;
+
+            if (accumulatedPremium0 > token0Cap) {
+                // Exceeded cap: buyer pays cap, not accumulated
+                reward0 = token0Cap / 100;  // Caller gets 1% of cap
+                buyerRefund0 = int128(accumulatedPremium0 - token0Cap);  // Buyer gets refund
+            } else {
+                // Grace period: buyer pays cap exactly
+                reward0 = token0Cap - accumulatedPremium0;  // Caller gets difference
+                buyerRefund0 = 0;  // No refund needed
             }
 
-            uint128 reward0 = (rewardEligible0 && totalAvail0 > 0)
-                ? uint128((totalAvail0 * PREMIA_CAP_REWARD_BPS) / 10_000)
-                : 0;
-
-            uint128 reward1 = (rewardEligible1 && totalAvail1 > 0)
-                ? uint128((totalAvail1 * PREMIA_CAP_REWARD_BPS) / 10_000)
-                : 0;
-
-            if (reward0 > 0 || reward1 > 0) {
-                // 6) Delegate so we can pay the caller via CT.refund(...) within this scope
-                s_collateralToken0.delegate(owner);
-                s_collateralToken1.delegate(owner);
-                uint256 remaining0 = reward0;
-                uint256 remaining1 = reward1;
-
-                for (uint256 i = 0; i < tokenId.countLegs(); ) {
-                    if (tokenId.isLong(i) == 0) {
-                        // Identify the chunk
-                        bytes32 chunkKey = keccak256(
-                            abi.encodePacked(tokenId.strike(i), tokenId.width(i), tokenId.tokenType(i))
-                        );
-                        // Per-leg available amounts
-                        LeftRightSigned avail = premiaByLeg[i];
-                        uint256 avail0 = (avail.rightSlot() > 0) ? uint128(uint256(int256(avail.rightSlot()))) : 0;
-                        uint256 avail1 = (avail.leftSlot()  > 0) ? uint128(uint256(int256(avail.leftSlot())))  : 0;
-
-                        // Pro-rata slice for this chunk
-                        uint256 take0 = (totalAvail0 == 0 || remaining0 == 0) ? 0 : (avail0 * reward0) / totalAvail0;
-                        uint256 take1 = (totalAvail1 == 0 || remaining1 == 0) ? 0 : (avail1 * reward1) / totalAvail1;
-
-                        // Last-chunk rounding fix
-                        if (i == n - 1) {
-                            if (take0 < remaining0) take0 = remaining0;
-                            if (take1 < remaining1) take1 = remaining1;
-                        }
-
-                        // Reduce sellers' settled pool for this chunk
-                        LeftRightUnsigned st = s_settledTokens[chunkKey];
-                        s_settledTokens[chunkKey] = LeftRightUnsigned
-                            .wrap(uint128(st.rightSlot() > take0 ? st.rightSlot() - uint128(take0) : 0))
-                            .toLeftSlot(uint128(st.leftSlot()  > take1 ? st.leftSlot()  - uint128(take1) : 0));
-
-                        // Track what's left to allocate
-                        if (take0 <= remaining0) remaining0 -= take0; else remaining0 = 0;
-                        if (take1 <= remaining1) remaining1 -= take1; else remaining1 = 0;
-                    }
-                    unchecked { ++i; }
-                }
-
-                // Pay the caller now (tokens come from the same pool that the buyer just funded via premia)
-                if (reward0 > 0) s_collateralToken0.refund(owner, msg.sender, int128(reward0));
-                if (reward1 > 0) s_collateralToken1.refund(owner, msg.sender, int128(reward1));
-
-                // 11) Revoke delegation
-                s_collateralToken0.revoke(owner);
-                s_collateralToken1.revoke(owner);
+            if (accumulatedPremium1 > token1Cap) {
+                reward1 = token1Cap / 100;
+                buyerRefund1 = int128(accumulatedPremium1 - token1Cap);
+            } else {
+                reward1 = token1Cap - accumulatedPremium1;
+                buyerRefund1 = 0;
             }
+
+            if (buyerRefund0 > 0) {
+                // We have actually exceeded the cap:
+                // refund from sellers to buyer for the overage, such that they have only paid {cap}
+                // AND refund from sellers to caller for the reward
+                s_collateralToken0.refund(
+                    address(this),  // from protocol (where settled tokens sit)
+                    owner,          // to buyer
+                    buyerRefund0    // positive means transfer to buyer
+                );
+                s_collateralToken0.refund(
+                    address(this),
+                    msg.sender,
+                    reward0
+                );
+                // Reduce settled tokens since we're taking from sellers
+                // TODO: Think i need to iterate through legs here actually
+                bytes32 chunkKey = keccak256(
+                    abi.encodePacked(tokenId.strike(0), tokenId.width(0), tokenId.tokenType(0))
+                );
+                s_settledTokens[chunkKey] = s_settledTokens[chunkKey].sub(
+                    LeftRightUnsigned.wrap(0)
+                        .toRightSlot(uint128(buyerRefund0 + reward0))
+                );
+            } else if (reward0 > 0) {
+                // We're in the grace period -
+                // buyer has already paid {accumulated} to sellers in _burnOptions above
+                // So just transfer reward from buyer to caller
+                s_collateralToken0.refund(
+                    owner,      // from buyer
+                    msg.sender, // to caller
+                    int128(reward0)
+                );
+            }
+
+            if (buyerRefund1 > 0) {
+                // We have actually exceeded the cap:
+                // refund from sellers to buyer for the overage, such that they have only paid {cap}
+                // AND refund from sellers to caller for the reward
+                s_collateralToken1.refund(
+                    address(this),
+                    owner,
+                    buyerRefund1
+                );
+                s_collateralToken1.refund(
+                    address(this),
+                    owner,
+                    reward1
+                );
+                // Reduce settled tokens since we're taking from sellers
+                // TODO: Iterate through legs here
+                bytes32 chunkKey = keccak256(
+                    abi.encodePacked(tokenId.strike(0), tokenId.width(0), tokenId.tokenType(0))
+                );
+                s_settledTokens[chunkKey] = s_settledTokens[chunkKey].sub(
+                    LeftRightUnsigned.wrap(0)
+                        .toLeftSlot(uint128(buyerRefund1 + reward1))
+                );
+            } else if (reward1 > 0) {
+                // We're in the grace period -
+                // buyer has already paid {accumulated} to sellers in _burnOptions above
+                // So just transfer reward from buyer to caller
+                s_collateralToken1.refund(
+                    owner,
+                    msg.sender,
+                    int128(reward1)
+                );
+            }
+
+            // TODO: What if the exercise that occurred in _burnOptions altered the token types the user has?
 
             // Clean up storage
             delete s_premiaCaps[owner][tokenId];
