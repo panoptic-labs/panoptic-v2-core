@@ -527,7 +527,7 @@ contract PanopticPool is Multicall {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != poolId) revert Errors.InvalidTokenIdParameter(0);
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
@@ -1428,7 +1428,7 @@ contract PanopticPool is Multicall {
         for (uint256 i = 0; i < pLength; ) {
             TokenId tokenId = positionIdList[i];
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != poolId) revert Errors.InvalidTokenIdParameter(0);
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
 
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
