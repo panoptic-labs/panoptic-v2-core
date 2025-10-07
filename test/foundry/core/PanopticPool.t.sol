@@ -22,6 +22,7 @@ import {ISwapRouter} from "v3-periphery/interfaces/ISwapRouter.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 import {PositionUtils} from "../testUtils/PositionUtils.sol";
@@ -47,6 +48,24 @@ contract PanopticPoolHarness is PanopticPool {
 
     function miniMedian() external view returns (uint256) {
         return s_miniMedian;
+    }
+
+    function setPositionsHash(address user, uint256 hash) external {
+        s_positionsHash[user] = hash;
+    }
+
+    function generatePositionsHash(TokenId[] memory positionIdList) external returns (uint256) {
+        uint256 fingerprintIncomingList;
+        uint256 pLength = positionIdList.length;
+
+        for (uint256 i = 0; i < pLength; ++i) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+        }
+        return fingerprintIncomingList;
     }
 
     /**
@@ -154,10 +173,14 @@ contract PanopticPoolTest is PositionUtils {
     int256 rangesFromStrike;
     int256[2] exerciseFeeAmounts;
 
+    LeftRightSigned $longAmounts;
+    LeftRightSigned $shortAmounts;
+
     PanopticFactory factory;
     PanopticPoolHarness pp;
     CollateralTracker ct0;
     CollateralTracker ct1;
+    RiskEngine re;
 
     PanopticHelper ph;
 
@@ -244,6 +267,9 @@ contract PanopticPoolTest is PositionUtils {
 
     uint256 $TSSubliquidateeBalancePre0;
     uint256 $TSSubliquidateeBalancePre1;
+
+    uint256 $owedInterest0;
+    uint256 $owedInterest1;
 
     LeftRightUnsigned $tokenData0;
     LeftRightUnsigned $tokenData1;
@@ -497,13 +523,15 @@ contract PanopticPoolTest is PositionUtils {
             new Pointer[][](0)
         );
 
+        re = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
         IERC20Partial(token0).approve(address(factory), type(uint104).max);
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
+            address(factory.deployNewPool(token0, token1, fee, re, uint96(block.timestamp)))
         );
 
         ct0 = pp.collateralToken0();
@@ -593,9 +621,7 @@ contract PanopticPoolTest is PositionUtils {
 
         // deploy reference pool and collateral token
         poolReference = address(new PanopticPoolHarness(sfpm));
-        collateralReference = address(
-            new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000)
-        );
+        collateralReference = address(new CollateralTracker(10));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1560,7 +1586,26 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
 
-        pp.startPool(pool, token0, token1, ct0, ct1);
+        pp.startPool(pool, token0, token1, ct0, ct1, re);
+    }
+
+    /// @notice Tests that the riskEngine address is correctly set after initialization.
+    function test_Success_startPool_setsRiskEngine(uint256 x) public {
+        // Arrange: Deploy a fully initialized Panoptic Pool via the factory helper.
+        // This process calls `startPool` once internally.
+        _initWorld(x);
+
+        // Act: No action is needed, the action was the initialization itself.
+        // We just need to read the state.
+        RiskEngine configuredEngine = pp.riskEngine();
+
+        // Assert: The risk engine address stored in the PanopticPool
+        // must match the risk engine address used during setup.
+        assertEq(
+            address(configuredEngine),
+            address(re),
+            "Risk engine address was not set correctly"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1908,7 +1953,7 @@ contract PanopticPoolTest is PositionUtils {
             );
             assertEq(posBalanceArray[0][0], TokenId.unwrap(tokenId));
             assertEq(PositionBalance.wrap(posBalanceArray[0][1]).positionSize(), positionSizes[0]);
-            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).utilizations(), 0);
+            assertEq(PositionBalance.wrap(posBalanceArray[0][1]).utilizations(), 1);
             assertEq(posBalanceArray[1][0], TokenId.unwrap(tokenId2));
             assertEq(LeftRightUnsigned.wrap(posBalanceArray[1][1]).rightSlot(), positionSizes[1]);
             assertEq(
@@ -2878,7 +2923,7 @@ contract PanopticPoolTest is PositionUtils {
 
             (, uint256 inAMM0, ) = ct0.getPoolData();
 
-            assertEq(poolUtilization0, (inAMM0 * 10000) / ct0.totalSupply());
+            assertEq(poolUtilization0, Math.mulDivRoundingUp(inAMM0, 10000, ct0.totalSupply()));
             assertEq(poolUtilization1, 0);
         }
 
@@ -3001,7 +3046,7 @@ contract PanopticPoolTest is PositionUtils {
 
             (, uint256 inAMM0, ) = ct0.getPoolData();
 
-            assertEq(poolUtilization0, (inAMM0 * 10000) / ct0.totalSupply());
+            assertEq(poolUtilization0, Math.mulDivRoundingUp(inAMM0, 10000, ct0.totalSupply()));
 
             assertEq(poolUtilization1, 0);
         }
@@ -3136,7 +3181,7 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize);
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply());
+            assertEq(poolUtilization0, Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()));
             assertEq(poolUtilization1, 0);
         }
 
@@ -3231,7 +3276,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "user balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "pu 0"
+            );
             assertEq(poolUtilization1, 0, "pu 1");
         }
 
@@ -3347,6 +3396,146 @@ contract PanopticPoolTest is PositionUtils {
         }
     }
 
+    function test_Success_mintOptions_ITMShortPut_0(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        (int24 width, int24 strike) = PositionUtils.getITMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            1
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            1,
+            0,
+            strike,
+            width
+        );
+
+        uint256 expectedSwap1;
+        {
+            int256 amount0Required = SqrtPriceMath.getAmount0Delta(
+                currentSqrtPriceX96 < sqrtLower ? sqrtLower : currentSqrtPriceX96,
+                sqrtUpper,
+                int128(expectedLiq)
+            );
+
+            console2.log("amount0R", amount0Required);
+            (, expectedSwap1) = PositionUtils.simulateSwap(
+                pool,
+                tickLower,
+                tickUpper,
+                expectedLiq,
+                router,
+                token0,
+                token1,
+                fee,
+                false,
+                -amount0Required
+            );
+            console2.log("expectedSwap1", expectedSwap1);
+            vm.startPrank(Alice);
+        }
+
+        console2.log("positionSize", positionSize);
+        {
+            TokenId[] memory posIdList = new TokenId[](1);
+            posIdList[0] = tokenId;
+
+            // reversing the tick limits here to make sure they get entered into the SFPM properly
+            // this test will fail if it does not (because no ITM swaps will occur)
+            mintOptions(pp, posIdList, positionSize, 0, TickMath.MAX_TICK, TickMath.MIN_TICK, true);
+        }
+
+        assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
+
+        console2.log("expectedLi", expectedLiq);
+        uint256 amount1 = LiquidityAmounts.getAmount1ForLiquidity(
+            sqrtLower,
+            sqrtUpper,
+            expectedLiq
+        );
+
+        {
+            (, uint256 inAMM, ) = ct0.getPoolData();
+            assertEq(inAMM, 0, "inAMM0");
+        }
+
+        {
+            (, uint256 inAMM, ) = ct1.getPoolData();
+            assertApproxEqAbs(inAMM, amount1, 10, "inAMM1");
+        }
+
+        {
+            assertEq(
+                pp.positionsHash(Alice),
+                uint248(uint256(keccak256(abi.encodePacked(tokenId))))
+            );
+
+            assertEq(pp.numberOfLegs(Alice), 1);
+
+            (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
+                .optionPositionInfo(pp, Alice, tokenId);
+
+            assertEq(balance, positionSize, "balance");
+            assertEq(
+                poolUtilization1,
+                Math.mulDivRoundingUp(amount1, 10000, ct1.totalSupply()),
+                "utilization 1"
+            );
+            assertEq(poolUtilization0, 0, "utilization 0");
+        }
+
+        {
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId,
+                positionSize
+            );
+
+            int256 amount1Moved = currentSqrtPriceX96 < sqrtLower
+                ? int256(0)
+                : SqrtPriceMath.getAmount1Delta(
+                    sqrtLower,
+                    currentSqrtPriceX96 > sqrtUpper ? sqrtUpper : currentSqrtPriceX96,
+                    int128(expectedLiq)
+                );
+
+            int256 notionalVal = int256(expectedSwap1) + amount1Moved - shortAmounts.leftSlot();
+
+            // set itm spread fee to 0
+            int256 ITMSpread = notionalVal > 0
+                ? (notionalVal * int24(2 * ((0 * fee) / 100))) / 10_000
+                : -(notionalVal * int24(2 * ((0 * fee) / 100))) / 10_000;
+
+            assertApproxEqAbs(
+                ct1.balanceOf(Alice),
+                uint256(
+                    int256(uint256(type(uint104).max)) -
+                        notionalVal -
+                        (shortAmounts.leftSlot() * 10) /
+                        10_000
+                ),
+                uint256(int256(shortAmounts.leftSlot()) / 1_000_000 + 10),
+                "alice balance 1"
+            );
+
+            assertEq(ct0.balanceOf(Alice), uint256(type(uint104).max), "alice balance 0");
+        }
+    }
+
     function test_Success_mintOptions_ITMShortCall(
         uint256 x,
         uint256 widthSeed,
@@ -3383,6 +3572,7 @@ contract PanopticPoolTest is PositionUtils {
                 sqrtUpper > currentSqrtPriceX96 ? currentSqrtPriceX96 : sqrtUpper,
                 int128(expectedLiq)
             );
+            console2.log("amount1R", amount1Required);
 
             (expectedSwap0, ) = PositionUtils.simulateSwap(
                 pool,
@@ -3397,6 +3587,7 @@ contract PanopticPoolTest is PositionUtils {
                 -amount1Required
             );
 
+            console2.log("expectedSwap0", expectedSwap0);
             vm.startPrank(Alice);
         }
 
@@ -3438,7 +3629,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "utilization 1"
+            );
             assertEq(poolUtilization1, 0, "utilization 0");
         }
 
@@ -3542,7 +3737,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "utilization 1");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "utilization 1"
+            );
             assertEq(poolUtilization1, 0, "utilization 0");
         }
 
@@ -3716,15 +3915,21 @@ contract PanopticPoolTest is PositionUtils {
                     poolUtilization0,
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                         ? 10_001
-                        : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) /
+                        : Math.mulDivRoundingUp(
+                            uint256($amount0Moveds[0] + $amount0Moveds[1]),
+                            10000,
                             ct0.totalSupply()
+                        )
                 );
                 assertEq(
                     poolUtilization1,
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                         ? 10_001
-                        : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) /
+                        : Math.mulDivRoundingUp(
+                            uint256($amount1Moveds[0] + $amount1Moveds[1]),
+                            10000,
                             ct1.totalSupply()
+                        )
                 );
             }
 
@@ -3873,13 +4078,21 @@ contract PanopticPoolTest is PositionUtils {
                 poolUtilization0,
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
-                    : (uint256($amount0Moveds[0] + $amount0Moveds[1]) * 10000) / ct0.totalSupply()
+                    : Math.mulDivRoundingUp(
+                        uint256($amount0Moveds[0] + $amount0Moveds[1]),
+                        10000,
+                        ct0.totalSupply()
+                    )
             );
             assertEq(
                 poolUtilization1,
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
                     ? 10_001
-                    : (uint256($amount1Moveds[0] + $amount1Moveds[1]) * 10000) / ct1.totalSupply()
+                    : Math.mulDivRoundingUp(
+                        uint256($amount1Moveds[0] + $amount1Moveds[1]),
+                        10000,
+                        ct1.totalSupply()
+                    )
             );
         }
 
@@ -4122,19 +4335,25 @@ contract PanopticPoolTest is PositionUtils {
 
                 assertEq(balance, positionSizes[1], "FAIL: wrong balance for Alice");
                 assertEq(
-                    int64(poolUtilization0),
+                    (poolUtilization0),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                        ? int64(10_001)
-                        : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
-                            int256(ct0.totalSupply()),
-                    "FAIL: werong pool utiliation0"
+                        ? (10_001)
+                        : Math.mulDivRoundingUp(
+                            uint256($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2]),
+                            10000,
+                            (ct0.totalSupply())
+                        ),
+                    "FAIL: wrong pool utiliation0"
                 );
                 assertEq(
-                    int64(poolUtilization1),
+                    (poolUtilization1),
                     Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                        ? int64(10_001)
-                        : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
-                            int256(ct1.totalSupply()),
+                        ? (10_001)
+                        : Math.mulDivRoundingUp(
+                            uint256($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2]),
+                            10000,
+                            (ct1.totalSupply())
+                        ),
                     "FAIL: wrong pool utilzation1"
                 );
             }
@@ -4317,18 +4536,24 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(balance, positionSizes[1]);
             assertEq(
-                int64(poolUtilization0),
+                (poolUtilization0),
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? int64(10_001)
-                    : ($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2] * 10000) /
-                        int256(ct0.totalSupply())
+                    ? (10_001)
+                    : Math.mulDivRoundingUp(
+                        uint256($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2]),
+                        10000,
+                        (ct0.totalSupply())
+                    )
             );
             assertEq(
-                int64(poolUtilization1),
+                (poolUtilization1),
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? int64(10_001)
-                    : ($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2] * 10000) /
-                        int256(ct1.totalSupply())
+                    ? (10_001)
+                    : Math.mulDivRoundingUp(
+                        uint256($amount1Moveds[0] + $amount1Moveds[1] + $amount1Moveds[2]),
+                        10000,
+                        (ct1.totalSupply())
+                    )
             );
         }
 
@@ -4431,7 +4656,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId);
 
             assertEq(balance, positionSize, "user balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "pu 0"
+            );
             assertEq(poolUtilization1, 0, "pu 1");
         }
 
@@ -4553,7 +4782,11 @@ contract PanopticPoolTest is PositionUtils {
                 .optionPositionInfo(pp, Alice, tokenId0);
 
             assertEq(balance, positionSizes[0], "user balance");
-            assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+            assertEq(
+                poolUtilization0,
+                Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                "pu 0"
+            );
             assertEq(poolUtilization1, 0, "pu 1");
         }
 
@@ -4730,7 +4963,7 @@ contract PanopticPoolTest is PositionUtils {
         tickLimits[1][0] = Constants.MIN_V3POOL_TICK;
         tickLimits[1][1] = Constants.MAX_V3POOL_TICK;
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         // mint two positions
         pp.dispatch(posIdList, posIdListWrong, sizeList, spreadList, tickLimits, true);
 
@@ -4738,7 +4971,7 @@ contract PanopticPoolTest is PositionUtils {
         // mint two positions
         pp.dispatch(posIdListWrong, posIdList, sizeList, spreadList, tickLimits, true);
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         // mint two positions
         pp.dispatch(posIdListWrong, posIdListWrong, sizeList, spreadList, tickLimits, true);
     }
@@ -4830,7 +5063,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdListPass[1] = tokenId1;
             posIdListPass[2] = tokenId1;
 
-            TokenId[] memory posIdListFinal = new TokenId[](3);
+            TokenId[] memory posIdListFinal = new TokenId[](1);
             posIdListFinal[0] = tokenId0;
 
             uint128[] memory sizeListPass = new uint128[](3);
@@ -4900,7 +5133,11 @@ contract PanopticPoolTest is PositionUtils {
                     .optionPositionInfo(pp, Alice, tokenId0);
 
                 assertEq(balance, positionSizes[0], "user balance");
-                assertEq(poolUtilization0, (amount0 * 10000) / ct0.totalSupply(), "pu 0");
+                assertEq(
+                    poolUtilization0,
+                    Math.mulDivRoundingUp(amount0, 10000, ct0.totalSupply()),
+                    "pu 0"
+                );
                 assertEq(poolUtilization1, 0, "pu 1");
             }
         }
@@ -5203,7 +5440,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
         posIdList[1] = tokenId;
 
-        vm.expectRevert(Errors.InputListFail.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         mintOptions(
             pp,
             posIdList,
@@ -6915,21 +7152,24 @@ contract PanopticPoolTest is PositionUtils {
         TokenId tokenId = TokenId.wrap(0).addPoolId(poolId);
 
         for (uint256 i = 0; i < numLegs; ++i) {
-            tokenId = tokenId.addLeg(i, 1, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]);
+            tokenId = tokenId.addLeg(i, 2, isWETH, 0, tokenTypes[i], i, strikes[i], widths[i]); // option ratio = 2
         }
 
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
+        console2.log("mint Short option(s)");
         mintOptions(
             pp,
             posIdList,
-            positionSize * 2,
+            positionSize,
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
+
+        ($longAmounts, $shortAmounts) = PanopticMath.computeExercisedAmounts(tokenId, positionSize);
 
         // now we can mint the long option we are force exercising
         vm.startPrank(Alice);
@@ -6952,7 +7192,7 @@ contract PanopticPoolTest is PositionUtils {
 
         posIdList[0] = tokenId;
 
-        (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+        (LeftRightSigned longAmountsAlice, LeftRightSigned shortAmountsAlice) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
 
         {
@@ -6964,6 +7204,7 @@ contract PanopticPoolTest is PositionUtils {
             int24[2][] memory tickLimits = new int24[2][](1);
             tickLimits[0][0] = Constants.MAX_V3POOL_TICK;
             tickLimits[0][1] = Constants.MIN_V3POOL_TICK;
+            console2.log("mint Long option(s)");
             try pp.dispatch(posIdList, posIdList, sizeList, spreadList, tickLimits, true) {} catch (
                 bytes memory reason
             ) {
@@ -6985,7 +7226,7 @@ contract PanopticPoolTest is PositionUtils {
         updatePositionDataVariable(numLegs, isLongs);
 
         updateITMAmountsBurn(numLegs, tokenTypes);
-        updateIntrinsicValueBurn(longAmounts, shortAmounts);
+        updateIntrinsicValueBurn(longAmountsAlice, shortAmountsAlice);
 
         ($shortPremia, $longPremia, ) = pp.getAccumulatedFeesAndPositionsData(
             Alice,
@@ -7049,10 +7290,13 @@ contract PanopticPoolTest is PositionUtils {
         // note: we HAVE to start with a negative number as the base exercise cost because when shifting a negative number right by n bits,
         // the result is rounded DOWN and NOT toward zero
         // this divergence is observed when n (the number of half ranges) is > 10 (ensuring the floor is not zero, but -1 = 1bps at that point)
-        int256 exerciseFee = int256(-1024) >> uint256(rangesFromStrike);
+        int256 exerciseFee = int256(-1024000) >> uint256(rangesFromStrike);
 
-        exerciseFeeAmounts[0] += (longAmounts.rightSlot() * (-exerciseFee)) / 10_000;
-        exerciseFeeAmounts[1] += (longAmounts.leftSlot() * (-exerciseFee)) / 10_000;
+        exerciseFeeAmounts[0] += (longAmountsAlice.rightSlot() * (-exerciseFee)) / 10_000_000;
+        exerciseFeeAmounts[1] += (longAmountsAlice.leftSlot() * (-exerciseFee)) / 10_000_000;
+
+        vm.assume(Math.abs(TWAPtick - currentTick) < 513);
+        console2.log("force exercise option(s)");
         forceExercise(
             pp,
             Alice,
@@ -7081,20 +7325,14 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             (, uint256 inAMM, ) = ct0.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(longAmounts.rightSlot() + shortAmounts.rightSlot()) * 2,
-                10
-            );
+            uint128 tokenFlow0 = uint128($shortAmounts.rightSlot() - $longAmounts.rightSlot());
+            assertApproxEqAbs(inAMM, tokenFlow0, 10, "fail: inAMM0");
         }
 
         {
             (, uint256 inAMM, ) = ct1.getPoolData();
-            assertApproxEqAbs(
-                inAMM,
-                uint128(longAmounts.leftSlot() + shortAmounts.leftSlot()) * 2,
-                10
-            );
+            uint128 tokenFlow1 = uint128($shortAmounts.leftSlot() - $longAmounts.leftSlot());
+            assertApproxEqAbs(inAMM, tokenFlow1, 10, "fail: inAMM1");
         }
         {
             assertEq(pp.positionsHash(Alice), 0);
@@ -7135,7 +7373,11 @@ contract PanopticPoolTest is PositionUtils {
                     int256(lastCollateralBalance0[Alice]),
                 $balanceDelta0,
                 uint256(
-                    int256((longAmounts.rightSlot() + shortAmounts.rightSlot()) / 1_00_000 + 10)
+                    int256(
+                        (longAmountsAlice.rightSlot() + shortAmountsAlice.rightSlot()) /
+                            1_00_000 +
+                            10
+                    )
                 ),
                 "Incorrect balance delta for token0 (Force Exercisee)"
             );
@@ -7144,7 +7386,11 @@ contract PanopticPoolTest is PositionUtils {
                     int256(lastCollateralBalance1[Alice]),
                 $balanceDelta1,
                 uint256(
-                    int256((longAmounts.leftSlot() + shortAmounts.leftSlot()) / 1_000_000 + 10)
+                    int256(
+                        (longAmountsAlice.leftSlot() + shortAmountsAlice.leftSlot()) /
+                            1_000_000 +
+                            10
+                    )
                 ),
                 "Incorrect balance delta for token1 (Force Exercisee)"
             );
@@ -7185,7 +7431,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(ct0.balanceOf(Charlie)) -
                 int256(ct0.convertToShares(uint256(-refund0)));
 
-            LeftRightSigned refundAmounts = PanopticMath.getRefundAmounts(
+            LeftRightSigned refundAmounts = re.getRefundAmounts(
                 Charlie,
                 LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
                 int24(atTick),
@@ -7940,7 +8186,7 @@ contract PanopticPoolTest is PositionUtils {
         forceExercise(
             pp,
             Alice,
-            TokenId.wrap(0),
+            tokenId2,
             new TokenId[](0),
             posIdList,
             LeftRightUnsigned.wrap(1).toLeftSlot(1)
@@ -8000,7 +8246,169 @@ contract PanopticPoolTest is PositionUtils {
                            LIQUIDATION TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_success_liquidate(
+    /// @notice This is a specific test case to replicate a fuzz failure.
+    function test_ReplicateFailure_liquidate() public {
+        // Values are taken directly from the failing fuzz trace.
+        uint256 x = 3;
+        uint256 numLegs = 0;
+
+        uint256[4] memory isLongs = [
+            uint256(735487749405753459884189460500), // <-- Cast added here
+            3284058525645440461159541758288942425070095453271172296678260569787539690,
+            79927545982909276575994800320005,
+            399745943672821
+        ];
+
+        uint256[4] memory tokenTypes = [
+            uint256(1), // <-- Cast added here
+            7701979907595136387642415964973420119634695,
+            8235739455288959070,
+            17238872560356887756447983486903009309564703324864703
+        ];
+
+        uint256[4] memory widthSeeds = [
+            uint256(11044452423605913854891557167211351047133316913676591457), // <-- Cast added here
+            241027962989141198573793831497589043585497343889835296945215411985737387166,
+            25479036613294093108043414430053588240469174535562330648073250806,
+            9581507368823569
+        ];
+
+        int256[4] memory strikeSeeds = [
+            int256(-41812958123239236139503934), // <-- Cast added here
+            40809383271657340606775363025234736118278396702715073943123387,
+            7020354382,
+            -1362990
+        ];
+
+        uint256 positionSizeSeed = 314240980197461819907420581781;
+        uint256 swapSizeSeed = 5799256226742921152428106555317;
+        uint256 collateralBalanceSeed = 19997633056960147034838710;
+        uint256 collateralRatioSeed = 15377053;
+
+        // Now, call the original test function with these specific values
+        test_success_liquidate_SingleLeg(
+            x,
+            numLegs,
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            positionSizeSeed,
+            swapSizeSeed,
+            collateralBalanceSeed,
+            collateralRatioSeed
+        );
+    }
+
+    /// @notice This is a second specific test case to replicate a fuzz failure.
+    function test_ReplicateFailure2_liquidate() public {
+        // Values are taken directly from the failing fuzz trace for test_success_liquidateMultiLeg.
+        uint256 x = 3;
+        uint256 numLegs = 0;
+
+        uint256[4] memory isLongs = [
+            uint256(735487749405753459884189460500), // Cast added
+            3284058525645440461159541758288942425070095453271172296678260569787539690,
+            79927545982909276575994800320005,
+            399745943672821
+        ];
+
+        uint256[4] memory tokenTypes = [
+            uint256(1), // Cast added
+            7701979907595136387642415964973420119634695,
+            8235739455288959070,
+            17238872560356887756447983486903009309564703324864703
+        ];
+
+        uint256[4] memory widthSeeds = [
+            uint256(11044452423605913854891557167211351047133316913676591457), // Cast added
+            241027962989141198573793831497589043585497343889835296945215411985737387166,
+            25479036613294093108043414430053588240469174535562330648073250806,
+            9581507368823569
+        ];
+
+        int256[4] memory strikeSeeds = [
+            int256(-41812958123239236139503934), // Cast added
+            40809383271657340606775363025234736118278396702715073943123387,
+            7020354382,
+            -1362990
+        ];
+
+        uint256 positionSizeSeed = 314240980197461819907420581781;
+        uint256 swapSizeSeed = 5799256226742921152428106555317;
+        uint256 collateralBalanceSeed = 19997633056960147034838710;
+        uint256 collateralRatioSeed = 15377053;
+
+        // Now, call the correct original test function with these specific values
+        test_success_liquidateMultiLeg(
+            x,
+            numLegs,
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            positionSizeSeed,
+            swapSizeSeed,
+            collateralBalanceSeed,
+            collateralRatioSeed
+        );
+    }
+
+    /// @notice This is a third specific test case to replicate a fuzz failure.
+    function test_ReplicateFailure3() public {
+        // Values are taken directly from the failing fuzz trace for test_success_liquidate.
+        uint256 x = 17445599685670345054245059494220191101063000940297068443061475;
+        uint256 numLegs = 421724788623671940391723421927871448671870479823133101495293444287;
+
+        uint256[4] memory isLongs = [
+            uint256(7683702900898043980620682930439058860), // Cast added
+            447472586222023656639254917,
+            95777187241304918836888,
+            5699559740
+        ];
+
+        uint256[4] memory tokenTypes = [
+            uint256(13802691743022054097637), // Cast added
+            146054071799922762722456444765097247456553902914698116790,
+            507030,
+            1133
+        ];
+
+        uint256[4] memory widthSeeds = [
+            uint256(115792089237316195423570985008687907853269984665640564039457584007913129639932), // Cast added
+            27409567888454278401060685741,
+            2891408753530366591492895768002427449724980375909025973673682849344821,
+            115792089237316195423570985008687907853269984665640564039457584007913129639934
+        ];
+
+        int256[4] memory strikeSeeds = [
+            int256(100659462653625946650025226396425763576622535184088113848129325820180715144), // Cast added
+            -5242693278629046052671767562732277046853712977472561012267644781387648638903,
+            -12707200644844493974259758750613862156856564816243520823071,
+            97710147092053662247473
+        ];
+
+        uint256 positionSizeSeed = 9297592876275697070035224886;
+        uint256 swapSizeSeed = 2886;
+        uint256 collateralBalanceSeed = 39961160;
+        uint256 collateralRatioSeed = 26417427543161077180287676;
+
+        // Now, call the original test function with these specific values
+        test_success_liquidate_SingleLeg(
+            x,
+            numLegs,
+            isLongs,
+            tokenTypes,
+            widthSeeds,
+            strikeSeeds,
+            positionSizeSeed,
+            swapSizeSeed,
+            collateralBalanceSeed,
+            collateralRatioSeed
+        );
+    }
+
+    function test_success_liquidate_SingleLeg(
         uint256 x,
         uint256 numLegs,
         uint256[4] memory isLongs,
@@ -8168,29 +8576,26 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        $tokenData0 = ct0.getAccountMarginDetails(
+        ($tokenData0, $tokenData1) = re.getMargin(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
-        );
-
-        $tokenData1 = ct1.getAccountMarginDetails(
-            Alice,
-            TWAPtick,
-            $positionBalanceArray,
-            $shortPremia.leftSlot(),
-            $longPremia.leftSlot()
+            $shortPremia,
+            $longPremia,
+            ct0,
+            ct1
         );
 
         // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
         $shareDelta0 = int256(ct0.balanceOf(Alice));
         $shareDelta1 = int256(ct1.balanceOf(Alice));
+        {
+            uint256 owed0 = uint256(ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
+            uint256 owed1 = uint256(ct1.convertToAssets(uint256(ct1.owedInterest(Alice))));
 
-        $TSSubliquidateeBalancePre0 = ct0.totalSupply() - ct0.balanceOf(Alice);
-        $TSSubliquidateeBalancePre1 = ct1.totalSupply() - ct1.balanceOf(Alice);
-
+            $TSSubliquidateeBalancePre0 = ct0.totalSupply() - ct0.balanceOf(Alice) - owed0;
+            $TSSubliquidateeBalancePre1 = ct1.totalSupply() - ct1.balanceOf(Alice) - owed1;
+        }
         // simulate burning all options to compare against the liquidation
         uint256 snapshot = vm.snapshot();
 
@@ -8206,6 +8611,10 @@ contract PanopticPoolTest is PositionUtils {
             vm.startPrank(Alice);
 
             shareDeltasLiquidatee = [int256(ct0.balanceOf(Alice)), int256(ct1.balanceOf(Alice))];
+            $owedInterest0 = (ct0.convertToShares(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToShares(uint256(ct1.owedInterest(Alice))));
+            console2.log("o0", $owedInterest0);
+            console2.log("o1", $owedInterest1);
 
             // no swap flag (liquidations always have swaps disabled)
             (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = pp
@@ -8239,8 +8648,9 @@ contract PanopticPoolTest is PositionUtils {
                 }
             }
             {
-                uint256 totalSupply0 = ct0.totalSupply();
-                uint256 totalSupply1 = ct1.totalSupply();
+                // interest is not paid through shares burning in liquidations
+                uint256 totalSupply0 = ct0.totalSupply() + $owedInterest0;
+                uint256 totalSupply1 = ct1.totalSupply() + $owedInterest1;
                 uint256 totalAssets0 = ct0.totalAssets();
                 uint256 totalAssets1 = ct1.totalAssets();
 
@@ -8256,6 +8666,7 @@ contract PanopticPoolTest is PositionUtils {
 
                 vm.revertTo(_snapshot);
 
+                // must adjust the total supply for the shares burnt to pay for Alice's outstanding interest
                 $totalSupply0 = totalSupply0;
                 $totalSupply1 = totalSupply1;
                 $totalAssets0 = totalAssets0;
@@ -8306,7 +8717,7 @@ contract PanopticPoolTest is PositionUtils {
 
         {
             LeftRightSigned bonusAmounts;
-            (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+            (bonusAmounts, ) = re.getLiquidationBonus(
                 $tokenData0,
                 $tokenData1,
                 Math.getSqrtRatioAtTick(TWAPtick),
@@ -8320,7 +8731,7 @@ contract PanopticPoolTest is PositionUtils {
                 $posIdLists[1]
             );
 
-            (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+            (bonusAmounts, ) = re.getLiquidationBonus(
                 $tokenData0,
                 $tokenData1,
                 Math.getSqrtRatioAtTick(TWAPtick),
@@ -8374,13 +8785,33 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 < newRequired0);
         }
+        console2.log("");
+        console2.log("owedInterest-A", ct0.owedInterest(Alice));
+        console2.log("owedInterest-A", ct1.owedInterest(Alice));
 
-        liquidate(pp, new TokenId[](0), Alice, $posIdLists[1]);
+        console2.log("ct1.totalSupply", ct1.totalSupply());
+        console2.log("");
+        {
+            $owedInterest0 = (ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToAssets(uint256(ct1.owedInterest(Alice))));
 
-        // take the difference between the share deltas after burn and after mint - that should be the bonus
-        $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
-        $shareDelta1 = shareDeltasLiquidatee[1] - (int256(ct1.balanceOf(Alice)) - $shareDelta1);
+            liquidate(pp, new TokenId[](0), Alice, $posIdLists[1]);
+            console2.log("");
+            console2.log("owedInterest-B", ct0.owedInterest(Alice));
+            console2.log("owedInterest-B", ct1.owedInterest(Alice));
+            console2.log("ct1.totalSupply", ct1.totalSupply());
+            console2.log("");
 
+            // take the difference between the share deltas after burn and after mint - that should be the bonus
+            $shareDelta0 =
+                shareDeltasLiquidatee[0] -
+                (int256(ct0.balanceOf(Alice)) - $shareDelta0 - int256($owedInterest0));
+            $shareDelta1 =
+                shareDeltasLiquidatee[1] -
+                (int256(ct1.balanceOf(Alice)) - $shareDelta1 - int256($owedInterest1));
+        }
+        console2.log("sharesDelta0", $shareDelta0);
+        console2.log("sharesDelta1", $shareDelta1);
         // bonus can be very small on the threshold leading to a loss (of 1-2 tokens) due to precision, which is fine
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) +
@@ -8421,6 +8852,15 @@ contract PanopticPoolTest is PositionUtils {
 
         // The protocol loss is the value of shares added to the supply multiplied by the portion of NON-DELEGATED collateral
         // (losses in collateral that was returned to the liquidator post-delegation are compensated, so they are not included)
+        console2.log(
+            "tSd",
+            int256((($TSSubliquidateeBalancePre1) * $totalAssets1) / $totalSupply1)
+        );
+        console2.log("tSd", int256(ct1.convertToAssets($TSSubliquidateeBalancePre1)));
+        console2.log("$totalAssets0, totalAssets0", $totalAssets0, ct0.totalAssets());
+        console2.log("$totalAssets1, totalAssets1", $totalAssets1, ct1.totalAssets());
+        console2.log("$totalS0, totalS0", $totalSupply0, ct0.totalSupply());
+        console2.log("$totalS1, totalS1", $totalSupply1, ct1.totalSupply());
         $protocolLoss0Actual =
             int256((($TSSubliquidateeBalancePre0) * $totalAssets0) / $totalSupply0) -
             int256(ct0.convertToAssets($TSSubliquidateeBalancePre0)) +
@@ -8436,16 +8876,27 @@ contract PanopticPoolTest is PositionUtils {
         // this happens on *both* liquidations and burns, but during liquidations 1-n shares can be clawed back from PLPs
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had
+        console2.log("condition");
+        console2.log(
+            "$liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie)",
+            $liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie)
+        );
+        console2.log(
+            "$liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie)",
+            $liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie)
+        );
         if (
-            (ct0.totalSupply() - $totalSupply0 <=
-                $numLegs +
+            (ct0.totalSupply() <=
+                $totalSupply0 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie),
                         $totalAssets0,
                         $totalSupply0
                     )) &&
-            (ct1.totalSupply() - $totalSupply1 <=
-                $numLegs +
+            (ct1.totalSupply() <=
+                $totalSupply1 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie),
                         $totalAssets1,
@@ -8543,17 +8994,18 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         $balance0CombinedPostBurn =
-            int256(uint256($tokenData0.rightSlot())) -
+            int256(uint256($tokenData0.rightSlot()) + $owedInterest0) -
             int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot())) -
+                    int256(uint256($tokenData1.rightSlot() + $owedInterest1)) -
                         int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
                 )
             );
+        console2.log("gere");
 
         $protocolLoss0BaseExpected = Math.max(
             -($balance0CombinedPostBurn -
@@ -8576,6 +9028,7 @@ contract PanopticPoolTest is PositionUtils {
             "incorrect amount of premium was haircut"
         );
 
+        console2.log("$protocolLoss0Actual", $protocolLoss0Actual);
         assertApproxEqAbs(
             $protocolLoss0Actual,
             $protocolLoss0BaseExpected - Math.min(longPremium0, $protocolLoss0BaseExpected),
@@ -8766,29 +9219,26 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1]
         );
 
-        $tokenData0 = ct0.getAccountMarginDetails(
+        ($tokenData0, $tokenData1) = re.getMargin(
             Alice,
             TWAPtick,
             $positionBalanceArray,
-            $shortPremia.rightSlot(),
-            $longPremia.rightSlot()
-        );
-
-        $tokenData1 = ct1.getAccountMarginDetails(
-            Alice,
-            TWAPtick,
-            $positionBalanceArray,
-            $shortPremia.leftSlot(),
-            $longPremia.leftSlot()
+            $shortPremia,
+            $longPremia,
+            ct0,
+            ct1
         );
 
         // initialize collateral share deltas - we measure the flow of value out of Alice account to find the bonus
         $shareDelta0 = int256(ct0.balanceOf(Alice));
         $shareDelta1 = int256(ct1.balanceOf(Alice));
+        {
+            uint256 owed0 = uint256(ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
+            uint256 owed1 = uint256(ct1.convertToAssets(uint256(ct1.owedInterest(Alice))));
 
-        $TSSubliquidateeBalancePre0 = ct0.totalSupply() - ct0.balanceOf(Alice);
-        $TSSubliquidateeBalancePre1 = ct1.totalSupply() - ct1.balanceOf(Alice);
-
+            $TSSubliquidateeBalancePre0 = ct0.totalSupply() - ct0.balanceOf(Alice) - owed0;
+            $TSSubliquidateeBalancePre1 = ct1.totalSupply() - ct1.balanceOf(Alice) - owed1;
+        }
         // simulate burning all options to compare against the liquidation
         uint256 snapshot = vm.snapshot();
 
@@ -8802,6 +9252,9 @@ contract PanopticPoolTest is PositionUtils {
             ct1.delegate(Alice);
 
             shareDeltasLiquidatee = [int256(ct0.balanceOf(Alice)), int256(ct1.balanceOf(Alice))];
+            $owedInterest0 = (ct0.convertToShares(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToShares(uint256(ct1.owedInterest(Alice))));
+            console2.log("o0", $owedInterest0);
 
             vm.startPrank(Alice);
             (LeftRightSigned[4][] memory premiasByLeg, LeftRightSigned netExchanged) = pp
@@ -8815,6 +9268,7 @@ contract PanopticPoolTest is PositionUtils {
                 int256(ct0.balanceOf(Alice)) - shareDeltasLiquidatee[0],
                 int256(ct1.balanceOf(Alice)) - shareDeltasLiquidatee[1]
             ];
+            console2.log("o1", $owedInterest1);
 
             (, currentTickFinal, , , , , ) = pool.slot0();
 
@@ -8835,8 +9289,10 @@ contract PanopticPoolTest is PositionUtils {
                 }
             }
             {
-                uint256 totalSupply0 = ct0.totalSupply();
-                uint256 totalSupply1 = ct1.totalSupply();
+                // must adjust the total supply for the shares burnt to pay for Alice's outstanding interest
+                // interest is not paid through shares burning in liquidations
+                uint256 totalSupply0 = ct0.totalSupply() + $owedInterest0;
+                uint256 totalSupply1 = ct1.totalSupply() + $owedInterest1;
                 uint256 totalAssets0 = ct0.totalAssets();
                 uint256 totalAssets1 = ct1.totalAssets();
 
@@ -8901,7 +9357,7 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         LeftRightSigned bonusAmounts;
-        (bonusAmounts, ) = PanopticMath.getLiquidationBonus(
+        (bonusAmounts, ) = re.getLiquidationBonus(
             $tokenData0,
             $tokenData1,
             Math.getSqrtRatioAtTick(TWAPtick),
@@ -8954,13 +9410,20 @@ contract PanopticPoolTest is PositionUtils {
             );
             vm.assume(newBalance0 < newRequired0);
         }
+        {
+            $owedInterest0 = (ct0.convertToAssets(uint256(ct0.owedInterest(Alice))));
+            $owedInterest1 = (ct1.convertToAssets(uint256(ct1.owedInterest(Alice))));
 
-        liquidate(pp, new TokenId[](0), Alice, $posIdLists[1]);
+            liquidate(pp, new TokenId[](0), Alice, $posIdLists[1]);
 
-        // take the difference between the share deltas after burn and after mint - that should be the bonus
-        $shareDelta0 = shareDeltasLiquidatee[0] - (int256(ct0.balanceOf(Alice)) - $shareDelta0);
-        $shareDelta1 = shareDeltasLiquidatee[1] - (int256(ct1.balanceOf(Alice)) - $shareDelta1);
-
+            // take the difference between the share deltas after burn and after mint - that should be the bonus
+            $shareDelta0 =
+                shareDeltasLiquidatee[0] -
+                (int256(ct0.balanceOf(Alice)) - $shareDelta0 - int256($owedInterest0));
+            $shareDelta1 =
+                shareDeltasLiquidatee[1] -
+                (int256(ct1.balanceOf(Alice)) - $shareDelta1 - int256($owedInterest1));
+        }
         // bonus can be very small on the threshold leading to a loss (of 1-2 tokens) due to precision, which is fine
         assertGe(
             ct0.convertToAssets(ct0.balanceOf(Charlie)) +
@@ -9003,6 +9466,15 @@ contract PanopticPoolTest is PositionUtils {
 
         // The protocol loss is the value of shares added to the supply multiplied by the portion of NON-DELEGATED collateral
         // (losses in collateral that was returned to the liquidator post-delegation are compensated, so they are not included)
+        console2.log(
+            "tSd",
+            int256((($TSSubliquidateeBalancePre1) * $totalAssets1) / $totalSupply1)
+        );
+        console2.log("tSd", int256(ct1.convertToAssets($TSSubliquidateeBalancePre1)));
+        console2.log("$totalAssets0, totalAssets0", $totalAssets0, ct0.totalAssets());
+        console2.log("$totalAssets1, totalAssets1", $totalAssets1, ct1.totalAssets());
+        console2.log("$totalS0, totalS0", $totalSupply0, ct0.totalSupply());
+        console2.log("$totalS1, totalS1", $totalSupply1, ct1.totalSupply());
         $protocolLoss0Actual =
             int256((($TSSubliquidateeBalancePre0) * $totalAssets0) / $totalSupply0) -
             int256(ct0.convertToAssets($TSSubliquidateeBalancePre0)) +
@@ -9020,15 +9492,17 @@ contract PanopticPoolTest is PositionUtils {
         // this is because the assets refunded to the liquidator are only rounded down once,
         // so they could correspond to a higher amount of overall shares than the liquidatee had]
         if (
-            (ct0.totalSupply() - $totalSupply0 <=
-                $numLegs +
+            (ct0.totalSupply() <=
+                $totalSupply0 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance0 - IERC20Partial(token0).balanceOf(Charlie),
                         $totalAssets0,
                         $totalSupply0
                     )) &&
-            (ct1.totalSupply() - $totalSupply1 <=
-                $numLegs +
+            (ct1.totalSupply() <=
+                $totalSupply1 +
+                    $numLegs +
                     Math.mulDiv(
                         $liquidatorAssetBalance1 - IERC20Partial(token1).balanceOf(Charlie),
                         $totalAssets1,
@@ -9127,12 +9601,12 @@ contract PanopticPoolTest is PositionUtils {
         );
 
         $balance0CombinedPostBurn =
-            int256(uint256($tokenData0.rightSlot())) -
+            int256(uint256($tokenData0.rightSlot()) + $owedInterest0) -
             int256(uint256($shortPremia.rightSlot())) +
             $burnDelta0 +
             int256(
                 PanopticMath.convert1to0(
-                    int256(uint256($tokenData1.rightSlot())) -
+                    int256(uint256($tokenData1.rightSlot() + $owedInterest1)) -
                         int256(uint256($shortPremia.leftSlot())) +
                         $burnDelta1,
                     TickMath.getSqrtRatioAtTick(TWAPtick)
@@ -9673,6 +10147,73 @@ contract PanopticPoolTest is PositionUtils {
                 (bytes4(reason) == Errors.NotMarginCalled.selector) ||
                     (bytes4(reason) == Errors.NoLegsExercisable.selector)
             );
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           SPOOFING LIST TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fail_positions_hash(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        vm.startPrank(Bob);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        console2.log("a");
+
+        // mint option from another account to change the effective liquidity
+        mintOptions(
+            pp,
+            posIdList,
+            positionSize * 2,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        {
+            assertEq(pp.positionsHash(Bob), uint248(uint256(keccak256(abi.encodePacked(tokenId)))));
+            assertEq(pp.numberOfLegs(Bob), 1);
+
+            pp.setPositionsHash(Bob, 0);
+            assertEq(pp.positionsHash(Bob), uint248(uint256(0)));
+            assertEq(pp.numberOfLegs(Bob), 0);
+
+            uint256 newPositionsHash = pp.generatePositionsHash(posIdList);
+
+            pp.setPositionsHash(Bob, newPositionsHash);
+
+            assertEq(pp.positionsHash(Bob), uint248(uint256(newPositionsHash)));
+            assertEq(pp.numberOfLegs(Bob), 1);
         }
     }
 

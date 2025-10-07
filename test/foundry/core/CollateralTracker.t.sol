@@ -7,6 +7,7 @@ import "forge-std/Test.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticHelper} from "@test_periphery/PanopticHelper.sol";
 
 // Panoptic Libraries
@@ -37,7 +38,8 @@ import {PositionUtils, MiniPositionManager} from "../testUtils/PositionUtils.sol
 
 // CollateralTracker with extended functionality intended to expose internal data
 contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPositionManager {
-    constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
+    //constructor() CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000) {}
+    constructor() CollateralTracker(10) {}
 
     // view deployer (panoptic pool)
     function panopticPool() external view returns (PanopticPool) {
@@ -58,6 +60,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_inAMM;
     }
 
+    function _poolAssets() external view returns (uint256) {
+        return s_poolAssets;
+    }
+
     function _interestRateAccumulator() external view returns (uint256) {
         return LeftRightUnsigned.unwrap(s_interestRateAccumulator);
     }
@@ -68,6 +74,14 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
 
     function _availableAssets() external view returns (uint256) {
         return s_poolAssets;
+    }
+
+    function burnShares(address owner, uint256 shares) external {
+        _burn(owner, shares);
+    }
+
+    function mintShares(address owner, uint256 shares) external {
+        _mint(owner, shares);
     }
 
     function setPoolAssets(uint256 amount) external {
@@ -90,35 +104,12 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         balanceOf[owner] = amount;
     }
 
-    function getRequiredCollateralAtUtilization(
-        uint128 amount,
-        uint256 isLong,
-        int16 utilization
-    ) external view returns (uint256 required) {
-        return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
-    }
-
     function getOwedInterest(address owner) external view returns (uint128) {
         return owedInterest(owner);
     }
 
     function poolUtilizationHook() external view returns (int128) {
         return int128(int256(_poolUtilization()));
-    }
-
-    function getTotalRequiredCollateral(
-        int24 currentTick,
-        uint256[2][] memory positionBalanceArray
-    ) external view returns (uint256 tokenRequired) {
-        return _getTotalRequiredCollateral(currentTick, positionBalanceArray);
-    }
-
-    function sellCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _sellCollateralRatio(utilization);
-    }
-
-    function buyCollateralRatio(int256 utilization) external view returns (uint256) {
-        return _buyCollateralRatio(uint16(uint256(utilization)));
     }
 }
 
@@ -130,10 +121,13 @@ contract PanopticPoolHarness is PanopticPool {
     function modifiedStartPool(
         address token0,
         address token1,
-        IUniswapV3Pool uniswapPool
+        IUniswapV3Pool uniswapPool,
+        RiskEngine riskEngine
     ) external {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(uniswapPool);
+
+        s_riskEngine = riskEngine;
 
         // store token0 and token1
         address s_token0 = uniswapPool.token0();
@@ -205,6 +199,28 @@ contract PanopticPoolHarness is PanopticPool {
     ) external view returns (PositionBalance balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
     }
+
+    function positionsHash(address user) external view returns (uint248 _positionsHash) {
+        _positionsHash = uint248(s_positionsHash[user]);
+    }
+
+    function setPositionsHash(address user, uint256 hash) external {
+        s_positionsHash[user] = hash;
+    }
+
+    function generatePositionsHash(TokenId[] memory positionIdList) external returns (uint256) {
+        uint256 fingerprintIncomingList;
+        uint256 pLength = positionIdList.length;
+
+        for (uint256 i = 0; i < pLength; ++i) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+        }
+        return fingerprintIncomingList;
+    }
 }
 
 contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
@@ -214,6 +230,26 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
         bytes32 positionKey
     ) external view returns (LeftRightUnsigned shortAndNetLiquidity) {
         return s_accountLiquidity[positionKey];
+    }
+}
+
+contract RiskEngineHarness is RiskEngine {
+    constructor() RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000) {}
+
+    function getRequiredCollateralAtUtilization(
+        uint128 amount,
+        uint256 isLong,
+        int16 utilization
+    ) external view returns (uint256 required) {
+        return _getRequiredCollateralAtUtilization(amount, isLong, utilization);
+    }
+
+    function sellCollateralRatio(int256 utilization) external view returns (uint256) {
+        return _sellCollateralRatio(utilization);
+    }
+
+    function buyCollateralRatio(int256 utilization) external view returns (uint256) {
+        return _buyCollateralRatio(uint16(uint256(utilization)));
     }
 }
 
@@ -362,6 +398,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     // Current instance of Panoptic Pool, CollateralTokens, and SFPM
     PanopticPoolHarness panopticPool;
     address panopticPoolAddress;
+    RiskEngineHarness riskEngine;
     PanopticHelper panopticHelper;
     SemiFungiblePositionManagerHarness sfpm;
     CollateralTrackerHarness collateralToken0;
@@ -429,6 +466,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
     LeftRightUnsigned $shortPremia;
 
     uint256[2][] posBalanceArray;
+
+    uint128 DECIMALS = 10_000_000;
+    int128 DECIMALS128 = 10_000_000;
 
     function mintOptions(
         PanopticPool pp,
@@ -590,11 +630,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
 
+        riskEngine = new RiskEngineHarness();
+
         // deploy modified Panoptic pool
         panopticPool = new PanopticPoolHarness(sfpm);
 
         // initalize Panoptic Pool
-        panopticPool.modifiedStartPool(_token0, _token1, uniswapPool);
+        panopticPool.modifiedStartPool(_token0, _token1, uniswapPool, riskEngine);
 
         collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
         collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
@@ -695,7 +737,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
-        CollateralTracker ct = new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000);
+        CollateralTracker ct = new CollateralTracker(10);
         ct.startToken(false, token0, token1, fee, panopticPool);
 
         assertEq(ct.totalSupply(), 10 ** 6);
@@ -982,7 +1024,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         uint128 perSecondInterestRate = collateralToken0.interestRate();
         assertGt(perSecondInterestRate, 0, "FAIL: Rate should be positive after borrow");
-
         // Calculate the expected interest for the period.
         uint256 interestForPeriod = Math.wTaylorCompounded(
             uint256(perSecondInterestRate),
@@ -1024,16 +1065,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
 
-        actualAccumulator = collateralToken0._interestRateAccumulator();
-
-        uint256 unrealizedGlobalInterestBefore = actualAccumulator >> 128;
-
-        assertApproxEqAbs(
-            collateralToken0.getOwedInterest(Bob),
-            unrealizedGlobalInterestBefore,
-            1000,
-            "FAIL: owed interest doesn match unrealized tracker"
-        );
         console2.log("mintOptions 2nd");
         mintOptions(
             panopticPool,
@@ -1060,15 +1091,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
         vm.warp(timestampAfterBorrow + blocksToSkip * 12);
 
         console2.log("burnOptions", Bob);
-
-        actualAccumulator = collateralToken0._interestRateAccumulator();
-        unrealizedGlobalInterestBefore = actualAccumulator >> 128;
-        assertApproxEqAbs(
-            collateralToken0.getOwedInterest(Bob),
-            unrealizedGlobalInterestBefore,
-            1000,
-            "FAIL: owed interest doesn match unrealized tracker"
-        );
 
         burnOptions(
             panopticPool,
@@ -1636,36 +1658,46 @@ contract CollateralTrackerTest is Test, PositionUtils {
         _grantTokens(Alice);
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Alice);
+        uint128 aliceBorrowAmount;
+        {
+            uint128 aliceSize = 100 ether;
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                aliceSize,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK,
+                true
+            );
+            vm.stopPrank();
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, aliceSize, 0);
 
-        uint128 aliceBorrowAmount = 100 ether;
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            aliceBorrowAmount,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
-        vm.stopPrank();
-
+            aliceBorrowAmount = _amountsMoved.rightSlot();
+        }
         // Bob deposits and borrows 50 ether (half of Alice)
         vm.startPrank(Bob);
         _grantTokens(Bob);
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Bob);
 
-        uint128 bobBorrowAmount = 50 ether;
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            bobBorrowAmount,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
-        vm.stopPrank();
+        uint128 bobBorrowAmount;
+        {
+            uint128 bobSize = 50 ether;
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                bobSize,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK,
+                true
+            );
+            vm.stopPrank();
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, bobSize, 0);
+
+            bobBorrowAmount = _amountsMoved.rightSlot();
+        }
 
         // Charlie deposits and borrows 50 ether (half of Alice)
         vm.startPrank(Charlie);
@@ -1673,17 +1705,24 @@ contract CollateralTrackerTest is Test, PositionUtils {
         IERC20Partial(token0).approve(address(collateralToken0), assets);
         collateralToken0.deposit(assets, Charlie);
 
-        uint128 charlieBorrowAmount = 50 ether;
-        mintOptions(
-            panopticPool,
-            positionIdList,
-            charlieBorrowAmount,
-            0,
-            Constants.MAX_V3POOL_TICK,
-            Constants.MIN_V3POOL_TICK,
-            true
-        );
-        vm.stopPrank();
+        uint128 charlieBorrowAmount;
+        {
+            uint128 charlieSize = 50 ether;
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                charlieSize,
+                0,
+                Constants.MAX_V3POOL_TICK,
+                Constants.MIN_V3POOL_TICK,
+                true
+            );
+            vm.stopPrank();
+            LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, charlieSize, 0);
+
+            charlieBorrowAmount = _amountsMoved.rightSlot();
+        }
+
         uint256 initialTotalSupply = collateralToken0.totalSupply();
 
         // Record initial balances
@@ -2227,9 +2266,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
             "Preview should not modify accumulator"
         );
 
-        // owedInterest should still return stale value
-        uint128 staleOwedInterest = collateralToken0.owedInterest(Bob);
-        assertEq(staleOwedInterest, 0, "Stale owed interest should still be 0");
+        // owedInterest should match the preview
+        uint128 nowRealTimeOwedInterest = collateralToken0.owedInterest(Bob);
+        assertEq(
+            nowRealTimeOwedInterest,
+            previewedInterest,
+            "owedInterest should now be real-time and match preview"
+        );
 
         // Preview should show non-zero interest
         assertGt(previewedInterest, 0, "Preview should show interest accrued over time");
@@ -2238,11 +2281,29 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0.accrueInterest();
 
         // After accrual, owedInterest should match what preview showed
+        // Note: Interest is paid during accrual, so owedInterest becomes 0 again.
+        uint128 previewAfterAccrual = collateralToken0.previewOwedInterest(Bob);
         uint128 actualOwedInterest = collateralToken0.owedInterest(Bob);
-        assertEq(
+
+        // In the same block, owed interest should be 0, or a very small rounding amount.
+        assertApproxEqAbs(
             actualOwedInterest,
-            previewedInterest,
-            "Actual owed interest should match preview"
+            previewAfterAccrual,
+            10, // Allow tiny delta for precision
+            "Actual owed interest should match preview after accrual"
+        );
+        console2.log("actualOwedInterest", actualOwedInterest, previewAfterAccrual);
+
+        vm.startPrank(Bob);
+        // Bob accrues and pays interest
+        collateralToken0.accrueInterest();
+        vm.stopPrank();
+        actualOwedInterest = collateralToken0.owedInterest(Bob);
+        assertApproxEqAbs(
+            actualOwedInterest,
+            0,
+            10,
+            "Owed interest should be near zero immediately after accrual"
         );
 
         // Test preview with multiple time jumps
@@ -2271,7 +2332,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
     }
 
-    function test_Success_previewOwedInterest_insolventUser() public {
+    function test_Success_accrueInterest_previewOwedInterest_insolventUser() public {
         _initWorld(0);
         uint104 assets = 1000 ether;
 
@@ -2293,17 +2354,22 @@ contract CollateralTrackerTest is Test, PositionUtils {
         width = 2;
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
         positionIdList.push(tokenId);
+        uint128 size = 100 ether;
 
         // Bob borrows a significant amount
         mintOptions(
             panopticPool,
             positionIdList,
-            100 ether, // Borrow same amount as deposit
+            size, // Borrow same amount as deposit
             0,
             Constants.MAX_V3POOL_TICK,
             Constants.MIN_V3POOL_TICK,
             true
         );
+
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0);
+
+        uint128 borrowAmount = _amountsMoved.rightSlot();
 
         // Reduce Bob's balance to make him insolvent when interest accrues
         collateralToken0.setBalance(Bob, 1 ether); // Set very low balance
@@ -2339,11 +2405,607 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         // Bob's base index should not have been updated (remains at old value)
         (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
-        assertEq(netBorrows, 100 ether, "Net borrows should remain unchanged");
+        assertEq(netBorrows, int128(borrowAmount), "Net borrows should remain unchanged");
         assertLt(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
     }
 
-    function test_Fuzz_previewOwedInterest_accuracy(uint32 timeDelta) public {
+    function test_Success_accrueInterest_liquidation_barelyInsolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+            .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        // Reduce Bob's balance to make him insolvent when interest accrues
+        collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
+        collateralToken0.mintShares(Bob, collateralToken0.previewDeposit(tokenData0.leftSlot()));
+
+        (tokenData0, ) = riskEngine.getMargin(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        vm.stopPrank();
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent but can pau
+        assertLt(
+            sharesOwed,
+            bobBalance,
+            "Interest owed in shares should be less than Bob's balance"
+        );
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertLt(previewedInterest, maxBobCanPay, "Preview shows that Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (tokenData0.leftSlot() - tokenData0.rightSlot())
+        );
+        console.log("expectedBonus", expectedBonus);
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter - charlieAssetsBefore,
+            (previewedInterest * charlieAssetsBefore) / (charlieAssetsBefore + bobAssetsBefore),
+            1,
+            "FAIL: charlie did not get his share of the interests"
+        );
+
+        assertApproxEqAbs(
+            bobAssetsAfter,
+            bobAssetsBefore -
+                expectedBonus -
+                previewedInterest +
+                (previewedInterest * bobAssetsBefore) /
+                (charlieAssetsBefore + bobAssetsBefore),
+            1,
+            "FAIL: bob did not get his share of the interests"
+        );
+
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Success_accrueInterest_liquidation_noProtocolLossInsolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+            .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        (LeftRightUnsigned tokenData0, ) = riskEngine.getMargin(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        // Reduce Bob's balance to make him insolvent when interest accrues
+        collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(tokenData0.rightSlot()));
+        // reduce balance so the account has barely any shares left
+        collateralToken0.mintShares(
+            Bob,
+            collateralToken0.previewDeposit(tokenData0.leftSlot() - 9932835926210985458)
+        );
+
+        (tokenData0, ) = riskEngine.getMargin(
+            Bob,
+            currentTick,
+            posBalanceArray,
+            $shortPremia,
+            $longPremia,
+            collateralToken0,
+            collateralToken1
+        );
+        console2.log("balan, thr", tokenData0.rightSlot(), tokenData0.leftSlot());
+
+        vm.stopPrank();
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent but can pau
+        assertLt(
+            sharesOwed,
+            bobBalance,
+            "Interest owed in shares should be less than Bob's balance"
+        );
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertLt(previewedInterest, maxBobCanPay, "Preview shows that Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (tokenData0.leftSlot() - tokenData0.rightSlot())
+        );
+        console.log("expectedBonus", expectedBonus);
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+
+        vm.stopPrank();
+
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+        assertGt(bobAssetsAfter, 0, "FAIL: Bob has no shares left");
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter - charlieAssetsBefore,
+            (previewedInterest * charlieAssetsBefore) / (charlieAssetsBefore + bobAssetsBefore),
+            1,
+            "FAIL: charlie did not get his share of the interests"
+        );
+
+        console2.log("previewIn", expectedBonus, previewedInterest);
+        {
+            uint256 deltaInt = (previewedInterest * charlieAssetsBefore) /
+                (charlieAssetsBefore + bobAssetsBefore) +
+                expectedBonus;
+            assertApproxEqAbs(
+                bobAssetsAfter,
+                bobAssetsBefore - deltaInt,
+                10,
+                "FAIL: bob did not get his share of the interests"
+            );
+        }
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Success_accrueInterest_liquidation_insolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        uint128 size = 100 ether;
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            size, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(tokenId, size, 0);
+
+        uint128 borrowAmount = _amountsMoved.rightSlot();
+
+        // Reduce Bob's balance to make him insolvent when interest accrues
+        collateralToken0.burnShares(Bob, collateralToken0.previewDeposit(99 ether));
+        vm.stopPrank();
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent
+        assertGt(sharesOwed, bobBalance, "Interest owed in shares should exceed Bob's balance");
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertGt(previewedInterest, maxBobCanPay, "Preview shows more than Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (previewedInterest - bobAssetsBefore)
+        );
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            10,
+            "FAIL: wrong bonus"
+        );
+
+        assertLe(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            "FAIL: bad rounding in bonus calculation"
+        );
+        assertApproxEqAbs(
+            charlieAssetsAfter - charlieAssetsBefore,
+            bobAssetsBefore - expectedBonus,
+            1,
+            "FAIL: charlie did not get his share of the interests"
+        );
+
+        vm.stopPrank();
+
+        // Bob's balance should be wiped out
+        uint256 bobBalanceAfter = collateralToken0.balanceOf(Bob);
+        assertEq(bobBalanceAfter, 0, "Insolvent Bob should have 0 balance after accrual");
+
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Success_accrueInterest_liquidation_100percent_insolventUser() public {
+        _initWorld(0);
+        uint104 assets = 1000 ether;
+
+        // Charlie the PLP deposits to provide liquidity
+        vm.startPrank(Charlie);
+        _grantTokens(Charlie);
+        IERC20Partial(token0).approve(address(collateralToken0), assets * 10);
+        collateralToken0.deposit(assets * 10, Charlie);
+        vm.stopPrank();
+
+        // Alice th eliquidator does not deposit or provide liquidity
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        //collateralToken0.deposit(assets, Alice);
+        vm.stopPrank();
+
+        // Setup Bob with a small balance and large borrow
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), assets);
+        collateralToken0.deposit(100 ether, Bob); // Deposit 100 ether
+
+        (currentSqrtPriceX96, currentTick, , , , , ) = pool.slot0();
+        strike = 198600 + 6000;
+        width = 2;
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        // Bob borrows a significant amount
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            100 ether, // Borrow same amount as deposit
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        // Reduce Bob's balance to ZERO
+        collateralToken0.burnShares(Bob, collateralToken0.balanceOf(Bob));
+        vm.stopPrank();
+
+        // Move forward significantly to generate high interest
+        vm.warp(block.timestamp + 365 days);
+
+        // Preview should show the full interest owed, regardless of solvency
+        uint128 previewedInterest = collateralToken0.previewOwedInterest(Bob);
+        assertGt(previewedInterest, 0, "Preview should show interest even for insolvent user");
+
+        // Convert to shares to check if user is insolvent
+        uint256 sharesOwed = collateralToken0.convertToShares(previewedInterest);
+        uint256 bobBalance = collateralToken0.balanceOf(Bob);
+
+        // Verify Bob would be insolvent
+        assertGt(sharesOwed, bobBalance, "Interest owed in shares should exceed Bob's balance");
+
+        // Preview should still return the full mathematical interest owed
+        // even though Bob can't pay it all
+        uint256 maxBobCanPay = collateralToken0.convertToAssets(bobBalance);
+        assertGt(previewedInterest, maxBobCanPay, "Preview shows more than Bob can pay");
+
+        vm.startPrank(Alice);
+        // Now accrue interest to verify Bob becomes insolvent
+        uint256 charlieAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-before", charlieAssetsBefore);
+        uint256 aliceAssetsBefore = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-before", aliceAssetsBefore);
+        uint256 bobAssetsBefore = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-before", bobAssetsBefore);
+
+        uint256 expectedBonus = Math.min(
+            bobAssetsBefore / 2,
+            (previewedInterest - bobAssetsBefore)
+        );
+        console2.log("previewBob-before-liq", collateralToken0.previewOwedInterest(Bob));
+
+        liquidate(panopticPool, new TokenId[](0), Bob, positionIdList);
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 12 seconds);
+
+        console2.log("previewBob-after-liq", collateralToken0.previewOwedInterest(Bob));
+        uint256 charlieAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Charlie)
+        );
+        console2.log("c-after", charlieAssetsAfter);
+        uint256 aliceAssetsAfter = collateralToken0.convertToAssets(
+            collateralToken0.balanceOf(Alice)
+        );
+        console2.log("a-after", aliceAssetsAfter);
+        uint256 bobAssetsAfter = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        console2.log("b-after", bobAssetsAfter);
+
+        assertApproxEqAbs(
+            aliceAssetsAfter - aliceAssetsBefore,
+            expectedBonus,
+            1,
+            "FAIL: wrong bonus"
+        );
+
+        assertApproxEqAbs(
+            charlieAssetsAfter,
+            charlieAssetsBefore,
+            1,
+            "FAIL: Charlie's balance changed"
+        );
+
+        vm.stopPrank();
+
+        // Bob's balance should be wiped out
+        uint256 bobBalanceAfter = collateralToken0.balanceOf(Bob);
+        assertEq(bobBalanceAfter, 0, "Insolvent Bob should have 0 balance after accrual");
+
+        // Bob's base index should not have been updated (remains at old value)
+        (int128 baseIndex, int128 netBorrows) = collateralToken0.interestState(Bob);
+        assertEq(netBorrows, 0, "Net borrows should be zero");
+        assertLe(uint128(baseIndex), collateralToken0.borrowIndex(), "Bob's index should be stale");
+    }
+
+    function test_Fuzz_accrueInterest_previewOwedInterest_accuracy(uint32 timeDelta) public {
         // Bound the time delta to reasonable values (1 second to 1 year)
         timeDelta = uint32(bound(timeDelta, 1, 3650 days));
 
@@ -2441,6 +3103,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         if (timeDelta < 30 days) {
             // Only do this for shorter time periods to avoid overflow
             vm.startPrank(Bob);
+            (, int128 netBorrowsBefore) = collateralToken0.interestState(Bob);
 
             // Bob increases his borrow
             burnOptions(
@@ -2451,7 +3114,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 Constants.MIN_V3POOL_TICK,
                 true
             );
+            (, int128 netBorrowsAfter) = collateralToken0.interestState(Bob);
 
+            assertEq(netBorrowsAfter, 0, "FAIL: net borrows is not zero after closing loan");
             // Bob increases his borrow
             mintOptions(
                 panopticPool,
@@ -3353,6 +4018,579 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // fail as user does not have approval to transfer on behalf
         vm.expectRevert(stdError.arithmeticError);
         collateralToken0.withdraw(100, Alice, Bob, new TokenId[](0), true);
+    }
+
+    function test_Fail_spoof(
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        // initalize world state
+        _initWorld(0);
+
+        // Invoke all interactions with the Collateral Tracker from user Alice
+        vm.startPrank(Alice);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Alice);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+
+        collateralToken0.deposit(1e10, Bob);
+        collateralToken1.deposit(0, Bob);
+
+        //collateralToken0.setPoolAssets(500);
+        //collateralToken0.setInAMM(500);
+
+        (width, strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        // fail because collateral requirement are too high
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, positionIdList, true);
+
+        // generate a spoof tokenId, set the Hash
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike / 2,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+        panopticPool.setPositionsHash(Bob, panopticPool.generatePositionsHash(spoofList));
+
+        // cannot withdraw because Bob doesn't own the positions
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, spoofList, true);
+
+        // create a tokenId with no leg, push to positionIdList and update hash
+        TokenId tokenId_noLeg = TokenId.wrap(0).addPoolId(poolId);
+        spoofList[0] = tokenId_noLeg;
+        panopticPool.setPositionsHash(
+            Bob,
+            (1 << 248) + uint248(uint256(keccak256(abi.encode(tokenId_noLeg))))
+        );
+
+        // revert because positionIdList has tokenId with no leg
+        vm.expectRevert(Errors.ZeroLegs.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, spoofList, true);
+
+        positionIdList.push(tokenId_noLeg);
+        panopticPool.setPositionsHash(
+            Bob,
+            (2 << 248) +
+                uint248(
+                    uint256(keccak256(abi.encode(positionIdList[0]))) ^
+                        uint256(keccak256(abi.encode(positionIdList[1])))
+                )
+        );
+        vm.expectRevert(Errors.ZeroLegs.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, positionIdList, true);
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        console2.log("aa");
+        positionIdList.pop();
+        positionIdList.push(tokenId);
+
+        panopticPool.setPositionsHash(
+            Bob,
+            (1 << 248) + uint248(uint256(keccak256(abi.encode(positionIdList[0]))))
+        );
+
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_mintWithUnownedPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 0, 4094);
+
+        positionIdList1.push(tokenId);
+        panopticPool.setPositionsHash(Alice, panopticPool.generatePositionsHash(positionIdList1));
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike - 600,
+            width
+        );
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike - 1200,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](2);
+        spoofList[0] = tokenId_spoof;
+        spoofList[1] = tokenId2;
+
+        console2.log("countlegs", tokenId_spoof.countLegs());
+        uint256 spoofHash = (1 << 248) + uint248(uint256(keccak256(abi.encode(tokenId_spoof))));
+        panopticPool.setPositionsHash(Bob, spoofHash);
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list.
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        mintOptions(
+            panopticPool,
+            spoofList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_withdrawWithUnownedPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike / 2,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+
+        uint256 spoofHash = panopticPool.generatePositionsHash(spoofList);
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list.
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, spoofList, true);
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_burnUnownedPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e16),
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike + 600,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+
+        uint256 spoofHash = panopticPool.generatePositionsHash(spoofList);
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        console2.log("bur");
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list. Fails before the position fingerprint with ZeroLiquidity at mint
+        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        burnOptions(
+            panopticPool,
+            spoofList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
+    function test_Fail_withdrawWithZeroLegPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        // 1. Arrange: Create a tokenId with no legs and set the hash.
+        TokenId tokenId_noLeg = TokenId.wrap(0).addPoolId(poolId);
+        TokenId[] memory invalidList = new TokenId[](1);
+        invalidList[0] = tokenId_noLeg;
+
+        // Note: The hash must be set manually here because updatePositionsHash would revert.
+        // This simulates a corrupted state.
+        uint256 invalidHash = (1 << 248) + uint248(uint256(keccak256(abi.encode(tokenId_noLeg))));
+        panopticPool.setPositionsHash(Bob, invalidHash);
+
+        uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+
+        // 2. Assert & 3. Act: Expect a revert because the tokenId is invalid.
+        vm.expectRevert(Errors.ZeroLegs.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, invalidList, true);
+    }
+
+    /// @notice It should revert if a user tries to mint options with a list containing duplicate tokenIds.
+    function test_Fail_spoof_mintOptionsWithDuplicateTokenId() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        // 1. Arrange: Create a list with the same tokenId twice.
+        TokenId[] memory duplicateList = new TokenId[](2);
+        duplicateList[0] = tokenId; // The valid tokenId Bob already owns
+        duplicateList[1] = tokenId;
+
+        // 2. Assert & 3. Act: Expect a revert when minting with the duplicate list.
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
+        mintOptions(
+            panopticPool,
+            duplicateList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+    }
+
+    /// @notice It should revert if a user tries to mint options with a list containing duplicate tokenIds.
+    function test_Fail_spoof_burnOptionsWithDuplicateTokenId() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike + 600,
+            width
+        );
+
+        positionIdList.push(tokenId2);
+        // 2. Assert & 3. Act: Expect a revert when minting with the duplicate list.
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+        TokenId tokenId3 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike + 1200,
+            width
+        );
+        // 1. Arrange: Create a list with the same tokenId twice.
+        positionIdList.push(tokenId3);
+
+        // 2. Assert & 3. Act: Expect a revert when minting with the duplicate list.
+        mintOptions(
+            panopticPool,
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
+
+        TokenId[] memory spoofedList = new TokenId[](2);
+
+        spoofedList[0] = tokenId;
+        spoofedList[1] = tokenId;
+
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
+        burnOptions(
+            panopticPool,
+            tokenId2,
+            spoofedList,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK,
+            true
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -4302,19 +5540,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -4341,19 +5574,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -4487,19 +5715,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -4515,26 +5738,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? int128(
-                    10_000 *
+                    DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
                         )
-                ) / 10_000
+                ) / int128(DECIMALS)
                 : int128(0);
             required += int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
 
@@ -4546,20 +5769,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -4697,19 +5914,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -4725,26 +5937,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -4757,20 +5969,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -4909,19 +6115,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -4937,26 +6138,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? int128(
-                    10_000 *
+                    DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
                         )
-                ) / 10_000
+                ) / int128(DECIMALS)
                 : int128(0);
             required += int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
 
@@ -4970,20 +6171,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -5153,19 +6348,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -5182,26 +6372,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
 
@@ -5215,19 +6405,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -5410,19 +6595,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -5436,25 +6616,25 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.rightSlot())) <
                     0
                     ? int128(
-                        10_000 *
+                        DECIMALS *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.rightSlot())) -
                                         int256(uint256($longPremia.rightSlot()))
                                 )
                             )
-                    ) / 10_000
+                    ) / int128(DECIMALS)
                     : int128(0)
             );
             uint128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (int128(10_000) *
+                    (int128(DECIMALS) *
                         -int128(
                             int256(uint256($shortPremia.leftSlot())) -
                                 int256(uint256($longPremia.leftSlot()))
-                        )) / 10_000
+                        )) / int128(DECIMALS)
                 )
                 : 0;
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -5467,19 +6647,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -5631,19 +6806,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -5666,26 +6836,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -5698,19 +6868,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -5869,19 +7034,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -5904,26 +7064,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -5936,19 +7096,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -6093,19 +7248,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -6129,25 +7279,25 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.rightSlot())) <
                     0
                     ? int128(
-                        10_000 *
+                        DECIMALS *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.rightSlot())) -
                                         int256(uint256($longPremia.rightSlot()))
                                 )
                             )
-                    ) / 10_000
+                    ) / int128(DECIMALS)
                     : int128(0)
             );
             uint128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? uint128(
-                    (int128(10_000) *
+                    (int128(DECIMALS) *
                         -int128(
                             int256(uint256($shortPremia.leftSlot())) -
                                 int256(uint256($longPremia.leftSlot()))
-                        )) / 10_000
+                        )) / int128(DECIMALS)
                 )
                 : 0;
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -6160,19 +7310,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Alice,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Alice,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -6298,19 +7443,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -6332,11 +7472,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
-                ? ((int128(10_000) *
+                ? ((int128(DECIMALS) *
                     -int128(
                         int256(uint256($shortPremia.leftSlot())) -
                             int256(uint256($longPremia.leftSlot()))
-                    )) / 10_000)
+                    )) / int128(DECIMALS))
                 : int8(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
             assertEq(premium1, int128(tokenData1.leftSlot()), "required token1");
@@ -6349,19 +7489,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -6479,19 +7614,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, , uint256 utilization0) = collateralToken0.getPoolData();
@@ -6517,26 +7647,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             required += int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -6550,19 +7680,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -6680,19 +7805,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -6715,26 +7835,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($longPremia.rightSlot())) <
                 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             int128 premium1 = int256(uint256($shortPremia.leftSlot())) -
                 int256(uint256($longPremia.leftSlot())) <
                 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -6747,19 +7867,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -6876,19 +7991,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -6906,31 +8016,32 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 checkSingle
             );
 
+            console2.log("required", required);
             // only add premium requirement if there is net premia owed
             int128 premium0 = int128(
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             required += int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -6943,19 +8054,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -7069,19 +8175,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -7104,13 +8205,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             assertEq(required, tokenData0.leftSlot(), "required token0");
@@ -7123,19 +8224,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -7247,19 +8343,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -7282,26 +8373,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : int128(0);
             required += int128(
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / uint128(DECIMALS)
                 )
                 : 0;
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -7314,19 +8405,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -7417,19 +8503,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 atTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                atTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
@@ -7467,26 +8548,26 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int256(uint256($shortPremia.leftSlot())) - int256(uint256($longPremia.leftSlot()))
             ) < 0
                 ? uint128(
-                    (uint128(10_000) *
+                    (uint128(DECIMALS) *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.leftSlot())) -
                                     int256(uint256($longPremia.leftSlot()))
                             )
-                        )) / 10_000
+                        )) / (DECIMALS)
                 )
                 : 0;
             int128 premium0 = int128(
                 int256(uint256($shortPremia.rightSlot())) - int256(uint256($longPremia.rightSlot()))
             ) < 0
                 ? int128(
-                    (10_000 *
+                    (DECIMALS *
                         uint128(
                             -int128(
                                 int256(uint256($shortPremia.rightSlot())) -
                                     int256(uint256($longPremia.rightSlot()))
                             )
-                        )) / 10_000
+                        )) / (DECIMALS)
                 )
                 : int128(0);
             assertEq(premium0, int128(tokenData0.leftSlot()), "required token0");
@@ -7500,19 +8581,14 @@ contract CollateralTrackerTest is Test, PositionUtils {
             ($shortPremia, $longPremia, posBalanceArray) = panopticPool
                 .getAccumulatedFeesAndPositionsData(Bob, false, positionIdList);
 
-            LeftRightUnsigned tokenData0 = collateralToken0.getAccountMarginDetails(
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
                 Bob,
                 currentTick,
                 posBalanceArray,
-                $shortPremia.rightSlot(),
-                $longPremia.rightSlot()
-            );
-            LeftRightUnsigned tokenData1 = collateralToken1.getAccountMarginDetails(
-                Bob,
-                currentTick,
-                posBalanceArray,
-                $shortPremia.leftSlot(),
-                $longPremia.leftSlot()
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
             );
 
             (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
@@ -7644,12 +8720,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(strike - rangeUp - atTick)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -7785,12 +8861,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(strike - rangeUp - atTick)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -7926,12 +9002,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(atTick - strike - rangeUp)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -8067,12 +9143,12 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 (int256(atTick - strike - rangeUp)) / rangeUp
             );
 
-            int256 feeUp = (-1_024 >> currNumRangesFromStrikeDown);
+            int256 feeUp = (-1_024_000 >> currNumRangesFromStrikeDown);
 
-            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / 10_000;
-            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / 10_000;
+            int256 exerciseFee0 = (longAmounts.rightSlot() * feeUp) / int128(DECIMALS);
+            int256 exerciseFee1 = (longAmounts.leftSlot() * feeUp) / int128(DECIMALS);
 
-            LeftRightSigned exerciseFees = collateralToken0.exerciseCost(
+            LeftRightSigned exerciseFees = riskEngine.exerciseCost(
                 atTick,
                 atTick, // use the fuzzed tick as the median tick for testing purposes
                 tokenId1,
@@ -8098,18 +9174,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
         //        totalAssets() = z + inAMM
         //
         //
-        // DECIMALS = 10_000
+        // DECIMALS = DECIMALS
         //
         // utilization = (inAMM * DECIMALS) / ((PanopticPoolBal - lockedFunds) + inAMM)
         //      z = (PanopticPoolBal - lockedFunds)
         //      utilization =  (inAMM * DECIMALS) / z + inAMM
-        //      inAMM = (utilization * z) / (10_000 - utilization)
-        //      inAMM / z = utilization / (10_000 - utilization)
+        //      inAMM = (utilization * z) / (DECIMALS - utilization)
+        //      inAMM / z = utilization / (DECIMALS - utilization)
         //
-        // inAMM / (PanopticPoolBal - lockedFunds) = (utilization / (10_000(DECIMALS) - utilization))
+        // inAMM / (PanopticPoolBal - lockedFunds) = (utilization / (DECIMALS(DECIMALS) - utilization))
         //
         // i.e utilization of 9_000
-        //    inAMM / (PanopticPoolBal - lockedFunds) = 9_000 / 10_000 - 9_000
+        //    inAMM / (PanopticPoolBal - lockedFunds) = 9_000 / DECIMALS - 9_000
         //    inAMM / (PanopticPoolBal - lockedFunds) = 9
         //    assume bal of (pool > lockedFunds) and (bal pool - lockedFunds) + inAMM > 0)
         //
@@ -8125,7 +9201,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // let poolBalance and lockedFunds be fuzzed
         // inAMM = utilization * (PanopticPoolBal - lockedFunds) / (10_000 - utilization)
         vm.assume(_poolBalance < type(int128).max);
-        int256 inAMM = (targetUtilization * (_poolBalance)) / (10_000 - targetUtilization);
+        int256 inAMM = (targetUtilization * (_poolBalance)) / (int128(10_000) - targetUtilization);
         isBuy ? inAMM += int128(int256((inAMMOffset))) : inAMM -= int128(int256((inAMMOffset)));
 
         // set states
@@ -8477,7 +9553,11 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint256 expectedTotalBalance = expectedBal + expectedInAMM;
 
         // _inAMM() * DECIMALS) / totalAssets()
-        uint256 expectedPoolUtilization = (expectedInAMM * 10_000) / expectedTotalBalance;
+        uint256 expectedPoolUtilization = Math.mulDivRoundingUp(
+            expectedInAMM,
+            10_000,
+            expectedTotalBalance
+        );
 
         (uint256 poolAssets, uint256 insideAMM, uint256 currentPoolUtilization) = collateralToken0
             .getPoolData();
@@ -8803,7 +9883,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         LeftRightUnsigned tokenData,
         LeftRightUnsigned otherTokenData,
         uint160 sqrtPriceX96
-    ) internal pure returns (LeftRightSigned bonusAmounts) {
+    ) internal view returns (LeftRightSigned bonusAmounts) {
         uint256 token1TotalValue;
         uint256 tokenValue;
         token1TotalValue = (tokenData.rightSlot() * Constants.FP96) / sqrtPriceX96;
@@ -8816,15 +9896,18 @@ contract CollateralTrackerTest is Test, PositionUtils {
             Math.mulDiv96(otherTokenData.leftSlot(), sqrtPriceX96);
 
         uint256 valueRatio1;
-        valueRatio1 = (tokenData.rightSlot() * Constants.FP96 * 10_000) / tokenValue / sqrtPriceX96;
+        valueRatio1 =
+            (tokenData.rightSlot() * Constants.FP96 * DECIMALS) /
+            tokenValue /
+            sqrtPriceX96;
 
         int128 bonus0;
         int128 bonus1;
         bonus0 = int128(
             int256(
                 otherTokenData.leftSlot() < otherTokenData.rightSlot()
-                    ? ((tokenValue) * (10_000 - valueRatio1) * Constants.FP96) / sqrtPriceX96
-                    : ((requiredValue - tokenValue) * (10_000 - valueRatio1) * Constants.FP96) /
+                    ? ((tokenValue) * (DECIMALS - valueRatio1) * Constants.FP96) / sqrtPriceX96
+                    : ((requiredValue - tokenValue) * (DECIMALS - valueRatio1) * Constants.FP96) /
                         sqrtPriceX96
             )
         );
@@ -8838,7 +9921,9 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // store bonus amounts as actual amounts by dividing by DECIMALS_128
-        bonusAmounts = bonusAmounts.toRightSlot(bonus0 / 10_000).toLeftSlot(bonus1 / 10_000);
+        bonusAmounts = bonusAmounts.toRightSlot(bonus0 / int128(DECIMALS)).toLeftSlot(
+            bonus1 / int128(DECIMALS)
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -8888,19 +9973,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     ? int64(uint64(poolUtilization))
                     : int64(uint64(poolUtilization >> 64));
 
-                sellCollateralRatio = uint256(
-                    int256(collateralToken0.sellCollateralRatio(utilization))
-                );
-                buyCollateralRatio = uint256(
-                    int256(collateralToken0.buyCollateralRatio(utilization))
-                );
+                sellCollateralRatio = uint256(int256(riskEngine.sellCollateralRatio(utilization)));
+                buyCollateralRatio = uint256(int256(riskEngine.buyCollateralRatio(utilization)));
             }
 
             if (_isLong == 0) {
                 // pos is short
                 // base
                 tokensRequired = uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, DECIMALS)
                 );
                 // OTM
                 if (
@@ -8942,7 +10023,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 // pos is long
                 // base
                 tokensRequired += uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, DECIMALS)
                 );
             }
         }
@@ -9042,7 +10123,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     console2.log("poolUtilizations", poolUtilizations);
                     _tempTokensRequired = Math.max(
                         uint128(
-                            collateralToken0.getRequiredCollateralAtUtilization(
+                            riskEngine.getRequiredCollateralAtUtilization(
                                 uint128(tokenType == 0 ? movedRight : movedLeft),
                                 1,
                                 tokenType == 0
@@ -9054,7 +10135,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     );
                     console2.log(
                         "util req",
-                        collateralToken0.getRequiredCollateralAtUtilization(
+                        riskEngine.getRequiredCollateralAtUtilization(
                             uint128(tokenType == 0 ? movedRight : movedLeft),
                             1,
                             tokenType == 0
@@ -9120,8 +10201,8 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 int128 targetPoolUtilization = 5_000;
                 int128 saturatedPoolUtilization = 9_000;
 
-                buyCollateralRatio = 1_000;
-                sellCollateralRatio = 2_000;
+                buyCollateralRatio = 1_000_000;
+                sellCollateralRatio = 2_000_000;
 
                 // if selling
                 sellCollateralRatio = utilization != 0
@@ -9131,14 +10212,15 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 if (utilization < targetPoolUtilization) {
                     baseCollateralRatio = int128(int256(sellCollateralRatio));
                 } else if (utilization > saturatedPoolUtilization) {
-                    baseCollateralRatio = 10_000;
+                    baseCollateralRatio = int128(DECIMALS);
                 } else {
                     baseCollateralRatio =
                         int128(int256(sellCollateralRatio)) +
                         int128(
                             int256(
-                                (uint256(int256(10_000 - int128(int256(sellCollateralRatio)))) *
-                                    uint256(int256(utilization - targetPoolUtilization))) /
+                                (uint256(
+                                    int256(int128(DECIMALS) - int128(int256(sellCollateralRatio)))
+                                ) * uint256(int256(utilization - targetPoolUtilization))) /
                                     uint256(
                                         int256(saturatedPoolUtilization - targetPoolUtilization)
                                     )
@@ -9147,7 +10229,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 }
 
                 tokensRequired = uint128(
-                    FullMath.mulDivRoundingUp(notionalMoved, uint128(baseCollateralRatio), 10_000)
+                    FullMath.mulDivRoundingUp(notionalMoved, uint128(baseCollateralRatio), DECIMALS)
                 );
 
                 // OTM
@@ -9194,13 +10276,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.rightSlot())) <
                     0
                     ? tokensRequired += uint128(
-                        (uint128(10_000) *
+                        (uint128(DECIMALS) *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.rightSlot())) -
                                         int256(uint256($longPremia.rightSlot()))
                                 )
-                            )) / 10_000
+                            )) / uint128(DECIMALS)
                     )
                     : tokensRequired;
                 tokensRequired = 0;
@@ -9209,13 +10291,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     int256(uint256($longPremia.leftSlot())) <
                     0
                     ? tokensRequired += uint128(
-                        (uint128(10_000) *
+                        (uint128(DECIMALS) *
                             uint128(
                                 -int128(
                                     int256(uint256($shortPremia.leftSlot())) -
                                         int256(uint256($longPremia.leftSlot()))
                                 )
-                            )) / 10_000
+                            )) / uint128(DECIMALS)
                     )
                     : tokensRequired;
                 tokensRequired = 0; // reset temp

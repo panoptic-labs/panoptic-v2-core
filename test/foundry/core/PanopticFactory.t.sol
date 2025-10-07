@@ -7,6 +7,7 @@ import "forge-std/Test.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 // Panoptic Libraries
 import {CallbackLib} from "@libraries/CallbackLib.sol";
@@ -118,6 +119,7 @@ contract PanopticFactoryTest is Test {
     address token1;
     uint24 fee;
     int24 tickSpacing;
+    RiskEngine riskEngine;
 
     // the amount that's deployed when initializing the SFPM against a new AMM pool.
     uint128 constant FULL_RANGE_LIQUIDITY_AMOUNT_WETH = 0.1 ether;
@@ -172,6 +174,8 @@ contract PanopticFactoryTest is Test {
         bytes[] memory bytecodes = vm.parseJsonBytesArray(metadata, ".bytecodes");
         address[] memory pointerAddresses = new address[](bytecodes.length);
 
+        riskEngine = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+
         for (uint256 i = 0; i < bytecodes.length; i++) {
             bytes memory code = bytecodes[i];
             address pointer;
@@ -222,7 +226,7 @@ contract PanopticFactoryTest is Test {
             sfpm,
             V3FACTORY,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -1_024, 5_000, 9_000)),
+            address(new CollateralTracker(10)),
             props,
             indices,
             pointers
@@ -245,7 +249,8 @@ contract PanopticFactoryTest is Test {
             bytes32(
                 abi.encodePacked(
                     uint80(uint160(address(this)) >> 80),
-                    uint80(uint160(address(pool)) >> 80),
+                    uint80(uint160(address(pool)) >> 40),
+                    uint80(uint160(address(riskEngine)) >> 40),
                     salt
                 )
             ),
@@ -255,7 +260,13 @@ contract PanopticFactoryTest is Test {
         {
             // Deploy pool
             // links the Uniswap V3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+            PanopticPool deployedPool = panopticFactory.deployNewPool(
+                token0,
+                token1,
+                fee,
+                riskEngine,
+                salt
+            );
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -266,7 +277,10 @@ contract PanopticFactoryTest is Test {
             assertGt(size, 0);
 
             // check if pool is linked to the correct panoptic pool in factory
-            assertEq(address(panopticFactory.getPanopticPool(pool)), address(deployedPool));
+            assertEq(
+                address(panopticFactory.getPanopticPool(pool, riskEngine)),
+                address(deployedPool)
+            );
             // see if correct pool was linked in the panopticPool
             IUniswapV3Pool linkedPool = PanopticPool(preComputedPool).univ3pool();
             address linkedPoolAddress = address(PanopticPool(preComputedPool).univ3pool());
@@ -286,7 +300,7 @@ contract PanopticFactoryTest is Test {
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt);
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -299,12 +313,12 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt);
 
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, salt + 1);
+            panopticFactory.deployNewPool(token0, token1, fee, riskEngine, salt + 1);
         }
     }
 
@@ -315,7 +329,13 @@ contract PanopticFactoryTest is Test {
     function test_Success_tokenURI_decodes() public {
         _initalizeWorldState(pools[1]);
         uint96 salt = uint96(block.timestamp);
-        PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+        PanopticPool deployedPool = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            riskEngine,
+            salt
+        );
         uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
         bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
         uint256 prefixLength = bytes("data:application/json;base64,").length;
@@ -328,6 +348,95 @@ contract PanopticFactoryTest is Test {
 
         // ensure the output URI is valid JSON
         JSONParserLib.parse(string(tokenURIDecoded));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            RISK ENGINES
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Tests that deploying a pool with a zero-address risk engine reverts.
+    function test_Fail_deployNewPool_zeroAddressRiskEngine() public {
+        _initalizeWorldState(pools[0]);
+
+        uint96 salt = 12345;
+
+        // Expect a revert, assuming you create an error like `ZeroAddressNotAllowed()`
+        vm.expectRevert(Errors.ZeroAddress.selector);
+        panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            RiskEngine(address(0)), // Pass address(0) casted to the type
+            salt
+        );
+    }
+
+    /// @notice Tests the core feature of the RiskEngine refactor: deploying multiple pools
+    /// for the same Uniswap pair by using different RiskEngine contracts.
+    function test_Success_deployMultiplePools_differentRiskEngines() public {
+        // Arrange: Setup world state and create a second, distinct RiskEngine
+        _initalizeWorldState(pools[0]); // Use a fixed pool, no fuzzing needed
+
+        // Create a second risk engine with slightly different parameters
+        RiskEngine riskEngineB = new RiskEngine(
+            2_500_000, // Different SCR
+            1_500_000, // Different BCR
+            1_024_000,
+            5_000_000,
+            9_000_000
+        );
+
+        uint96 salt = 12345;
+
+        // Act: Deploy two Panoptic pools for the same Uniswap pool but with different risk engines
+        PanopticPool poolA = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            riskEngine, // The default risk engine from setUp
+            salt
+        );
+
+        PanopticPool poolB = panopticFactory.deployNewPool(
+            token0,
+            token1,
+            fee,
+            riskEngineB, // The new, second risk engine
+            salt // We can even use the same salt to prove the riskEngine makes it unique
+        );
+
+        // Assert: Verify that two distinct pools were created and configured correctly
+
+        // 1. The two pool addresses must be different.
+        assertNotEq(address(poolA), address(poolB), "Pool addresses should be different");
+
+        // 2. The factory's getter should return the correct pool for each risk engine.
+        assertEq(
+            address(panopticFactory.getPanopticPool(pool, riskEngine)),
+            address(poolA),
+            "Factory should map default riskEngine to poolA"
+        );
+        assertEq(
+            address(panopticFactory.getPanopticPool(pool, riskEngineB)),
+            address(poolB),
+            "Factory should map riskEngineB to poolB"
+        );
+
+        // 3. Each pool should be linked to its correct, respective risk engine.
+        assertEq(
+            address(poolA.riskEngine()),
+            address(riskEngine),
+            "Pool A should use default riskEngine"
+        );
+        assertEq(
+            address(poolB.riskEngine()),
+            address(riskEngineB),
+            "Pool B should use riskEngineB"
+        );
+
+        // 4. Sanity check: both pools should still point to the same underlying Uniswap pool.
+        assertEq(address(poolA.univ3pool()), address(pool), "Pool A should have correct univ3pool");
+        assertEq(address(poolB.univ3pool()), address(pool), "Pool B should have correct univ3pool");
     }
 
     /*//////////////////////////////////////////////////////////////
