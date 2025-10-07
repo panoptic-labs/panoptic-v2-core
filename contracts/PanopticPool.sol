@@ -155,6 +155,9 @@ contract PanopticPool is Multicall {
     /// @notice The Uniswap V3 pool that this instance of Panoptic is deployed on.
     IUniswapV3Pool internal s_univ3pool;
 
+    /// @notice The poolId of this instance of Panoptic.
+    uint64 internal s_poolId;
+
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     // LAST UPDATED BLOCK TIMESTAMP (40 bits)
@@ -272,6 +275,8 @@ contract PanopticPool is Multicall {
 
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(_univ3pool);
+
+        s_poolId = SFPM.getPoolId(address(s_univ3pool));
 
         (, int24 currentTick, , , , , ) = IUniswapV3Pool(_univ3pool).slot0();
 
@@ -517,12 +522,12 @@ contract PanopticPool is Multicall {
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
         bool safeMode = isSafeMode();
+        uint64 poolId = s_poolId;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
-                revert Errors.InvalidTokenIdParameter(0);
+            if (tokenId.poolId() != poolId) revert Errors.InvalidTokenIdParameter(0);
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
@@ -1418,10 +1423,16 @@ contract PanopticPool is Multicall {
             revert Errors.DuplicateTokenId();
         }
 
+        uint64 poolId = s_poolId;
+
         for (uint256 i = 0; i < pLength; ) {
+            TokenId tokenId = positionIdList[i];
+            // make sure the tokenId is for this Panoptic pool
+            if (tokenId.poolId() != poolId) revert Errors.InvalidTokenIdParameter(0);
+
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
-                positionIdList[i],
+                tokenId,
                 ADD
             );
             unchecked {
