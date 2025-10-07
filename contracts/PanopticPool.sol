@@ -241,7 +241,7 @@ contract PanopticPool is Multicall {
     mapping(address account => uint256 positionsHash) internal s_positionsHash;
 
     // Store caps as LeftRightUnsigned (token0 cap in right slot, token1 cap in left slot)
-    // TODO: Can we store this in the TokenId?
+    // TODO: We'll eventually store this in the positionBalance data, where tickData currently goes
     mapping(address => mapping(TokenId => LeftRightUnsigned)) s_premiaCaps;
     uint256 constant PREMIA_OVERAGE_REWARD_BPS = 100; // 1% reward threshold
 
@@ -405,6 +405,7 @@ contract PanopticPool is Multicall {
     /// @param atTick The current tick of the Uniswap pool
     /// @return shortPremium The total amount of premium owed (which may `includePendingPremium`) to the short legs in `positionIdList` (token0: right slot, token1: left slot)
     /// @return longPremium The total amount of premium owed by the long legs in `positionIdList` (token0: right slot, token1: left slot)
+    /// @return cappedPremiumCommitment The total amount of premium committed to capped-premia positions (token0: right slot, token1: left slot)
     /// @return balances A list of balances and pool utilization for each position, of the form `[[tokenId0, balances0], [tokenId1, balances1], ...]`
     function _calculateAccumulatedPremia(
         address user,
@@ -418,11 +419,14 @@ contract PanopticPool is Multicall {
         returns (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[2][] memory balances
+            LeftRightUnsigned cappedPremiumCommitment,
+            uint256[2][] memory balances,
+            uint256[2][] memory uncappedBalances
         )
     {
         uint256 pLength = positionIdList.length;
         balances = new uint256[2][](pLength);
+        uncappedBalances = new uint256[2][](pLength);
 
         address c_user = user;
         // loop through each option position/tokenId
@@ -486,6 +490,16 @@ contract PanopticPool is Multicall {
                             )
                         )
                     );
+                    if (s_premiaCaps[user][tokenId] != 0) {
+                        cappedPremiumCommitment.toRightSlot(s_premiaCaps[user][tokenId].rightSlot()).toLeftSlot(s_premiaCaps[user][tokenId].leftSlot())
+                        // Do NOT put this tokenId in uncappedBalances.
+                        // This means that uncappedBalances will have zero-values in its entries
+                    } else {
+                        uncappedBalances[k] = [
+                            TokenId.unwrap(tokenId),
+                            PositionBalance.unwrap(s_positionBalance[c_user][tokenId])
+                        ];
+                    }
                 }
                 unchecked {
                     ++leg;
@@ -525,7 +539,7 @@ contract PanopticPool is Multicall {
     /// @param positionIdList The list of tokenIds for the option positions to be minted or burnt
     /// @param finalPositionIdList The final positionIdList after all the tokens have been minted/burnt
     /// @param positionSizes The list of positionSize for the position to be minted (0 for burns)
-    /// @param effectiveLiquidityLimitsX32 Maximum amount of "spread" defined as `removedLiquidity/netLiquidity` for a new position and
+    /// @param premiaCaps Maximum amount of long premia to pay, in each token, over the lifetime of the position
     /// denominated as X32 = (`ratioLimit * 2^32`)
     /// @param tickLimits The lower and lower bounds of an acceptable open interval for the ending price
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
@@ -533,7 +547,7 @@ contract PanopticPool is Multicall {
         TokenId[] calldata positionIdList,
         TokenId[] calldata finalPositionIdList,
         uint128[] calldata positionSizes,
-        uint64[] calldata effectiveLiquidityLimitsX32,
+        LeftRightUnsigned[] calldata premiaCaps,
         int24[2][] calldata tickLimits,
         bool usePremiaAsCollateral
     ) external {
@@ -560,7 +574,7 @@ contract PanopticPool is Multicall {
                 _mintOptions(
                     tokenId,
                     positionSizes[i],
-                    effectiveLiquidityLimitsX32[i],
+                    premiaCaps[i],
                     msg.sender,
                     tickLimitLow,
                     tickLimitHigh
@@ -610,7 +624,11 @@ contract PanopticPool is Multicall {
             .mintTokenizedPosition(tokenId, positionSize, tickLimitLow, tickLimitHigh);
 
         // Store the premia caps & checkpointed accumulator values for this position
+        // TODO: This will move to a field of positionBalance
         s_premiaCaps[owner][tokenId] = premiaCaps;
+
+        // NOTE: The _checkSolvency at the end of dispatch() will enforce that the user pre-deposited enough assets
+        // to cover their premiaCap
 
         _updateSettlementPostMint(
             tokenId,
@@ -1061,7 +1079,11 @@ contract PanopticPool is Multicall {
         {
             uint256[2][] memory positionBalanceArray = new uint256[2][](positionIdList.length);
             LeftRightUnsigned longPremium;
-            (shortPremium, longPremium, positionBalanceArray) = _calculateAccumulatedPremia(
+            // TODO: Should we do anything with the cappedPremiumCommitment here? Or is it fine to ignore?
+            // It is kind of funky that if liquidatable account owned a position was in the grace period window, third parties have the option
+            // of claiming that cap-accumulated bonus there first, then liquidating the account, and getting a different sum bonus
+            // than if they had just liquidated
+            (shortPremium, longPremium, , positionBalanceArray) = _calculateAccumulatedPremia(
                 liquidatee,
                 positionIdList,
                 COMPUTE_PREMIA_AS_COLLATERAL,
@@ -1342,7 +1364,9 @@ contract PanopticPool is Multicall {
         (
             LeftRightUnsigned shortPremium,
             LeftRightUnsigned longPremium,
-            uint256[2][] memory positionBalanceArray
+            LeftRightUnsigned cappedPremiumCommitment,
+            uint256[2][] memory positionBalanceArray,
+            uint256[2][] memory uncappedPositionBalanceArray,
         ) = _calculateAccumulatedPremia(
                 account,
                 positionIdList,
@@ -1361,6 +1385,7 @@ contract PanopticPool is Multicall {
                         account,
                         atTicks[i],
                         positionBalanceArray,
+                        uncappedPositionBalanceArray,
                         shortPremium,
                         longPremium,
                         buffer
@@ -1386,10 +1411,13 @@ contract PanopticPool is Multicall {
         address account,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
+        uint256[2][] memory uncappedPositionBalanceArray,
         LeftRightUnsigned shortPremium,
         LeftRightUnsigned longPremium,
+        LeftRightUnsigned cappedPremiumCommitment,
         uint256 buffer
-    ) internal view returns (bool) {
+    ) internal view returns (bool isSolvent) {
+        // 1. Must be solvent the regular way
         (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
             s_collateralToken0.getAccountMarginDetails(
                 account,
@@ -1409,7 +1437,45 @@ contract PanopticPool is Multicall {
         );
 
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
-        return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+        isSolvent = balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+
+        // 2. Must be solvent for the uncapped positions, even when removing capital that is committed to capped premia positions
+        uint256 crossCappedPremiumCommitment =
+            uint256(cappedPremiumCommitment.rightSlot()) +
+            PanopticMath.convert1to0(uint256(cappedPremiumCommitment.leftSlot()));
+
+        (balanceCross, thresholdCross) = PanopticMath.getCrossBalances(
+            s_collateralToken0.getAccountMarginDetails(
+                account,
+                atTick,
+                // NOTE: This has zero values in its entries.
+                // My hope is that this means that thresholdCross excludes those positions,
+                // and *not* that we get a revert.
+                // If that's not the case, we'll have to do nasty array handling to make this a smaller-length subset array of positionBalanceArray
+                uncappedPositionBalanceArray,
+                shortPremium.rightSlot(),
+                // TODO: This includes long premium from capped positions, which theoretically makes this check stricter than it needs to be -
+                // we're about to also check that the users have enough collateral to pay off capped premium even when removing the collateral
+                // backing uncappedPositionBalanceArray. We could add another returnval to _calculateAccumulatedPremia, longPremiumForUncappedPositions,
+                // but that feels like overkill - I don't think this increased strictness is really too big of a problem.
+                longPremium.rightSlot()
+            ),
+            s_collateralToken1.getAccountMarginDetails(
+                account,
+                atTick,
+                uncappedPositionBalanceArray,
+                shortPremium.leftSlot(),
+                longPremium.leftSlot()
+            ),
+            Math.getSqrtRatioAtTick(atTick)
+        );
+        uint256 balanceCrossExcludingCappedPremiumCommitments -= crossCappedPremiumCommitment;
+
+        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
+        isSolvent = isSolvent && balanceCrossExcludingCappedPremiumCommitments >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+
+        // 3. And, must have premia available to pay off capped premium commitments, even when removing the collateral requirement for uncapped positions.
+        isSolvent = isSolvent && balanceCross - thresholdCross >= crossCappedPremiumCommitment;
     }
 
     /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
