@@ -1223,7 +1223,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         }
     }
 
-    /// @notice Refunds tokens to `refunder` from `refundee`.
+    /// @notice Refunds tokens from `refunder` to `refundee`, or vice versa.
     /// @dev Assumes that the refunder has enough money to pay for the refund.
     /// @param refunder The account refunding tokens to `refundee`
     /// @param refundee The account being refunded to
