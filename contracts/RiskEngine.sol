@@ -542,6 +542,8 @@ contract RiskEngine {
 
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
                 : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
@@ -740,6 +742,8 @@ contract RiskEngine {
                 }
             }
         }
+        // revert if the position does not require any collateral
+        if (required == 0) revert Errors.ZeroCollateralRequirement();
     }
 
     /// @notice Calculate the required amount of collateral for leg `index` for position `tokenId` accounting for its partner leg.
@@ -790,6 +794,7 @@ contract RiskEngine {
         int16 utilization
     ) internal view returns (uint256 required) {
         // if position is short, use sell collateral ratio
+
         if (isLong == 0) {
             // compute the sell collateral ratio, which depends on the pool utilization
             uint256 sellCollateral = _sellCollateralRatio(utilization);
