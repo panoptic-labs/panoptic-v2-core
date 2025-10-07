@@ -1086,20 +1086,19 @@ contract PanopticMathTest is Test, PositionUtils {
         );
     }
 
-    function test_Success_getAmountsMoved_asset0(
+    function test_Fuzz_getAmountsMoved0_legacy(
         uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint128 positionSize
     ) public {
-        vm.assume(positionSize != 0);
         TokenId tokenId;
 
         // contruct a tokenId
         {
-            uint256 optionRatio = bound(optionRatioSeed, 1, 1);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1117,28 +1116,30 @@ contract PanopticMathTest is Test, PositionUtils {
             (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
-                uint256(uint24(tickSpacing)),
-                currentTick,
-                width
-            );
 
-            lowerBound = int24(minTick + rangeDown - strikeOffset);
-            upperBound = int24(maxTick - rangeUp - strikeOffset);
+            lowerBound = int24(-887272 + rangeDown);
+            upperBound = int24(887272 - rangeUp);
 
             // bound strike
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
-            strike = int24(strike * tickSpacing + strikeOffset);
+            strike = int24(strike * tickSpacing);
 
             tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, 0, isLong, tokenType, 0, strike, width);
+            console2.log("strike", strike);
         }
+        tokenId.validate();
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
-        // set amount 0
-        uint128 amount0 = positionSize * uint128(tokenId.optionRatio(0));
+        positionSize = uint128(
+            bound(positionSize, 0, positionSize / uint128(tokenId.optionRatio(0)))
+        );
+        vm.assume(positionSize != 0);
+
+        // set amount 0 - LEGACY
+        uint256 amount0 = positionSize * uint128(tokenId.optionRatio(0));
 
         uint256 amount1 = Math.mulDivRoundingUp(
             uint256(amount0),
@@ -1149,41 +1150,99 @@ contract PanopticMathTest is Test, PositionUtils {
             ),
             2 ** 96
         );
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
+        LeftRightUnsigned legacyContractsNotional = LeftRightUnsigned
+            .wrap(0)
+            .toRightSlot(amount0.toUint128())
+            .toLeftSlot(amount1.toUint128());
 
-        vm.assume(amount1 < 2 ** 128);
+        // set amount0 - UNISWAP MATH
+        uint256 contracts = positionSize * tokenId.optionRatio(0);
 
+        uint160 lowPriceX96 = Math.getSqrtRatioAtTick(tickLower);
+        uint160 highPriceX96 = Math.getSqrtRatioAtTick(tickUpper);
+
+        uint256 liquidity = Math.mulDiv(
+            contracts,
+            Math.mulDiv96(highPriceX96, lowPriceX96),
+            highPriceX96 - lowPriceX96
+        );
+
+        if (isLong == 0) {
+            amount0 = Math.mulDivRoundingUp(
+                Math.mulDivRoundingUp(
+                    uint256(liquidity) << 96,
+                    highPriceX96 - lowPriceX96,
+                    highPriceX96
+                ),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96RoundingUp(liquidity, highPriceX96 - lowPriceX96);
+        } else {
+            amount0 = Math.mulDiv(
+                Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+        }
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0)
-            .toLeftSlot(uint128(amount1));
+            .toRightSlot(amount0.toUint128())
+            .toLeftSlot(amount1.toUint128());
 
+        // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
             tokenId,
             positionSize,
             0
         );
         assertEq(
-            LeftRightUnsigned.unwrap(expectedContractsNotional),
-            LeftRightUnsigned.unwrap(returnedContractsNotional)
+            expectedContractsNotional.rightSlot(),
+            returnedContractsNotional.rightSlot(),
+            "CORRECT: amount 0 not equal"
         );
+        assertEq(
+            expectedContractsNotional.leftSlot(),
+            returnedContractsNotional.leftSlot(),
+            "CORRECT: amount 1 not equal"
+        );
+
+        if (amount0 != contracts) {
+            assertGe(
+                legacyContractsNotional.rightSlot(),
+                returnedContractsNotional.rightSlot(),
+                "LEGACY: amount 0 not equal"
+            );
+            if (legacyContractsNotional.leftSlot() > 0) {
+                assertGe(
+                    legacyContractsNotional.leftSlot(),
+                    returnedContractsNotional.leftSlot(),
+                    "LEGACY: amount 1 not equal"
+                );
+            }
+        }
     }
 
-    function test_Success_getAmountsMoved_asset1(
-        uint256 optionRatio,
+    function test_Fuzz_getAmountsMoved1_legacy(
+        uint256 optionRatioSeed,
         uint16 isLong,
         uint16 tokenType,
         int24 strike,
         int24 width,
-        uint64 positionSize
+        uint128 positionSize
     ) public {
-        vm.assume(positionSize != 0);
         TokenId tokenId;
 
         // contruct a tokenId
         {
-            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
-
-            optionRatio = bound(optionRatio, 1, 127);
+            uint256 optionRatio = bound(optionRatioSeed, 1, 127);
 
             // the following are all 1 bit so mask them:
             uint8 MASK = 0x1; // takes first 1 bit of the uint16
@@ -1191,6 +1250,7 @@ contract PanopticMathTest is Test, PositionUtils {
             tokenType = tokenType & MASK;
 
             // bound fuzzed tick
+            selectedPool = pools[bound(optionRatio, 0, 2)]; // reuse optionRatio as seed
             tickSpacing = selectedPool.tickSpacing();
 
             width = int24(bound(width, 1, 2048));
@@ -1200,32 +1260,40 @@ contract PanopticMathTest is Test, PositionUtils {
             (rangeDown, rangeUp) = PanopticMath.getRangesFromStrike(width, int24(tickSpacing));
 
             (, currentTick, , , , , ) = selectedPool.slot0();
-            (strikeOffset, minTick, maxTick) = PositionUtils.getContextFull(
-                uint256(uint24(tickSpacing)),
-                currentTick,
-                width
-            );
 
-            lowerBound = int24(minTick + rangeDown - strikeOffset);
-            upperBound = int24(maxTick - rangeUp - strikeOffset);
-
-            // Set current tick and pool price
-            currentTick = int24(bound(currentTick, minTick, maxTick));
+            lowerBound = int24(-887272 + rangeDown);
+            upperBound = int24(887272 - rangeUp);
 
             // bound strike
             strike = int24(bound(strike, lowerBound / tickSpacing, upperBound / tickSpacing));
-            strike = int24(strike * tickSpacing + strikeOffset);
+            strike = int24(strike * tickSpacing);
 
             tokenId = TokenId.wrap(uint256(uint24(tickSpacing)) << 48);
             tokenId = tokenId.addLeg(0, optionRatio, 1, isLong, tokenType, 0, strike, width);
+            console2.log("strike", strike);
         }
+        tokenId.validate();
 
         // get the tick range for this leg in order to get the strike price (the underlying price)
         (int24 tickLower, int24 tickUpper) = tokenId.asTicks(0);
 
-        // set amount 1
-        uint128 amount1 = positionSize * uint128(tokenId.optionRatio(0));
+        positionSize = uint128(
+            bound(positionSize, 0, positionSize / uint128(tokenId.optionRatio(0)))
+        );
+        vm.assume(positionSize != 0);
 
+        // set amount 1 - LEGACY
+        uint256 amount1 = positionSize * uint128(tokenId.optionRatio(0));
+        console2.log("tL", Math.getSqrtRatioAtTick(tickLower));
+        console2.log("tU", Math.getSqrtRatioAtTick(tickUpper));
+
+        vm.assume(
+            Math.mulDiv(
+                Math.getSqrtRatioAtTick(tickLower),
+                Math.getSqrtRatioAtTick(tickUpper),
+                2 ** 96
+            ) > 0
+        );
         uint256 amount0 = Math.mulDivRoundingUp(
             uint256(amount1),
             2 ** 96,
@@ -1235,22 +1303,81 @@ contract PanopticMathTest is Test, PositionUtils {
                 2 ** 96
             )
         );
-        vm.assume(amount0 < 2 ** 128);
 
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
+        LeftRightUnsigned legacyContractsNotional = LeftRightUnsigned
+            .wrap(0)
+            .toRightSlot(amount0.toUint128())
+            .toLeftSlot(amount1.toUint128());
+
+        // set amount0 - UNISWAP MATH
+        uint256 contracts = positionSize * tokenId.optionRatio(0);
+
+        uint160 lowPriceX96 = Math.getSqrtRatioAtTick(tickLower);
+        uint160 highPriceX96 = Math.getSqrtRatioAtTick(tickUpper);
+
+        uint256 liquidity = Math.mulDiv(contracts, 2 ** 96, highPriceX96 - lowPriceX96);
+        if (isLong == 0) {
+            amount0 = Math.mulDivRoundingUp(
+                Math.mulDivRoundingUp(
+                    uint256(liquidity) << 96,
+                    highPriceX96 - lowPriceX96,
+                    highPriceX96
+                ),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96RoundingUp(liquidity, highPriceX96 - lowPriceX96);
+        } else {
+            amount0 = Math.mulDiv(
+                Math.mulDiv(uint256(liquidity) << 96, highPriceX96 - lowPriceX96, highPriceX96),
+                1,
+                lowPriceX96
+            );
+
+            amount1 = Math.mulDiv96(liquidity, highPriceX96 - lowPriceX96);
+        }
+
+        vm.assume(amount0 < type(uint128).max);
+        vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(uint128(amount0))
-            .toLeftSlot(amount1);
+            .toRightSlot(amount0.toUint128())
+            .toLeftSlot(amount1.toUint128());
 
+        // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
             tokenId,
             positionSize,
             0
         );
         assertEq(
-            LeftRightUnsigned.unwrap(expectedContractsNotional),
-            LeftRightUnsigned.unwrap(returnedContractsNotional)
+            expectedContractsNotional.rightSlot(),
+            returnedContractsNotional.rightSlot(),
+            "CORRECT: amount 0 not equal"
         );
+        assertEq(
+            expectedContractsNotional.leftSlot(),
+            returnedContractsNotional.leftSlot(),
+            "CORRECT: amount 1 not equal"
+        );
+
+        if (amount1 != contracts) {
+            assertGe(
+                legacyContractsNotional.leftSlot(),
+                returnedContractsNotional.leftSlot(),
+                "LEGACY: amount 0 not equal"
+            );
+            if (legacyContractsNotional.rightSlot() > 0) {
+                assertGe(
+                    legacyContractsNotional.rightSlot(),
+                    returnedContractsNotional.rightSlot(),
+                    "LEGACY: amount 1 not equal"
+                );
+            }
+        }
     }
 
     // // _calculateIOAmounts

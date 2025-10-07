@@ -522,7 +522,7 @@ contract RiskEngine {
 
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
-            //bool underlyingIsToken0 = s_underlyingIsToken0;
+            if (positionSize == 0) revert Errors.PositionNotOwned();
 
             int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
@@ -722,6 +722,8 @@ contract RiskEngine {
                 }
             }
         }
+        // revert if the position does not require any collateral
+        if (required == 0) revert Errors.ZeroCollateralRequirement();
     }
 
     /// @notice Calculate the required amount of collateral for leg `index` for position `tokenId` accounting for its partner leg.
@@ -772,6 +774,7 @@ contract RiskEngine {
         int16 utilization
     ) internal view returns (uint256 required) {
         // if position is short, use sell collateral ratio
+
         if (isLong == 0) {
             // compute the sell collateral ratio, which depends on the pool utilization
             uint256 sellCollateral = _sellCollateralRatio(utilization);
@@ -992,7 +995,7 @@ contract RiskEngine {
     /// @param utilization The pool utilization of this collateral vault at the time the position is minted
     /// @return buyCollateralRatio The buy collateral ratio at `utilization`
     function _buyCollateralRatio(
-        uint16 utilization
+        uint256 utilization
     ) internal view returns (uint256 buyCollateralRatio) {
         // linear from BUY to BUY/2 between 50% and 90%
         // the buy ratio is on a straight line defined between two points (x0,y0) and (x1,y1):

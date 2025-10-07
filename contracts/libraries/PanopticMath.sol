@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
@@ -9,6 +8,7 @@ import {IUniswapV3Pool} from "univ3-core/interfaces/IUniswapV3Pool.sol";
 // Libraries
 import {Constants} from "@libraries/Constants.sol";
 import {Math} from "@libraries/Math.sol";
+import {Errors} from "@libraries/Errors.sol";
 // OpenZeppelin libraries
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 // Custom types
@@ -27,6 +27,26 @@ library PanopticMath {
 
     /// @notice Masks 16-bit tickSpacing out of 64-bit `[16-bit tickspacing][48-bit poolPattern]` format poolId.
     uint64 internal constant TICKSPACING_MASK = 0xFFFF000000000000;
+
+    uint256 internal constant PRIME_MODULUS_248 =
+        0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff13;
+
+    uint256 internal constant PRIME_MODULUS_124_0 = 0xfffffffffffffffffffffffffffffc5; // 2**124 - 59
+    uint256 internal constant PRIME_MODULUS_124_1 = 0xffffffffffffffffffffffffffffd99; // 2**124 - 615
+
+    // Mask for isolating a 124-bit lane
+    uint256 internal constant LANE_MASK_124 = 0xfffffffffffffffffffffffffffffff;
+
+    uint256 internal constant UPPER_120BITS_MASK =
+        0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000000000000000000000000000;
+
+    uint256 internal constant BITMASK_UINT88 = 0xFFFFFFFFFFFFFFFFFFFFFF;
+    uint256 internal constant BITMASK_UINT22 = 0x3FFFFF;
+
+    int256 constant EMA_PERIOD_10MINS = 600; // 600 seconds
+    int256 constant EMA_PERIOD_1H = 3600; // 600 seconds
+    int256 constant EMA_PERIOD_8H = 28800; // 600 seconds
+    int256 constant EMA_PERIOD_1D = 86400; // 600 seconds
 
     /*//////////////////////////////////////////////////////////////
                               UTILITIES
@@ -124,24 +144,129 @@ library PanopticMath {
         TokenId tokenId,
         bool addFlag
     ) internal pure returns (uint256) {
-        // update hash by taking the XOR of the existing hash with the new tokenId
-        uint256 updatedHash = uint248(existingHash) ^
-            (uint248(uint256(keccak256(abi.encode(tokenId)))));
+        // update hash by using the homomorphicHash method
+        uint256 updatedHash = homomorphicHash(existingHash, TokenId.unwrap(tokenId), addFlag);
 
-        uint256 positionLegs = tokenId.countLegs();
         // increment the upper 8 bits (leg counter) if addFlag=true, decrement otherwise
+        uint8 numberOfLegs = uint8(tokenId.countLegs());
+        if (numberOfLegs == 0) revert Errors.ZeroLegs();
 
-        uint256 newLegCount;
-        if (addFlag) {
-            newLegCount = uint8(existingHash >> 248) + uint8(positionLegs);
-        } else {
-            unchecked {
-                newLegCount = (existingHash >> 248) - positionLegs;
-            }
-        }
+        // unchecked, so reverts if overflow
+        uint256 newLegCount = addFlag
+            ? uint8(existingHash >> 248) + numberOfLegs
+            : uint8(existingHash >> 248) - numberOfLegs;
 
         unchecked {
             return uint256(updatedHash) + (newLegCount << 248);
+        }
+    }
+
+    /// @notice Computes a homomorphic hash by adding or subtracting an item from an existing hash
+    /// @dev Uses XOR-based homomorphic hashing (XHASH). The hash of the item is XORed with the
+    ///      existing hash. Since XOR is its own inverse (A ⊕ B ⊕ B = A), both addition and
+    ///      subtraction operations use the same XOR operation. This ensures the operation is
+    ///      reversible and order-independent for the same set of items.
+    ///      OR
+    ///      Uses additive homomorphic hashing (AdHash) over a 248-bit prime field. The hash of the item
+    ///      is either added to or subtracted from the existing hash using modular arithmetic.
+    ///      Subtraction is implemented as addition of the modular inverse: hash + (PRIME - itemHash) mod PRIME.
+    ///      This ensures the operation is reversible and order-independent for the same set of items.
+    ///      OR
+    ///      Uses LtHash (Lattice-based Hash) with k=2 lanes for improved collision resistance.
+    ///      The 248-bit hash space is divided into two 124-bit lanes, each operating under
+    ///      modular arithmetic with a 124-bit prime. The item hash is split into two 124-bit
+    ///      chunks and each chunk is added/subtracted from its corresponding lane independently.
+    ///      Subtraction is implemented as addition of the modular inverse: lane + (PRIME - chunk) mod PRIME.
+    ///      This parallel lane approach provides better security properties than single-lane hashing
+    ///      while maintaining homomorphic properties (order-independence and reversibility).
+    /// @param hash The existing hash value (only lower 248 bits are used)
+    /// @param item The item to be hashed and added/subtracted (typically a TokenId cast to uint256)
+    /// @param addFlag True to add the item to the hash, false to subtract it
+    /// @return The updated homomorphic hash as a uint256 (but only lower 248 bits contain the hash)
+    function homomorphicHash(
+        uint256 hash,
+        uint256 item,
+        bool addFlag
+    ) internal pure returns (uint256) {
+        {
+            // XHASH
+            return uint248(hash) ^ (uint248(uint256(keccak256(abi.encode(item)))));
+        }
+        {
+            // AdHash
+            uint256 itemHash = uint256(keccak256(abi.encode(item)));
+            return
+                addFlag
+                    ? addmod(uint248(hash), uint248(itemHash), PRIME_MODULUS_248)
+                    : addmod(
+                        uint248(hash),
+                        PRIME_MODULUS_248 - (itemHash % PRIME_MODULUS_248),
+                        PRIME_MODULUS_248
+                    );
+        }
+
+        {
+            // LtHash, k=2
+            uint256 itemHash = uint256(keccak256(abi.encode(item)));
+
+            // Pre-calculate the 124-bit chunks for the item to be added/removed
+            uint256 item_h0 = itemHash & LANE_MASK_124;
+            uint256 item_h1 = (itemHash >> 124) & LANE_MASK_124;
+
+            uint256 lane0 = hash & LANE_MASK_124;
+            uint256 newItem_h0 = addFlag
+                ? item_h0
+                : PRIME_MODULUS_124_0 - (item_h0 % PRIME_MODULUS_124_0);
+            uint256 hash0 = addmod(lane0, newItem_h0, PRIME_MODULUS_124_0);
+
+            uint256 lane1 = (hash >> 124) & LANE_MASK_124;
+            uint256 newItem_h1 = addFlag
+                ? item_h1
+                : PRIME_MODULUS_124_1 - (item_h1 % PRIME_MODULUS_124_1);
+            uint256 hash1 = addmod(lane1, newItem_h1, PRIME_MODULUS_124_1);
+
+            return hash0 + (hash1 << 124);
+        }
+    }
+
+    /// @notice Checks if an array of TokenIds contains any duplicate values
+    /// @dev Uses assembly for gas optimization. Performs O(n²) comparison by checking each element
+    ///      against all subsequent elements. Returns false immediately upon finding the first duplicate.
+    ///      Arrays with 0 or 1 elements are considered to have no duplicates.
+    /// @param arr The array of TokenIds to check for duplicates
+    /// @return True if the array contains no duplicate TokenIds, false if duplicates are found
+    function hasNoDuplicateTokenIds(TokenId[] calldata arr) external pure returns (bool) {
+        assembly {
+            let len := arr.length
+            let offset := arr.offset
+
+            // Early return for 0 or 1 elements
+            if lt(len, 2) {
+                mstore(0x00, 1)
+                return(0x00, 0x20)
+            }
+
+            // Check for duplicates
+            for {
+                let i := 0
+            } lt(i, len) {
+                i := add(i, 1)
+            } {
+                let val := calldataload(add(offset, mul(i, 0x20)))
+                for {
+                    let j := add(i, 1)
+                } lt(j, len) {
+                    j := add(j, 1)
+                } {
+                    if eq(val, calldataload(add(offset, mul(j, 0x20)))) {
+                        mstore(0x00, 0)
+                        return(0x00, 0x20)
+                    }
+                }
+            }
+
+            mstore(0x00, 1)
+            return(0x00, 0x20)
         }
     }
 
@@ -661,21 +786,16 @@ library PanopticMath {
         uint128 amount0;
         uint128 amount1;
 
-        (int24 tickLower, int24 tickUpper) = tokenId.asTicks(legIndex);
+        LiquidityChunk liquidityChunk = getLiquidityChunk(tokenId, legIndex, positionSize);
 
-        // effective strike price of the option (avg. price over LP range)
-        // geometric mean of two numbers = √(x1 * x2) = √x1 * √x2
-        uint256 geometricMeanPriceX96 = Math.mulDiv96(
-            Math.getSqrtRatioAtTick(tickLower),
-            Math.getSqrtRatioAtTick(tickUpper)
-        );
-
-        if (tokenId.asset(legIndex) == 0) {
-            amount0 = positionSize * uint128(tokenId.optionRatio(legIndex));
-            amount1 = Math.mulDiv96RoundingUp(amount0, geometricMeanPriceX96).toUint128();
+        // Shorts round UP to ensure user pays enough (conservative for protocol)
+        // Longs round DOWN to ensure user receives correct amount (conservative for protocol)
+        if (tokenId.isLong(legIndex) == 0) {
+            amount0 = uint128(Math.getAmount0ForLiquidityUp(liquidityChunk));
+            amount1 = uint128(Math.getAmount1ForLiquidityUp(liquidityChunk));
         } else {
-            amount1 = positionSize * uint128(tokenId.optionRatio(legIndex));
-            amount0 = Math.mulDivRoundingUp(amount1, 2 ** 96, geometricMeanPriceX96).toUint128();
+            amount0 = uint128(Math.getAmount0ForLiquidity(liquidityChunk));
+            amount1 = uint128(Math.getAmount1ForLiquidity(liquidityChunk));
         }
 
         return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);

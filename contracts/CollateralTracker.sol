@@ -942,6 +942,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 bonusAbs = uint256(-bonus);
             }
 
+            uint256 underlyingTokenBalance = ERC20Minimal(s_underlyingToken).balanceOf(liquidator);
+            if (underlyingTokenBalance < bonusAbs)
+                revert Errors.NotEnoughTokens(s_underlyingToken, bonusAbs, underlyingTokenBalance);
             SafeTransferLib.safeTransferFrom(s_underlyingToken, liquidator, msg.sender, bonusAbs);
 
             _mint(liquidatee, convertToShares(bonusAbs));
@@ -1082,6 +1085,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     totalSupply,
                     totalAssets()
                 );
+                address _optionOwner = optionOwner;
+                if (balanceOf[_optionOwner] < sharesToBurn)
+                    revert Errors.NotEnoughTokens(
+                        address(this),
+                        uint256(tokenToPay),
+                        convertToAssets(balanceOf[_optionOwner])
+                    );
+
                 _burn(optionOwner, sharesToBurn);
             } else if (tokenToPay < 0) {
                 uint256 sharesToMint = convertToShares(uint256(-tokenToPay));
@@ -1162,4 +1173,5 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         );
         return tokenPaid;
     }
+
 }
