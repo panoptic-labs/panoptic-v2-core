@@ -243,15 +243,6 @@ contract PanopticPool is Multicall {
     // Store caps as LeftRightUnsigned (token0 cap in right slot, token1 cap in left slot)
     // TODO: We'll eventually store this in the positionBalance data, where tickData currently goes
     mapping(address => mapping(TokenId => LeftRightUnsigned)) s_premiaCaps;
-    uint256 constant PREMIA_OVERAGE_REWARD_BPS = 100; // 1% reward threshold
-
-    /// @notice If the long-premia cap is exceeded by at least this many bps, the caller earns a reward.
-    /// @dev UI passes (X - PREMIA_CAP_REWARD_BPS) to offer "I want to pay X" experience.
-    uint256 internal constant PREMIA_CAP_REWARD_BPS = 100; // 1.00%
-
-    /// @notice Exceedance threshold (>=) to *trigger* a reward siphon from sellers.
-    /// @dev Using the same value as reward size is reasonable and simple; can be set independently if you prefer.
-    uint256 internal constant PREMIA_CAP_REWARD_THRESHOLD_BPS = 100; // 1.00%
 
     /// @notice Emitted when a position is force-closed due to hitting its premia cap.
     event PositionForceClosed(
@@ -262,9 +253,6 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned premiaCap,           // configured caps (token0 right, token1 left)
         LeftRightUnsigned callerReward         // reward paid to the caller siphoned from sellers (token0 right, token1 left)
     );
-
-    /// @notice Revert when owner tries to burn before reaching their premia cap.
-    error PremiaCapNotReached();
 
     /*//////////////////////////////////////////////////////////////
                              INITIALIZATION
@@ -611,10 +599,17 @@ contract PanopticPool is Multicall {
                          POSITION MINTING LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Validates the current options of the user, and mints a new position.
+    /// @param tokenId The tokenId of the newly minted position
+    /// @param positionSize The size of the position to be minted, expressed in terms of the asset
+    /// @param premiaCaps Cap on premia to pay across all long legs (token0:right slot, token1:left slot)
+    /// @param owner The owner of the option position to be minted
+    /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
+    /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
-        LeftRightUnsigned premiaCaps, // cap on token0 premia across all long legs in right slot, cap on token1 in left slot
+        LeftRightUnsigned premiaCaps,
         address owner,
         int24 tickLimitLow,
         int24 tickLimitHigh
@@ -2014,9 +2009,8 @@ contract PanopticPool is Multicall {
                 premiaCap,
                 reward
             );
-        } else {
-          // no-op
         }
+        // else, no-op - could revert here if we wanted i suppose
     }
 
     // TODO: must also delete s_premiaCaps[owner][tokenId]; everywhere else we close a position
