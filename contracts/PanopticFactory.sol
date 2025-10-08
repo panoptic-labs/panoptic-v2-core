@@ -157,12 +157,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
         );
 
         // Run state initialization sequence for pool and collateral tokens
-        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract, protocolFeeController);
-        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract, protocolFeeController);
-        collateralTracker0.setProtocolFeeRecipient(initialProtocolFeeRecipient);
-        collateralTracker1.setProtocolFeeRecipient(initialProtocolFeeRecipient);
-        collateralTracker0.setProtocolFee(initialProtocolFee);
-        collateralTracker1.setProtocolFee(initialProtocolFee);
+        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract, protocolFeeController, initialProtocolFeeRecipient, initialProtocolFee);
+        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract, protocolFeeController, initialProtocolFeeRecipient, initialProtocolFee);
 
         newPoolContract.startPool(v3Pool, token0, token1, collateralTracker0, collateralTracker1);
 

@@ -241,13 +241,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param fee The fee of the Uniswap pool
     /// @param panopticPool The address of the Panoptic Pool being created and linked to this Collateral Tracker
     /// @param feeSwitchController The address permitted to modify protocol fee parameters
+    /// @param initialFeeRecipient The address initially configured to receive protocol fees
+    /// @param feeSwitchController The initial protocol fee, in bps, to charge
     function startToken(
         bool underlyingIsToken0,
         address token0,
         address token1,
         uint24 fee,
         PanopticPool panopticPool,
-        address feeSwitchController
+        address feeSwitchController,
+        address initialFeeRecipient,
+        address initialFee,
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
@@ -284,6 +288,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // Address permitted to alter protocol fee parameters
         FEE_SWITCH_CONTROLLER = feeSwitchController;
+
+        // Initial protocol fee config
+        s_protocolFeeRecipient = initialFeeRecipient;
+        s_protocolFee = initialFee;
     }
 
     /*//////////////////////////////////////////////////////////////
