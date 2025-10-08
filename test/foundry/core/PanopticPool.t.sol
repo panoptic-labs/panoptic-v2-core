@@ -2399,6 +2399,7 @@ contract PanopticPoolTest is PositionUtils {
 
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             ._calculateIOAmounts(tokenId, uint128(positionSize), 0);
+        //vm.assume(longAmounts.rightSlot() > 101 || longAmounts.leftSlot() > 101);
 
         int256 newSharesFromLoan0;
         int256 newSharesFromLoan1;
