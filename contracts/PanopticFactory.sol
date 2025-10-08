@@ -108,6 +108,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
     /// @dev Salt used in PanopticPool CREATE2 is `[leading 20 msg.sender chars][leading 20 pool address chars][salt]`.
     /// @param token0 Address of token0 for the underlying Uniswap V3 pool
     /// @param token1 Address of token1 for the underlying Uniswap V3 pool
+    /// @param protocolFeeController Address that will be permitted to alter protocol fee parameters on this pool
+    /// @param initialProtocolFeeRecipient Address that will be configured at first to receive protocol fees
+    /// @param initialProtocolFee The initial commission to charge on option mints as a protocol fee, in basis points
     /// @param fee The fee tier of the underlying Uniswap V3 pool, denominated in hundredths of bips
     /// @param salt User-defined component of salt used in CREATE2 for the PanopticPool (must be a uint96 number)
     /// @return newPoolContract The address of the newly deployed Panoptic pool
@@ -115,6 +118,9 @@ contract PanopticFactory is FactoryNFT, Multicall {
         address token0,
         address token1,
         uint24 fee,
+        address protocolFeeController,
+        address initialProtocolFeeRecipient,
+        uint256 initialProtocolFee,
         uint96 salt
     ) external returns (PanopticPool newPoolContract) {
         // sort the tokens, if necessary:
@@ -151,8 +157,8 @@ contract PanopticFactory is FactoryNFT, Multicall {
         );
 
         // Run state initialization sequence for pool and collateral tokens
-        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract);
-        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract);
+        collateralTracker0.startToken(true, token0, token1, fee, newPoolContract, protocolFeeController, initialProtocolFeeRecipient, initialProtocolFee);
+        collateralTracker1.startToken(false, token0, token1, fee, newPoolContract, protocolFeeController, initialProtocolFeeRecipient, initialProtocolFee);
 
         newPoolContract.startPool(v3Pool, token0, token1, collateralTracker0, collateralTracker1);
 

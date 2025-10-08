@@ -255,7 +255,7 @@ contract PanopticFactoryTest is Test {
         {
             // Deploy pool
             // links the Uniswap V3 pool to the Panoptic pool
-            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+            PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt);
 
             // see if pool exists at the precomputed address
             uint256 size;
@@ -286,7 +286,7 @@ contract PanopticFactoryTest is Test {
 
         // Deploy invalid pool (uninitalized tokens and fee)
         vm.expectRevert(Errors.UniswapPoolNotInitialized.selector);
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt);
     }
 
     // Revert if deploying a Panoptic Pool that has already been initalized
@@ -299,12 +299,12 @@ contract PanopticFactoryTest is Test {
         uint96 salt = uint96(block.timestamp);
 
         // Deploy pool
-        panopticFactory.deployNewPool(token0, token1, fee, salt);
+        panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt);
 
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, salt + 1);
+            panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt + 1);
         }
     }
 
@@ -315,7 +315,7 @@ contract PanopticFactoryTest is Test {
     function test_Success_tokenURI_decodes() public {
         _initalizeWorldState(pools[1]);
         uint96 salt = uint96(block.timestamp);
-        PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, salt);
+        PanopticPool deployedPool = panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt);
         uint256 panopticPoolAddress = uint256(uint160(address(deployedPool)));
         bytes memory uri = bytes(panopticFactory.tokenURI(panopticPoolAddress));
         uint256 prefixLength = bytes("data:application/json;base64,").length;
@@ -389,7 +389,7 @@ contract PanopticFactoryTest is Test {
 
     /* Internal functions used in base contract logic replicated for redundancy
        If a change is made to the logic makeup of these functions in the core contracts,
-       Then they will have to be equally changed in the tests 
+       Then they will have to be equally changed in the tests
     */
 
     /// Computes the address of a clone deployed using {Clones-cloneDeterministic}.

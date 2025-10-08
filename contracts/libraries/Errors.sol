@@ -56,6 +56,9 @@ library Errors {
     /// @notice CollateralTracker: The caller for a permissioned function is not the Panoptic Pool
     error NotPanopticPool();
 
+    /// @notice CollateralTracker: The caller for a permissioned function is not the FEE_SWITCH_CONTROLLER
+    error NotFeeSwitchController();
+
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();
 

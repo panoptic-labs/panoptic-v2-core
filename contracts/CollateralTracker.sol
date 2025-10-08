@@ -79,6 +79,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @dev int type for composability with signed integer based mathematical operations.
     int128 internal constant DECIMALS_128 = 10_000;
 
+    /// @notice Address authorized to control fee switch parameters.
+    address FEE_SWITCH_CONTROLLER;
+
     /*//////////////////////////////////////////////////////////////
                            UNISWAP POOL DATA
     //////////////////////////////////////////////////////////////*/
@@ -114,6 +117,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
     /// @notice The fee of the Uniswap pool in hundredths of basis points.
     uint24 internal s_poolFee;
+
+    /// @notice Protocol fee recipient address for fee switch.
+    address internal s_protocolFeeRecipient;
+
+    /// @notice Protocol fee in basis points, charged on option mint.
+    uint256 internal s_protocolFee;
 
     /**
      * @notice How the Borrow Index Works
@@ -189,6 +198,12 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         _;
     }
 
+    /// @notice Reverts if the FEE_SWITCH_CONTROLLER is not the caller.
+    modifier onlyFeeSwitchController() {
+        if (msg.sender != FEE_SWITCH_CONTROLLER) revert Errors.NotFeeSwitchController();
+        _;
+    }
+
     /*//////////////////////////////////////////////////////////////
                   INITIALIZATION & PARAMETER SETTINGS
     //////////////////////////////////////////////////////////////*/
@@ -224,12 +239,18 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param token1 Token 1 of the Uniswap pool
     /// @param fee The fee of the Uniswap pool
     /// @param panopticPool The address of the Panoptic Pool being created and linked to this Collateral Tracker
+    /// @param feeSwitchController The address permitted to modify protocol fee parameters
+    /// @param initialFeeRecipient The address initially configured to receive protocol fees
+    /// @param feeSwitchController The initial protocol fee, in bps, to charge
     function startToken(
         bool underlyingIsToken0,
         address token0,
         address token1,
         uint24 fee,
-        PanopticPool panopticPool
+        PanopticPool panopticPool,
+        address feeSwitchController,
+        address initialFeeRecipient,
+        uint256 initialFee
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
@@ -263,6 +284,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
         // store whether the current collateral token is token0 (true) or token1 (false)
         s_underlyingIsToken0 = underlyingIsToken0;
+
+        // Address permitted to alter protocol fee parameters
+        FEE_SWITCH_CONTROLLER = feeSwitchController;
+
+        // Initial protocol fee config
+        s_protocolFeeRecipient = initialFeeRecipient;
+        s_protocolFee = initialFee;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1221,7 +1249,9 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
-    ///
+    /// @return poolUtilization The pool utilization at moment of settling; returns 0 for option closing as util isnt relevant then
+    /// @return commissions The commissions paid to PLPs (right) and the protocol (left) upon option mint
+    /// @return tokenToPay The amount of tokens the user paid/received for minting/burning their option
     function _updateBalancesAndSettle(
         bool isCreation,
         address optionOwner,
@@ -1229,11 +1259,17 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         int128 shortAmount,
         int128 swappedAmount,
         int128 realizedPremium
-    ) internal returns (uint32, uint128, int128) {
+    ) internal returns (uint32, LeftRightUnsigned, int128) {
         _accrueInterest(optionOwner);
         unchecked {
             int256 tokenToPay;
-            uint128 commission;
+            uint128 plpCommission;
+            uint256 protocolCommission = (isCreation && s_protocolFee > 0) ?
+                            Math.unsafeDivRoundingUp(
+                                uint256(uint128(shortAmount + longAmount)) * s_protocolFee,
+                                DECIMALS
+                            )
+                          : 0;
 
             // current available assets belonging to PLPs (updated after settlement) excluding any premium paid
             int256 updatedAssets = int256(uint256(s_poolAssets)) - swappedAmount;
@@ -1243,14 +1279,14 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     int256 intrinsicValue = int256(swappedAmount) - (shortAmount - longAmount);
 
                     // the swap commission is paid on the intrinsic value (if a swap occurred; users who mint covered options with their own collateral do not pay this fee)
-                    commission = uint128(
+                    plpCommission = uint128(
                         Math.unsafeDivRoundingUp(
                             uint256(uint128(shortAmount + longAmount)) * COMMISSION_FEE,
                             DECIMALS
                         )
                     );
 
-                    tokenToPay = intrinsicValue + int128(commission);
+                    tokenToPay = intrinsicValue + int128(plpCommission);
                 }
             } else {
                 // add premium and token deltas not covered by swap to be paid/collected on position close
@@ -1270,8 +1306,11 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                 _mint(optionOwner, sharesToMint);
             }
 
-            // Update Pool Assets
+            // Update Pool Assets & pay protocol fee
             if (isCreation) {
+                if (protocolCommission > 0) {
+                    _mint(s_protocolFeeRecipient, convertToShares(protocolCommission));
+                }
                 s_poolAssets = uint256(updatedAssets).toUint128();
             } else {
                 s_poolAssets = uint256(updatedAssets + realizedPremium).toUint128();
@@ -1289,7 +1328,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             }
             uint32 utilization = isCreation ? uint32(_poolUtilization()) : 0;
 
-            return (utilization, commission, int128(tokenToPay));
+            return (utilization, LeftRightUnsigned.wrap(plpCommission).toLeftSlot(uint128(protocolCommission)), int128(tokenToPay));
         }
     }
 
@@ -1298,14 +1337,15 @@ contract CollateralTracker is ERC20Minimal, Multicall {
     /// @param longAmount The amount of longs
     /// @param shortAmount The amount of shorts
     /// @param swappedAmount The amount of tokens moved during creation of the option position
-    /// @return The final utilization of the collateral vault (rightSlot) and the total amount of commission (base rate + ITM spread) paid (leftSlot)
+    /// @return The final utilization of the collateral vault (leftSlot, first 32 bits), the commissions paid to the protocol (leftSlot, last 96 bits)
+    ///         and the total amount of commission (base rate + ITM spread) paid (rightSlot)
     function settleMint(
         address optionOwner,
         int128 longAmount,
         int128 shortAmount,
         int128 swappedAmount
     ) external onlyPanopticPool returns (LeftRightUnsigned, int128) {
-        (uint32 utilization, uint128 commission, int128 tokenPaid) = _updateBalancesAndSettle(
+        (uint32 utilization, LeftRightUnsigned commissions, int128 tokenPaid) = _updateBalancesAndSettle(
             true, // isCreation = true
             optionOwner,
             longAmount,
@@ -1314,7 +1354,10 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             0 // realizedPremium not used
         );
         return (
-            LeftRightUnsigned.wrap(0).toRightSlot(utilization).toLeftSlot(commission),
+            LeftRightUnsigned
+                .wrap(0)
+                .toRightSlot(commissions.rightSlot())
+                .toLeftSlot((uint128(utilization) << 96) | uint128(uint96(commissions.leftSlot()))),
             tokenPaid
         );
     }
@@ -1556,7 +1599,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                            BUYING
                            POWER
                            REQUIREMENT
-                         
+
                                          ^               .         .
                                          |        <- ITM . <-ATM-> . OTM ->
                            100% + SCR% - |--__           .    .    .
@@ -1567,7 +1610,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                                          +----+----------+----+----+--->   current
                                          0   Liqui-     Pa  strike Pb       price
                                              dation
-                                             price = SCR*strike                                         
+                                             price = SCR*strike
                          */
 
                         uint256 c2 = Constants.FP96 - ratio;
@@ -1803,5 +1846,25 @@ contract CollateralTracker is ERC20Minimal, Multicall {
                     poolUtilization
                 );
         }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                      PROTOCOL FEE PARAMETERS
+    //////////////////////////////////////////////////////////////*/
+
+    // @notice Update the protocol fee recipient.
+    /// @dev Only callable by the fee switch controller.
+    /// @param newRecipient The new protocol fee recipient address
+    function setProtocolFeeRecipient(address newRecipient) external onlyFeeSwitchController {
+        s_protocolFeeRecipient = newRecipient;
+    }
+
+    /// @notice Update the protocol fee.
+    /// @dev Only callable by the fee switch controller.
+    /// @param newFee The new protocol fee in basis points
+    function setProtocolFee(uint256 newFee) external onlyFeeSwitchController {
+        // TODO: If we want to minimise the importance of the admin key, we could put controls in here,
+        // like only allowing the fee to be 1% at max, or only change 0.1% at a time.
+        s_protocolFee = newFee;
     }
 }

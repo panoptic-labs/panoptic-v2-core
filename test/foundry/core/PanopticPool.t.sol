@@ -81,6 +81,21 @@ contract PanopticPoolHarness is PanopticPool {
         return (premiasByLeg, netExchanged);
     }
 
+    // Convenience harness to test exact token amounts coming in and out, to confirm protocol fee amounts
+    function settleMintsHarness(
+        address owner,
+        LeftRightSigned longAmounts,
+        LeftRightSigned shortAmounts,
+        LeftRightSigned totalSwapped
+    ) external returns (
+        uint32 utilizations,
+        LeftRightUnsigned plpCommissions,
+        LeftRightUnsigned protocolCommissions,
+        LeftRightSigned paidAmounts
+    ) {
+        return _settleMints(owner, longAmounts, shortAmounts, totalSwapped);
+    }
+
     constructor(SemiFungiblePositionManager _sfpm) PanopticPool(_sfpm) {}
 }
 
@@ -506,11 +521,58 @@ contract PanopticPoolTest is PositionUtils {
         IERC20Partial(token1).approve(address(factory), type(uint104).max);
 
         pp = PanopticPoolHarness(
-            address(factory.deployNewPool(token0, token1, fee, uint96(block.timestamp)))
+            address(factory.deployNewPool(token0, token1, fee, address(0), address(0), 0, uint96(block.timestamp)))
         );
 
         ct0 = pp.collateralToken0();
         ct1 = pp.collateralToken1();
+    }
+
+    // Controller & recipients for protocol fee tests
+    address controllerX = address(0xC0117);
+    address protoA = address(0xA11CE);
+    address protoB = address(0xB0B);
+
+    // Deploy a pool where CollateralTrackers are wired with controller/recipient/fee
+    function _deployPanopticPoolWithFee(address controller, address recipient, uint256 bps) internal {
+        vm.startPrank(Deployer);
+
+        // Reuse the same factory & references configured in setUp/_deployPanopticPool
+        if (address(factory) == address(0)) {
+            factory = new PanopticFactory(
+                sfpm,
+                V3FACTORY,
+                poolReference,
+                collateralReference,
+                new bytes32[](0),
+                new uint256[][](0),
+                new Pointer[][](0)
+            );
+            IERC20Partial(token0).approve(address(factory), type(uint104).max);
+            IERC20Partial(token1).approve(address(factory), type(uint104).max);
+        }
+
+        pp = PanopticPoolHarness(
+            address(factory.deployNewPool(
+                token0, token1, fee, controller, recipient, bps, uint96(block.timestamp + 1)
+            ))
+        );
+
+        ct0 = pp.collateralToken0();
+        ct1 = pp.collateralToken1();
+
+        vm.stopPrank();
+    }
+
+    // Signed packer shorthand
+    function _lrS(int128 r, int128 l) internal pure returns (LeftRightSigned x) {
+        x = LeftRightSigned.wrap(0).toRightSlot(r).toLeftSlot(l);
+    }
+
+    // Unpack the two uint16 utilizations (token0 in low 16, token1 in high 16)
+    function _splitUtils(uint32 u) internal pure returns (uint16 u0, uint16 u1) {
+        u0 = uint16(u & 0xFFFF);
+        u1 = uint16(u >> 16);
     }
 
     function _initAccounts() internal {
@@ -9348,4 +9410,235 @@ contract PanopticPoolTest is PositionUtils {
             LeftRightUnsigned.wrap(1).toLeftSlot(1)
         );
     }
+
+    function test_ProtocolFee_SettersRequireController() public {
+        // Set up world and deploy a fee-enabled pool
+        _cacheWorldState(pools[0]);
+        _deployPanopticPoolWithFee(controllerX, protoA, 123);
+        _initAccounts();
+
+        // Non-controller cannot set
+        vm.startPrank(Alice);
+        vm.expectRevert(Errors.NotFeeSwitchController.selector);
+        ct0.setProtocolFeeRecipient(address(1));
+
+        vm.startPrank(Bob);
+        vm.expectRevert(Errors.NotFeeSwitchController.selector);
+        ct0.setProtocolFee(999);
+
+        // Controller can set
+        vm.startPrank(controllerX);
+        ct0.setProtocolFeeRecipient(protoB);
+        ct0.setProtocolFee(77);
+
+        // Mirror for ct1 just to be thorough
+        ct1.setProtocolFeeRecipient(protoB);
+        ct1.setProtocolFee(77);
+    }
+
+    function test_ProtocolFee_ZeroFee_NoShares() public {
+        _cacheWorldState(pools[0]);
+        _deployPanopticPoolWithFee(controllerX, protoA, 0); // 0 bps
+        _initAccounts();
+
+        // Long == Short, swapped == 0 -> intrinsic=0, still would charge PLP commission, but protocol=0
+        LeftRightSigned L = _lrS(int128(1e18), int128(1e18));
+        LeftRightSigned S = _lrS(int128(1e18), int128(1e18));
+        LeftRightSigned X = _lrS(int128(0),    int128(0));
+
+        uint256 a0 = ct0.balanceOf(protoA);
+        uint256 a1 = ct1.balanceOf(protoA);
+
+        (uint32 u, LeftRightUnsigned plp, LeftRightUnsigned prot, ) =
+            pp.settleMintsHarness(Alice, L, S, X);
+
+        // Protocol fee is zero on both sides
+        assertEq(prot.rightSlot(), 0, "t0 protocol commission");
+        assertEq(prot.leftSlot(),  0, "t1 protocol commission");
+
+        // No shares minted to recipient
+        assertEq(ct0.balanceOf(protoA), a0, "ct0 shares unchanged");
+        assertEq(ct1.balanceOf(protoA), a1, "ct1 shares unchanged");
+
+        // Utilizations well-formed
+        (uint16 u0, uint16 u1) = _splitUtils(u);
+        assertLe(u0, 10000);
+        assertLe(u1, 10000);
+
+        // PLP commissions can be non-zero; we only assert protocol = 0 here.
+        (plp); // silence warning
+    }
+
+    function test_ProtocolFee_MintsSharesToRecipient_InExpectedAmount() public {
+        _cacheWorldState(pools[0]);
+        uint256 bps = 250; // 2.5%
+        _deployPanopticPoolWithFee(controllerX, protoA, bps);
+        _initAccounts();
+
+        LeftRightSigned L = _lrS(int128(1e18), int128(1e18));
+        LeftRightSigned S = _lrS(int128(1e18), int128(1e18));
+        LeftRightSigned X = _lrS(int128(0),    int128(0));   // no swap to avoid asset underflow
+
+        (
+            uint256 feeRecipientCt0BalanceBefore,
+            uint256 feeRecipientCt1BalanceBefore,
+            uint256 expectedProtocolFee0,
+            uint256 expectedProtocolFee1,
+            uint256 expectedShares0,
+            uint256 expectedShares1
+        ) = _getExpectedProtocolFee(
+            ct0,
+            ct1,
+            uint256(uint128(L.rightSlot() + S.rightSlot())),
+            uint256(uint128(L.leftSlot()  + S.leftSlot())),
+            bps
+        );
+
+        (uint32 u, LeftRightUnsigned plp, LeftRightUnsigned prot, ) =
+            pp.settleMintsHarness(Alice, L, S, X);
+
+        // Protocol commissions show up
+        uint128 actualProtocolFee0 = prot.rightSlot();
+        uint128 actualProtocolFee1 = prot.leftSlot();
+        assertTrue(actualProtocolFee0 > 0 || actualProtocolFee1 > 0, "some protocol commission expected");
+        assertTrue(actualProtocolFee0 == expectedProtocolFee0 && actualProtocolFee1 == expectedProtocolFee1, "protocol commissions should match");
+
+        // Allow up to 3 CT shares of drift due to rounding decisions
+        assertLt(expectedShares0 - ct0.balanceOf(protoA) - feeRecipientCt0BalanceBefore, 3, "ct0 minted shares ~= convertToShares(prot0)");
+        assertLt(expectedShares1 - ct1.balanceOf(protoA) - feeRecipientCt1BalanceBefore, 3, "ct1 minted shares ~= convertToShares(prot1)");
+
+        // Utilizations are two uint16s
+        (uint16 u0, uint16 u1) = _splitUtils(u);
+        assertLe(u0, 10000);
+        assertLe(u1, 10000);
+    }
+
+    function test_ProtocolFee_ChangeRecipient_RoutesNewMints() public {
+        _cacheWorldState(pools[0]);
+        _deployPanopticPoolWithFee(controllerX, protoA, 200); // 2.00%
+        _initAccounts();
+
+        LeftRightSigned L = _lrS(int128(5e17), int128(5e17));
+        LeftRightSigned S = _lrS(int128(5e17), int128(5e17));
+        LeftRightSigned X = _lrS(int128(0),    int128(0));
+
+        // First settle -> protoA gets shares
+        pp.settleMintsHarness(Alice, L, S, X);
+        uint256 a0 = ct0.balanceOf(protoA);
+        uint256 a1 = ct1.balanceOf(protoA);
+
+        // Switch recipient to protoB
+        vm.startPrank(controllerX);
+        ct0.setProtocolFeeRecipient(protoB);
+        ct1.setProtocolFeeRecipient(protoB);
+
+        // Second settle -> protoB should receive new shares
+        pp.settleMintsHarness(Alice, L, S, X);
+
+        assertEq(ct0.balanceOf(protoA), a0, "A ct0 unchanged after reroute");
+        assertEq(ct1.balanceOf(protoA), a1, "A ct1 unchanged after reroute");
+        assertGt(ct0.balanceOf(protoB), 0,  "B received ct0 shares");
+        assertGt(ct1.balanceOf(protoB), 0,  "B received ct1 shares");
+    }
+
+    function test_ProtocolFee_RoundsUp_MinimalCase() public {
+        _cacheWorldState(pools[0]);
+        _deployPanopticPoolWithFee(controllerX, protoA, 1); // 0.01% (1 bps)
+        _initAccounts();
+
+        // long+short = 1 + 1 = 2; ceil(2/10000) = 1 -> expect 1 unit protocol fee on each side
+        LeftRightSigned L = _lrS(int128(1), int128(1));
+        LeftRightSigned S = _lrS(int128(1), int128(1));
+        LeftRightSigned X = _lrS(int128(0), int128(0));
+
+        uint256 a0Before = ct0.balanceOf(protoA);
+        uint256 a1Before = ct1.balanceOf(protoA);
+
+        (, , LeftRightUnsigned prot, ) =
+            pp.settleMintsHarness(Alice, L, S, X);
+
+        assertEq(prot.rightSlot(), 1, "t0 protocol fee rounds up to 1");
+        assertEq(prot.leftSlot(),  1, "t1 protocol fee rounds up to 1");
+
+        // Shares match convertToShares(1)
+        assertEq(ct0.balanceOf(protoA) - a0Before, ct0.convertToShares(1), "ct0 minted shares for 1 unit");
+        assertEq(ct1.balanceOf(protoA) - a1Before, ct1.convertToShares(1), "ct1 minted shares for 1 unit");
+    }
+
+    function _getExpectedProtocolFee(
+        CollateralTracker ct0,
+        CollateralTracker ct1,
+        uint256 notional0,
+        uint256 notional1,
+        uint256 bps
+    ) internal view returns (
+        uint256 feeRecipientCt0BalanceBefore,
+        uint256 feeRecipientCt1BalanceBefore,
+        uint256 expectedProtocolFee0,
+        uint256 expectedProtocolFee1,
+        uint256 expectedShares0,
+        uint256 expectedShares1
+    ) {
+        feeRecipientCt0BalanceBefore = ct0.balanceOf(protoA);
+        feeRecipientCt1BalanceBefore = ct1.balanceOf(protoA);
+
+        // compute notional and protocol-asset expected amounts
+        expectedProtocolFee0 = FullMath.mulDiv(notional0, bps, 10_000);
+        expectedProtocolFee1 = FullMath.mulDiv(notional1, bps, 10_000);
+
+        // expected shares using pre-state
+        expectedShares0 = (ct0.totalSupply() == 0 || ct0.totalAssets() == 0) ? expectedProtocolFee0 : ct0.convertToShares(expectedProtocolFee0);
+        expectedShares1 = (ct1.totalSupply() == 0 || ct1.totalAssets() == 0) ? expectedProtocolFee1 : ct1.convertToShares(expectedProtocolFee1);
+    }
+
+    function test_ProtocolFee_FullMintFlow_CreditsRecipientNonZero(uint256 widthSeed, int256 strikeSeed) public {
+        // World + fee-enabled pool
+        _cacheWorldState(pools[0]);
+        uint256 bps = 150; // 1.50%
+        _deployPanopticPoolWithFee(controllerX, protoA, bps);
+        _initAccounts(); // approvals + deposits against current ct0/ct1/pp
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, 1e18);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+        TokenId[] memory posList = new TokenId[](1);
+        posList[0] = tokenId;
+
+        uint256 before0 = ct0.balanceOf(protoA);
+        uint256 before1 = ct1.balanceOf(protoA);
+
+        // effectiveLiquidityLimitX32 can usually be max; premiaAsCollateral=false is fine
+        mintOptions(
+            pp,
+            posList,
+            positionSize,
+            0,
+            TickMath.MIN_TICK,
+            TickMath.MAX_TICK,
+            false
+        );
+
+        // Recipient should have received *some* shares on at least one side for a nonzero bps
+        uint256 delta0 = ct0.balanceOf(protoA) - before0;
+        uint256 delta1 = ct1.balanceOf(protoA) - before1;
+        assertTrue(delta0 > 0 || delta1 > 0, "protocol shares credited to recipient");
+    }
+
 }
