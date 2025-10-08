@@ -155,6 +155,9 @@ contract PanopticPool is Multicall {
     /// @notice The Uniswap V3 pool that this instance of Panoptic is deployed on.
     IUniswapV3Pool internal s_univ3pool;
 
+    /// @notice The poolId of this instance of Panoptic.
+    uint64 internal s_poolId;
+
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     // LAST UPDATED BLOCK TIMESTAMP (40 bits)
@@ -273,6 +276,8 @@ contract PanopticPool is Multicall {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(_univ3pool);
 
+        s_poolId = SFPM.getPoolId(address(s_univ3pool));
+
         (, int24 currentTick, , , , , ) = IUniswapV3Pool(_univ3pool).slot0();
 
         // Store the median data
@@ -362,8 +367,7 @@ contract PanopticPool is Multicall {
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
             _calculateAccumulatedPremia(
@@ -407,10 +411,15 @@ contract PanopticPool is Multicall {
         for (uint256 k = 0; k < pLength; ) {
             TokenId tokenId = positionIdList[k];
 
-            balances[k] = [
-                TokenId.unwrap(tokenId),
-                PositionBalance.unwrap(s_positionBalance[c_user][tokenId])
-            ];
+            {
+                PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
+                if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
+
+                balances[k] = [
+                    TokenId.unwrap(tokenId),
+                    PositionBalance.unwrap(positionBalanceData)
+                ];
+            }
 
             (
                 LeftRightSigned[4] memory premiaByLeg,
@@ -482,7 +491,9 @@ contract PanopticPool is Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeMedian() external {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = s_univ3pool.slot0();
+        (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
+            s_univ3pool
+        );
 
         (, uint256 medianData) = PanopticMath.computeInternalMedian(
             observationIndex,
@@ -517,12 +528,12 @@ contract PanopticPool is Multicall {
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
         bool safeMode = isSafeMode();
+        uint64 poolId = s_poolId;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
-                revert Errors.InvalidTokenIdParameter(0);
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
@@ -1377,8 +1388,7 @@ contract PanopticPool is Multicall {
     /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
     /// @return Whether the current tick has deviated from the median by `> MAX_TICKS_DELTA`
     function isSafeMode() public view returns (bool) {
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 medianData = s_miniMedian;
         unchecked {
             // If ticks have recently deviated more than +/- ~10%, enforce covered mints
@@ -1418,10 +1428,16 @@ contract PanopticPool is Multicall {
             revert Errors.DuplicateTokenId();
         }
 
+        uint64 poolId = s_poolId;
+
         for (uint256 i = 0; i < pLength; ) {
+            TokenId tokenId = positionIdList[i];
+            // make sure the tokenId is for this Panoptic pool
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
+
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
-                positionIdList[i],
+                tokenId,
                 ADD
             );
             unchecked {
