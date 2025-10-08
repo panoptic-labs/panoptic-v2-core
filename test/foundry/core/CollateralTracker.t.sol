@@ -5987,14 +5987,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Alice, tokenId1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
-
-            _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
-
             mintOptions(
                 panopticPool,
                 positionIdList,
@@ -6187,14 +6179,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             /// calculate position
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 64));
             _assumePositionValidity(Bob, tokenId, positionSize0);
-
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Alice, tokenId1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
-
-            _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
             mintOptions(
                 panopticPool,
@@ -6653,13 +6637,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 )
             );
             _assumePositionValidity(Bob, tokenId, positionSize0);
-
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Alice, tokenId1);
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
-
-            _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
             mintOptions(
                 panopticPool,
@@ -10084,13 +10061,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
             uint256 _tokenType = _tokenId.tokenType(i);
             uint256 _isLong = _tokenId.isLong(i);
             int24 _strike = _tokenId.strike(i);
-            int24 _width = _tokenId.width(i);
 
-            (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
-                _width,
-                tickSpacing
-            );
-            (legLowerTick, legUpperTick) = (_strike - rangeDown, _strike + rangeUp);
+            {
+                int24 _width = _tokenId.width(i);
+                (int24 rangeDown, int24 rangeUp) = PanopticMath.getRangesFromStrike(
+                    _width,
+                    tickSpacing
+                );
+                (legLowerTick, legUpperTick) = (_strike - rangeDown, _strike + rangeUp);
+            }
+
+            uint128 _tokensRequired = 1;
 
             {
                 LeftRightUnsigned _amountsMoved = PanopticMath.getAmountsMoved(
@@ -10114,7 +10095,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             if (_isLong == 0) {
                 // pos is short
                 // base
-                tokensRequired = uint128(
+                _tokensRequired += uint128(
                     FullMath.mulDivRoundingUp(notionalMoved, sellCollateralRatio, DECIMALS)
                 );
                 // OTM
@@ -10138,7 +10119,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     ) {
                         uint256 c2 = FixedPoint96.Q96 - ratio;
 
-                        tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
+                        _tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
@@ -10150,16 +10131,17 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
                         );
-                        tokensRequired += uint128(c3);
+                        _tokensRequired += uint128(c3);
                     }
                 }
             } else {
                 // pos is long
                 // base
-                tokensRequired += uint128(
+                _tokensRequired += uint128(
                     FullMath.mulDivRoundingUp(notionalMoved, buyCollateralRatio, DECIMALS)
                 );
             }
+            tokensRequired += _tokensRequired;
         }
     }
 
@@ -10308,6 +10290,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         uint128 tokensRequired;
 
         for (uint i; i < maxLoop; ++i) {
+            uint128 _tokensRequired = 1;
             partnerIndex = _tokenId.riskPartner(i);
             tokenType = _tokenId.tokenType(i);
             tokenTypeP = _tokenId.tokenType(partnerIndex);
@@ -10362,7 +10345,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         );
                 }
 
-                tokensRequired = uint128(
+                _tokensRequired += uint128(
                     FullMath.mulDivRoundingUp(notionalMoved, uint128(baseCollateralRatio), DECIMALS)
                 );
 
@@ -10371,7 +10354,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                     ((atTick >= (legUpperTick)) && (tokenType == 1)) ||
                     ((atTick < (legLowerTick)) && (tokenType == 0))
                 ) {
-                    tokensRequired = tokensRequired; // base
+                    _tokensRequired = _tokensRequired; // base
                 } else {
                     uint160 ratio;
                     ratio = tokenType == 1
@@ -10388,7 +10371,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                         ((atTick >= (legUpperTick)) && (tokenType == 0))
                     ) {
                         uint256 c2 = FixedPoint96.Q96 - ratio;
-                        tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
+                        _tokensRequired += uint128(Math.mulDiv96RoundingUp(notionalMoved, c2));
                     } else {
                         // ATM
                         uint160 scaleFactor = TickMath.getSqrtRatioAtTick(
@@ -10400,7 +10383,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                             scaleFactor - ratio,
                             scaleFactor + FixedPoint96.Q96
                         );
-                        tokensRequired += uint128(c3);
+                        _tokensRequired += uint128(c3);
                     }
                 }
             }
@@ -10409,7 +10392,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 tokensRequired0 = int256(uint256($shortPremia.rightSlot())) -
                     int256(uint256($longPremia.rightSlot())) <
                     0
-                    ? tokensRequired += uint128(
+                    ? _tokensRequired += uint128(
                         (uint128(DECIMALS) *
                             uint128(
                                 -int128(
@@ -10418,13 +10401,13 @@ contract CollateralTrackerTest is Test, PositionUtils {
                                 )
                             )) / uint128(DECIMALS)
                     )
-                    : tokensRequired;
-                tokensRequired = 0;
+                    : _tokensRequired;
+                _tokensRequired = 0;
             } else {
                 tokensRequired1 = int256(uint256($shortPremia.leftSlot())) -
                     int256(uint256($longPremia.leftSlot())) <
                     0
-                    ? tokensRequired += uint128(
+                    ? _tokensRequired += uint128(
                         (uint128(DECIMALS) *
                             uint128(
                                 -int128(
@@ -10433,9 +10416,10 @@ contract CollateralTrackerTest is Test, PositionUtils {
                                 )
                             )) / uint128(DECIMALS)
                     )
-                    : tokensRequired;
-                tokensRequired = 0; // reset temp
+                    : _tokensRequired;
+                _tokensRequired = 0; // reset temp
             }
+            tokensRequired += _tokensRequired;
         }
     }
 }
