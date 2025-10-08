@@ -478,8 +478,8 @@ contract PanopticPool is Multicall {
                             )
                         )
                     );
-                    if (s_premiaCaps[user][tokenId] != 0) {
-                        cappedPremiumCommitment.toRightSlot(s_premiaCaps[user][tokenId].rightSlot()).toLeftSlot(s_premiaCaps[user][tokenId].leftSlot())
+                    if ((s_premiaCaps[user][tokenId].rightSlot() != 0) || (s_premiaCaps[user][tokenId].leftSlot() != 0)) {
+                        cappedPremiumCommitment.toRightSlot(s_premiaCaps[user][tokenId].rightSlot()).toLeftSlot(s_premiaCaps[user][tokenId].leftSlot());
                         // Do NOT put this tokenId in uncappedBalances.
                         // This means that uncappedBalances will have zero-values in its entries
                     } else {
@@ -1383,6 +1383,7 @@ contract PanopticPool is Multicall {
                         uncappedPositionBalanceArray,
                         shortPremium,
                         longPremium,
+                        cappedPremiumCommitment,
                         buffer
                     )
                 ) ++solvent;
@@ -1437,7 +1438,7 @@ contract PanopticPool is Multicall {
         // 2. Must be solvent for the uncapped positions, even when removing capital that is committed to capped premia positions
         uint256 crossCappedPremiumCommitment =
             uint256(cappedPremiumCommitment.rightSlot()) +
-            PanopticMath.convert1to0(uint256(cappedPremiumCommitment.leftSlot()));
+            PanopticMath.convert1to0(uint256(cappedPremiumCommitment.leftSlot()), Math.getSqrtRatioAtTick(atTick));
 
         (balanceCross, thresholdCross) = PanopticMath.getCrossBalances(
             s_collateralToken0.getAccountMarginDetails(
@@ -1464,7 +1465,7 @@ contract PanopticPool is Multicall {
             ),
             Math.getSqrtRatioAtTick(atTick)
         );
-        uint256 balanceCrossExcludingCappedPremiumCommitments -= crossCappedPremiumCommitment;
+        uint256 balanceCrossExcludingCappedPremiumCommitments = balanceCross - crossCappedPremiumCommitment;
 
         // compare balance and required tokens, can use unsafe div because denominator is always nonzero
         isSolvent = isSolvent && balanceCrossExcludingCappedPremiumCommitments >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
@@ -1874,7 +1875,7 @@ contract PanopticPool is Multicall {
 
         // Calculate current accumulated premia for long legs
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-        TokenId[] single = new TokenId[](1);
+        TokenId[] memory single = new TokenId[](1);
         single[0] = tokenId;
         (, LeftRightUnsigned longPremium, , ,) = _calculateAccumulatedPremia(owner, single, false, true, currentTick);
         uint128 token0Cap = s_premiaCaps[owner][tokenId].rightSlot();
@@ -1885,7 +1886,7 @@ contract PanopticPool is Multicall {
         // Caps start getting enforced within 1% (TODO: Can change this later)
         if (accumulatedPremium0 > (token0Cap * 99 / 100 ) || accumulatedPremium1 > (token1Cap * 99 / 100)) {
             // Close the position either way:
-            (LeftRightSigned paidAmounts, LeftRightSigned[4] premiaByLeg) = _burnOptions(
+            (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) = _burnOptions(
                 tokenId,
                 positionSize,
                 MIN_SWAP_TICK,
@@ -2006,9 +2007,9 @@ contract PanopticPool is Multicall {
                 owner,
                 msg.sender,
                 tokenId,
-                totalPremiaOwed,
-                premiaCap,
-                reward
+                longPremium,
+                cap,
+                LeftRightUnsigned.wrap(reward0).toLeftSlot(reward1)
             );
         }
         // else, no-op - could revert here if we wanted i suppose
