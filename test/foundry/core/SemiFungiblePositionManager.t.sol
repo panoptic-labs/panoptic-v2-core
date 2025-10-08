@@ -1002,6 +1002,29 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
     /// This means that "call" is `tokenType` = 0 and "put" is `tokenType` = 1
 
     /*//////////////////////////////////////////////////////////////
+                         POOL GETTERS: -
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Success_getCurrentTick(uint256 x) public {
+        _initPool(x);
+
+        (, int24 currentTick, , , , , ) = pool.slot0();
+
+        assertEq(currentTick, sfpm.getCurrentTick(pool));
+    }
+
+    function test_Success_indexAndCardinality(uint256 x) public {
+        _initPool(x);
+
+        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = pool.slot0();
+
+        (uint16 sfpmIndex, uint16 sfpmCardinality) = sfpm.indexAndCardinality(pool);
+
+        assertEq(observationIndex, sfpmIndex);
+        assertEq(observationCardinality, sfpmCardinality);
+    }
+
+    /*//////////////////////////////////////////////////////////////
                          OUT-OF-RANGE MINTS: +
     //////////////////////////////////////////////////////////////*/
 

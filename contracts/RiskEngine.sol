@@ -542,8 +542,6 @@ contract RiskEngine {
 
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
-            if (positionSize == 0) revert Errors.PositionNotOwned();
-
             int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
                 : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
@@ -654,8 +652,11 @@ contract RiskEngine {
 
         uint256 isLong = tokenId.isLong(index);
 
+        // required collateral is at least 1
+        required = 1;
+
         // start with base requirement, which is based on isLong value
-        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
+        required += _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
 
         // if the position is long, required tokens do not depend on price
         unchecked {
@@ -742,8 +743,6 @@ contract RiskEngine {
                 }
             }
         }
-        // revert if the position does not require any collateral
-        if (required == 0) revert Errors.ZeroCollateralRequirement();
     }
 
     /// @notice Calculate the required amount of collateral for leg `index` for position `tokenId` accounting for its partner leg.
