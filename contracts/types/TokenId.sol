@@ -502,10 +502,10 @@ library TokenIdLibrary {
                 // -Synthetic Stocks (short put + long call) or (short call + long put)
                 //
                 // FUNDED OPTIONS
-                // -Funded long option (long put or call + credit) "Upfront payment by purchaser"
-                // -Funded short option (short put or call + loan) "Upfront payment to seller"
-                // -Option-collateralized loan (long put or call + loan)
-                // -Cash-Secured Option (short put or call + credit)
+                // -Prepaid long option (long put or call + credit) "Purchases pre-pays for the cost of the option"
+                // -Upfront short option (short put or call + loan) "Upfront payment to seller"
+                // -Option-protected loan (long put or call + loan) "Get a loan with an embedded long option for capital protection"
+                // -Cash-Secured Option (short put or call + credit) "Allocate collateral to that specific option"
                 //
                 // TOKEN TRANSFERS
                 // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap)
