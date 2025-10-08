@@ -304,7 +304,7 @@ contract PanopticFactoryTest is Test {
         // Attempt to deploy pool again
         vm.expectRevert(Errors.PoolAlreadyInitialized.selector);
         unchecked {
-            panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt);
+            panopticFactory.deployNewPool(token0, token1, fee, address(0), address(0), 0, salt + 1);
         }
     }
 
