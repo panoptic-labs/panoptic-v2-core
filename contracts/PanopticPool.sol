@@ -407,11 +407,15 @@ contract PanopticPool is Multicall {
         for (uint256 k = 0; k < pLength; ) {
             TokenId tokenId = positionIdList[k];
 
-            balances[k] = [
-                TokenId.unwrap(tokenId),
-                PositionBalance.unwrap(s_positionBalance[c_user][tokenId])
-            ];
+            {
+                PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
+                if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
 
+                balances[k] = [
+                    TokenId.unwrap(tokenId),
+                    PositionBalance.unwrap(positionBalanceData)
+                ];
+            }
             (
                 LeftRightSigned[4] memory premiaByLeg,
                 uint256[2][4] memory premiumAccumulatorsByLeg

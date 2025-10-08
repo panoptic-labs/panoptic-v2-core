@@ -482,8 +482,6 @@ contract RiskEngine {
 
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
-            if (positionSize == 0) revert Errors.PositionNotOwned();
-
             int16 poolUtilization = underlyingIsToken0
                 ? int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization0())
                 : int16(PositionBalance.wrap(positionBalanceArray[i][1]).utilization1());
@@ -594,12 +592,27 @@ contract RiskEngine {
 
         uint256 isLong = tokenId.isLong(index);
 
-        // start with base requirement, which is based on isLong value
-        required = _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
+        // required collateral is at least 1
+        required = 1;
 
-        // if the position is long, required tokens do not depend on price
+        // start with base requirement, which is based on isLong value
+        required += _getRequiredCollateralAtUtilization(amountMoved, isLong, poolUtilization);
+
         unchecked {
-            if (isLong == 0) {
+            // if the width is 0, then this is a loan/credit
+            if (tokenId.width(index) == 0) {
+                if (isLong == 0) {
+                    // buying power requirement for a Loan position is 100% + sellCollateralRatio(utilization = 0)
+                    required = Math.mulDivRoundingUp(
+                        amountMoved,
+                        SELLER_COLLATERAL_RATIO + DECIMALS,
+                        DECIMALS
+                    );
+                } else {
+                    // buying power requirement for a Credit position is 10% of buyCollateralRatio(utilization)
+                    required = Math.unsafeDivRoundingUp(required, 10);
+                }
+            } else if (isLong == 0) {
                 // if position is short, check whether the position is out-the-money
 
                 (int24 tickLower, int24 tickUpper) = tokenId.asTicks(index);
@@ -682,8 +695,6 @@ contract RiskEngine {
                 }
             }
         }
-        // revert if the position does not require any collateral
-        if (required == 0) revert Errors.ZeroCollateralRequirement();
     }
 
     /// @notice Calculate the required amount of collateral for leg `index` for position `tokenId` accounting for its partner leg.
