@@ -1824,7 +1824,8 @@ contract Misctest is Test, PositionUtils {
             address(token0),
             address(token1),
             1,
-            pp
+            pp,
+            re
         );
 
         vm.startPrank(Bob);

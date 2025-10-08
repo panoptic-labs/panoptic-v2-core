@@ -46,6 +46,10 @@ contract CollateralTrackerHarness is CollateralTracker, PositionUtils, MiniPosit
         return s_panopticPool;
     }
 
+    function riskEngine() external view returns (RiskEngine) {
+        return s_riskEngine;
+    }
+
     // whether the token has been initialized already or not
     function initalized() external view returns (bool) {
         return s_initialized;
@@ -136,7 +140,7 @@ contract PanopticPoolHarness is PanopticPool {
         address s_token1 = uniswapPool.token1();
 
         // Start and store the collateral token0/1
-        _initalizeCollateralPair(token0, token1, uniswapPool);
+        _initalizeCollateralPair(token0, token1, uniswapPool, riskEngine);
 
         (, int24 currentTick, , , , , ) = uniswapPool.slot0();
 
@@ -163,15 +167,16 @@ contract PanopticPoolHarness is PanopticPool {
     function _initalizeCollateralPair(
         address token0,
         address token1,
-        IUniswapV3Pool uniswapPool
+        IUniswapV3Pool uniswapPool,
+        RiskEngine riskEngine
     ) internal {
         // Deploy collateral tokens
         s_collateralToken0 = new CollateralTrackerHarness();
         s_collateralToken1 = new CollateralTrackerHarness();
 
         // initialize the token
-        s_collateralToken0.startToken(true, token0, token1, uniswapPool.fee(), this);
-        s_collateralToken1.startToken(false, token0, token1, uniswapPool.fee(), this);
+        s_collateralToken0.startToken(true, token0, token1, uniswapPool.fee(), this, riskEngine);
+        s_collateralToken1.startToken(false, token0, token1, uniswapPool.fee(), this, riskEngine);
     }
 
     function delegate(address delegatee, CollateralTracker collateralToken) external {
@@ -740,7 +745,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
     function test_Success_StartToken_virtualShares() public {
         _initWorld(0);
         CollateralTracker ct = new CollateralTracker(10);
-        ct.startToken(false, token0, token1, fee, panopticPool);
+        ct.startToken(false, token0, token1, fee, panopticPool, riskEngine);
 
         assertEq(ct.totalSupply(), 10 ** 6);
         assertEq(ct.totalAssets(), 1);
@@ -753,11 +758,25 @@ contract CollateralTrackerTest is Test, PositionUtils {
         collateralToken0 = new CollateralTrackerHarness();
 
         // initialize the token
-        collateralToken0.startToken(false, token0, token1, fee, PanopticPool(address(0)));
+        collateralToken0.startToken(
+            false,
+            token0,
+            token1,
+            fee,
+            PanopticPool(address(0)),
+            riskEngine
+        );
 
         // fails if already initialized
         vm.expectRevert(Errors.CollateralTokenAlreadyInitialized.selector);
-        collateralToken0.startToken(false, token0, token1, fee, PanopticPool(address(0)));
+        collateralToken0.startToken(
+            false,
+            token0,
+            token1,
+            fee,
+            PanopticPool(address(0)),
+            riskEngine
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
