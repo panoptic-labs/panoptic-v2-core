@@ -1548,4 +1548,14 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     function getPoolId(address univ3pool) external view returns (uint64 poolId) {
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
     }
+
+    function getCurrentTick(IUniswapV3Pool univ3pool) external view returns (int24 currentTick) {
+        (, currentTick, , , , , ) = univ3pool.slot0();
+    }
+
+    function indexAndCardinality(
+        IUniswapV3Pool univ3pool
+    ) external view returns (uint16 observationIndex, uint16 observationCardinality) {
+        (, , observationIndex, observationCardinality, , , ) = univ3pool.slot0();
+    }
 }

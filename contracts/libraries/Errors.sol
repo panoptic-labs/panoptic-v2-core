@@ -110,6 +110,9 @@ library Errors {
     /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or have a PanopticPool created for it by the factory
     error UniswapPoolNotInitialized();
 
+    /// @notice PanopticPool: The supplied poolId does not match the poolId for that Uniswap Pool
+    error WrongPoolId();
+
     /// @notice PanopticFactory: the zero address was supplied as a parameter
     error ZeroAddress();
 
