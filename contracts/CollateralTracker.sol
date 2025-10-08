@@ -251,7 +251,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         PanopticPool panopticPool,
         address feeSwitchController,
         address initialFeeRecipient,
-        address initialFee,
+        uint256 initialFee
     ) external {
         // fails if already initialized
         if (s_initialized) revert Errors.CollateralTokenAlreadyInitialized();
