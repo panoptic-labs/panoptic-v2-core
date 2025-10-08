@@ -494,17 +494,36 @@ library TokenIdLibrary {
                 // In the following, we check whether the risk partner of this leg is itself
                 // or another leg in this position.
                 // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
+                // @dev In summary, the allowed risk partners:
+                //
+                // PURE OPTIONS
+                // -Short Strangles/Straddles (short put + short call)
+                // -Vertical Spreads and Calendar Spreads (short put + long put) or (short call + long call)
+                // -Synthetic Stocks (short put + long call) or (short call + long put)
+                //
+                // FUNDED OPTIONS
+                // -Funded long option (long put or call + credit) "Upfront payment by purchaser"
+                // -Funded short option (short put or call + loan) "Upfront payment to seller"
+                // -Option-collateralized loan (long put or call + loan)
+                // -Cash-Secured Option (short put or call + credit)
+                //
+                // TOKEN TRANSFERS
+                // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap)
+                // - Double loans (loan in two different assets)
+                // - Double credits (credit in two different assets)
                 uint256 riskPartnerIndex = self.riskPartner(i);
                 if (riskPartnerIndex != i) {
                     // Ensures that risk partners are mutual
                     if (self.riskPartner(riskPartnerIndex) != i)
                         revert Errors.InvalidTokenIdParameter(3);
 
-                    // Ensures that risk partners have 1) the same asset, and 2) the same ratio
-                    if (
-                        (self.asset(riskPartnerIndex) != self.asset(i)) ||
-                        (self.optionRatio(riskPartnerIndex) != self.optionRatio(i))
-                    ) revert Errors.InvalidTokenIdParameter(3);
+                    // Ensures that risk partners have the same asset
+                    if (self.asset(riskPartnerIndex) != self.asset(i))
+                        revert Errors.InvalidTokenIdParameter(3);
+
+                    // witdh of associated legs
+                    int24 _width = self.width(i);
+                    int24 widthP = self.width(riskPartnerIndex);
 
                     // long/short status of associated legs
                     uint256 _isLong = self.isLong(i);
@@ -515,15 +534,20 @@ library TokenIdLibrary {
                     uint256 tokenTypeP = self.tokenType(riskPartnerIndex);
 
                     // if the position is the same i.e both long calls, short puts etc.
-                    // then this is a regular position, not a defined risk position
-                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP))
+                    // then this is a duplicated position
+                    if ((_isLong == isLongP) && (_tokenType == tokenTypeP) && (_width == widthP))
                         revert Errors.InvalidTokenIdParameter(4);
 
-                    // if the two token long-types and the tokenTypes are both different (one is a short call, the other a long put, e.g.), this is a synthetic position
-                    // A synthetic long or short is more capital efficient than each leg separated because the long+short premia accumulate proportionally
-                    // unlike short strangles, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
-                    if (((_isLong != isLongP) || _isLong == 1) && (_tokenType != tokenTypeP))
-                        revert Errors.InvalidTokenIdParameter(5);
+                    // if none of the partnered component is a credit/loan
+                    if (_width != 0 && widthP != 0) {
+                        // Ensures that risk partners have the same ratio
+                        if ((self.optionRatio(riskPartnerIndex) != self.optionRatio(i)))
+                            revert Errors.InvalidTokenIdParameter(3);
+
+                        // unlike short strangles, long strangles also cannot be partnered, because there is no reduction in risk (both legs can earn premia simultaneously)
+                        if (_isLong == 1 && isLongP == 1 && _tokenType != tokenTypeP)
+                            revert Errors.InvalidTokenIdParameter(5);
+                    }
                 }
             }
         }
