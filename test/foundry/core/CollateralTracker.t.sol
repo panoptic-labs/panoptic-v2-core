@@ -564,7 +564,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             liquidatee,
             positionIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -586,7 +586,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             exercisee,
             targetList,
             exerciseeList,
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -608,7 +608,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
             exercisee,
             targetList,
             settleeList,
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -10697,7 +10697,7 @@ contract CollateralTrackerTest is Test, PositionUtils {
         );
 
         // store bonus amounts as actual amounts by dividing by DECIMALS_128
-        bonusAmounts = bonusAmounts.toRightSlot(bonus0 / int128(DECIMALS)).toLeftSlot(
+        bonusAmounts = bonusAmounts.addToRightSlot(bonus0 / int128(DECIMALS)).addToLeftSlot(
             bonus1 / int128(DECIMALS)
         );
     }

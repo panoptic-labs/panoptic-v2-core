@@ -404,7 +404,7 @@ contract PanopticPoolTest is PositionUtils {
             liquidatee,
             positionIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -430,7 +430,7 @@ contract PanopticPoolTest is PositionUtils {
             exercisee,
             exerciseeListInitial,
             exerciseeListFinal,
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -450,7 +450,7 @@ contract PanopticPoolTest is PositionUtils {
             exercisee,
             settleeList,
             settleeList,
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -1875,14 +1875,14 @@ contract PanopticPoolTest is PositionUtils {
         LeftRightSigned poolUtilizationsAtMint;
         {
             (, , uint256 currentPoolUtilization) = ct0.getPoolData();
-            poolUtilizationsAtMint = LeftRightSigned.wrap(0).toRightSlot(
+            poolUtilizationsAtMint = LeftRightSigned.wrap(0).addToRightSlot(
                 int128(int256(currentPoolUtilization))
             );
         }
 
         {
             (, , uint256 currentPoolUtilization) = ct1.getPoolData();
-            poolUtilizationsAtMint = poolUtilizationsAtMint.toLeftSlot(
+            poolUtilizationsAtMint = poolUtilizationsAtMint.addToLeftSlot(
                 int128(int256(currentPoolUtilization))
             );
         }
@@ -6560,7 +6560,7 @@ contract PanopticPoolTest is PositionUtils {
             posIdList[0],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
 
         assertApproxEqAbs(
@@ -6687,7 +6687,9 @@ contract PanopticPoolTest is PositionUtils {
 
             LeftRightSigned refundAmounts = re.getRefundAmounts(
                 Charlie,
-                LeftRightSigned.wrap(0).toRightSlot(int128(refund0)).toLeftSlot(int128(refund1)),
+                LeftRightSigned.wrap(0).addToRightSlot(int128(refund0)).addToLeftSlot(
+                    int128(refund1)
+                ),
                 int24(atTick),
                 ct0,
                 ct1
@@ -6912,7 +6914,7 @@ contract PanopticPoolTest is PositionUtils {
                 $posIdLists[2][0],
                 $posIdLists[3],
                 $posIdLists[0],
-                LeftRightUnsigned.wrap(1).toLeftSlot(1)
+                LeftRightUnsigned.wrap(1).addToLeftSlot(1)
             );
 
             int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
@@ -6985,7 +6987,7 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[2][0],
             $posIdLists[3],
             $posIdLists[0],
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -7140,7 +7142,7 @@ contract PanopticPoolTest is PositionUtils {
                 $posIdLists[2][0],
                 $posIdLists[3],
                 new TokenId[](0),
-                LeftRightUnsigned.wrap(1).toLeftSlot(1)
+                LeftRightUnsigned.wrap(1).addToLeftSlot(1)
             );
 
             int256 balanceDelta0 = int256(ct0.balanceOf(Alice)) -
@@ -7213,7 +7215,7 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[2][0],
             $posIdLists[3],
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -7350,7 +7352,7 @@ contract PanopticPoolTest is PositionUtils {
             $posIdLists[1][0],
             $posIdLists[0],
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -7443,7 +7445,7 @@ contract PanopticPoolTest is PositionUtils {
             tokenId2,
             new TokenId[](0),
             posIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -7492,7 +7494,7 @@ contract PanopticPoolTest is PositionUtils {
             touchedIds[0],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -9560,7 +9562,7 @@ contract PanopticPoolTest is PositionUtils {
             Alice,
             posIdList,
             posIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -9649,7 +9651,7 @@ contract PanopticPoolTest is PositionUtils {
             Alice,
             posIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 }

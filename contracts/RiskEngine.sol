@@ -130,7 +130,7 @@ contract RiskEngine {
                 return
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(
+                        .addToRightSlot(
                             int128(
                                 fees.rightSlot() -
                                     int256(
@@ -142,7 +142,7 @@ contract RiskEngine {
                                     )
                             )
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             int128(
                                 int256(
                                     PanopticMath.convert0to1RoundingUp(
@@ -162,7 +162,7 @@ contract RiskEngine {
                 return
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(
+                        .addToRightSlot(
                             int128(
                                 int256(
                                     PanopticMath.convert1to0RoundingUp(
@@ -172,7 +172,7 @@ contract RiskEngine {
                                 ) + fees.rightSlot()
                             )
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             int128(
                                 fees.leftSlot() -
                                     int256(
@@ -272,8 +272,12 @@ contract RiskEngine {
                 exerciseFees = exerciseFees.sub(
                     LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(int128(uint128(currentValue0)) - int128(uint128(oracleValue0)))
-                        .toLeftSlot(int128(uint128(currentValue1)) - int128(uint128(oracleValue1)))
+                        .addToRightSlot(
+                            int128(uint128(currentValue0)) - int128(uint128(oracleValue0))
+                        )
+                        .addToLeftSlot(
+                            int128(uint128(currentValue1)) - int128(uint128(oracleValue1))
+                        )
                 );
             }
 
@@ -285,8 +289,8 @@ contract RiskEngine {
 
             // store the exercise fees in the exerciseFees variable
             exerciseFees = exerciseFees
-                .toRightSlot(int128((longAmounts.rightSlot() * fee) / int256(DECIMALS)))
-                .toLeftSlot(int128((longAmounts.leftSlot() * fee) / int256(DECIMALS)));
+                .addToRightSlot(int128((longAmounts.rightSlot() * fee) / int256(DECIMALS)))
+                .addToLeftSlot(int128((longAmounts.leftSlot() * fee) / int256(DECIMALS)));
         }
     }
 
@@ -412,8 +416,10 @@ contract RiskEngine {
             paid0 = bonus0 + int256(netPaid.rightSlot());
             paid1 = bonus1 + int256(netPaid.leftSlot());
             return (
-                LeftRightSigned.wrap(0).toRightSlot(int128(bonus0)).toLeftSlot(int128(bonus1)),
-                LeftRightSigned.wrap(0).toRightSlot(int128(balance0 - paid0)).toLeftSlot(
+                LeftRightSigned.wrap(0).addToRightSlot(int128(bonus0)).addToLeftSlot(
+                    int128(bonus1)
+                ),
+                LeftRightSigned.wrap(0).addToRightSlot(int128(balance0 - paid0)).addToLeftSlot(
                     int128(balance1 - paid1)
                 )
             );
@@ -507,7 +513,7 @@ contract RiskEngine {
                     longPremia.rightSlot() +
                     owedInterest0)
                 : 0;
-            tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).toLeftSlot(
+            tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
                 requirement0.toUint128()
             );
         }
@@ -519,7 +525,7 @@ contract RiskEngine {
                     longPremia.leftSlot() +
                     owedInterest1)
                 : 0;
-            tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).toLeftSlot(
+            tokenData1 = LeftRightUnsigned.wrap(balance1.toUint128()).addToLeftSlot(
                 requirement1.toUint128()
             );
         }

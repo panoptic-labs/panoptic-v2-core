@@ -46,7 +46,7 @@ library LeftRightLibrary {
         return int128(LeftRightSigned.unwrap(self));
     }
 
-    // All toRightSlot functions add bits to the right slot without clearing it first
+    // All addToRightSlot functions add bits to the right slot without clearing it first
     // Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
     // Therefore, the assumption must not be made that the bits will be cleared while using these helpers
     // Note that the values *within* the slots are allowed to overflow, but overflows are contained and will not leak into the other slot
@@ -55,7 +55,7 @@ library LeftRightLibrary {
     /// @param self The 256-bit pattern to be written to
     /// @param right The value to be added to the right slot
     /// @return `self` with `right` added (not overwritten, but added) to the value in its right 128 bits
-    function toRightSlot(
+    function addToRightSlot(
         LeftRightUnsigned self,
         uint128 right
     ) internal pure returns (LeftRightUnsigned) {
@@ -74,7 +74,7 @@ library LeftRightLibrary {
     /// @param self The 256-bit pattern to be written to
     /// @param right The value to be added to the right slot
     /// @return `self` with `right` added (not overwritten, but added) to the value in its right 128 bits
-    function toRightSlot(
+    function addToRightSlot(
         LeftRightSigned self,
         int128 right
     ) internal pure returns (LeftRightSigned) {
@@ -108,7 +108,7 @@ library LeftRightLibrary {
         return int128(LeftRightSigned.unwrap(self) >> 128);
     }
 
-    /// All toLeftSlot functions add bits to the left slot without clearing it first
+    /// All addToLeftSlot functions add bits to the left slot without clearing it first
     // Typically, the slot is already clear when writing to it, but if it is not, the bits will be added to the existing bits
     // Therefore, the assumption must not be made that the bits will be cleared while using these helpers
     // Note that the values *within* the slots are allowed to overflow, but overflows are contained and will not leak into the other slot
@@ -117,7 +117,7 @@ library LeftRightLibrary {
     /// @param self The 256-bit pattern to be written to
     /// @param left The value to be added to the left slot
     /// @return `self` with `left` added (not overwritten, but added) to the value in its left 128 bits
-    function toLeftSlot(
+    function addToLeftSlot(
         LeftRightUnsigned self,
         uint128 left
     ) internal pure returns (LeftRightUnsigned) {
@@ -130,7 +130,10 @@ library LeftRightLibrary {
     /// @param self The 256-bit pattern to be written to
     /// @param left The value to be added to the left slot
     /// @return `self` with `left` added (not overwritten, but added) to the value in its left 128 bits
-    function toLeftSlot(LeftRightSigned self, int128 left) internal pure returns (LeftRightSigned) {
+    function addToLeftSlot(
+        LeftRightSigned self,
+        int128 left
+    ) internal pure returns (LeftRightSigned) {
         unchecked {
             return LeftRightSigned.wrap(LeftRightSigned.unwrap(self) + (int256(left) << 128));
         }
@@ -202,7 +205,7 @@ library LeftRightLibrary {
 
             if (right128 != right) revert Errors.UnderOverFlow();
 
-            return z.toRightSlot(right128).toLeftSlot(left128);
+            return z.addToRightSlot(right128).addToLeftSlot(left128);
         }
     }
 
@@ -220,7 +223,7 @@ library LeftRightLibrary {
 
             if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
 
-            return z.toRightSlot(right128).toLeftSlot(left128);
+            return z.addToRightSlot(right128).addToLeftSlot(left128);
         }
     }
 
@@ -238,7 +241,7 @@ library LeftRightLibrary {
 
             if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
 
-            return z.toRightSlot(right128).toLeftSlot(left128);
+            return z.addToRightSlot(right128).addToLeftSlot(left128);
         }
     }
 
@@ -261,7 +264,7 @@ library LeftRightLibrary {
             if (left128 != left256 || right128 != right256) revert Errors.UnderOverFlow();
 
             return
-                z.toRightSlot(uint128(uint256((Math.max(right128, 0))))).toLeftSlot(
+                z.addToRightSlot(uint128(uint256((Math.max(right128, 0))))).addToLeftSlot(
                     uint128(uint256((Math.max(left128, 0))))
                 );
         }
@@ -290,10 +293,10 @@ library LeftRightLibrary {
         bool l_Enabled = !(z_xL == type(uint128).max || z_yL == type(uint128).max);
 
         return (
-            LeftRightUnsigned.wrap(r_Enabled ? z_xR : x.rightSlot()).toLeftSlot(
+            LeftRightUnsigned.wrap(r_Enabled ? z_xR : x.rightSlot()).addToLeftSlot(
                 l_Enabled ? z_xL : x.leftSlot()
             ),
-            LeftRightUnsigned.wrap(r_Enabled ? z_yR : y.rightSlot()).toLeftSlot(
+            LeftRightUnsigned.wrap(r_Enabled ? z_yR : y.rightSlot()).addToLeftSlot(
                 l_Enabled ? z_yL : y.leftSlot()
             )
         );

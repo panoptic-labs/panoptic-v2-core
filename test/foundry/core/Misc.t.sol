@@ -480,7 +480,7 @@ contract Misctest is Test, PositionUtils {
             liquidatee,
             positionIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -528,7 +528,7 @@ contract Misctest is Test, PositionUtils {
             exercisee,
             settleeList,
             settleeList,
-            LeftRightUnsigned.wrap(0).toRightSlot(premiaAsCollateral ? 1 : 0).toLeftSlot(
+            LeftRightUnsigned.wrap(0).addToRightSlot(premiaAsCollateral ? 1 : 0).addToLeftSlot(
                 premiaAsCollateral ? 1 : 0
             )
         );
@@ -1822,7 +1822,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[0],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
     }
 
@@ -1969,7 +1969,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -1979,7 +1979,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -1989,7 +1989,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             $tempIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         snap = vm.snapshotState();
@@ -2009,7 +2009,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -2019,7 +2019,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         uint256 snap2 = vm.snapshotState();
@@ -2030,7 +2030,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         vm.revertToState(snap2);
@@ -2041,7 +2041,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
 
         vm.revertToState(snap);
@@ -2067,7 +2067,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -2077,7 +2077,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         snap2 = vm.snapshotState();
@@ -2088,7 +2088,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         vm.revertToState(snap2);
@@ -2101,7 +2101,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
 
         vm.revertToState(snap2);
@@ -2122,7 +2122,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.revertToState(snap2);
@@ -2135,7 +2135,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         vm.revertToState(snap2);
@@ -2147,7 +2147,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         vm.revertToState(snap2);
@@ -2160,7 +2160,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -2246,7 +2246,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[0],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
