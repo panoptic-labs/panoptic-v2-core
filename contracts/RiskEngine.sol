@@ -747,15 +747,16 @@ contract RiskEngine {
                     bool _width = tokenId.width(index) > 0;
                     bool widthP = tokenId.width(partnerIndex) > 0;
 
-                    // long/short status of associated legs
-                    uint256 _isLong = tokenId.isLong(index);
-                    uint256 isLongP = tokenId.isLong(partnerIndex);
-
-                    // token type status of associated legs (call/put)
-                    uint256 _tokenType = tokenId.tokenType(index);
-                    uint256 tokenTypeP = tokenId.tokenType(partnerIndex);
                     // if both legs are options
                     if (_width && widthP) {
+                        // long/short status of associated legs
+                        uint256 _isLong = tokenId.isLong(index);
+                        uint256 isLongP = tokenId.isLong(partnerIndex);
+
+                        // token type status of associated legs (call/put)
+                        uint256 _tokenType = tokenId.tokenType(index);
+                        uint256 tokenTypeP = tokenId.tokenType(partnerIndex);
+
                         if (_tokenType != tokenTypeP) {
                             if (_isLong == 0 && isLongP == 0) {
                                 // STRANGLES: different token types, both short
@@ -791,7 +792,7 @@ contract RiskEngine {
                                     );
                             }
                         }
-                    } else if (_width != widthP) {
+                    } else {
                         uint256 _required = _getRequiredCollateralSingleLegNoPartner(
                             tokenId,
                             index,
@@ -807,57 +808,43 @@ contract RiskEngine {
                             poolUtilization
                         );
 
-                        if (_isLong != isLongP) {
-                            if (_tokenType == tokenTypeP) {
-                                // first leg is a short option & second leg is a loan or first leg is a long option & second leg is a credit
-                                if (_isLong == 0) {
-                                    // UPFRONT SHORT OPTION
-                                    return Math.max(_required, requiredPartner);
+                        if (_width != widthP) {
+                            uint256 optionLegIndex = _width ? index : partnerIndex;
+
+                            if (tokenId.isLong(optionLegIndex) == 0) {
+                                // CASH-SECURED OPTION
+                                // PREPAID LONG OPTION
+                                LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
+                                    tokenId,
+                                    positionSize,
+                                    optionLegIndex
+                                );
+
+                                uint128 amountMoved = tokenId.tokenType(optionLegIndex) == 0
+                                    ? amountsMoved.rightSlot()
+                                    : amountsMoved.leftSlot();
+
+                                uint256 totalRequired = _required + requiredPartner;
+                                if (totalRequired > amountMoved) {
+                                    return totalRequired - amountMoved;
                                 } else {
-                                    // PREPAID LONG OPTION
-                                    uint256 required = _required + requiredPartner;
-                                    if (_width) {
-                                        LeftRightUnsigned amountsMoved = PanopticMath
-                                            .getAmountsMoved(tokenId, positionSize, partnerIndex);
-                                        uint128 amountMoved = tokenTypeP == 0
-                                            ? amountsMoved.rightSlot()
-                                            : amountsMoved.leftSlot();
-                                        required = Math.min(required, requiredPartner);
-                                        if (required > amountMoved) {
-                                            uint256 requiredDiff = required - amountMoved;
-                                            required = Math.max(requiredDiff, required);
-                                        }
-                                    } else {
-                                        LeftRightUnsigned amountsMoved = PanopticMath
-                                            .getAmountsMoved(tokenId, positionSize, index);
-                                        uint128 amountMoved = _tokenType == 0
-                                            ? amountsMoved.rightSlot()
-                                            : amountsMoved.leftSlot();
-                                        required = Math.min(required, requiredPartner);
-                                        if (required > amountMoved) {
-                                            uint256 requiredDiff = required - amountMoved;
-                                            required = Math.max(requiredDiff, required);
-                                        }
-                                    }
-                                    return required;
+                                    return 0;
                                 }
+                            } else {
+                                // OPTION-PROTECTED LOAN
+                                // UPFRONT SHORT OPTION
+                                return Math.max(_required, requiredPartner);
                             }
                         } else {
-                            if (_isLong == 0) {
-                                // first leg is a short option & second leg is a credit or first leg is a long option & second leg is a loan
-                                // OPTION-PROTECTED LOAN
-                                return Math.max(_required, requiredPartner);
-                            } else {
-                                // CASH-SECURED OPTION
-                                return Math.max(_required, requiredPartner);
+                            // long/short status of associated legs
+                            uint256 _isLong = tokenId.isLong(index);
+                            uint256 isLongP = tokenId.isLong(partnerIndex);
+                            // TOKEN TRANSFERS
+                            if (_isLong != isLongP) {
+                                // DELAYED SWAP
+                                // TODO: convert the net value ie. Max(0, credit - convert1to0(loan));
+                                return 0;
                             }
-                        }
-                    } else {
-                        // TOKEN TRANSFERS
-                        if (_isLong != isLongP) {
-                            // DELAYED SWAP
-                            // TODO: convert the net value ie. Max(0, credit - convert1to0(loan));
-                            return 0;
                         }
                     }
                 }
