@@ -615,8 +615,9 @@ contract RiskEngine {
                         DECIMALS
                     );
                 } else {
-                    // buying power requirement for a Credit position is 10% of buyCollateralRatio(utilization)
-                    required = Math.unsafeDivRoundingUp(required, 10);
+                    // buying power requirement for a Credit position is 0
+                    // this is not netted against other legs unless it has a partner
+                    required = 0;
                 }
             } else if (isLong == 0) {
                 // if position is short, check whether the position is out-the-money
@@ -724,148 +725,146 @@ contract RiskEngine {
         // extract partner index (associated with another liquidity chunk)
         uint256 partnerIndex = tokenId.riskPartner(index);
 
-        // only proceed if that's the first partner (the other one will return 0)
-        if (partnerIndex > index) {
-            // In the following, we check whether the risk partner of this leg is itself
-            // or another leg in this position.
-            // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
-            // @dev In summary, the allowed risk partners:
-            //
-            // PURE OPTIONS
-            // -Short Strangles/Straddles (short put + short call)
-            // -Vertical Spreads and Calendar Spreads (short put + long put) or (short call + long call)
-            // -Synthetic Stocks (short put + long call) or (short call + long put)
-            //
-            // FUNDED OPTIONS
-            // -Prepaid long option (long put or call + credit) "Purchases pre-pays for the cost of the option"
-            // -Upfront short option (short put or call + loan) "Upfront payment to seller"
-            // -Option-protected loan (long put or call + loan) "Get a loan with an embedded long option for capital protection"
-            // -Cash-Secured Option (short put or call + credit) "Allocate collateral to that specific option"
-            //
-            // TOKEN TRANSFERS
-            // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap)
-            // - Double loans (loan in two different assets)
-            // - Double credits (credit in two different assets)
-            {
-                // only proceed if the partners have the same asset
-                if (tokenId.asset(partnerIndex) == tokenId.asset(index)) {
-                    // witdh of associated legs, true if greater than 0 (ie. it is an option leg)
-                    bool _width = tokenId.width(index) > 0;
-                    bool widthP = tokenId.width(partnerIndex) > 0;
+        // In the following, we check whether the risk partner of this leg is itself
+        // or another leg in this position.
+        // Handles case where riskPartner(i) != i ==> leg i has a risk partner that is another leg
+        // @dev In summary, the allowed risk partners:
+        //
+        // PURE OPTIONS
+        // -Short Strangles/Straddles (short put + short call) = each leg's basic requirement is 50% less
+        // -Vertical Spreads and Calendar Spreads (short put + long put) or (short call + long call) = requirement is max loss
+        // -Synthetic Stocks (short put + long call) or (short call + long put) = requirement is short leg only
+        //
+        // FUNDED OPTIONS
+        // -Prepaid long option (long put or call + credit) "Purchases pre-pays for the cost of the option" = requirement is max(long - credit, 1)
+        // -Upfront short option (short put or call + loan) "Upfront payment to seller" = requirement is max(loan, short option)
+        // -Option-protected loan (long put or call + loan) "Get a loan with an embedded long option for capital protection" = requirement is max(loan, short option)
+        // -Cash-Secured Option (short put or call + credit) "Allocate collateral to that specific option" = requirement is max(short - credit, 1)
+        //
+        // TOKEN TRANSFERS
+        // - Delayed Swap (credit at one strike, loan at another; different amounts = effective swap) = requirement is max(loan0 - convert1to0(credit), 1) or max(loan1 - convert0to1(credit), 1)
+        {
+            // only proceed if the partners have the same asset
+            if (tokenId.asset(partnerIndex) == tokenId.asset(index)) {
+                // witdh of associated legs, true if greater than 0 (ie. it is an option leg)
+                bool _width = tokenId.width(index) > 0;
+                bool widthP = tokenId.width(partnerIndex) > 0;
+                // long/short status of associated legs
+                uint256 _isLong = tokenId.isLong(index);
+                uint256 isLongP = tokenId.isLong(partnerIndex);
 
-                    // if both legs are options
-                    if (_width && widthP) {
-                        // long/short status of associated legs
-                        uint256 _isLong = tokenId.isLong(index);
-                        uint256 isLongP = tokenId.isLong(partnerIndex);
+                // token type status of associated legs (call/put)
+                uint256 _tokenType = tokenId.tokenType(index);
+                uint256 tokenTypeP = tokenId.tokenType(partnerIndex);
 
-                        // token type status of associated legs (call/put)
-                        uint256 _tokenType = tokenId.tokenType(index);
-                        uint256 tokenTypeP = tokenId.tokenType(partnerIndex);
-
-                        if (_tokenType != tokenTypeP) {
-                            if (_isLong == 0 && isLongP == 0) {
-                                // STRANGLES: different token types, both short
-                                return
-                                    _computeStrangle(
+                // if both legs are options
+                if (_width && widthP) {
+                    if (_tokenType != tokenTypeP) {
+                        if (_isLong == 0 && isLongP == 0) {
+                            // STRANGLES: different token types, both short
+                            return
+                                _computeStrangle(
+                                    tokenId,
+                                    index,
+                                    positionSize,
+                                    atTick,
+                                    poolUtilization
+                                );
+                        } else if (_isLong != isLongP) {
+                            // SYNTHETIC STOCK: different token types, one is long and the other is short
+                            return
+                                // return the collateral requirement of the short leg only, the long leg is free!
+                                _isLong == 0
+                                    ? _getRequiredCollateralSingleLegNoPartner(
                                         tokenId,
                                         index,
                                         positionSize,
                                         atTick,
                                         poolUtilization
-                                    );
-                            } else if (_isLong != isLongP) {
-                                // SYNTHETIC STOCK: different token types, one is long and the other is short
-                                return
-                                    _getRequiredCollateralSingleLegNoPartner(
-                                        tokenId,
-                                        _isLong == 0 ? index : partnerIndex, // return the collateral requirement of the short leg only, the long leg is free!
-                                        positionSize,
-                                        atTick,
-                                        poolUtilization
-                                    );
-                            }
-                        } else {
-                            if (_isLong != isLongP) {
-                                // SPREADS: same token type, one is long and the other is short
-                                return
-                                    _computeSpread(
+                                    )
+                                    : 0;
+                        }
+                    } else {
+                        if (_isLong != isLongP) {
+                            // SPREADS: same token type, one is long and the other is short
+                            return
+                                // only return the requirement once for the first leg it encounters
+                                index < partnerIndex
+                                    ? _computeSpread(
                                         tokenId,
                                         positionSize,
                                         index,
                                         partnerIndex,
                                         poolUtilization
-                                    );
-                            }
+                                    )
+                                    : 0;
                         }
-                    } else {
-                        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
-                            tokenId,
-                            index,
-                            positionSize,
-                            atTick,
-                            poolUtilization
-                        );
-                        uint256 requiredPartner = _getRequiredCollateralSingleLegNoPartner(
-                            tokenId,
-                            partnerIndex,
-                            positionSize,
-                            atTick,
-                            poolUtilization
-                        );
-
-                        if (_width != widthP) {
-                            uint256 optionLegIndex = _width ? index : partnerIndex;
-
-                            if (tokenId.isLong(optionLegIndex) == 0) {
-                                // CASH-SECURED OPTION
-                                // PREPAID LONG OPTION
-                                LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(
-                                    tokenId,
-                                    positionSize,
-                                    optionLegIndex
-                                );
-
-                                uint128 amountMoved = tokenId.tokenType(optionLegIndex) == 0
-                                    ? amountsMoved.rightSlot()
-                                    : amountsMoved.leftSlot();
-
-                                uint256 totalRequired = _required + requiredPartner;
-                                if (totalRequired > amountMoved) {
-                                    return totalRequired - amountMoved;
-                                } else {
-                                    return 0;
-                                }
-                            } else {
-                                // OPTION-PROTECTED LOAN
-                                // UPFRONT SHORT OPTION
-                                return Math.max(_required, requiredPartner);
-                            }
+                    }
+                } else if (_width != widthP) {
+                    if (_tokenType == tokenTypeP) {
+                        if (isLongP == 1) {
+                            // CASH-SECURED OPTION
+                            // PREPAID LONG OPTION
+                            // only compute it once for the option leg
+                            return
+                                _width
+                                    ? _computeCreditOptionComposite(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        atTick,
+                                        poolUtilization
+                                    )
+                                    : 0;
                         } else {
-                            // long/short status of associated legs
-                            uint256 _isLong = tokenId.isLong(index);
-                            uint256 isLongP = tokenId.isLong(partnerIndex);
-                            // TOKEN TRANSFERS
-                            if (_isLong != isLongP) {
-                                // DELAYED SWAP
-                                // TODO: convert the net value ie. Max(0, credit - convert1to0(loan));
-                                return 0;
-                            }
+                            // OPTION-PROTECTED LOAN
+                            // UPFRONT SHORT OPTION
+                            // only compute it once for the option leg
+                            return
+                                _width
+                                    ? _computeLoanOptionComposite(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        atTick,
+                                        poolUtilization
+                                    )
+                                    : 0;
+                        }
+                    }
+                } else {
+                    if (_tokenType != tokenTypeP) {
+                        // TOKEN TRANSFERS
+                        if (_isLong != isLongP) {
+                            // DELAYED SWAP
+                            // only compute it once for the loan side
+                            return
+                                _isLong == 0
+                                    ? _computeDelayedSwap(
+                                        tokenId,
+                                        positionSize,
+                                        index,
+                                        partnerIndex,
+                                        atTick
+                                    )
+                                    : 0;
                         }
                     }
                 }
             }
-
-            // otherwise, not a list of allowed strategies. Return the single-leg collateral requirement.
-            return
-                _getRequiredCollateralSingleLegNoPartner(
-                    tokenId,
-                    index,
-                    positionSize,
-                    atTick,
-                    poolUtilization
-                );
         }
+
+        // otherwise, not a list of allowed strategies. Return the single-leg collateral requirement
+        return
+            _getRequiredCollateralSingleLegNoPartner(
+                tokenId,
+                index,
+                positionSize,
+                atTick,
+                poolUtilization
+            );
     }
 
     /// @notice Get the base collateral requirement for a position of notional value `amount` at the current Panoptic pool `utilization` level.
@@ -1038,6 +1037,103 @@ contract RiskEngine {
                     atTick,
                     poolUtilization
                 );
+        }
+    }
+
+    function _computeLoanOptionComposite(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 index,
+        uint256 partnerIndex,
+        int24 atTick,
+        int16 poolUtilization
+    ) internal view returns (uint256) {
+        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
+            tokenId,
+            index,
+            positionSize,
+            atTick,
+            poolUtilization
+        );
+        uint256 requiredPartner = _getRequiredCollateralSingleLegNoPartner(
+            tokenId,
+            partnerIndex,
+            positionSize,
+            atTick,
+            poolUtilization
+        );
+
+        // return the max of the requirement between a loan and the option position
+        return Math.max(_required, requiredPartner);
+    }
+
+    function _computeCreditOptionComposite(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 index,
+        uint256 partnerIndex,
+        int24 atTick,
+        int16 poolUtilization
+    ) internal view returns (uint256) {
+        // can only be called when partnerIndex is the credit
+        // required amount for short option leg
+        uint256 _required = _getRequiredCollateralSingleLegNoPartner(
+            tokenId,
+            index,
+            positionSize,
+            atTick,
+            poolUtilization
+        );
+
+        // amount moved in the credit leg
+        LeftRightUnsigned amountsMovedCredit = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            partnerIndex
+        );
+
+        // get correct
+        uint128 amountMoved = tokenId.tokenType(partnerIndex) == 0
+            ? amountsMovedCredit.rightSlot()
+            : amountsMovedCredit.leftSlot();
+
+        if (_required > amountMoved) {
+            return _required - amountMoved;
+        } else {
+            return 0;
+        }
+    }
+
+    function _computeDelayedSwap(
+        TokenId tokenId,
+        uint128 positionSize,
+        uint256 index,
+        uint256 partnerIndex,
+        int24 atTick
+    ) internal view returns (uint256) {
+        LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
+
+        LeftRightUnsigned amountsMovedP = PanopticMath.getAmountsMoved(
+            tokenId,
+            positionSize,
+            partnerIndex
+        );
+
+        uint256 loanAmount = tokenId.tokenType(index) == 0
+            ? amountsMoved.rightSlot()
+            : amountsMoved.leftSlot();
+        uint256 creditAmount = tokenId.tokenType(partnerIndex) == 0
+            ? amountsMovedP.rightSlot()
+            : amountsMovedP.leftSlot();
+
+        uint256 convertedCredit = tokenId.tokenType(partnerIndex) == 0
+            ? PanopticMath.convert0to1RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick))
+            : PanopticMath.convert1to0RoundingUp(creditAmount, Math.getSqrtRatioAtTick(atTick));
+
+        if (loanAmount > convertedCredit) {
+            return loanAmount - convertedCredit;
+        } else {
+            return 0;
         }
     }
 
