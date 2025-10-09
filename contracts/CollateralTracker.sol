@@ -1057,6 +1057,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             {
                 address _optionOwner = optionOwner;
+                // add new netBorrows to the left slot
                 s_interestState[_optionOwner] = s_interestState[_optionOwner].addToLeftSlot(
                     netBorrows
                 );

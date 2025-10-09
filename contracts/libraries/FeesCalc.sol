@@ -48,7 +48,7 @@ library FeesCalc {
         int24 tickLower,
         int24 tickUpper,
         uint128 liquidity
-    ) public view returns (LeftRightSigned) {
+    ) external view returns (LeftRightSigned) {
         // extract the amount of AMM fees collected within the liquidity chunk
         // NOTE: the fee variables are *per unit of liquidity*; so more "rate" variables
         (

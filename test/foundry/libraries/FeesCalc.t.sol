@@ -92,8 +92,12 @@ contract FeesCalcTest is Test, PositionUtils {
 
         LeftRightSigned expectedFeesEachToken;
         expectedFeesEachToken = expectedFeesEachToken
-            .toRightSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, startingLiquidity))))
-            .toLeftSlot(int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, startingLiquidity))));
+            .addToRightSlot(
+                int128(int256(Math.mulDiv128(ammFeesPerLiqToken0X128, startingLiquidity)))
+            )
+            .addToLeftSlot(
+                int128(int256(Math.mulDiv128(ammFeesPerLiqToken1X128, startingLiquidity)))
+            );
 
         LeftRightSigned returnedFeesEachToken = harness.calculateAMMSwapFees(
             selectedPool,
