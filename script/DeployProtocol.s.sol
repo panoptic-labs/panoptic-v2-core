@@ -5,6 +5,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Script.sol";
 import {PanopticFactory} from "@contracts/PanopticFactory.sol";
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
+import {RiskEngine} from "@contracts/RiskEngine.sol";
 import {PanopticPool} from "@contracts/PanopticPool.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
 import {IUniswapV3Factory} from "univ3-core/interfaces/IUniswapV3Factory.sol";
@@ -78,11 +79,20 @@ contract DeployProtocol is Script {
         }
 
         SemiFungiblePositionManager sfpm = new SemiFungiblePositionManager(uniFactory, 10 ** 13, 0);
+
+        /*
+        // risk engine LOW
+        new RiskEngine(500_000, 250_000, 128, 5_000_000, 9_000_000);
+        // risk engine MED
+        new RiskEngine(2_000_000, 1_000_000, 128, 5_000_000, 9_000_000);
+        // risk engine HIGH
+        new RiskEngine(4_500_000, 2_250_000, 128, 5_000_000, 9_000_000);
+        */
         new PanopticFactory(
             sfpm,
             uniFactory,
             address(new PanopticPool(sfpm)),
-            address(new CollateralTracker(10, 2_000, 1_000, -128, 5_000, 9_000)),
+            address(new CollateralTracker(10)),
             props,
             indices,
             pointers
