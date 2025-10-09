@@ -215,7 +215,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
         s_poolFee = fee;
 
         // store the initial block and initialize the borrowIndex
-        s_interestRateAccumulator = LeftRightUnsigned.wrap(0).toRightSlot(
+        s_interestRateAccumulator = LeftRightUnsigned.wrap(0).addToRightSlot(
             uint128((block.timestamp << 96) + uint96(WAD))
         );
 
@@ -717,13 +717,13 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             s_interestState[owner] = LeftRightSigned
                 .wrap(0)
-                .toRightSlot(userBorrowIndex)
-                .toLeftSlot(netBorrows);
+                .addToRightSlot(userBorrowIndex)
+                .addToLeftSlot(netBorrows);
 
             s_interestRateAccumulator = LeftRightUnsigned
                 .wrap(0)
-                .toLeftSlot(_unrealizedGlobalInterest)
-                .toRightSlot(uint128((currentTime << 96) + uint96(currentBorrowIndex)));
+                .addToLeftSlot(_unrealizedGlobalInterest)
+                .addToRightSlot(uint128((currentTime << 96) + uint96(currentBorrowIndex)));
         }
     }
 
@@ -1057,7 +1057,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             {
                 address _optionOwner = optionOwner;
-                s_interestState[_optionOwner] = s_interestState[_optionOwner].toLeftSlot(
+                s_interestState[_optionOwner] = s_interestState[_optionOwner].addToLeftSlot(
                     netBorrows
                 );
             }
@@ -1087,7 +1087,7 @@ contract CollateralTracker is ERC20Minimal, Multicall {
             0 // realizedPremium not used
         );
         return (
-            LeftRightUnsigned.wrap(0).toRightSlot(utilization).toLeftSlot(commission),
+            LeftRightUnsigned.wrap(0).addToRightSlot(utilization).addToLeftSlot(commission),
             tokenPaid
         );
     }

@@ -674,8 +674,8 @@ contract PanopticPool is Multicall {
                     totalSwapped.rightSlot()
                 );
             utilizations = uint32(utilizationAndCommission0.rightSlot());
-            commissions = commissions.toRightSlot(utilizationAndCommission0.leftSlot());
-            paidAmounts = paidAmounts.toRightSlot(paid0);
+            commissions = commissions.addToRightSlot(utilizationAndCommission0.leftSlot());
+            paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
         {
             (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = s_collateralToken1
@@ -686,8 +686,8 @@ contract PanopticPool is Multicall {
                     totalSwapped.leftSlot()
                 );
             utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
-            commissions = commissions.toLeftSlot(utilizationAndCommission1.leftSlot());
-            paidAmounts = paidAmounts.toLeftSlot(paid1);
+            commissions = commissions.addToLeftSlot(utilizationAndCommission1.leftSlot());
+            paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
@@ -777,7 +777,7 @@ contract PanopticPool is Multicall {
                 totalSwapped.rightSlot(),
                 realizedPremia.rightSlot()
             );
-            paidAmounts = paidAmounts.toRightSlot(paid0);
+            paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
 
         {
@@ -788,7 +788,7 @@ contract PanopticPool is Multicall {
                 totalSwapped.leftSlot(),
                 realizedPremia.leftSlot()
             );
-            paidAmounts = paidAmounts.toLeftSlot(paid1);
+            paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
 
         emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
@@ -1230,9 +1230,9 @@ contract PanopticPool is Multicall {
                                 _currentTick,
                                 1
                             );
-                        accumulatedPremium = LeftRightUnsigned.wrap(premiumAccumulator0).toLeftSlot(
-                            premiumAccumulator1
-                        );
+                        accumulatedPremium = LeftRightUnsigned
+                            .wrap(premiumAccumulator0)
+                            .addToLeftSlot(premiumAccumulator1);
                     }
                     {
                         // update the premium accumulator for the long position to the latest value
@@ -1251,10 +1251,10 @@ contract PanopticPool is Multicall {
                     // update the realized premia
                     realizedPremia = LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(
+                        .addToRightSlot(
                             int128(int256((accumulatedPremium.rightSlot() * liquidity) / 2 ** 64))
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64))
                         );
                 }
@@ -1635,7 +1635,7 @@ contract PanopticPool is Multicall {
 
                     premiaByLeg[leg] = LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(
+                        .addToRightSlot(
                             int128(
                                 int256(
                                     ((premiumAccumulatorsByLeg[leg][0] -
@@ -1644,7 +1644,7 @@ contract PanopticPool is Multicall {
                                 )
                             )
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             int128(
                                 int256(
                                     ((premiumAccumulatorsByLeg[leg][1] -
@@ -1726,7 +1726,7 @@ contract PanopticPool is Multicall {
 
                     s_options[owner][tokenId][leg] = LeftRightUnsigned
                         .wrap(uint128(grossCurrent0))
-                        .toLeftSlot(uint128(grossCurrent1));
+                        .addToLeftSlot(uint128(grossCurrent1));
                 }
 
                 // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
@@ -1773,7 +1773,7 @@ contract PanopticPool is Multicall {
                                         totalLiquidityBefore) / totalLiquidity
                                 )
                             )
-                            .toLeftSlot(
+                            .addToLeftSlot(
                                 uint128(
                                     (grossCurrent1 *
                                         positionLiquidity +
@@ -1826,7 +1826,7 @@ contract PanopticPool is Multicall {
                             )
                         )
                     )
-                    .toLeftSlot(
+                    .addToLeftSlot(
                         uint128(
                             Math.min(
                                 (uint256(premiumOwed.leftSlot()) * settledTokens.leftSlot()) /
@@ -2013,7 +2013,7 @@ contract PanopticPool is Multicall {
                                         ) / totalLiquidity
                                     )
                                 )
-                                .toLeftSlot(
+                                .addToLeftSlot(
                                     uint128(
                                         uint256(
                                             Math.max(
@@ -2032,7 +2032,7 @@ contract PanopticPool is Multicall {
                                 )
                             : LeftRightUnsigned
                                 .wrap(uint128(premiumAccumulatorsByLeg[_leg][0]))
-                                .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
+                                .addToLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                     }
                 }
                 // update settled tokens in storage with all local deltas
