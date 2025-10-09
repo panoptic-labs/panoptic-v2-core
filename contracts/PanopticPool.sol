@@ -433,45 +433,47 @@ contract PanopticPool is Multicall {
 
             uint256 numLegs = tokenId.countLegs();
             for (uint256 leg = 0; leg < numLegs; ) {
-                if (tokenId.isLong(leg) == 0) {
-                    if (!includePendingPremium) {
-                        bytes32 chunkKey = keccak256(
-                            abi.encodePacked(
-                                tokenId.strike(leg),
-                                tokenId.width(leg),
-                                tokenId.tokenType(leg)
-                            )
-                        );
+                if (tokenId.width != 0) {
+                    if (tokenId.isLong(leg) == 0) {
+                        if (!includePendingPremium) {
+                            bytes32 chunkKey = keccak256(
+                                abi.encodePacked(
+                                    tokenId.strike(leg),
+                                    tokenId.width(leg),
+                                    tokenId.tokenType(leg)
+                                )
+                            );
 
-                        (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
-                        shortPremium = shortPremium.add(
-                            _getAvailablePremium(
-                                totalLiquidity,
-                                s_settledTokens[chunkKey],
-                                s_grossPremiumLast[chunkKey],
+                            (uint256 totalLiquidity, , ) = _getLiquidities(tokenId, leg);
+                            shortPremium = shortPremium.add(
+                                _getAvailablePremium(
+                                    totalLiquidity,
+                                    s_settledTokens[chunkKey],
+                                    s_grossPremiumLast[chunkKey],
+                                    LeftRightUnsigned.wrap(
+                                        uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
+                                    ),
+                                    premiumAccumulatorsByLeg[leg]
+                                )
+                            );
+                        } else {
+                            shortPremium = shortPremium.add(
                                 LeftRightUnsigned.wrap(
                                     uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
-                                ),
-                                premiumAccumulatorsByLeg[leg]
-                            )
-                        );
+                                )
+                            );
+                        }
                     } else {
-                        shortPremium = shortPremium.add(
-                            LeftRightUnsigned.wrap(
-                                uint256(LeftRightSigned.unwrap(premiaByLeg[leg]))
+                        longPremium = LeftRightUnsigned.wrap(
+                            uint256(
+                                LeftRightSigned.unwrap(
+                                    LeftRightSigned
+                                        .wrap(int256(LeftRightUnsigned.unwrap(longPremium)))
+                                        .sub(premiaByLeg[leg])
+                                )
                             )
                         );
                     }
-                } else {
-                    longPremium = LeftRightUnsigned.wrap(
-                        uint256(
-                            LeftRightSigned.unwrap(
-                                LeftRightSigned
-                                    .wrap(int256(LeftRightUnsigned.unwrap(longPremium)))
-                                    .sub(premiaByLeg[leg])
-                            )
-                        )
-                    );
                 }
                 unchecked {
                     ++leg;
