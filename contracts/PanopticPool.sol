@@ -1046,7 +1046,7 @@ contract PanopticPool is Multicall {
                 ONLY_AVAILABLE_PREMIUM,
                 currentTick
             );
-            (tokenData0, tokenData1) = s_riskEngine.getMarginData(
+            (tokenData0, tokenData1) = s_riskEngine.getMargin(
                 liquidatee,
                 twapTick,
                 positionBalanceArray,

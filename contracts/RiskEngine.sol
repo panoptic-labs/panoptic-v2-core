@@ -499,7 +499,7 @@ contract RiskEngine {
     /// @param ct1 CollateralTracker for token1
     /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
     /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
-    function getMarginData(
+    function getMargin(
         address user,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
