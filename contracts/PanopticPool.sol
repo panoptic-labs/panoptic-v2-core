@@ -127,10 +127,6 @@ contract PanopticPool is Multicall {
     /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
     int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
 
-    /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
-    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_TICKS_DELTA = 953;
-
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
@@ -796,7 +792,7 @@ contract PanopticPool is Multicall {
     }
 
     /// @notice Validates the solvency of `user`.
-    /// @dev Falls back to the most conservative (least solvent) oracle tick if the sum of the squares of the deltas between all oracle ticks exceeds `MAX_TICKS_DELTA^2`.
+    /// @dev Falls back to the most conservative (least solvent) oracle tick if the sum of the squares of the deltas between all oracle ticks exceeds `MAX_TICKS_DELTA^2`, defined in the RiskEngine.
     /// @dev Effectively, this means that the users must be solvent at all oracle ticks if the at least one of the ticks is sufficiently stale.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
@@ -853,27 +849,12 @@ contract PanopticPool is Multicall {
         ) = PositionBalanceLibrary.unpackTickData(tickData);
 
         int24[] memory atTicks;
-        // Fall back to a conservative approach if there's high deviation between internal ticks:
-        // Check solvency at the slowOracleTick, currentTick, and lastObservedTick instead of just the fastOracleTick.
-        // Deviation is measured as the magnitude of a 3D vector:
-        // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
-        // This approach is more conservative than checking each tick difference individually,
-        // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
-        if (
-            int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(lastObservedTick - slowOracleTick) ** 2 +
-                int256(currentTick - slowOracleTick) ** 2 >
-            MAX_TICKS_DELTA ** 2
-        ) {
-            atTicks = new int24[](4);
-            atTicks[0] = fastOracleTick;
-            atTicks[1] = slowOracleTick;
-            atTicks[2] = lastObservedTick;
-            atTicks[3] = currentTick;
-        } else {
-            atTicks = new int24[](1);
-            atTicks[0] = fastOracleTick;
-        }
+        atTicks = s_riskEngine.getSolvencyTicks(
+            currentTick,
+            fastOracleTick,
+            slowOracleTick,
+            lastObservedTick
+        );
 
         uint256 solvent = _checkSolvencyAtTicks(
             user,
@@ -1385,8 +1366,8 @@ contract PanopticPool is Multicall {
         return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
     }
 
-    /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
-    /// @return Whether the current tick has deviated from the median by `> MAX_TICKS_DELTA`
+    /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
+    /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
     function isSafeMode() public view returns (bool) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 medianData = s_miniMedian;

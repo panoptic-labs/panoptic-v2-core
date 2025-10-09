@@ -16,7 +16,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -444,6 +444,39 @@ contract RiskEngine {
                         2
                 ) > MAX_TICKS_DELTA;
         }
+    }
+
+    function getSolvencyTicks(
+        int24 currentTick,
+        int24 fastOracleTick,
+        int24 slowOracleTick,
+        int24 lastObservedTick
+    ) external pure returns (int24[] memory) {
+        int24[] memory atTicks;
+
+        // Fall back to a conservative approach if there's high deviation between internal ticks:
+        // Check solvency at the slowOracleTick, currentTick, and lastObservedTick instead of just the fastOracleTick.
+        // Deviation is measured as the magnitude of a 3D vector:
+        // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
+        // This approach is more conservative than checking each tick difference individually,
+        // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
+        if (
+            int256(fastOracleTick - slowOracleTick) ** 2 +
+                int256(lastObservedTick - slowOracleTick) ** 2 +
+                int256(currentTick - slowOracleTick) ** 2 >
+            MAX_TICKS_DELTA ** 2
+        ) {
+            atTicks = new int24[](4);
+            atTicks[0] = fastOracleTick;
+            atTicks[1] = slowOracleTick;
+            atTicks[2] = lastObservedTick;
+            atTicks[3] = currentTick;
+        } else {
+            atTicks = new int24[](1);
+            atTicks[0] = fastOracleTick;
+        }
+
+        return atTicks;
     }
 
     /// @notice Get the collateral status/margin details of an account/user.
