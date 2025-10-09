@@ -867,11 +867,12 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                 int128 signMultiplier = tokenId.isLong(leg) != 0 ? int128(1) : int128(-1);
 
                 {
-                    int128 itm0 = tokenId.tokenType(leg) == 1
+                    uint256 tokenType = tokenId.tokenType(leg);
+                    int128 itm0 = tokenType == 1
                         ? int128(0)
                         : signMultiplier * int128(amountsMoved.rightSlot());
 
-                    int128 itm1 = tokenId.tokenType(leg) == 0
+                    int128 itm1 = tokenType == 0
                         ? int128(0)
                         : signMultiplier * int128(amountsMoved.leftSlot());
 
