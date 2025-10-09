@@ -45,6 +45,10 @@ contract RiskEngine {
     /// @dev uint type for composability with unsigned integer based mathematical operations.
     uint256 internal constant DECIMALS = 10_000_000;
 
+    /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
+    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
+    int256 internal constant MAX_TICKS_DELTA = 953;
+
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
     //////////////////////////////////////////////////////////////*/
@@ -422,6 +426,25 @@ contract RiskEngine {
     /*//////////////////////////////////////////////////////////////
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
+
+    function isSafeMode(int24 currentTick, uint256 medianData) external pure returns (bool) {
+        unchecked {
+            // If ticks have recently deviated more than +/- ~10%, enforce covered mints
+            return
+                Math.abs(
+                    currentTick -
+                        (int24(
+                            uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
+                        ) +
+                            int24(
+                                uint24(
+                                    medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)
+                                )
+                            )) /
+                        2
+                ) > MAX_TICKS_DELTA;
+        }
+    }
 
     /// @notice Get the collateral status/margin details of an account/user.
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.

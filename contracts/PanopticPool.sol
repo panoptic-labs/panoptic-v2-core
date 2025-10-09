@@ -1390,22 +1390,7 @@ contract PanopticPool is Multicall {
     function isSafeMode() public view returns (bool) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 medianData = s_miniMedian;
-        unchecked {
-            // If ticks have recently deviated more than +/- ~10%, enforce covered mints
-            return
-                Math.abs(
-                    currentTick -
-                        (int24(
-                            uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
-                        ) +
-                            int24(
-                                uint24(
-                                    medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)
-                                )
-                            )) /
-                        2
-                ) > MAX_TICKS_DELTA;
-        }
+        return s_riskEngine.isSafeMode(currentTick, medianData);
     }
 
     /*//////////////////////////////////////////////////////////////
