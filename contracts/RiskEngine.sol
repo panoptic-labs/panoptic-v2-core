@@ -440,7 +440,7 @@ contract RiskEngine {
         CollateralTracker ct1,
         uint256 buffer
     ) external view returns (bool) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = this.getMargin(
+        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = _getMargin(
             user,
             atTick,
             positionBalanceArray,
@@ -483,20 +483,23 @@ contract RiskEngine {
         }
     }
 
-    /// @notice Get the collateral status/margin details of an account/user.
-    /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.
-    /// @dev This can be used to check the health: how many tokens a user has compared to the margin threshold.
-    /// @param user The account to check collateral/margin health for
-    /// @param atTick The tick at which to evaluate the account's positions
-    /// @param positionBalanceArray The list of all open positions held by the `optionOwner`, stored as `[[tokenId, balance/poolUtilizationAtMint], ...]`
-    /// @param shortPremia The total amount of premium (prorated by available settled tokens) owed to the short legs of `user`
-    /// @param longPremia The total amount of premium owed by the long legs of `user`
-    /// @param ct0 The Address of the CollateralTracker for token0
-    /// @param ct1 The Address of the CollateralTracker for token1
-    /// @return tokenData0 Information collected for the token0 about the health of the account
-    /// @return tokenData1 Information collected for the token1 about the health of the account
-    /// The collateral balance of the user is in the right slot and the threshold for margin call is in the left slot.
-    function getMargin(
+    /// @notice Compute margin inputs for a user at a given tick.
+    /// @dev Purely informational: does not make a solvency decision.
+    ///      Returns per-asset maintenance requirement (left slot) and available balance including settled premia (right slot).
+    ///      Units:
+    ///        - Requirements are in raw token units
+    ///        - Balances are in raw token units
+    ///        - Ratios elsewhere in the engine use DECIMALS = 10_000_000
+    /// @param user Account to evaluate
+    /// @param atTick Tick at which exposures are valued
+    /// @param positionBalanceArray Array of [tokenId, balanceOrUtilAtMint] for all open positions of `user`
+    /// @param shortPremia Total short premia owed to `user` (right slot = token0 credit, left slot = token1 credit)
+    /// @param longPremia Total long premia owed by `user`   (right slot = token0 debit,  left slot = token1 debit)
+    /// @param ct0 CollateralTracker for token0
+    /// @param ct1 CollateralTracker for token1
+    /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
+    /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
+    function getMarginData(
         address user,
         int24 atTick,
         uint256[2][] memory positionBalanceArray,
@@ -505,6 +508,33 @@ contract RiskEngine {
         CollateralTracker ct0,
         CollateralTracker ct1
     ) external view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
+        return _getMargin(user, atTick, positionBalanceArray, shortPremia, longPremia, ct0, ct1);
+    }
+
+    /// @notice Internal workhorse for margin computation.
+    /// @dev Aggregates balances, accrued interest, and per-position requirements to produce
+    ///      LeftRightUnsigned pairs for token0 and token1 where:
+    ///        - left slot = total maintenance requirement in that token
+    ///        - right slot = total available balance in that token including settled short premia
+    ///      Caller is responsible for any cross-asset conversion, haircuts, and final solvency logic.
+    /// @param user Account to evaluate
+    /// @param atTick Tick at which exposures are valued
+    /// @param positionBalanceArray Array of [tokenId, balanceOrUtilAtMint] for all open positions of `user`
+    /// @param shortPremia Total short premia owed to `user` (right slot = token0 credit, left slot = token1 credit)
+    /// @param longPremia Total long premia owed by `user`   (right slot = token0 debit,  left slot = token1 debit)
+    /// @param ct0 CollateralTracker for token0
+    /// @param ct1 CollateralTracker for token1
+    /// @return tokenData0 LeftRightUnsigned for token0 with left = maintenance requirement, right = available balance
+    /// @return tokenData1 LeftRightUnsigned for token1 with left = maintenance requirement, right = available balance
+    function _getMargin(
+        address user,
+        int24 atTick,
+        uint256[2][] memory positionBalanceArray,
+        LeftRightUnsigned shortPremia,
+        LeftRightUnsigned longPremia,
+        CollateralTracker ct0,
+        CollateralTracker ct1
+    ) internal view returns (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) {
         {
             uint256 balance0 = ct0.assetsOf(user) + shortPremia.rightSlot();
             uint256 owedInterest0 = ct0.owedInterest(user);
