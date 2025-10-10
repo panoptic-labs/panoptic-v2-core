@@ -508,7 +508,7 @@ contract PanopticPool is Multicall {
         );
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
-        (, uint256 oraclePack) = PanopticMath.computeInternalMedian(s_oraclePack, currentTick, 0);
+        (, uint256 oraclePack) = s_riskEngine.computeInternalMedian(s_oraclePack, currentTick);
 
         if (oraclePack != 0) s_oraclePack = oraclePack;
     }
@@ -1577,7 +1577,7 @@ contract PanopticPool is Multicall {
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
     function getTWAP() internal view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapEMA(s_oraclePack);
+        twapTick = s_riskEngine.twapEMA(s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////

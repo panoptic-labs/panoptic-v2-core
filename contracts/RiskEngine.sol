@@ -459,6 +459,33 @@ contract RiskEngine {
         oraclePack = _oraclePack;
     }
 
+    /// @notice Calculates a slow-moving, weighted average price from the on-chain EMAs.
+    /// @dev Extracts the fast, slow, and eons EMA tick values from the packed `oraclePack`
+    /// structure. It then computes and returns a blended average with a 60/30/10 weighting
+    /// respectively. This heavily smoothed value is designed to be highly resistant to
+    /// manipulation and serves as a robust price feed for critical system functions like solvency checks.
+    /// @param oraclePack The packed `s_oraclePack` storage slot containing the oracle's state,
+    /// including the on-chain EMAs.
+    /// @return The blended time-weighted average price, represented as an int24 tick.
+    function twapEMA(uint256 oraclePack) external pure returns (int24) {
+        // Extract current EMAs from oraclePack
+        (int24 eonsEMA, int24 slowEMA, int24 fastEMA, , ) = PanopticMath.getEMAs(oraclePack);
+        return (6 * fastEMA + 3 * slowEMA + eonsEMA) / 10;
+    }
+
+    /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values and an updated queue if another observation is warranted.
+    /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
+    /// @param oraclePack The packed structure representing the sorted 8-slot queue of ticks
+    /// @param currentTick The current tick as return from slot0
+    /// @return medianTick The median of the provided 8-slot queue of ticks in `oraclePack`
+    /// @return updatedOraclePack The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
+    function computeInternalMedian(
+        uint256 oraclePack,
+        int24 currentTick
+    ) external view returns (int24 medianTick, uint256 updatedOraclePack) {
+        return PanopticMath.computeInternalMedian(oraclePack, currentTick, EMAperiods);
+    }
+
     /*//////////////////////////////////////////////////////////////
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/

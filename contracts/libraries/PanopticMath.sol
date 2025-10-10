@@ -412,7 +412,7 @@ library PanopticMath {
         uint256 oraclePack,
         int24 currentTick,
         uint96 EMAperiods
-    ) public view returns (int24 medianTick, uint256 updatedOraclePack) {
+    ) internal view returns (int24 medianTick, uint256 updatedOraclePack) {
         unchecked {
             // return the average of the rank 3 and 4 values
             medianTick = getMedianTick(oraclePack);
@@ -638,21 +638,6 @@ library PanopticMath {
                 ((uint256(uint24(slowEMA)) & BITMASK_UINT22) << 44) +
                 ((uint256(uint24(eonsEMA)) & BITMASK_UINT22) << 66);
         }
-    }
-
-    /// @notice Calculates a slow-moving, weighted average price from the on-chain EMAs.
-    /// @dev Extracts the 1-hour, 8-hour, and 1-day EMA tick values from the packed `oraclePack`
-    /// structure. It then computes and returns a blended average with a 60/30/10 weighting
-    /// respectively. This heavily smoothed value is designed to be highly resistant to
-    /// manipulation and serves as a robust price feed for critical system functions like solvency checks.
-    /// @param oraclePack The packed `s_oraclePack` storage slot containing the oracle's state,
-    /// including the on-chain EMAs.
-    /// @return The blended time-weighted average price, represented as an int24 tick.
-    function twapEMA(uint256 oraclePack) external pure returns (int24) {
-        // Extract current EMAs from oraclePack
-        (int24 eonsEMA, int24 slowEMA, int24 fastEMA, , ) = getEMAs(oraclePack);
-
-        return (6 * fastEMA + 3 * slowEMA + eonsEMA) / 10;
     }
 
     function getEMAs(
