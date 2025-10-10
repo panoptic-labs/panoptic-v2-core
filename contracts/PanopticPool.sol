@@ -969,7 +969,7 @@ contract PanopticPool is Multicall {
                             bytes32 toHash = keccak256(abi.encodePacked(positionIdListTo));
                             bytes32 finalHash = keccak256(abi.encodePacked(positionIdListToFinal));
                             if (toHash != finalHash) {
-                                revert Errors.InputListFailForSettleLong();
+                                revert Errors.InputListFail();
                             }
                         }
                         exchangedAmounts = _settleLongPremium(
@@ -1009,7 +1009,7 @@ contract PanopticPool is Multicall {
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
                 exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
             } else {
-                // otherwise, revert because the account is not fully margin called or fully solvent
+                // otherwise, revert because the account is not fully margin called
                 revert Errors.AccountInsolvent(solvent, 4);
             }
         }

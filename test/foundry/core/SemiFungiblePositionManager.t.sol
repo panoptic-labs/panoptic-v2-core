@@ -1956,8 +1956,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             width
         );
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
-
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         sfpm.mintTokenizedPosition(tokenId, uint128(0), TickMath.MIN_TICK, TickMath.MAX_TICK);
     }
 
@@ -2158,7 +2157,7 @@ contract SemiFungiblePositionManagerTest is PositionUtils {
             TickMath.MAX_TICK
         );
 
-        vm.expectRevert(Errors.NotEnoughLiquidity.selector);
+        vm.expectRevert(Errors.NotEnoughLiquidityToBuy.selector);
 
         // long leg
         tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(

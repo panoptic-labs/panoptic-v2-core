@@ -1601,7 +1601,7 @@ contract Misctest is Test, PositionUtils {
                 .addLeg(0, 1, 0, 0, 0, 0, -224040, 3540)
         );
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         mintOptions(
             pp,
             $posIdList,
@@ -1628,7 +1628,7 @@ contract Misctest is Test, PositionUtils {
             .addPoolId(PanopticMath.getPoolId(address(uniPool), uniPool.tickSpacing()))
             .addLeg(0, 1, 0, 1, 0, 0, -224040, 3540);
 
-        vm.expectRevert(Errors.ZeroLiquidity.selector);
+        vm.expectRevert(Errors.ChunkHasZeroLiquidity.selector);
         mintOptions(
             pp,
             $posIdList,
@@ -4996,8 +4996,8 @@ contract Misctest is Test, PositionUtils {
                 if (reason.length >= 4) {
                     bytes4 receivedSelector = bytes4(reason);
 
-                    if (receivedSelector == Errors.ZeroLiquidity.selector) {
-                        console2.log("ZeroLiquidity at strike:", strike);
+                    if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                        console2.log("ChunkHasZeroLiquidity at strike:", strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", strike);
                     } else if (receivedSelector == 0x08c379a0) {
@@ -5123,8 +5123,8 @@ contract Misctest is Test, PositionUtils {
                 } catch (bytes memory reason) {
                     if (reason.length >= 4) {
                         bytes4 receivedSelector = bytes4(reason);
-                        if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
-                            console2.log("LONG: NotEnoughLiquidity at strike:", strike);
+                        if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                            console2.log("LONG: NotEnoughLiquidityToBuy at strike:", strike);
                         } else if (
                             receivedSelector == Errors.EffectiveLiquidityAboveThreshold.selector
                         ) {
@@ -5136,8 +5136,8 @@ contract Misctest is Test, PositionUtils {
                             console2.log("LONG: NotEnoughTokens at strike:", strike);
                         } else if (receivedSelector == Errors.ZeroCollateralRequirement.selector) {
                             console2.log("LONG: ZeroCollateralRequirement at strike:", strike);
-                        } else if (receivedSelector == Errors.ZeroLiquidity.selector) {
-                            console2.log("LONG: ZeroLiquidity at strike:", strike);
+                        } else if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                            console2.log("LONG: ChunkHasZeroLiquidity at strike:", strike);
                         } else if (receivedSelector == Errors.NetLiquidityZero.selector) {
                             console2.log("LONG: NetLiquidityZero at strike:", strike);
                         } else {
@@ -5156,16 +5156,16 @@ contract Misctest is Test, PositionUtils {
                 if (reason.length >= 4) {
                     bytes4 receivedSelector = bytes4(reason);
 
-                    if (receivedSelector == Errors.ZeroLiquidity.selector) {
-                        console2.log("ZeroLiquidity at strike:", strike);
+                    if (receivedSelector == Errors.ChunkHasZeroLiquidity.selector) {
+                        console2.log("ChunkHasZeroLiquidity at strike:", strike);
                     } else if (receivedSelector == Errors.InvalidTickBound.selector) {
                         console2.log("InvalidTickBound at strike:", strike);
                     } else if (receivedSelector == 0x08c379a0) {
                         console2.log("Uniswap constraint at strike:", strike);
                     } else if (receivedSelector == Errors.LiquidityTooHigh.selector) {
                         console2.log("LiquidityTooHigh at strike:", strike);
-                    } else if (receivedSelector == Errors.NotEnoughLiquidity.selector) {
-                        console2.log("NotEnoughLiquidity at strike:", strike);
+                    } else if (receivedSelector == Errors.NotEnoughLiquidityToBuy.selector) {
+                        console2.log("NotEnoughLiquidityToBuy at strike:", strike);
                     } else if (receivedSelector == Errors.AccountInsolvent.selector) {
                         console2.log("AccountInsolvent at strike:", strike);
                     } else if (receivedSelector == Errors.PositionTooLarge.selector) {

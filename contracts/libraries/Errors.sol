@@ -15,6 +15,9 @@ library Errors {
     /// @notice CollateralTracker: Attempted to withdraw/redeem less than a single asset
     error BelowMinimumRedemption();
 
+    /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
+    error ChunkHasZeroLiquidity();
+
     /// @notice CollateralTracker: Collateral token has already been initialized
     error CollateralTokenAlreadyInitialized();
 
@@ -47,7 +50,7 @@ library Errors {
     /// @notice A mint or swap callback was attempted from an address that did not match the canonical Uniswap V3 pool with the claimed features
     error InvalidUniswapCallback();
 
-    /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannotbe used to compute the liquiditySpread
+    /// @notice PanopticPool: The Net Liquidity is zero due to small positions and cannot be used to compute the liquiditySpread
     error NetLiquidityZero();
 
     /// @notice PanopticPool: None of the legs in a position are force-exercisable (they are all either short or ATM long)
@@ -57,7 +60,7 @@ library Errors {
     error NotALongLeg();
 
     /// @notice PanopticPool: There is not enough available liquidity in the chunk for one of the long legs to be created (or for one of the short legs to be closed)
-    error NotEnoughLiquidity();
+    error NotEnoughLiquidityToBuy();
 
     /// @notice CollateralTracker: The user does not own enough assets to open/close a position
     error NotEnoughTokens(address tokenAddress, uint256 assetsRequested, uint256 assetBalance);
@@ -71,9 +74,6 @@ library Errors {
     /// @notice Uniswap pool has already been initialized in the SFPM or created in the factory
     error PoolAlreadyInitialized();
 
-    /// @notice PanopticPool: A position with the given token ID has already been minted by the caller and is still open
-    error PositionAlreadyMinted();
-
     /// @notice CollateralTracker: The user has open/active option positions, so they cannot transfer collateral shares
     error PositionCountNotZero();
 
@@ -84,7 +84,7 @@ library Errors {
     error PositionTooLarge();
 
     /// @notice The current tick in the pool (post-ITM-swap) has fallen outside a user-defined open interval slippage range
-    error PriceBoundFail();
+    error PriceBoundFail(int24 currentTick);
 
     /// @notice An oracle price is too far away from another oracle price or the current tick
     /// @dev This is a safeguard against price manipulation during option mints, burns, liquidations, force exercises, and premium settlements
@@ -117,8 +117,5 @@ library Errors {
     error ZeroCollateralRequirement();
 
     /// @notice PanopticMath: The supplied tokenId has no valid legs
-    error ZeroLegs();
-
-    /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
-    error ZeroLiquidity();
+    error TokenIdHasZeroLegs();
 }
