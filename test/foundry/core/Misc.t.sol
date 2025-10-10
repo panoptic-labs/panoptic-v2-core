@@ -4225,7 +4225,7 @@ contract Misctest is Test, PositionUtils {
             pp.pokeMedian();
             (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
                 .getOracleTicks();
-            int24 TWAPtick = re.twapEMA(oraclePack);
+            int24 TWAPtick = PanopticMath.twapEMA(oraclePack);
             console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
@@ -4239,7 +4239,7 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
-        int24 TWAPtick = re.twapEMA(oraclePack);
+        int24 TWAPtick = PanopticMath.twapEMA(oraclePack);
         console2.log("TWAPtick", TWAPtick);
         assertTrue(false);
 
