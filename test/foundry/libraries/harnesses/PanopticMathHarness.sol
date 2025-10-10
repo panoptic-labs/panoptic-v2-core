@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
-
 // Internal
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 // Uniswap
@@ -199,5 +198,21 @@ contract PanopticMathHarness is Test {
     ) public pure returns (int24 rangeDown, int24 rangeUp) {
         (int24 result0, int24 result1) = PanopticMath.getRangesFromStrike(width, tickSpacing);
         return (result0, result1);
+    }
+
+    function int12toInt24(uint256 x) public pure returns (int24) {
+        return PanopticMath.int12toInt24(x);
+    }
+
+    function computeInternalMedian(
+        uint256 oraclePack,
+        int24 currentTick
+    ) public view returns (int24, uint256) {
+        return
+            PanopticMath.computeInternalMedian(
+                oraclePack,
+                currentTick,
+                uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72))
+            );
     }
 }

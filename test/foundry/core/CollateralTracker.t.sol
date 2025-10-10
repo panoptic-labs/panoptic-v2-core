@@ -141,13 +141,21 @@ contract PanopticPoolHarness is PanopticPool {
         (, int24 currentTick, , , , , ) = uniswapPool.slot0();
 
         unchecked {
-            s_miniMedian =
-                (uint256(block.number) << 216) +
+            s_oraclePack =
+                (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
-                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 4
-                (uint256(uint24(currentTick))); // add to slot 3
+                // see comment on s_oraclePack initialization for format of this magic number
+                (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
+                // EMA1D at bits 207-186
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
+                // EMA8H at bits 185-164
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
+                // EMA1H at bits 163-142
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
+                // EMA10m at bits 141-120
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
+                // store currentTick as the reference tick at bits 119-96
+                (uint256(uint24(currentTick)) << 96);
         }
 
         // Approve transfers of Panoptic Pool funds by SFPM
@@ -189,10 +197,6 @@ contract PanopticPoolHarness is PanopticPool {
 
     function revoke(address delegatee, CollateralTracker collateralToken) external {
         collateralToken.revoke(delegatee);
-    }
-
-    function getTWAP() external view returns (int24 twapTick) {
-        return PanopticPool.getUniV3TWAP();
     }
 
     function positionBalance(

@@ -123,13 +123,9 @@ contract PanopticPool is Multicall {
     /// @dev Mitigates manipulation of the currentTick that causes positions to be liquidated at a less favorable price.
     int256 internal constant MAX_TWAP_DELTA_LIQUIDATION = 513;
 
-    /// @notice The maximum allowed delta (~2%) between the lastObservedTick and the slowOracleTick/fastOracleTick during forceExercise/settleLongPremium.
+    /// @notice The maximum allowed delta (~2%) between the latestTick and the medianTick/spotTick during forceExercise/settleLongPremium.
     /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
     int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
-
-    /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
-    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_TICKS_DELTA = 953;
 
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
@@ -160,9 +156,13 @@ contract PanopticPool is Multicall {
 
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
-    // LAST UPDATED BLOCK TIMESTAMP (40 bits)
+    //
+    //    timestamp      orderMap      spotEMA      fastEMA       slowEMA      eonsEMA      reference         r7           r6                      r0
+    // |<- 24 bits ->|<- 24 bits ->|<- 22 bits ->|>- 22 bits ->|<- 22 bits >|<- 22 bits ->|<- 24 bits ->|<- 12bits ->|<- 12 bits ->|<- ... ->|<- 12 bits ->|
+    //
+    // LAST UPDATED BLOCK TIMESTAMP (22 bits) -> 22 bits (use 28 bits for the timestamp and truncate the lower 6 bits to create a 64s epoch-based timekeeping)
     // [BLOCK.TIMESTAMP]
-    // (00000000000000000000000000000000) // dynamic
+    // (0000000000000000000000) // dynamic
     //
     // ORDERING of tick indices least --> greatest (24 bits)
     // The value of the bit codon ([#]) is a pointer to a tick index in the tick array.
@@ -173,30 +173,30 @@ contract PanopticPool is Multicall {
     // slot: [7] [5] [3] [1] [0] [2] [4] [6]
     //       111 101 011 001 000 010 100 110
     //
-    // [Constants.MIN_V3POOL_TICK-1] [7]
-    // 111100100111011000010111
+    // [-512] [7]
+    // 111000000000
     //
-    // [Constants.MAX_V3POOL_TICK+1] [0]
-    // 000011011000100111101001
+    // [512] [0]
+    // 001000000000
     //
-    // [Constants.MIN_V3POOL_TICK-1] [6]
-    // 111100100111011000010111
+    // [-512] [6]
+    // 111000000000
     //
-    // [Constants.MAX_V3POOL_TICK+1] [1]
-    // 000011011000100111101001
+    // [512] [1]
+    // 001000000000
     //
-    // [Constants.MIN_V3POOL_TICK-1] [5]
-    // 111100100111011000010111
+    // [-512] [5]
+    // 111000000000
     //
-    // [Constants.MAX_V3POOL_TICK+1] [2]
-    // 000011011000100111101001
+    // [512] [2]
+    // 001000000000
     //
-    // [CURRENT TICK] [4]
-    // (000000000000000000000000) // dynamic
+    // [0 = CURRENT TICK] [4]
+    // (000000000000) // dynamic
     //
-    // [CURRENT TICK] [3]
-    // (000000000000000000000000) // dynamic
-    uint256 internal s_miniMedian;
+    // [0 = CURRENT TICK] [3]
+    // (000000000000) // dynamic
+    uint256 internal s_oraclePack;
 
     // ERC4626 vaults that users collateralize their positions with
     // Each token has its own vault, listed in the same order as the tokens in the pool
@@ -230,7 +230,7 @@ contract PanopticPool is Multicall {
 
     /// @notice Tracks the position size of a tokenId for a given user, and the pool utilizations and oracle tick values at the time of last mint.
     //    <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 24 bits --> <-- 16 bits --> <-- 16 bits --> <-- 128 bits -->
-    //   lastObservedTick  slowOracleTick  fastOracleTick   currentTick     utilization1    utilization0    positionSize
+    //   latestTick         medianTick       spotTick       currentTick     utilization1    utilization0    positionSize
     mapping(address account => mapping(TokenId tokenId => PositionBalance positionBalance))
         internal s_positionBalance;
 
@@ -282,13 +282,21 @@ contract PanopticPool is Multicall {
 
         // Store the median data
         unchecked {
-            s_miniMedian =
-                (uint256(block.timestamp) << 216) +
+            s_oraclePack =
+                (uint256((block.timestamp >> 6) % 2 ** 24) << 232) +
                 // magic number which adds (7,5,3,1,0,2,4,6) order and minTick in positions 7, 5, 3 and maxTick in 6, 4, 2
-                // see comment on s_miniMedian initialization for format of this magic number
-                (uint256(0xF590A6F276170D89E9F276170D89E9F276170D89E9000000000000)) +
-                (uint256(uint24(currentTick)) << 24) + // add to slot 1 (rank 3)
-                (uint256(uint24(currentTick))); // add to slot 0 (rank 4)
+                // see comment on s_oraclePack initialization for format of this magic number
+                (uint256(0xf590a60000000000000000000000000000800e00200e00200e00000000)) +
+                // eonsEMA at bits 207-186
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 186) +
+                // slowEMA at bits 185-164
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 164) +
+                // fastEMA at bits 163-142
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 142) +
+                // spotEMA at bits 141-120
+                (uint256(uint24(currentTick) & 0x3FFFFF) << 120) +
+                // store currentTick as the reference tick at bits 119-96
+                (uint256(uint24(currentTick)) << 96);
         }
 
         // Store the collateral token0
@@ -494,16 +502,11 @@ contract PanopticPool is Multicall {
         (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
             s_univ3pool
         );
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
-        (, uint256 medianData) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            Constants.MEDIAN_PERIOD,
-            s_miniMedian,
-            s_univ3pool
-        );
+        (, uint256 oraclePack) = s_riskEngine.computeInternalMedian(s_oraclePack, currentTick);
 
-        if (medianData != 0) s_miniMedian = medianData;
+        if (oraclePack != 0) s_oraclePack = oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -527,7 +530,8 @@ contract PanopticPool is Multicall {
         bool usePremiaAsCollateral
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
-        bool safeMode = isSafeMode();
+        uint8 safeMode = isSafeMode();
+
         uint64 poolId = s_poolId;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
@@ -539,20 +543,24 @@ contract PanopticPool is Multicall {
 
             int24 tickLimitLow = tickLimits[i][0];
             int24 tickLimitHigh = tickLimits[i][1];
-            if (safeMode) {
+            // if safe mode is larger than 1, mandate all positions to be minted/burnt as covered
+            if (safeMode > 1) {
                 if (tickLimitLow > tickLimitHigh) {
                     (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
                 }
             }
 
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
+                // revert if more than 2 conditions are triggered to prevent the minting of any positions
+                if (safeMode > 2) revert Errors.StaleOracle();
                 _mintOptions(
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
                     msg.sender,
                     tickLimitLow,
-                    tickLimitHigh
+                    tickLimitHigh,
+                    safeMode
                 );
             } else {
                 uint128 positionSize = positionBalanceData.positionSize();
@@ -574,15 +582,15 @@ contract PanopticPool is Multicall {
 
         // Perform solvency check on user's account to ensure they had enough buying power to mint the option
         // Add an initial buffer to the collateral requirement to prevent users from minting their account close to insolvency
-        uint256 medianData = _validateSolvency(
+        uint256 oraclePack = _validateSolvency(
             msg.sender,
             finalPositionIdList,
             BP_DECREASE_BUFFER,
             usePremiaAsCollateral
         );
 
-        // Update `s_miniMedian` with a new observation if the last observation is old enough (returned medianData is nonzero)
-        if (medianData != 0) s_miniMedian = medianData;
+        // Update `s_oraclePack` with a new observation if the last observation is old enough (returned oraclePack is nonzero)
+        if (oraclePack != 0) s_oraclePack = oraclePack;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -597,13 +605,15 @@ contract PanopticPool is Multicall {
     /// @param owner The owner of the option position to be minted
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param safeMode whether the pool is in safeMode: mandate 100% collateral requirement if safeMode > 0
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         address owner,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        uint8 safeMode
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
@@ -627,20 +637,20 @@ contract PanopticPool is Multicall {
             totalSwapped
         );
 
-        if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
+        if (safeMode > 0) poolUtilizations = uint32(10_000 + (10_000 << 16));
 
-        uint96 tickData;
-        // update the users options balance of position `tokenId`
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
-            positionSize,
-            poolUtilizations,
-            tickData
-        );
+        {
+            // update the users options balance of position `tokenId`
+            // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+            PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
+                positionSize,
+                poolUtilizations,
+                0
+            );
+            s_positionBalance[owner][tokenId] = balanceData;
 
-        s_positionBalance[owner][tokenId] = balanceData;
-
-        emit OptionMinted(owner, tokenId, balanceData, commissions);
+            emit OptionMinted(owner, tokenId, balanceData, commissions);
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
@@ -796,37 +806,34 @@ contract PanopticPool is Multicall {
     }
 
     /// @notice Validates the solvency of `user`.
-    /// @dev Falls back to the most conservative (least solvent) oracle tick if the sum of the squares of the deltas between all oracle ticks exceeds `MAX_TICKS_DELTA^2`.
+    /// @dev Falls back to the most conservative (least solvent) oracle tick if the sum of the squares of the deltas between all oracle ticks exceeds `MAX_TICKS_DELTA^2`, defined in the RiskEngine.
     /// @dev Effectively, this means that the users must be solvent at all oracle ticks if the at least one of the ticks is sufficiently stale.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
     /// @param buffer The buffer to apply to the collateral requirement for `user`
     /// @param usePremiaAsCollateral Whether to compute accumulated premia for all legs held by the user for collateral (true), or just owed premia for long legs (false)
-    /// @return If nonzero (enough time has passed since last observation), the updated value for `s_miniMedian` with a new observation
+    /// @return If nonzero (enough time has passed since last observation), the updated value for `s_oraclePack` with a new observation
     function _validateSolvency(
         address user,
         TokenId[] calldata positionIdList,
         uint256 buffer,
         bool usePremiaAsCollateral
     ) internal view returns (uint256) {
-        (
-            int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 lastObservedTick,
-            uint256 medianData
-        ) = PanopticMath.getOracleTicks(s_univ3pool, s_miniMedian);
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
+
+        (int24 spotTick, int24 medianTick, int24 latestTick, uint256 oraclePack) = s_riskEngine
+            .getOracleTicks(currentTick, s_oraclePack);
 
         uint96 tickData = PositionBalanceLibrary.packTickData(
             currentTick,
-            fastOracleTick,
-            slowOracleTick,
-            lastObservedTick
+            spotTick,
+            medianTick,
+            latestTick
         );
 
         _checkSolvency(user, positionIdList, tickData, buffer, usePremiaAsCollateral);
 
-        return medianData;
+        return oraclePack;
     }
 
     /// @notice Validates the solvency of `user` from tickData.
@@ -847,33 +854,14 @@ contract PanopticPool is Multicall {
 
         (
             int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 lastObservedTick
+            int24 spotTick,
+            int24 medianTick,
+            int24 latestTick
         ) = PositionBalanceLibrary.unpackTickData(tickData);
 
         int24[] memory atTicks;
-        // Fall back to a conservative approach if there's high deviation between internal ticks:
-        // Check solvency at the slowOracleTick, currentTick, and lastObservedTick instead of just the fastOracleTick.
-        // Deviation is measured as the magnitude of a 3D vector:
-        // (fastOracleTick - slowOracleTick, lastObservedTick - slowOracleTick, currentTick - slowOracleTick)
-        // This approach is more conservative than checking each tick difference individually,
-        // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
-        if (
-            int256(fastOracleTick - slowOracleTick) ** 2 +
-                int256(lastObservedTick - slowOracleTick) ** 2 +
-                int256(currentTick - slowOracleTick) ** 2 >
-            MAX_TICKS_DELTA ** 2
-        ) {
-            atTicks = new int24[](4);
-            atTicks[0] = fastOracleTick;
-            atTicks[1] = slowOracleTick;
-            atTicks[2] = lastObservedTick;
-            atTicks[3] = currentTick;
-        } else {
-            atTicks = new int24[](1);
-            atTicks[0] = fastOracleTick;
-        }
+
+        atTicks = s_riskEngine.getSolvencyTicks(currentTick, spotTick, medianTick, latestTick);
 
         uint256 solvent = _checkSolvencyAtTicks(
             user,
@@ -916,8 +904,8 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned usePremiaAsCollateral
     ) external {
         // Assert the account we are liquidating is actually insolvent
-        int24 twapTick = getUniV3TWAP();
-        int24 currentTick;
+        int24 twapTick = getTWAP();
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
         TokenId tokenId;
 
@@ -927,23 +915,20 @@ contract PanopticPool is Multicall {
             _validatePositionList(account, positionIdListTo);
 
             // Enforce maximum delta between TWAP and currentTick to prevent extreme price manipulation
-            int24 fastOracleTick;
-            int24 lastObservedTick;
-            (currentTick, fastOracleTick, , lastObservedTick, ) = PanopticMath.getOracleTicks(
-                s_univ3pool,
-                s_miniMedian
-            );
+            int24 spotTick;
+            int24 latestTick;
+            (spotTick, , latestTick, ) = s_riskEngine.getOracleTicks(currentTick, s_oraclePack);
 
             unchecked {
                 if (Math.abs(currentTick - twapTick) > MAX_TWAP_DELTA_LIQUIDATION)
                     revert Errors.StaleOracle();
             }
 
-            // Ensure the account is insolvent at twapTick (in place of slowOracleTick), currentTick, fastOracleTick, and lastObservedTick
+            // Ensure the account is insolvent at twapTick (in place of medianTick), currentTick, spotTick, and latestTick
             int24[] memory atTicks = new int24[](4);
-            atTicks[0] = fastOracleTick;
+            atTicks[0] = spotTick;
             atTicks[1] = twapTick;
-            atTicks[2] = lastObservedTick;
+            atTicks[2] = latestTick;
             atTicks[3] = currentTick;
 
             solvent = _checkSolvencyAtTicks(
@@ -1385,27 +1370,11 @@ contract PanopticPool is Multicall {
         return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
     }
 
-    /// @notice Checks whether the current tick has deviated by `> MAX_TICKS_DELTA` from the slow oracle median tick.
-    /// @return Whether the current tick has deviated from the median by `> MAX_TICKS_DELTA`
-    function isSafeMode() public view returns (bool) {
+    /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
+    /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
+    function isSafeMode() public view returns (uint8) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
-        uint256 medianData = s_miniMedian;
-        unchecked {
-            // If ticks have recently deviated more than +/- ~10%, enforce covered mints
-            return
-                Math.abs(
-                    currentTick -
-                        (int24(
-                            uint24(medianData >> ((uint24(medianData >> (192 + 3 * 3)) % 8) * 24))
-                        ) +
-                            int24(
-                                uint24(
-                                    medianData >> ((uint24(medianData >> (192 + 3 * 4)) % 8) * 24)
-                                )
-                            )) /
-                        2
-                ) > MAX_TICKS_DELTA;
-        }
+        return s_riskEngine.isSafeMode(currentTick, s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -1501,24 +1470,28 @@ contract PanopticPool is Multicall {
 
     /// @notice Computes and returns all oracle ticks.
     /// @return currentTick The current tick in the Uniswap pool
-    /// @return fastOracleTick The fast oracle tick computed as the median of the past N observations in the Uniswap Pool
-    /// @return slowOracleTick The slow oracle tick (either composed of observations retrieved from Uniswap or observations stored in `s_miniMedian`)
-    /// @return latestObservation The latest observation from the Uniswap pool
-    /// @return medianData The current value of the 8-slot internal observation queue (`s_miniMedian`)
+    /// @return spotTick The fast oracle tick, sourced from the internal 10-minute EMA.
+    /// @return medianTick The slow oracle tick, calculated as the median of the 8 stored price points in the internal oracle.
+    /// @return latestTick The reconstructed absolute tick of the latest observation stored in the internal oracle.
+    /// @return oraclePack The current value of the 8-slot internal observation queue (`s_oraclePack`)
     function getOracleTicks()
         external
         view
         returns (
             int24 currentTick,
-            int24 fastOracleTick,
-            int24 slowOracleTick,
-            int24 latestObservation,
-            uint256 medianData
+            int24 spotTick,
+            int24 medianTick,
+            int24 latestTick,
+            uint256 oraclePack
         )
     {
-        (currentTick, fastOracleTick, slowOracleTick, latestObservation, ) = PanopticMath
-            .getOracleTicks(s_univ3pool, s_miniMedian);
-        medianData = s_miniMedian;
+        currentTick = SFPM.getCurrentTick(s_univ3pool);
+
+        (spotTick, medianTick, latestTick, ) = s_riskEngine.getOracleTicks(
+            currentTick,
+            s_oraclePack
+        );
+        oraclePack = s_oraclePack;
     }
 
     /// @notice Get the current number of legs across all open positions for an account.
@@ -1547,8 +1520,8 @@ contract PanopticPool is Multicall {
 
     /// @notice Get the oracle price used to check solvency in liquidations.
     /// @return twapTick The current oracle price used to check solvency in liquidations
-    function getUniV3TWAP() internal view returns (int24 twapTick) {
-        twapTick = PanopticMath.twapFilter(s_univ3pool, TWAP_WINDOW);
+    function getTWAP() internal view returns (int24 twapTick) {
+        twapTick = s_riskEngine.twapEMA(s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////

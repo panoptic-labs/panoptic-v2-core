@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
+import "forge-std/Test.sol";
 
 // Foundry
-import "forge-std/Test.sol";
 // Internal
 import {TickMath} from "v3-core/libraries/TickMath.sol";
 import {BitMath} from "v3-core/libraries/BitMath.sol";
@@ -13,6 +13,7 @@ import {TokenId} from "@types/TokenId.sol";
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {PanopticMath} from "@libraries/PanopticMath.sol";
 import {Math} from "@libraries/Math.sol";
+import {Constants} from "@libraries/Constants.sol";
 // Uniswap
 import {IUniswapV3Pool} from "v3-core/interfaces/IUniswapV3Pool.sol";
 import {LiquidityAmounts} from "v3-periphery/libraries/LiquidityAmounts.sol";
@@ -47,6 +48,56 @@ contract PanopticMathTest is Test, PositionUtils {
 
     function setUp() public {
         harness = new PanopticMathHarness();
+    }
+
+    // Constants for computeInternalMedian tests
+    int24 internal constant REFERENCE_TICK = 200000;
+    uint256 internal constant INITIAL_EPOCH = 5;
+
+    /*//////////////////////////////////////////////////////////////
+                    COMPUTE INTERNAL MEDIAN HELPERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Encodes a set of offsets into the packed oraclePack format for testing.
+    function _encodeOraclePack(int16[] memory offsets) internal pure returns (uint256) {
+        // Assume the input offsets are sorted and create a simple orderMap (0->0, 1->1, etc.)
+        uint256 data;
+        data |= INITIAL_EPOCH << 232;
+        data |= uint256(0xFAC688) << 208; // orderMap for a pre-sorted list
+        data |= uint256(uint24(REFERENCE_TICK)) << 96;
+        for (uint8 i = 0; i < 8; i++) {
+            // Mask with 0xFFF to pack as a 12-bit value
+            data |= (uint256(uint16(offsets[i])) & 0x0FFF) << (i * 12);
+        }
+        return data;
+    }
+
+    /// @notice Decodes the packed data and returns the full tick values IN SORTED ORDER.
+    /// This is the key to verifying the orderMap logic is correct.
+    function _decodeSortedTicks(uint256 data) internal pure returns (int24[] memory) {
+        int24[] memory sortedTicks = new int24[](8);
+        int24 refTick = int24(uint24(data >> 96));
+        for (uint8 i = 0; i < 8; i++) {
+            // i = sorted rank
+            uint256 offsetData = (data >> (i * 12)) % 2 ** 12;
+            sortedTicks[i] = refTick + PanopticMath.int12toInt24(offsetData);
+        }
+        return sortedTicks;
+    }
+
+    /// @notice Generates a standard list of offsets for testing. [0, 10, 20, 30, 40, 50, 60, 70]
+    function _generateSortedOffsets(int256 seed) internal pure returns (int16[] memory) {
+        int16[] memory offsets = new int16[](8);
+        int16 seedStart = seed != 0 ? int16(int256(bound(seed, -1970, 1970))) : int16(0);
+        offsets[0] = seedStart;
+        offsets[1] = seedStart + 10;
+        offsets[2] = seedStart + 20;
+        offsets[3] = seedStart + 30;
+        offsets[4] = seedStart + 40;
+        offsets[5] = seedStart + 50;
+        offsets[6] = seedStart + 60;
+        offsets[7] = seedStart + 70;
+        return offsets;
     }
 
     // use storage as temp to avoid stack to deeps
@@ -1680,5 +1731,169 @@ contract PanopticMathTest is Test, PositionUtils {
             assertEq(strike - rangeDown, strike - range);
             assertEq(strike + rangeUp, strike + range);
         }
+    }
+
+    function test_success_toInt24() public pure {
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 12 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 13 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 14 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 15 - 1));
+        assertEq(int24(-1), PanopticMath.int12toInt24(2 ** 16 - 1));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        COMPUTE INTERNAL MEDIAN TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNewTick(int256 x) public {
+        // ARRANGE
+        uint16 observationCardinality = 65535;
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
+        uint16 observationIndex = 10;
+
+        int24 deltaTick = int24(bound(x, -149, 149));
+
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
+
+        // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+        int56 tickCumulative = int56(
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        ) * 64;
+        mockPool.setObservation(observationIndex - 1, 64, 0);
+        mockPool.setObservation(observationIndex, 128, tickCumulative);
+
+        int24 deltaOffset = PanopticMath.int12toInt24(initialData % 2 ** 12);
+        int24 oldReferenceTick = int24(uint24(initialData >> 96));
+        // ACT
+        vm.warp(10 * 64);
+        (, uint256 updatedData) = harness.computeInternalMedian(
+            initialData,
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        );
+
+        // ASSERT
+        int24[] memory finalTicks = _decodeSortedTicks(updatedData);
+
+        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+        int24 deltaReference = newReferenceTick - oldReferenceTick;
+
+        // The oldest value (40) is dropped, and the new value (-100) is inserted.
+        // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
+        int24[] memory expectedTicks = new int24[](8);
+        expectedTicks[0] = newReferenceTick + deltaOffset - deltaReference + deltaTick; // New minimum
+        expectedTicks[1] = REFERENCE_TICK + _generateSortedOffsets(x)[0];
+        expectedTicks[2] = REFERENCE_TICK + _generateSortedOffsets(x)[1];
+        expectedTicks[3] = REFERENCE_TICK + _generateSortedOffsets(x)[2];
+        expectedTicks[4] = REFERENCE_TICK + _generateSortedOffsets(x)[3];
+        expectedTicks[5] = REFERENCE_TICK + _generateSortedOffsets(x)[4];
+        expectedTicks[6] = REFERENCE_TICK + _generateSortedOffsets(x)[5];
+        expectedTicks[7] = REFERENCE_TICK + _generateSortedOffsets(x)[6];
+
+        assertEq(
+            keccak256(abi.encode(finalTicks)),
+            keccak256(abi.encode(expectedTicks)),
+            "New minimum value not sorted correctly!"
+        );
+    }
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNew_cap(int256 x) public {
+        // ARRANGE
+        uint16 observationCardinality = 65535;
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
+        uint16 observationIndex = 10;
+
+        // deltaTick would lead to capping
+        int24 deltaTick = int24(
+            bound(x, Constants.MAX_MEDIAN_DELTA + 1, Constants.MAX_RESIDUAL_THRESHOLD - 1)
+        );
+
+        deltaTick = x % 2 == 0 ? -deltaTick : deltaTick;
+
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(x));
+
+        // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+        int56 tickCumulative = int56(
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        ) * 64;
+        mockPool.setObservation(observationIndex - 1, 64, 0);
+        mockPool.setObservation(observationIndex, 128, tickCumulative);
+
+        // ACT
+        vm.warp(10 * 64);
+        (, uint256 updatedData) = harness.computeInternalMedian(
+            initialData,
+            REFERENCE_TICK + PanopticMath.int12toInt24(initialData % 2 ** 12) + deltaTick
+        );
+
+        // ASSERT
+        int24[] memory finalTicks = _decodeSortedTicks(updatedData);
+
+        // The oldest value (40) is dropped, and the new value (-100) is inserted.
+        // Expected sorted list: [-100, -40, -30, -20, -10, 10, 20, 30]
+        int24[] memory expectedTicks = new int24[](8);
+        expectedTicks[0] = REFERENCE_TICK + _generateSortedOffsets(x)[0] + deltaTick; // New minimum
+
+        assertEq(
+            finalTicks[0],
+            expectedTicks[0] -
+                deltaTick +
+                (x % 2 == 0 ? int24(-1) : int24(1)) *
+                Constants.MAX_MEDIAN_DELTA,
+            "New minimum value not sorted correctly!"
+        );
+    }
+
+    /// @notice This test ensures the order map is correct when the new tick is the new MINIMUM value.
+    function test_SUCCESS_OrderMapIsCorrect_InsertNew_rebase(int256 x) public {
+        // ARRANGE
+        uint16 observationCardinality = 65535;
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(observationCardinality);
+        uint16 observationIndex = 10;
+
+        // deltaTick would lead to capping
+        int24 deltaTick = x % 2 == 0 ? Constants.MAX_MEDIAN_DELTA : -Constants.MAX_MEDIAN_DELTA;
+
+        uint256 n = uint24((Constants.MAX_RESIDUAL_THRESHOLD / Constants.MAX_MEDIAN_DELTA)) + 1;
+
+        uint256 updatedData = _encodeOraclePack(_generateSortedOffsets(0));
+
+        int24 referenceTick = int24(uint24(updatedData >> 96));
+        for (uint256 i; i < n; ++i) {
+            // Set up the mock pool to return a new tick with an offset of -100, smaller than any existing value.
+            int56 tickCumulative = int56(
+                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
+            ) * 64;
+            mockPool.setObservation(observationIndex - 1, 64, 0);
+            mockPool.setObservation(observationIndex, 128, tickCumulative);
+
+            // ACT
+            vm.warp(block.timestamp + 128);
+            vm.roll(block.number + 1);
+            (, uint256 _updatedData) = harness.computeInternalMedian(
+                updatedData,
+                REFERENCE_TICK + PanopticMath.int12toInt24(updatedData % 2 ** 12) + deltaTick
+            );
+            updatedData = _updatedData;
+        }
+
+        int24 newReferenceTick = int24(uint24(updatedData >> 96));
+
+        assertTrue(referenceTick != newReferenceTick, "FAIL: reference tick not updated");
+    }
+
+    /// @notice This test ensures no update occurs if the block timestamp is in the same epoch.
+    function test_NoUpdateInSameEpoch() public {
+        // ARRANGE
+        UniPoolObservationMock mockPool = new UniPoolObservationMock(100);
+        uint256 initialData = _encodeOraclePack(_generateSortedOffsets(0));
+
+        // ACT: Set timestamp to be in the same epoch as the initial data.
+        vm.warp(INITIAL_EPOCH * 64 + 1); // e.g., timestamp >> 6 will still be 5
+        (, uint256 updatedData) = harness.computeInternalMedian(initialData, REFERENCE_TICK);
+
+        // ASSERT: The function should return 0 for updatedOraclePack.
+        assertEq(updatedData, 0, "Update should not happen in the same epoch");
     }
 }

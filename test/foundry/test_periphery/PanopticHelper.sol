@@ -197,26 +197,30 @@ contract PanopticHelper {
 
     /// @notice Takes a packed structure representing a sorted 8-slot queue of ticks and returns the median of those values.
     /// @dev Also inserts the latest Uniswap observation into the buffer, resorts, and returns if the last entry is at least `period` seconds old.
-    /// @param period The minimum time in seconds that must have passed since the last observation was inserted into the buffer
-    /// @param medianData The packed structure representing the sorted 8-slot queue of ticks
+    /// @param oraclePack The packed structure representing the sorted 8-slot queue of ticks
     /// @param univ3pool The Uniswap pool to retrieve observations from
-    /// @return The median of the provided 8-slot queue of ticks in `medianData`
+    /// @return The median of the provided 8-slot queue of ticks in `oraclePack`
     /// @return The updated 8-slot queue of ticks with the latest observation inserted if the last entry is at least `period` seconds old (returns 0 otherwise)
     function computeInternalMedian(
-        uint256 period,
-        uint256 medianData,
+        uint256 oraclePack,
         IUniswapV3Pool univ3pool
     ) external view returns (int24, uint256) {
-        (, , uint16 observationIndex, uint16 observationCardinality, , , ) = univ3pool.slot0();
+        (
+            ,
+            int24 currentTick,
+            uint16 observationIndex,
+            uint16 observationCardinality,
+            ,
+            ,
 
-        (int24 _medianTick, uint256 _medianData) = PanopticMath.computeInternalMedian(
-            observationIndex,
-            observationCardinality,
-            period,
-            medianData,
-            univ3pool
+        ) = univ3pool.slot0();
+
+        (int24 _medianTick, uint256 _oraclePack) = PanopticMath.computeInternalMedian(
+            oraclePack,
+            currentTick,
+            0
         );
-        return (_medianTick, _medianData);
+        return (_medianTick, _oraclePack);
     }
 
     /// @notice Computes the twap of a Uniswap V3 pool using data from its oracle.
