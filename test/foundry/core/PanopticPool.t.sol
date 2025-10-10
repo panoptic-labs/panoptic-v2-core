@@ -3105,7 +3105,7 @@ contract PanopticPoolTest is PositionUtils {
 
         vm.startPrank(Alice);
 
-        if (pp.isSafeMode() == false) {
+        if (pp.isSafeMode() == 0) {
             (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
                 tokenId,
                 positionSize
@@ -3135,7 +3135,7 @@ contract PanopticPoolTest is PositionUtils {
                 1
             );
 
-            (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.oraclePack(), currentTick);
+            (slowOracleTick, ) = re.computeInternalMedian(pp.oraclePack(), currentTick);
 
             assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -3292,7 +3292,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.oraclePack(), currentTick);
+        (slowOracleTick, ) = re.computeInternalMedian(pp.oraclePack(), currentTick);
 
         assertEq(sfpm.balanceOf(address(pp), TokenId.unwrap(tokenId)), positionSize);
 
@@ -3449,7 +3449,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.oraclePack(), currentTick);
+        (slowOracleTick, ) = re.computeInternalMedian(pp.oraclePack(), currentTick);
 
         updatePositionDataLong();
 
@@ -3473,7 +3473,7 @@ contract PanopticPoolTest is PositionUtils {
         console2.log("Alice");
         vm.startPrank(Alice);
 
-        if (pp.isSafeMode() == false) {
+        if (pp.isSafeMode() == 0) {
             (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
                 .computeExercisedAmounts(tokenId, positionSizes[1]);
 
@@ -3689,7 +3689,7 @@ contract PanopticPoolTest is PositionUtils {
             1
         );
 
-        (slowOracleTick, ) = PanopticMath.computeInternalMedian(pp.oraclePack(), currentTick);
+        (slowOracleTick, ) = re.computeInternalMedian(pp.oraclePack(), currentTick);
 
         updatePositionDataLong();
 

@@ -3884,7 +3884,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         vm.startPrank(Bob);
 
@@ -3941,7 +3941,7 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         vm.startPrank(Bob);
 
@@ -3999,8 +3999,8 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() == false);
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() == 0);
         vm.startPrank(Bob);
 
         uint256 snapshot = vm.snapshot();
@@ -4084,8 +4084,8 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode());
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() > 0);
 
         vm.startPrank(Bob);
 
@@ -4165,8 +4165,8 @@ contract Misctest is Test, PositionUtils {
         (, int24 staleTick, , , , , ) = uniPool.slot0();
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(952));
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode() == false);
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() > 0);
 
         vm.startPrank(Bob);
 
@@ -4225,7 +4225,7 @@ contract Misctest is Test, PositionUtils {
             pp.pokeMedian();
             (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, oraclePack) = pp
                 .getOracleTicks();
-            int24 TWAPtick = PanopticMath.twapEMA(oraclePack);
+            int24 TWAPtick = re.twapEMA(oraclePack);
             console2.log(i, uint24(fastOracleTick), uint24(TWAPtick), uint24(lastObservedTick));
             swapperc.burn(uniPool, -100000, 100000, 10 ** 18);
         }
@@ -4239,7 +4239,7 @@ contract Misctest is Test, PositionUtils {
         IERC20Partial(ct1.asset()).approve(address(ct1), 1_000_000);
 
         (currentTick, , , , oraclePack) = pp.getOracleTicks();
-        int24 TWAPtick = PanopticMath.twapEMA(oraclePack);
+        int24 TWAPtick = re.twapEMA(oraclePack);
         console2.log("TWAPtick", TWAPtick);
         assertTrue(false);
 
@@ -4258,8 +4258,8 @@ contract Misctest is Test, PositionUtils {
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
-        console2.log("isSafeMode", pp.isSafeMode() ? "safe mode ON" : "safe mode OFF");
-        assertTrue(pp.isSafeMode());
+        console2.log("isSafeMode", pp.isSafeMode() > 0 ? "safe mode ON" : "safe mode OFF");
+        assertTrue(pp.isSafeMode() > 0);
 
         vm.startPrank(Bob);
 
@@ -4352,19 +4352,19 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
     }
 
     function test_Success_SafeMode_up() public {
@@ -4375,20 +4375,20 @@ contract Misctest is Test, PositionUtils {
         token0.approve(address(swapperc), type(uint128).max);
         token1.approve(address(swapperc), type(uint128).max);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(953));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
     }
 
     function test_Success_SafeMode_pokes() public {
@@ -4409,14 +4409,14 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         // setup mini-median price array
         for (uint256 i = 0; i < 4; ++i) {
@@ -4427,7 +4427,7 @@ contract Misctest is Test, PositionUtils {
             swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
         }
 
-        assertTrue(pp.isSafeMode() == true, "slow oracle tick did not catch up");
+        assertTrue(pp.isSafeMode() > 0, "slow oracle tick did not catch up");
 
         swapperc.mint(uniPool, -10000, 10000, 10 ** 18);
         vm.warp(block.timestamp + 120);
@@ -4435,7 +4435,7 @@ contract Misctest is Test, PositionUtils {
         pp.pokeMedian();
         swapperc.burn(uniPool, -10000, 10000, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "slow oracle tick caught up");
+        assertTrue(pp.isSafeMode() == 0, "slow oracle tick caught up");
     }
 
     function test_Success_SafeMode_mint_otm() public {
@@ -4456,14 +4456,14 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-954));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) <= 953, "small price deviation");
-        assertTrue(!pp.isSafeMode(), "not in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "not in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
         // mint OTM position
@@ -4508,7 +4508,7 @@ contract Misctest is Test, PositionUtils {
         console2.log("slowOracleTick", slowOracleTick);
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "large price deviation");
 
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
         vm.startPrank(Bob);
 
         // deposit only token1
@@ -4557,14 +4557,14 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         swapperc.swapTo(uniPool, Math.getSqrtRatioAtTick(-955));
 
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
         // mint ITM position
@@ -4645,7 +4645,7 @@ contract Misctest is Test, PositionUtils {
         }
         swapperc.mint(uniPool, -10, 10, 10 ** 18);
 
-        assertTrue(pp.isSafeMode() == false, "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         int24 tickSpacing = uniPool.tickSpacing();
         // mint OTM position
@@ -4682,7 +4682,7 @@ contract Misctest is Test, PositionUtils {
         (currentTick, slowOracleTick, , , ) = pp.getOracleTicks();
 
         assertTrue(Math.abs(currentTick - slowOracleTick) > 953, "small price deviation");
-        assertTrue(pp.isSafeMode(), "in safe mode");
+        assertTrue(pp.isSafeMode() > 0, "in safe mode");
 
         vm.startPrank(Bob);
 
@@ -5959,7 +5959,7 @@ contract Misctest is Test, PositionUtils {
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
-        assertTrue(!pp.isSafeMode(), "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         assertTrue(
             int256(fastOracleTick - slowOracleTick) ** 2 +
@@ -6078,7 +6078,7 @@ contract Misctest is Test, PositionUtils {
 
         (currentTick, fastOracleTick, slowOracleTick, lastObservedTick, ) = pp.getOracleTicks();
 
-        assertTrue(!pp.isSafeMode(), "not in safe mode");
+        assertTrue(pp.isSafeMode() == 0, "not in safe mode");
 
         assertTrue(
             int256(fastOracleTick - slowOracleTick) ** 2 +
