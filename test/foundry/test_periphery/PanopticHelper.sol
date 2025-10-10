@@ -217,7 +217,8 @@ contract PanopticHelper {
 
         (int24 _medianTick, uint256 _oraclePack) = PanopticMath.computeInternalMedian(
             oraclePack,
-            currentTick
+            currentTick,
+            0
         );
         return (_medianTick, _oraclePack);
     }
