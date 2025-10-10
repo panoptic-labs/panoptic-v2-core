@@ -986,15 +986,7 @@ contract RiskEngine {
         // narrower spreads will be very capital efficient (up to only ~5% of non-partnered CR!), but
         // wider spreads (an uncommon position w/ high max loss) may not benefit from risk partnering
         // TODO: check this assumption, allow very small collateral requirements since force exercise can work while in-range
-        spreadRequirement = Math.max(
-            spreadRequirement,
-            0 *
-                _getRequiredCollateralAtUtilization(
-                    tokenType == 0 ? moved0 : moved1,
-                    1,
-                    poolUtilization
-                )
-        );
+        spreadRequirement = Math.max(spreadRequirement, 1);
     }
 
     /// @notice Calculate the required amount of collateral for a strangle leg.
