@@ -16,7 +16,7 @@ import {SafeTransferLib} from "@libraries/SafeTransferLib.sol";
 // Custom types
 import {LeftRightUnsigned, LeftRightSigned} from "@types/LeftRight.sol";
 import {LiquidityChunk} from "@types/LiquidityChunk.sol";
-import {PositionBalance} from "@types/PositionBalance.sol";
+import {PositionBalance, PositionBalanceLibrary} from "@types/PositionBalance.sol";
 import {TokenId} from "@types/TokenId.sol";
 
 /// @title Collateral Tracking System / Margin Accounting used in conjunction with a Panoptic Pool.
@@ -51,6 +51,9 @@ contract RiskEngine {
     //int256 constant EMA_PERIOD_EONS = 21600; // 6h minutes
 
     uint96 constant EMAperiods = uint96(180 + (600 << 24) + (3600 << 48) + (21600 << 72));
+    /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
+    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
+    int256 internal constant MAX_TICKS_DELTA = 953;
 
     /*//////////////////////////////////////////////////////////////
                             RISK PARAMETERS
@@ -483,6 +486,72 @@ contract RiskEngine {
     /*//////////////////////////////////////////////////////////////
                      HEALTH AND COLLATERAL TRACKING
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
+    /// @dev Safe Mode is triggered if EITHER of two conditions are met:
+    ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
+    ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
+    /// @return Whether the protocol should be in Safe Mode.
+    function isSafeMode(int24 currentTick, uint256 oraclePack) public view returns (uint8) {
+        // Extract the relevant EMAs from oraclePack
+        (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
+            oraclePack
+        );
+
+        // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
+        // This is your primary defense against a flash crash or single-block manipulation.
+        bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
+
+        // Condition 2: Check for high internal volatility by comparing the spot and fast EMAs.
+        // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
+        // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
+        bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
+
+        // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
+        // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
+        // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
+        bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
+
+        return
+            uint8(externalShock ? 1 : 0) +
+            uint8(internalDisagreement ? 1 : 0) +
+            uint8(highDivergence ? 1 : 0);
+    }
+
+    function getSolvencyTicks(
+        int24 currentTick,
+        int24 spotTick,
+        int24 medianTick,
+        int24 latestTick
+    ) external pure returns (int24[] memory) {
+        int24[] memory atTicks;
+
+        // Fall back to a conservative approach if there's high deviation between internal ticks:
+        // Check solvency at the medianTick, currentTick, and latestTick instead of just the spotTick.
+        // Deviation is measured as the magnitude of a 3D vector:
+        // (spotTick - medianTick, latestTick - medianTick, currentTick - medianTick)
+        // This approach is more conservative than checking each tick difference individually,
+        // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
+        if (
+            int256(spotTick - medianTick) ** 2 +
+                int256(latestTick - medianTick) ** 2 +
+                int256(currentTick - medianTick) ** 2 >
+            MAX_TICKS_DELTA ** 2
+        ) {
+            // High deviation detected; check against all four ticks.
+            atTicks = new int24[](4);
+            atTicks[0] = spotTick;
+            atTicks[1] = medianTick;
+            atTicks[2] = latestTick;
+            atTicks[3] = currentTick;
+        } else {
+            // Normal operation; check against the spot tick = 10 mins EMA.
+            atTicks = new int24[](1);
+            atTicks[0] = spotTick;
+        }
+
+        return atTicks;
+    }
 
     /// @notice Get the collateral status/margin details of an account/user.
     /// @dev NOTE: It's up to the caller to confirm from the returned result that the account has enough collateral.

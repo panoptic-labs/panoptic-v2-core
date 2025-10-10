@@ -127,10 +127,6 @@ contract PanopticPool is Multicall {
     /// @dev Ensures token substitution between two accounts is settled safely at a price close to market.
     int256 internal constant MAX_TICK_DELTA_SUBSTITUTION = 203;
 
-    /// @notice The maximum allowed cumulative delta between the fast & slow oracle tick, the current & slow oracle tick, and the last-observed & slow oracle tick.
-    /// @dev Falls back on the more conservative (less solvent) tick during times of extreme volatility, where the price moves ~10% in <4 minutes.
-    int256 internal constant MAX_TICKS_DELTA = 953;
-
     /// @notice The maximum allowed ratio for a single chunk, defined as `removedLiquidity / netLiquidity`.
     /// @dev The long premium spread multiplier that corresponds with the MAX_SPREAD value depends on VEGOID,
     /// which can be explored in this calculator: [https://www.desmos.com/calculator/mdeqob2m04](https://www.desmos.com/calculator/mdeqob2m04).
@@ -810,7 +806,7 @@ contract PanopticPool is Multicall {
     }
 
     /// @notice Validates the solvency of `user`.
-    /// @dev Falls back to the most conservative (least solvent) oracle tick if the sum of the squares of the deltas between all oracle ticks exceeds `MAX_TICKS_DELTA^2`.
+    /// @dev Falls back to the most conservative (least solvent) oracle tick if the sum of the squares of the deltas between all oracle ticks exceeds `MAX_TICKS_DELTA^2`, defined in the RiskEngine.
     /// @dev Effectively, this means that the users must be solvent at all oracle ticks if the at least one of the ticks is sufficiently stale.
     /// @param user The account to validate
     /// @param positionIdList The list of positions to validate solvency for
@@ -864,29 +860,8 @@ contract PanopticPool is Multicall {
         ) = PositionBalanceLibrary.unpackTickData(tickData);
 
         int24[] memory atTicks;
-        // Fall back to a conservative approach if there's high deviation between internal ticks:
-        // Check solvency at the medianTick, currentTick, and latestTick instead of just the spotTick.
-        // Deviation is measured as the magnitude of a 3D vector:
-        // (spotTick - medianTick, latestTick - medianTick, currentTick - medianTick)
-        // This approach is more conservative than checking each tick difference individually,
-        // as the Euclidean norm is always greater than or equal to the maximum of the individual differences.
-        if (
-            int256(spotTick - medianTick) ** 2 +
-                int256(latestTick - medianTick) ** 2 +
-                int256(currentTick - medianTick) ** 2 >
-            MAX_TICKS_DELTA ** 2
-        ) {
-            // High deviation detected; check against all four ticks.
-            atTicks = new int24[](4);
-            atTicks[0] = spotTick;
-            atTicks[1] = medianTick;
-            atTicks[2] = latestTick;
-            atTicks[3] = currentTick;
-        } else {
-            // Normal operation; check against the spot tick = 10 mins EMA.
-            atTicks = new int24[](1);
-            atTicks[0] = spotTick;
-        }
+
+        atTicks = s_riskEngine.getSolvencyTicks(currentTick, spotTick, medianTick, latestTick);
 
         uint256 solvent = _checkSolvencyAtTicks(
             user,
@@ -1395,38 +1370,11 @@ contract PanopticPool is Multicall {
         return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
     }
 
-    /// @notice Checks for significant oracle deviation to determine if Safe Mode should be active.
-    /// @dev Safe Mode is triggered if EITHER of two conditions are met:
-    ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
-    ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
-    /// @return Whether the protocol should be in Safe Mode.
+    /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
+    /// @return Whether the current tick has deviated too much to warrant putting the protocol in safe mode
     function isSafeMode() public view returns (uint8) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
-        uint256 oraclePack = s_oraclePack;
-
-        // Extract the relevant EMAs from oraclePack
-        (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
-            oraclePack
-        );
-
-        // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
-        // This is your primary defense against a flash crash or single-block manipulation.
-        bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
-
-        // Condition 2: Check for high internal volatility by comparing the spot and fast EMAs.
-        // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
-        // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
-        bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
-
-        // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
-        // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
-        // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
-        bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
-
-        return
-            uint8(externalShock ? 1 : 0) +
-            uint8(internalDisagreement ? 1 : 0) +
-            uint8(highDivergence ? 1 : 0);
+        return s_riskEngine.isSafeMode(currentTick, s_oraclePack);
     }
 
     /*//////////////////////////////////////////////////////////////
