@@ -927,11 +927,15 @@ contract RiskEngine {
             partnerIndex
         );
 
-        uint128 movedRight = amountsMoved.rightSlot();
-        uint128 movedLeft = amountsMoved.leftSlot();
+        {
+            (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
+                .computeExercisedAmounts(tokenId, positionSize);
+        }
+        uint128 moved0 = amountsMoved.rightSlot();
+        uint128 moved1 = amountsMoved.leftSlot();
 
-        uint128 movedPartnerRight = amountsMovedPartner.rightSlot();
-        uint128 movedPartnerLeft = amountsMovedPartner.leftSlot();
+        uint128 moved0Partner = amountsMovedPartner.rightSlot();
+        uint128 moved1Partner = amountsMovedPartner.leftSlot();
 
         uint256 tokenType = tokenId.tokenType(index);
 
@@ -943,13 +947,13 @@ contract RiskEngine {
             unchecked {
                 // always take the absolute values of the difference of amounts moved
                 if (tokenType == 0) {
-                    spreadRequirement = movedRight < movedPartnerRight
-                        ? movedPartnerRight - movedRight
-                        : movedRight - movedPartnerRight;
+                    spreadRequirement = moved0 < moved0Partner
+                        ? moved0Partner - moved0
+                        : moved0 - moved0Partner;
                 } else {
-                    spreadRequirement = movedLeft < movedPartnerLeft
-                        ? movedPartnerLeft - movedLeft
-                        : movedLeft - movedPartnerLeft;
+                    spreadRequirement = moved1 < moved1Partner
+                        ? moved1Partner - moved1
+                        : moved1 - moved1Partner;
                 }
             }
         } else {
@@ -958,13 +962,13 @@ contract RiskEngine {
                 uint256 notionalP;
                 uint128 contracts;
                 if (tokenType == 1) {
-                    notional = movedRight;
-                    notionalP = movedPartnerRight;
-                    contracts = movedLeft;
+                    notional = moved0;
+                    notionalP = moved0Partner;
+                    contracts = moved1;
                 } else {
-                    notional = movedLeft;
-                    notionalP = movedPartnerLeft;
-                    contracts = movedRight;
+                    notional = moved1;
+                    notionalP = moved1Partner;
+                    contracts = moved0;
                 }
                 // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
                 // can use unsafe because denominator is always nonzero
@@ -981,7 +985,7 @@ contract RiskEngine {
         spreadRequirement = Math.max(
             spreadRequirement,
             _getRequiredCollateralAtUtilization(
-                tokenType == 0 ? movedRight : movedLeft,
+                tokenType == 0 ? moved0 : moved1,
                 1,
                 poolUtilization
             )
