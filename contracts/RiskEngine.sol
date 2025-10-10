@@ -927,10 +927,6 @@ contract RiskEngine {
             partnerIndex
         );
 
-        {
-            (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
-                .computeExercisedAmounts(tokenId, positionSize);
-        }
         uint128 moved0 = amountsMoved.rightSlot();
         uint128 moved1 = amountsMoved.leftSlot();
 
@@ -970,11 +966,11 @@ contract RiskEngine {
                     notionalP = moved1Partner;
                     contracts = moved0;
                 }
-                // the required amount is the amount of contracts multiplied by (notional1 - notional2)/min(notional1, notional2)
+                // the required amount is the amount of contracts multiplied by (notional1 - notional2)/max(notional1, notional2)
                 // can use unsafe because denominator is always nonzero
                 spreadRequirement = (notional < notionalP)
-                    ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notional)
-                    : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notionalP);
+                    ? Math.unsafeDivRoundingUp((notionalP - notional) * contracts, notionalP)
+                    : Math.unsafeDivRoundingUp((notional - notionalP) * contracts, notional);
             }
         }
 
