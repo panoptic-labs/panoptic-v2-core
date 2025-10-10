@@ -95,6 +95,9 @@ library Errors {
     /// @notice The Uniswap Pool has not been created, so it cannot be used in the SFPM or have a PanopticPool created for it by the factory
     error UniswapPoolNotInitialized();
 
+    /// @notice PanopticPool: The supplied poolId does not match the poolId for that Uniswap Pool
+    error WrongPoolId();
+
     /// @notice SFPM: Mints/burns of zero-liquidity chunks in Uniswap are not supported
     error ZeroLiquidity();
 

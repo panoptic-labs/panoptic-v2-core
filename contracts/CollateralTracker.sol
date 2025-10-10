@@ -1165,8 +1165,6 @@ contract CollateralTracker is ERC20Minimal, Multicall {
 
             uint128 positionSize = PositionBalance.wrap(positionBalanceArray[i][1]).positionSize();
 
-            if (positionSize == 0) revert Errors.PositionNotOwned();
-
             bool underlyingIsToken0 = s_underlyingIsToken0;
 
             int16 poolUtilization = underlyingIsToken0

@@ -3536,7 +3536,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+        vm.expectRevert(Errors.WrongPoolId.selector);
         pp.mintOptions(
             posIdList,
             positionSize,
@@ -3590,7 +3590,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
         posIdList[1] = tokenId;
 
-        vm.expectRevert(Errors.PositionAlreadyMinted.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         pp.mintOptions(
             posIdList,
             uint128(positionSize),
@@ -3795,12 +3795,9 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         {
@@ -3930,11 +3927,9 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(pp.positionsHash(Alice), 0);
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         //snapshot balances and revert to old snapshot
@@ -4100,11 +4095,9 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(pp.positionsHash(Alice), 0);
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         //snapshot balances and revert to old snapshot
@@ -4653,11 +4646,10 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MAX_V3POOL_TICK,
                 Constants.MIN_V3POOL_TICK
             );
-
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint256 token0Balance, , ) = ph.optionPositionInfo(pp, Alice, tokenId);
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint256 token1Balance, , ) = ph.optionPositionInfo(pp, Alice, tokenId2);
-            assertEq(token0Balance, 0);
-            assertEq(token1Balance, 0);
         }
     }
 
@@ -5389,12 +5381,9 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         {
