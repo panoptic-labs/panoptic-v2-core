@@ -640,19 +640,24 @@ library PanopticMath {
     /// @return The blended time-weighted average price, represented as an int24 tick.
     function twapEMA(uint256 oraclePack) external pure returns (int24) {
         // Extract current EMAs from oraclePack
-        (int24 eonsEMA, int24 slowEMA, int24 fastEMA, ) = getEMAs(oraclePack);
+        (int24 eonsEMA, int24 slowEMA, int24 fastEMA, , ) = getEMAs(oraclePack);
 
         return (6 * fastEMA + 3 * slowEMA + eonsEMA) / 10;
     }
 
     function getEMAs(
         uint256 oraclePack
-    ) internal pure returns (int24 eonsEMA, int24 slowEMA, int24 fastEMA, int24 spotEMA) {
+    )
+        internal
+        pure
+        returns (int24 eonsEMA, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick)
+    {
         uint256 EMAs = (oraclePack >> 120) & BITMASK_UINT88;
         eonsEMA = int22toInt24((EMAs >> 66) & BITMASK_UINT22);
         slowEMA = int22toInt24((EMAs >> 44) & BITMASK_UINT22);
         fastEMA = int22toInt24((EMAs >> 22) & BITMASK_UINT22);
         spotEMA = int22toInt24(EMAs & BITMASK_UINT22);
+        medianTick = getMedianTick(oraclePack);
     }
 
     /// @notice Computes the TWAP of a Uniswap V3 pool using data from its oracle.

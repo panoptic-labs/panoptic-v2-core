@@ -534,7 +534,8 @@ contract PanopticPool is Multicall {
         bool usePremiaAsCollateral
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
-        bool safeMode = isSafeMode();
+        uint8 safeMode = isSafeMode();
+
         uint64 poolId = s_poolId;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
@@ -546,20 +547,24 @@ contract PanopticPool is Multicall {
 
             int24 tickLimitLow = tickLimits[i][0];
             int24 tickLimitHigh = tickLimits[i][1];
-            if (safeMode) {
+            // if safe mode is larger than 1, mandate all positions to be minted/burnt as covered
+            if (safeMode > 1) {
                 if (tickLimitLow > tickLimitHigh) {
                     (tickLimitLow, tickLimitHigh) = (tickLimitHigh, tickLimitLow);
                 }
             }
 
             if (PositionBalance.unwrap(positionBalanceData) == 0) {
+                // revert if more than 2 conditions are triggered to prevent the minting of any positions
+                if (safeMode > 2) revert Errors.StaleOracle();
                 _mintOptions(
                     tokenId,
                     positionSizes[i],
                     effectiveLiquidityLimitsX32[i],
                     msg.sender,
                     tickLimitLow,
-                    tickLimitHigh
+                    tickLimitHigh,
+                    safeMode
                 );
             } else {
                 uint128 positionSize = positionBalanceData.positionSize();
@@ -604,13 +609,15 @@ contract PanopticPool is Multicall {
     /// @param owner The owner of the option position to be minted
     /// @param tickLimitLow The lower bound of an acceptable open interval for the ending price
     /// @param tickLimitHigh The upper bound of an acceptable open interval for the ending price
+    /// @param safeMode whether the pool is in safeMode: mandate 100% collateral requirement if safeMode > 0
     function _mintOptions(
         TokenId tokenId,
         uint128 positionSize,
         uint64 effectiveLiquidityLimitX32,
         address owner,
         int24 tickLimitLow,
-        int24 tickLimitHigh
+        int24 tickLimitHigh,
+        uint8 safeMode
     ) internal returns (LeftRightSigned paidAmounts) {
         // Mint in the SFPM and update state of collateral
         (LeftRightUnsigned[4] memory collectedByLeg, LeftRightSigned totalSwapped) = SFPM
@@ -634,20 +641,20 @@ contract PanopticPool is Multicall {
             totalSwapped
         );
 
-        if (isSafeMode()) poolUtilizations = uint32(10_000 + (10_000 << 16));
+        if (safeMode > 0) poolUtilizations = uint32(10_000 + (10_000 << 16));
 
-        uint96 tickData;
-        // update the users options balance of position `tokenId`
-        // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
-        PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
-            positionSize,
-            poolUtilizations,
-            tickData
-        );
+        {
+            // update the users options balance of position `tokenId`
+            // NOTE: user can't mint same position multiple times, so set the positionSize instead of adding
+            PositionBalance balanceData = PositionBalanceLibrary.storeBalanceData(
+                positionSize,
+                poolUtilizations,
+                0
+            );
+            s_positionBalance[owner][tokenId] = balanceData;
 
-        s_positionBalance[owner][tokenId] = balanceData;
-
-        emit OptionMinted(owner, tokenId, balanceData, commissions);
+            emit OptionMinted(owner, tokenId, balanceData, commissions);
+        }
     }
 
     /// @notice Take the commission fees for minting `tokenId` and settle any other required collateral deltas.
@@ -1399,23 +1406,33 @@ contract PanopticPool is Multicall {
     ///      1. "External Shock": The live spot price deviates too far from the responsive spot EMA .
     ///      2. "Internal Disagreement": The fast EMA deviates too far from the more stable slow EMA, indicating high volatility.
     /// @return Whether the protocol should be in Safe Mode.
-    function isSafeMode() public view returns (bool) {
+    function isSafeMode() public view returns (uint8) {
         int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 oraclePack = s_oraclePack;
 
         // Extract the relevant EMAs from oraclePack
-        (, int24 slowEMA, int24 fastEMA, int24 spotEMA) = PanopticMath.getEMAs(oraclePack);
+        (, int24 slowEMA, int24 fastEMA, int24 spotEMA, int24 medianTick) = PanopticMath.getEMAs(
+            oraclePack
+        );
 
         // Condition 1: Check for a sudden deviation of the spot price from the spot EMA.
         // This is your primary defense against a flash crash or single-block manipulation.
         bool externalShock = Math.abs(currentTick - spotEMA) > MAX_TICKS_DELTA;
 
-        // Condition 2: Check for high internal volatility by comparing the fast and slow EMAs.
+        // Condition 2: Check for high internal volatility by comparing the spot and fast EMAs.
         // If the spot EMA is moving much faster than the fast EMA, it signals an unstable market.
         // We use a smaller threshold here (e.g., half of the main delta) to be more sensitive to internal stress.
         bool internalDisagreement = Math.abs(spotEMA - fastEMA) > (MAX_TICKS_DELTA / 2);
 
-        return externalShock || internalDisagreement;
+        // Condition 3: Check for high internal divergence due to staleness by comparing the median and slow EMAs.
+        // If the median tick is deviating too much from the slow EMA, it signals an unstable market.
+        // We use a larger threshold here (e.g., twice of the main delta) to be less sensitive to lag.
+        bool highDivergence = Math.abs(medianTick - slowEMA) > (MAX_TICKS_DELTA * 2);
+
+        return
+            uint8(externalShock ? 1 : 0) +
+            uint8(internalDisagreement ? 1 : 0) +
+            uint8(highDivergence ? 1 : 0);
     }
 
     /*//////////////////////////////////////////////////////////////
