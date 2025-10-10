@@ -119,6 +119,8 @@ contract PanopticPoolHarness is PanopticPool {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(uniswapPool);
 
+        s_poolId = SFPM.getPoolId(address(s_univ3pool));
+
         // store token0 and token1
         address s_token0 = uniswapPool.token0();
         address s_token1 = uniswapPool.token1();
@@ -188,6 +190,28 @@ contract PanopticPoolHarness is PanopticPool {
         TokenId tokenId
     ) external view returns (PositionBalance balanceAndUtilizations) {
         balanceAndUtilizations = s_positionBalance[account][tokenId];
+    }
+
+    function positionsHash(address user) external view returns (uint248 _positionsHash) {
+        _positionsHash = uint248(s_positionsHash[user]);
+    }
+
+    function setPositionsHash(address user, uint256 hash) external {
+        s_positionsHash[user] = hash;
+    }
+
+    function generatePositionsHash(TokenId[] memory positionIdList) external returns (uint256) {
+        uint256 fingerprintIncomingList;
+        uint256 pLength = positionIdList.length;
+
+        for (uint256 i = 0; i < pLength; ++i) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+        }
+        return fingerprintIncomingList;
     }
 }
 
@@ -1184,6 +1208,673 @@ contract CollateralTrackerTest is Test, PositionUtils {
         // fail as user does not have approval to transfer on behalf
         vm.expectRevert(stdError.arithmeticError);
         collateralToken0.withdraw(100, Alice, Bob, new TokenId[](0));
+    }
+
+    function test_Fail_spoof(
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        // initalize world state
+        _initWorld(0);
+
+        // Invoke all interactions with the Collateral Tracker from user Alice
+        vm.startPrank(Alice);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Alice);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+
+        // Invoke all interactions with the Collateral Tracker from user Bob
+        vm.startPrank(Bob);
+
+        // give Bob the max amount of tokens
+        _grantTokens(Bob);
+
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+
+        collateralToken0.deposit(1e10, Bob);
+        collateralToken1.deposit(0, Bob);
+
+        //collateralToken0.setPoolAssets(500);
+        //collateralToken0.setInAMM(500);
+
+        (width, strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+        // fail because collateral requirement are too high
+        vm.expectRevert(Errors.AccountInsolvent.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, positionIdList);
+
+        // generate a spoof tokenId, set the Hash
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike / 2,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+        panopticPool.setPositionsHash(Bob, panopticPool.generatePositionsHash(spoofList));
+
+        // cannot withdraw because Bob doesn't own the positions
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, spoofList);
+
+        // create a tokenId with no leg, push to positionIdList and update hash
+        TokenId tokenId_noLeg = TokenId.wrap(0).addPoolId(poolId);
+        spoofList[0] = tokenId_noLeg;
+        panopticPool.setPositionsHash(
+            Bob,
+            (1 << 248) + uint248(uint256(keccak256(abi.encode(tokenId_noLeg))))
+        );
+
+        // revert because positionIdList has tokenId with no leg
+        vm.expectRevert(Errors.ZeroLegs.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, spoofList);
+
+        positionIdList.push(tokenId_noLeg);
+        panopticPool.setPositionsHash(
+            Bob,
+            (2 << 248) +
+                uint248(
+                    uint256(keccak256(abi.encode(positionIdList[0]))) ^
+                        uint256(keccak256(abi.encode(positionIdList[1])))
+                )
+        );
+        vm.expectRevert(Errors.ZeroLegs.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, positionIdList);
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        console2.log("aa");
+        positionIdList.pop();
+        positionIdList.push(tokenId);
+
+        panopticPool.setPositionsHash(
+            Bob,
+            (1 << 248) + uint248(uint256(keccak256(abi.encode(positionIdList[0]))))
+        );
+
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_mintWithUnownedPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 1, 1, 0, 0, 0, 4094);
+
+        positionIdList1.push(tokenId);
+        panopticPool.setPositionsHash(Alice, panopticPool.generatePositionsHash(positionIdList1));
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        panopticPool.settleLongPremium(positionIdList1, Alice, 0);
+
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike - 600,
+            width
+        );
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike - 1200,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](2);
+        spoofList[0] = tokenId_spoof;
+        spoofList[1] = tokenId2;
+
+        uint256 spoofHash = (1 << 248) + uint248(uint256(keccak256(abi.encode(tokenId_spoof))));
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list.
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        panopticPool.mintOptions(
+            spoofList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_withdrawWithUnownedPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike / 2,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+
+        uint256 spoofHash = panopticPool.generatePositionsHash(spoofList);
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list.
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, spoofList);
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_burnUnownedPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        // 1. Arrange: Create a spoofed tokenId that Bob doesn't own
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike + 600,
+            width
+        );
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+
+        uint256 spoofHash = panopticPool.generatePositionsHash(spoofList);
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list.
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        panopticPool.burnOptions(
+            spoofList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw by providing a tokenId they do not own.
+    function test_Fail_spoof_wrongPoolId() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        // first try to mint a position with the wrong tokenId
+        tokenId = TokenId.wrap(0).addPoolId(poolId + 1).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        vm.expectRevert(Errors.WrongPoolId.selector);
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e16),
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        positionIdList.pop();
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e16),
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        // 1. Arrange: Create a spoofed tokenId with the wrong poolId = poold + 1
+        // and manually set his positionsHash to match it.
+        TokenId tokenId_spoof = TokenId.wrap(0).addPoolId(poolId + 1).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory spoofList = new TokenId[](1);
+        spoofList[0] = tokenId_spoof;
+
+        uint256 spoofHash = panopticPool.generatePositionsHash(spoofList);
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        console2.log("burn");
+        // 2. Assert & 3. Act: Expect a revert when withdrawing with the spoofed list. Fails before the position fingerprint with ZeroLiquidity at mint
+        vm.expectRevert(Errors.PositionNotOwned.selector);
+        panopticPool.burnOptions(
+            spoofList,
+            new TokenId[](0),
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        uint256 realHash = panopticPool.generatePositionsHash(positionIdList);
+        panopticPool.setPositionsHash(Bob, realHash);
+
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+        positionIdList.push(tokenId2);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e16),
+            type(uint64).max,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        TokenId[] memory finalList = new TokenId[](1);
+        finalList[0] = tokenId2;
+
+        panopticPool.setPositionsHash(Bob, spoofHash);
+
+        // burn second tokenId, wrong poolId in final list but correct fingerprint
+        vm.expectRevert(Errors.WrongPoolId.selector);
+        panopticPool.burnOptions(
+            tokenId2,
+            spoofList,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    /// @notice It should revert if a user tries to withdraw using a tokenId with no legs.
+    function test_Fail_withdrawWithZeroLegPosition() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        // 1. Arrange: Create a tokenId with no legs and set the hash.
+        TokenId tokenId_noLeg = TokenId.wrap(0).addPoolId(poolId);
+        TokenId[] memory invalidList = new TokenId[](1);
+        invalidList[0] = tokenId_noLeg;
+
+        // Note: The hash must be set manually here because updatePositionsHash would revert.
+        // This simulates a corrupted state.
+        uint256 invalidHash = (1 << 248) + uint248(uint256(keccak256(abi.encode(tokenId_noLeg))));
+        panopticPool.setPositionsHash(Bob, invalidHash);
+
+        uint256 assets0 = collateralToken0.convertToAssets(collateralToken0.balanceOf(Bob));
+
+        // 2. Assert & 3. Act: Expect a revert because the tokenId is invalid.
+        vm.expectRevert(Errors.ZeroLegs.selector);
+        collateralToken0.withdraw(assets0, Bob, Bob, invalidList);
+    }
+
+    /// @notice It should revert if a user tries to mint options with a list containing duplicate tokenIds.
+    function test_Fail_spoof_mintOptionsWithDuplicateTokenId() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        // 1. Arrange: Create a list with the same tokenId twice.
+        TokenId[] memory duplicateList = new TokenId[](2);
+        duplicateList[0] = tokenId; // The valid tokenId Bob already owns
+        duplicateList[1] = tokenId;
+
+        // 2. Assert & 3. Act: Expect a revert when minting with the duplicate list.
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
+        panopticPool.mintOptions(
+            duplicateList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+    }
+
+    /// @notice It should revert if a user tries to mint options with a list containing duplicate tokenIds.
+    function test_Fail_spoof_burnOptionsWithDuplicateTokenId() public {
+        // Initialize world state
+        _initWorld(0);
+
+        // --- Alice setup (not used in these specific tests, but good practice) ---
+        vm.startPrank(Alice);
+        _grantTokens(Alice);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e18, Alice);
+        collateralToken1.deposit(1e18, Alice);
+        vm.stopPrank();
+
+        // --- Bob setup (the primary actor in these tests) ---
+        vm.startPrank(Bob);
+        _grantTokens(Bob);
+        IERC20Partial(token0).approve(address(collateralToken0), type(uint256).max);
+        IERC20Partial(token1).approve(address(collateralToken1), type(uint256).max);
+        collateralToken0.deposit(1e10, Bob);
+
+        // Define and mint Bob's initial, legitimate position
+        (width, strike) = PositionUtils.getOTMSW(
+            12345, // Using a fixed seed for determinism
+            67890,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+        tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+        positionIdList.push(tokenId);
+
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        TokenId tokenId2 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike + 600,
+            width
+        );
+
+        positionIdList.push(tokenId2);
+        // 2. Assert & 3. Act: Expect a revert when minting with the duplicate list.
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+        TokenId tokenId3 = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            strike + 1200,
+            width
+        );
+        // 1. Arrange: Create a list with the same tokenId twice.
+        positionIdList.push(tokenId3);
+
+        // 2. Assert & 3. Act: Expect a revert when minting with the duplicate list.
+        panopticPool.mintOptions(
+            positionIdList,
+            uint128(1e9),
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        TokenId[] memory spoofedList = new TokenId[](2);
+
+        spoofedList[0] = tokenId;
+        spoofedList[1] = tokenId;
+
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
+        panopticPool.burnOptions(
+            tokenId2,
+            spoofedList,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -2286,14 +2977,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 128));
             _assumePositionValidity(Bob, tokenId, positionSize0);
 
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Alice, tokenId1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
-
-            _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
-
             panopticPool.mintOptions(
                 positionIdList,
                 positionSize0,
@@ -2493,14 +3176,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
             /// calculate position
             positionSize0 = uint128(bound(positionSizeSeed, 2, 2 ** 64));
             _assumePositionValidity(Bob, tokenId, positionSize0);
-
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Alice, tokenId1);
-
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
-
-            _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
             panopticPool.mintOptions(
                 positionIdList,
@@ -2972,13 +3647,6 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 )
             );
             _assumePositionValidity(Bob, tokenId, positionSize0);
-
-            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
-                .optionPositionInfo(panopticPool, Alice, tokenId1);
-            uint128 poolUtilizations = uint128(poolUtilization0) +
-                (uint128(poolUtilization1) << 64);
-
-            _spreadTokensRequired(tokenId1, positionSize0, poolUtilizations);
 
             panopticPool.mintOptions(
                 positionIdList,

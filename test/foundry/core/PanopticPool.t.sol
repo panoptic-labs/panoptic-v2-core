@@ -45,8 +45,26 @@ contract PanopticPoolHarness is PanopticPool {
         _positionsHash = uint248(s_positionsHash[user]);
     }
 
+    function setPositionsHash(address user, uint256 hash) external {
+        s_positionsHash[user] = hash;
+    }
+
     function miniMedian() external view returns (uint256) {
         return s_miniMedian;
+    }
+
+    function generatePositionsHash(TokenId[] memory positionIdList) external returns (uint256) {
+        uint256 fingerprintIncomingList;
+        uint256 pLength = positionIdList.length;
+
+        for (uint256 i = 0; i < pLength; ++i) {
+            fingerprintIncomingList = PanopticMath.updatePositionsHash(
+                fingerprintIncomingList,
+                positionIdList[i],
+                true
+            );
+        }
+        return fingerprintIncomingList;
     }
 
     /**
@@ -3518,7 +3536,7 @@ contract PanopticPoolTest is PositionUtils {
         TokenId[] memory posIdList = new TokenId[](1);
         posIdList[0] = tokenId;
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidTokenIdParameter.selector, 0));
+        vm.expectRevert(Errors.WrongPoolId.selector);
         pp.mintOptions(
             posIdList,
             positionSize,
@@ -3572,7 +3590,7 @@ contract PanopticPoolTest is PositionUtils {
         posIdList[0] = tokenId;
         posIdList[1] = tokenId;
 
-        vm.expectRevert(Errors.PositionAlreadyMinted.selector);
+        vm.expectRevert(Errors.DuplicateTokenId.selector);
         pp.mintOptions(
             posIdList,
             uint128(positionSize),
@@ -3777,12 +3795,9 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         {
@@ -3912,11 +3927,9 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(pp.positionsHash(Alice), 0);
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         //snapshot balances and revert to old snapshot
@@ -4082,11 +4095,9 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(pp.positionsHash(Alice), 0);
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         //snapshot balances and revert to old snapshot
@@ -4635,11 +4646,10 @@ contract PanopticPoolTest is PositionUtils {
                 Constants.MAX_V3POOL_TICK,
                 Constants.MIN_V3POOL_TICK
             );
-
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint256 token0Balance, , ) = ph.optionPositionInfo(pp, Alice, tokenId);
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint256 token1Balance, , ) = ph.optionPositionInfo(pp, Alice, tokenId2);
-            assertEq(token0Balance, 0);
-            assertEq(token1Balance, 0);
         }
     }
 
@@ -5371,12 +5381,9 @@ contract PanopticPoolTest is PositionUtils {
 
             assertEq(pp.numberOfLegs(Alice), 0);
 
+            vm.expectRevert(Errors.PositionNotOwned.selector);
             (uint128 balance, uint64 poolUtilization0, uint64 poolUtilization1) = ph
                 .optionPositionInfo(pp, Alice, tokenId);
-
-            assertEq(balance, 0);
-            assertEq(poolUtilization0, 0);
-            assertEq(poolUtilization1, 0);
         }
 
         {
@@ -7836,6 +7843,71 @@ contract PanopticPoolTest is PositionUtils {
             assertFalse(true, "liquidation should have failed");
         } catch (bytes memory reason) {
             assertTrue(bytes4(reason) == Errors.NotMarginCalled.selector);
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           SPOOFING LIST TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_fail_positions_hash(
+        uint256 x,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 positionSizeSeed
+    ) public {
+        _initPool(x);
+
+        vm.startPrank(Bob);
+
+        (int24 width, int24 strike) = PositionUtils.getOTMSW(
+            widthSeed,
+            strikeSeed,
+            uint24(tickSpacing),
+            currentTick,
+            0
+        );
+
+        populatePositionData(width, strike, positionSizeSeed);
+
+        TokenId tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(
+            0,
+            1,
+            isWETH,
+            0,
+            0,
+            0,
+            strike,
+            width
+        );
+
+        TokenId[] memory posIdList = new TokenId[](1);
+        posIdList[0] = tokenId;
+        console2.log("a");
+
+        // mint option from another account to change the effective liquidity
+        pp.mintOptions(
+            posIdList,
+            positionSize * 2,
+            0,
+            Constants.MAX_V3POOL_TICK,
+            Constants.MIN_V3POOL_TICK
+        );
+
+        {
+            assertEq(pp.positionsHash(Bob), uint248(uint256(keccak256(abi.encodePacked(tokenId)))));
+            assertEq(pp.numberOfLegs(Bob), 1);
+
+            pp.setPositionsHash(Bob, 0);
+            assertEq(pp.positionsHash(Bob), uint248(uint256(0)));
+            assertEq(pp.numberOfLegs(Bob), 0);
+
+            uint256 newPositionsHash = pp.generatePositionsHash(posIdList);
+
+            pp.setPositionsHash(Bob, newPositionsHash);
+
+            assertEq(pp.positionsHash(Bob), uint248(uint256(newPositionsHash)));
+            assertEq(pp.numberOfLegs(Bob), 1);
         }
     }
 }

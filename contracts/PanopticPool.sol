@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.24;
-
 // Interfaces
 import {CollateralTracker} from "@contracts/CollateralTracker.sol";
 import {SemiFungiblePositionManager} from "@contracts/SemiFungiblePositionManager.sol";
@@ -152,6 +151,9 @@ contract PanopticPool is ERC1155Holder, Multicall {
     /// @notice The Uniswap V3 pool that this instance of Panoptic is deployed on.
     IUniswapV3Pool internal s_univ3pool;
 
+    /// @notice The poolId of this instance of Panoptic.
+    uint64 internal s_poolId;
+
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     // LAST UPDATED BLOCK TIMESTAMP (40 bits)
@@ -266,6 +268,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(_univ3pool);
 
+        s_poolId = SFPM.getPoolId(address(s_univ3pool));
+
         (, int24 currentTick, , , , , ) = IUniswapV3Pool(_univ3pool).slot0();
 
         // Store the median data
@@ -379,8 +383,15 @@ contract PanopticPool is ERC1155Holder, Multicall {
         for (uint256 k = 0; k < pLength; ) {
             TokenId tokenId = positionIdList[k];
 
-            balances[k][0] = TokenId.unwrap(tokenId);
-            balances[k][1] = PositionBalance.unwrap(s_positionBalance[c_user][tokenId]);
+            {
+                PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
+                if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
+
+                balances[k] = [
+                    TokenId.unwrap(tokenId),
+                    PositionBalance.unwrap(positionBalanceData)
+                ];
+            }
 
             (
                 LeftRightSigned[4] memory premiaByLeg,
@@ -559,12 +570,12 @@ contract PanopticPool is ERC1155Holder, Multicall {
             tokenId = positionIdList[positionIdList.length - 1];
         }
 
+        uint64 poolId = s_poolId;
+        // make sure the tokenId is for this Panoptic pool
+        if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
+
         // do duplicate checks and the checks related to minting and positions
         _validatePositionList(msg.sender, positionIdList, 1);
-
-        // make sure the tokenId is for this Panoptic pool
-        if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
-            revert Errors.InvalidTokenIdParameter(0);
 
         // disallow user to mint exact same position
         // in order to do it, user should burn it first and then mint
@@ -758,6 +769,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
         int24 tickLimitHigh
     ) internal returns (LeftRightSigned paidAmounts, LeftRightSigned[4] memory premiaByLeg) {
         uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+
+        if (positionSize == 0) revert Errors.PositionNotOwned();
 
         // burn position and do exercise checks
         (premiaByLeg, paidAmounts) = _burnAndHandleExercise(
@@ -1087,6 +1100,8 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
             uint128 positionSize = s_positionBalance[account][tokenId].positionSize();
 
+            if (positionSize == 0) revert Errors.PositionNotOwned();
+
             (LeftRightSigned longAmounts, ) = PanopticMath.computeExercisedAmounts(
                 tokenId,
                 positionSize
@@ -1277,10 +1292,21 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         uint256 fingerprintIncomingList;
 
+        // verify it has no duplicated elements
+        if (!PanopticMath.hasNoDuplicateTokenIds(positionIdList)) {
+            revert Errors.DuplicateTokenId();
+        }
+
+        uint64 poolId = s_poolId;
+
         for (uint256 i = 0; i < pLength; ) {
+            TokenId tokenId = positionIdList[i];
+            // make sure the tokenId is for this Panoptic pool
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
+
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
-                positionIdList[i],
+                tokenId,
                 ADD
             );
             unchecked {
@@ -1522,10 +1548,14 @@ contract PanopticPool is ERC1155Holder, Multicall {
 
         if (tokenId.isLong(legIndex) == 0 || legIndex > 3) revert Errors.NotALongLeg();
 
+        uint128 positionSize = s_positionBalance[owner][tokenId].positionSize();
+
+        if (positionSize == 0) revert Errors.PositionNotOwned();
+
         LiquidityChunk liquidityChunk = PanopticMath.getLiquidityChunk(
             tokenId,
             legIndex,
-            s_positionBalance[owner][tokenId].positionSize()
+            positionSize
         );
 
         (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
