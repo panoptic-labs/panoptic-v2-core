@@ -229,7 +229,15 @@ contract Misctest is Test, PositionUtils {
         token1 = new ERC20S("token1", "T1", 18);
         uniPool = IUniswapV3Pool(V3FACTORY.createPool(address(token0), address(token1), 500));
 
-        re = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+        re = new RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000,
+            10_000_000,
+            10_000_000
+        );
 
         swapperc = new SwapperC();
         vm.startPrank(Swapper);
@@ -3745,7 +3753,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266264));
+        editCollateral(ct0, Bob, ct0.convertToShares(266269));
         editCollateral(ct1, Bob, 0);
 
         pp.validateCollateralWithdrawable(Bob, $posIdList, true);
@@ -3782,7 +3790,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266264, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 266269, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_validateCollateralWithdrawable() public {

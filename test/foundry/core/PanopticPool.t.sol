@@ -523,7 +523,15 @@ contract PanopticPoolTest is PositionUtils {
             new Pointer[][](0)
         );
 
-        re = new RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000);
+        re = new RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000,
+            10_000_000,
+            10_000_000
+        );
 
         deal(token0, Deployer, type(uint104).max);
         deal(token1, Deployer, type(uint104).max);
@@ -3770,11 +3778,11 @@ contract PanopticPoolTest is PositionUtils {
             assertEq(
                 (poolUtilization0),
                 Math.abs(fastOracleTick - slowOracleTick) > int24(2230)
-                    ? (10_001)
+                    ? 10_001
                     : Math.mulDivRoundingUp(
                         uint256($amount0Moveds[0] + $amount0Moveds[1] + $amount0Moveds[2]),
                         10000,
-                        (ct0.totalSupply())
+                        ct0.totalSupply()
                     )
             );
             assertEq(

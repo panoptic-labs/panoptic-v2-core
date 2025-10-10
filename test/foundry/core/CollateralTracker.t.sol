@@ -240,7 +240,20 @@ contract SemiFungiblePositionManagerHarness is SemiFungiblePositionManager {
 }
 
 contract RiskEngineHarness is RiskEngine {
-    constructor() RiskEngine(2_000_000, 1_000_000, 1_024_000, 5_000_000, 9_000_000) {}
+    constructor(
+        uint256 crossBuffer0,
+        uint256 crossBuffer1
+    )
+        RiskEngine(
+            2_000_000,
+            1_000_000,
+            1_024_000,
+            5_000_000,
+            9_000_000,
+            crossBuffer0,
+            crossBuffer1
+        )
+    {}
 
     function getRequiredCollateralAtUtilization(
         uint128 amount,
@@ -636,7 +649,37 @@ contract CollateralTrackerTest is Test, PositionUtils {
 
         panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
 
-        riskEngine = new RiskEngineHarness();
+        riskEngine = new RiskEngineHarness(10_000_000, 10_000_000);
+
+        // deploy modified Panoptic pool
+        panopticPool = new PanopticPoolHarness(sfpm);
+
+        // initalize Panoptic Pool
+        panopticPool.modifiedStartPool(_token0, _token1, uniswapPool, riskEngine);
+
+        collateralToken0 = CollateralTrackerHarness(address(panopticPool.collateralToken0()));
+        collateralToken1 = CollateralTrackerHarness(address(panopticPool.collateralToken1()));
+
+        // store panoptic pool address
+        panopticPoolAddress = address(panopticPool);
+    }
+
+    function _deployCustomPanopticPool(
+        address _token0,
+        address _token1,
+        IUniswapV3Pool uniswapPool,
+        uint256 crossBuffer0,
+        uint256 crossBuffer1
+    ) internal {
+        // deploy the semiFungiblePositionManager
+        sfpm = new SemiFungiblePositionManagerHarness(V3FACTORY);
+
+        // Initialize the world pool
+        sfpm.initializeAMMPool(_token0, _token1, fee);
+
+        panopticHelper = new PanopticHelper(SemiFungiblePositionManager(sfpm));
+
+        riskEngine = new RiskEngineHarness(crossBuffer0, crossBuffer1);
 
         // deploy modified Panoptic pool
         panopticPool = new PanopticPoolHarness(sfpm);
@@ -5651,6 +5694,628 @@ contract CollateralTrackerTest is Test, PositionUtils {
                 true
             );
 
+            uint256 inAMMOffset = collateralToken0._inAMM();
+
+            vm.revertTo(snapshot);
+
+            // set utilization before minting
+            // take into account the offsets as states are updated before utilization is checked for the mint
+            uint64 targetUtilization = uint64(bound(utilizationSeed, 1, 9_999));
+            setUtilization(collateralToken0, token1, int64(targetUtilization), inAMMOffset, false);
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
+            atTick = (atTick / tickSpacing) * tickSpacing;
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
+                Alice,
+                atTick,
+                posBalanceArray,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
+
+            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
+                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+
+            (uint128 tokensRequired0, uint128 tokensRequired1) = _strangleTokensRequired(
+                tokenId1,
+                positionSize0 / 2,
+                poolUtilizations,
+                atTick
+            );
+
+            // checks tokens required
+            assertEq(tokensRequired0, tokenData0.leftSlot(), "required token0");
+            assertEq(tokensRequired1, tokenData1.leftSlot(), "required token1");
+        }
+
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
+                Alice,
+                currentTick,
+                posBalanceArray,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
+
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+                panopticPool,
+                Alice,
+                currentTick,
+                positionIdList1
+            );
+
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
+        }
+    }
+
+    function test_Success_collateralCheck_shortStrangle_token0(
+        uint256 x,
+        uint128 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 widthSeed2,
+        int256 strikeSeed2,
+        int24 atTick,
+        uint128 utilizationSeed
+    ) public {
+        vm.assume(strikeSeed != strikeSeed2);
+
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, 10_000_000, 10_000_000);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Bob);
+
+            // have Bob sell
+            (width, strike) = PositionUtils.getOTMSW(
+                widthSeed,
+                strikeSeed,
+                uint24(tickSpacing),
+                currentTick,
+                0
+            );
+
+            (width1, strike1) = PositionUtils.getOTMSW(
+                widthSeed2,
+                strikeSeed2,
+                uint24(tickSpacing),
+                currentTick,
+                1
+            );
+
+            vm.assume(width != width1 || strike != strike1);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
+            positionIdList.push(tokenId);
+
+            /// calculate position size
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
+
+            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
+            _assumePositionValidity(Bob, tokenId, positionSize0);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            // Alice sells one-sided
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Alice);
+
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
+            tokenId1 = tokenId1.addLeg(1, 1, 0, 0, 1, 0, strike1, width1);
+            positionIdList1.push(tokenId1);
+
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
+
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId1,
+                positionSize0 / 2
+            );
+
+            collateralToken1.withdraw(
+                collateralToken1.maxWithdraw(Alice) - uint128(shortAmounts.leftSlot()) / 1000 - 1,
+                Alice,
+                Alice
+            );
+
+            uint256 snapshot = vm.snapshot();
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+            uint256 inAMMOffset = collateralToken0._inAMM();
+
+            vm.revertTo(snapshot);
+
+            // set utilization before minting
+            // take into account the offsets as states are updated before utilization is checked for the mint
+            uint64 targetUtilization = uint64(bound(utilizationSeed, 1, 9_999));
+            setUtilization(collateralToken0, token1, int64(targetUtilization), inAMMOffset, false);
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            atTick = int24(bound(atTick, TickMath.MIN_TICK, TickMath.MAX_TICK));
+            atTick = (atTick / tickSpacing) * tickSpacing;
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
+                Alice,
+                atTick,
+                posBalanceArray,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (, uint64 poolUtilization0, uint64 poolUtilization1) = panopticHelper
+                .optionPositionInfo(panopticPool, Alice, tokenId1);
+
+            uint128 poolUtilizations = uint128(poolUtilization0 == 0 ? 1 : poolUtilization0) +
+                (uint128(poolUtilization1 == 0 ? 1 : poolUtilization1) << 64);
+
+            (uint128 tokensRequired0, uint128 tokensRequired1) = _strangleTokensRequired(
+                tokenId1,
+                positionSize0 / 2,
+                poolUtilizations,
+                atTick
+            );
+
+            // checks tokens required
+            assertEq(tokensRequired0, tokenData0.leftSlot(), "required token0");
+            assertEq(tokensRequired1, tokenData1.leftSlot(), "required token1");
+        }
+
+        {
+            (, currentTick, , , , , ) = pool.slot0();
+
+            ($shortPremia, $longPremia, posBalanceArray) = panopticPool
+                .getAccumulatedFeesAndPositionsData(Alice, false, positionIdList1);
+
+            (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = riskEngine.getMargin(
+                Alice,
+                currentTick,
+                posBalanceArray,
+                $shortPremia,
+                $longPremia,
+                collateralToken0,
+                collateralToken1
+            );
+
+            (uint256 calcBalanceCross, uint256 calcThresholdCross) = PanopticMath.getCrossBalances(
+                tokenData0,
+                tokenData1,
+                Math.getSqrtRatioAtTick(currentTick)
+            );
+
+            (balanceData0, thresholdData0) = panopticHelper.checkCollateral(
+                panopticPool,
+                Alice,
+                currentTick,
+                positionIdList1
+            );
+
+            assertEq(balanceData0, calcBalanceCross, "0");
+            assertEq(thresholdData0, calcThresholdCross, "1");
+        }
+    }
+
+    function test_Fail_collateralCheck_noCross0(
+        uint256 x,
+        uint128 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 widthSeed2,
+        int256 strikeSeed2,
+        int24 atTick,
+        uint128 utilizationSeed
+    ) public {
+        vm.assume(strikeSeed != strikeSeed2);
+
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, 0, 10_000_000);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Bob);
+
+            // have Bob sell
+            (width, strike) = PositionUtils.getOTMSW(
+                widthSeed,
+                strikeSeed,
+                uint24(tickSpacing),
+                currentTick,
+                0
+            );
+
+            (width1, strike1) = PositionUtils.getOTMSW(
+                widthSeed2,
+                strikeSeed2,
+                uint24(tickSpacing),
+                currentTick,
+                1
+            );
+
+            vm.assume(width != width1 || strike != strike1);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
+            positionIdList.push(tokenId);
+
+            /// calculate position size
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
+
+            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
+            _assumePositionValidity(Bob, tokenId, positionSize0);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            // Alice sells one-sided
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Alice);
+
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
+            tokenId1 = tokenId1.addLeg(1, 1, 0, 0, 1, 0, strike1, width1);
+            positionIdList1.push(tokenId1);
+
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
+
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId1,
+                positionSize0 / 2
+            );
+
+            collateralToken1.withdraw(
+                collateralToken1.maxWithdraw(Alice) - uint128(shortAmounts.leftSlot()) / 1000 - 1,
+                Alice,
+                Alice
+            );
+
+            vm.expectRevert(Errors.AccountInsolvent.selector);
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+    }
+
+    function test_Fail_collateralCheck_noCross1(
+        uint256 x,
+        uint128 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 widthSeed2,
+        int256 strikeSeed2,
+        int24 atTick,
+        uint128 utilizationSeed
+    ) public {
+        vm.assume(strikeSeed != strikeSeed2);
+
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool, 10_000_000, 0);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Bob);
+
+            // have Bob sell
+            (width, strike) = PositionUtils.getOTMSW(
+                widthSeed,
+                strikeSeed,
+                uint24(tickSpacing),
+                currentTick,
+                0
+            );
+
+            (width1, strike1) = PositionUtils.getOTMSW(
+                widthSeed2,
+                strikeSeed2,
+                uint24(tickSpacing),
+                currentTick,
+                1
+            );
+
+            vm.assume(width != width1 || strike != strike1);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
+            positionIdList.push(tokenId);
+
+            /// calculate position size
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
+
+            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
+            _assumePositionValidity(Bob, tokenId, positionSize0);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            // Alice sells one-sided
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Alice);
+
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
+            tokenId1 = tokenId1.addLeg(1, 1, 0, 0, 1, 0, strike1, width1);
+            positionIdList1.push(tokenId1);
+
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
+
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId1,
+                positionSize0 / 2
+            );
+
+            collateralToken0.withdraw(
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                Alice,
+                Alice
+            );
+
+            vm.expectRevert(Errors.AccountInsolvent.selector);
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+    }
+
+    function test_Success_collateralCheck_shortStrangle_token1(
+        uint256 x,
+        uint128 positionSizeSeed,
+        uint256 widthSeed,
+        int256 strikeSeed,
+        uint256 widthSeed2,
+        int256 strikeSeed2,
+        int24 atTick,
+        uint128 utilizationSeed
+    ) public {
+        vm.assume(strikeSeed != strikeSeed2);
+
+        {
+            _initWorld(x);
+
+            // initalize a custom Panoptic pool
+            _deployCustomPanopticPool(token0, token1, pool);
+
+            // Invoke all interactions with the Collateral Tracker from user Bob
+            vm.startPrank(Bob);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Bob);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Bob);
+
+            // have Bob sell
+            (width, strike) = PositionUtils.getOTMSW(
+                widthSeed,
+                strikeSeed,
+                uint24(tickSpacing),
+                currentTick,
+                0
+            );
+
+            (width1, strike1) = PositionUtils.getOTMSW(
+                widthSeed2,
+                strikeSeed2,
+                uint24(tickSpacing),
+                currentTick,
+                1
+            );
+
+            vm.assume(width != width1 || strike != strike1);
+            tokenId = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 0, strike, width);
+            tokenId = tokenId.addLeg(1, 1, 0, 0, 1, 1, strike1, width1);
+            positionIdList.push(tokenId);
+
+            /// calculate position size
+            (legLowerTick, legUpperTick) = tokenId.asTicks(0);
+
+            positionSize0 = uint128(bound(positionSizeSeed, 10 ** 18, 10 ** 20));
+            _assumePositionValidity(Bob, tokenId, positionSize0);
+
+            mintOptions(
+                panopticPool,
+                positionIdList,
+                positionSize0,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
+        }
+
+        {
+            // Alice sells one-sided
+            vm.startPrank(Alice);
+
+            // give Bob the max amount of tokens
+            _grantTokens(Alice);
+
+            // approve collateral tracker to move tokens on Bob's behalf
+            IERC20Partial(token0).approve(address(collateralToken0), type(uint128).max);
+            IERC20Partial(token1).approve(address(collateralToken1), type(uint128).max);
+
+            _mockMaxDeposit(Alice);
+
+            tokenId1 = TokenId.wrap(0).addPoolId(poolId).addLeg(0, 1, 0, 0, 0, 1, strike, width);
+            tokenId1 = tokenId1.addLeg(1, 1, 0, 0, 1, 0, strike1, width1);
+            positionIdList1.push(tokenId1);
+
+            _assumePositionValidity(Alice, tokenId1, positionSize0 / 2);
+
+            (, LeftRightSigned shortAmounts) = PanopticMath.computeExercisedAmounts(
+                tokenId1,
+                positionSize0 / 2
+            );
+
+            collateralToken0.withdraw(
+                collateralToken0.maxWithdraw(Alice) - uint128(shortAmounts.rightSlot()) / 1000 - 1,
+                Alice,
+                Alice
+            );
+
+            uint256 snapshot = vm.snapshot();
+
+            mintOptions(
+                panopticPool,
+                positionIdList1,
+                positionSize0 / 2,
+                type(uint64).max,
+                TickMath.MIN_TICK,
+                TickMath.MAX_TICK,
+                true
+            );
             uint256 inAMMOffset = collateralToken0._inAMM();
 
             vm.revertTo(snapshot);

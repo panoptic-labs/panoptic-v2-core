@@ -136,10 +136,10 @@ contract PanopticPool is Multicall {
     uint64 internal constant MAX_OPEN_LEGS = 25;
 
     /// @notice Multiplier in basis points for the collateral requirement in the event of a buying power decrease, such as minting or force exercising another user.
-    uint256 internal constant BP_DECREASE_BUFFER = 13_333;
+    uint256 internal constant BP_DECREASE_BUFFER = 13_333_333;
 
     /// @notice Multiplier for the collateral requirement in the general case.
-    uint256 internal constant NO_BUFFER = 10_000;
+    uint256 internal constant NO_BUFFER = 10_000_000;
 
     /// @notice The "engine" of Panoptic - manages AMM liquidity and executes all mints/burns/exercises.
     SemiFungiblePositionManager internal immutable SFPM;
@@ -675,7 +675,6 @@ contract PanopticPool is Multicall {
         // compute how much of tokenId is long and short positions
         (LeftRightSigned longAmounts, LeftRightSigned shortAmounts) = PanopticMath
             .computeExercisedAmounts(tokenId, positionSize);
-
         {
             (LeftRightUnsigned utilizationAndCommission0, int128 paid0) = s_collateralToken0
                 .settleMint(
@@ -1351,23 +1350,17 @@ contract PanopticPool is Multicall {
         LeftRightUnsigned longPremium,
         uint256 buffer
     ) internal view returns (bool) {
-        (LeftRightUnsigned tokenData0, LeftRightUnsigned tokenData1) = s_riskEngine.getMargin(
-            account,
-            atTick,
-            positionBalanceArray,
-            shortPremium,
-            longPremium,
-            s_collateralToken0,
-            s_collateralToken1
-        );
-        (uint256 balanceCross, uint256 thresholdCross) = PanopticMath.getCrossBalances(
-            tokenData0,
-            tokenData1,
-            Math.getSqrtRatioAtTick(atTick)
-        );
-
-        // compare balance and required tokens, can use unsafe div because denominator is always nonzero
-        return balanceCross >= Math.mulDivRoundingUp(thresholdCross, buffer, 10_000);
+        return
+            s_riskEngine.isAccountSolvent(
+                account,
+                atTick,
+                positionBalanceArray,
+                shortPremium,
+                longPremium,
+                s_collateralToken0,
+                s_collateralToken1,
+                buffer
+            );
     }
 
     /// @notice Checks whether the current tick has deviated too much from the previouslyt stored ticks. Computed in the RiskEngine
