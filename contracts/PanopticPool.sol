@@ -155,6 +155,9 @@ contract PanopticPool is Multicall {
     /// @notice The Uniswap V3 pool that this instance of Panoptic is deployed on.
     IUniswapV3Pool internal s_univ3pool;
 
+    /// @notice The poolId of this instance of Panoptic.
+    uint64 internal s_poolId;
+
     /// @notice Stores a sorted set of 8 price observations used to compute the internal median oracle price.
     // The data for the last 8 interactions is stored as such:
     //
@@ -277,6 +280,8 @@ contract PanopticPool is Multicall {
         // Store the univ3Pool variable
         s_univ3pool = IUniswapV3Pool(_univ3pool);
 
+        s_poolId = SFPM.getPoolId(address(s_univ3pool));
+
         (, int24 currentTick, , , , , ) = IUniswapV3Pool(_univ3pool).slot0();
 
         // Store the median data
@@ -374,8 +379,7 @@ contract PanopticPool is Multicall {
         TokenId[] calldata positionIdList
     ) external view returns (LeftRightUnsigned, LeftRightUnsigned, uint256[2][] memory) {
         // Get the current tick of the Uniswap pool
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
-
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         // Compute the accumulated premia for all tokenId in positionIdList (includes short+long premium)
         return
             _calculateAccumulatedPremia(
@@ -419,10 +423,15 @@ contract PanopticPool is Multicall {
         for (uint256 k = 0; k < pLength; ) {
             TokenId tokenId = positionIdList[k];
 
-            balances[k] = [
-                TokenId.unwrap(tokenId),
-                PositionBalance.unwrap(s_positionBalance[c_user][tokenId])
-            ];
+            {
+                PositionBalance positionBalanceData = s_positionBalance[c_user][tokenId];
+                if (positionBalanceData.positionSize() == 0) revert Errors.PositionNotOwned();
+
+                balances[k] = [
+                    TokenId.unwrap(tokenId),
+                    PositionBalance.unwrap(positionBalanceData)
+                ];
+            }
 
             (
                 LeftRightSigned[4] memory premiaByLeg,
@@ -494,15 +503,10 @@ contract PanopticPool is Multicall {
 
     /// @notice Updates the internal median with the last Uniswap observation if the `MEDIAN_PERIOD` has elapsed.
     function pokeMedian() external {
-        (
-            ,
-            int24 currentTick,
-            uint16 observationIndex,
-            uint16 observationCardinality,
-            ,
-            ,
-
-        ) = s_univ3pool.slot0();
+        (uint16 observationIndex, uint16 observationCardinality) = SFPM.indexAndCardinality(
+            s_univ3pool
+        );
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
 
         (, uint256 oraclePack) = PanopticMath.computeInternalMedian(s_oraclePack, currentTick);
 
@@ -531,12 +535,12 @@ contract PanopticPool is Multicall {
     ) external {
         // if safeMode, enforce covered at mint and exercise at burn
         bool safeMode = isSafeMode();
+        uint64 poolId = s_poolId;
         for (uint256 i = 0; i < positionIdList.length; ) {
             TokenId tokenId = positionIdList[i];
 
             // make sure the tokenId is for this Panoptic pool
-            if (tokenId.poolId() != SFPM.getPoolId(address(s_univ3pool)))
-                revert Errors.InvalidTokenIdParameter(0);
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
 
             PositionBalance positionBalanceData = s_positionBalance[msg.sender][tokenId];
 
@@ -678,8 +682,8 @@ contract PanopticPool is Multicall {
                     totalSwapped.rightSlot()
                 );
             utilizations = uint32(utilizationAndCommission0.rightSlot());
-            commissions = commissions.toRightSlot(utilizationAndCommission0.leftSlot());
-            paidAmounts = paidAmounts.toRightSlot(paid0);
+            commissions = commissions.addToRightSlot(utilizationAndCommission0.leftSlot());
+            paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
         {
             (LeftRightUnsigned utilizationAndCommission1, int128 paid1) = s_collateralToken1
@@ -690,8 +694,8 @@ contract PanopticPool is Multicall {
                     totalSwapped.leftSlot()
                 );
             utilizations += uint32(utilizationAndCommission1.rightSlot() << 16);
-            commissions = commissions.toLeftSlot(utilizationAndCommission1.leftSlot());
-            paidAmounts = paidAmounts.toLeftSlot(paid1);
+            commissions = commissions.addToLeftSlot(utilizationAndCommission1.leftSlot());
+            paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
 
         // return pool utilizations as two uint16 (pool Utilization is always <= 10000)
@@ -781,7 +785,7 @@ contract PanopticPool is Multicall {
                 totalSwapped.rightSlot(),
                 realizedPremia.rightSlot()
             );
-            paidAmounts = paidAmounts.toRightSlot(paid0);
+            paidAmounts = paidAmounts.addToRightSlot(paid0);
         }
 
         {
@@ -792,7 +796,7 @@ contract PanopticPool is Multicall {
                 totalSwapped.leftSlot(),
                 realizedPremia.leftSlot()
             );
-            paidAmounts = paidAmounts.toLeftSlot(paid1);
+            paidAmounts = paidAmounts.addToLeftSlot(paid1);
         }
 
         emit OptionBurnt(owner, positionSize, tokenId, premiaByLeg);
@@ -1236,9 +1240,9 @@ contract PanopticPool is Multicall {
                                 _currentTick,
                                 1
                             );
-                        accumulatedPremium = LeftRightUnsigned.wrap(premiumAccumulator0).toLeftSlot(
-                            premiumAccumulator1
-                        );
+                        accumulatedPremium = LeftRightUnsigned
+                            .wrap(premiumAccumulator0)
+                            .addToLeftSlot(premiumAccumulator1);
                     }
                     {
                         // update the premium accumulator for the long position to the latest value
@@ -1257,10 +1261,10 @@ contract PanopticPool is Multicall {
                     // update the realized premia
                     realizedPremia = LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(
+                        .addToRightSlot(
                             int128(int256((accumulatedPremium.rightSlot() * liquidity) / 2 ** 64))
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             int128(int256((accumulatedPremium.leftSlot() * liquidity) / 2 ** 64))
                         );
                 }
@@ -1396,7 +1400,7 @@ contract PanopticPool is Multicall {
     ///      2. "Internal Disagreement": The 10-minute EMA deviates too far from the more stable 1-hour EMA, indicating high volatility.
     /// @return Whether the protocol should be in Safe Mode.
     function isSafeMode() public view returns (bool) {
-        (, int24 currentTick, , , , , ) = s_univ3pool.slot0();
+        int24 currentTick = SFPM.getCurrentTick(s_univ3pool);
         uint256 oraclePack = s_oraclePack;
 
         // Extract the relevant EMAs from oraclePack
@@ -1434,10 +1438,16 @@ contract PanopticPool is Multicall {
             revert Errors.DuplicateTokenId();
         }
 
+        uint64 poolId = s_poolId;
+
         for (uint256 i = 0; i < pLength; ) {
+            TokenId tokenId = positionIdList[i];
+            // make sure the tokenId is for this Panoptic pool
+            if (tokenId.poolId() != poolId) revert Errors.WrongPoolId();
+
             fingerprintIncomingList = PanopticMath.updatePositionsHash(
                 fingerprintIncomingList,
-                positionIdList[i],
+                tokenId,
                 ADD
             );
             unchecked {
@@ -1636,7 +1646,7 @@ contract PanopticPool is Multicall {
 
                     premiaByLeg[leg] = LeftRightSigned
                         .wrap(0)
-                        .toRightSlot(
+                        .addToRightSlot(
                             int128(
                                 int256(
                                     ((premiumAccumulatorsByLeg[leg][0] -
@@ -1645,7 +1655,7 @@ contract PanopticPool is Multicall {
                                 )
                             )
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             int128(
                                 int256(
                                     ((premiumAccumulatorsByLeg[leg][1] -
@@ -1722,7 +1732,7 @@ contract PanopticPool is Multicall {
 
                 s_options[owner][tokenId][leg] = LeftRightUnsigned
                     .wrap(uint128(grossCurrent0))
-                    .toLeftSlot(uint128(grossCurrent1));
+                    .addToLeftSlot(uint128(grossCurrent1));
             }
 
             // if position is long, ensure that removed liquidity does not deplete strike beyond min(MAX_SPREAD, user-provided effectiveLiquidityLimit)
@@ -1769,7 +1779,7 @@ contract PanopticPool is Multicall {
                                     totalLiquidityBefore) / totalLiquidity
                             )
                         )
-                        .toLeftSlot(
+                        .addToLeftSlot(
                             uint128(
                                 (grossCurrent1 *
                                     positionLiquidity +
@@ -1822,7 +1832,7 @@ contract PanopticPool is Multicall {
                             )
                         )
                     )
-                    .toLeftSlot(
+                    .addToLeftSlot(
                         uint128(
                             Math.min(
                                 (uint256(premiumOwed.leftSlot()) * settledTokens.leftSlot()) /
@@ -2001,7 +2011,7 @@ contract PanopticPool is Multicall {
                                     ) / totalLiquidity
                                 )
                             )
-                            .toLeftSlot(
+                            .addToLeftSlot(
                                 uint128(
                                     uint256(
                                         Math.max(
@@ -2019,7 +2029,7 @@ contract PanopticPool is Multicall {
                             )
                         : LeftRightUnsigned
                             .wrap(uint128(premiumAccumulatorsByLeg[_leg][0]))
-                            .toLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
+                            .addToLeftSlot(uint128(premiumAccumulatorsByLeg[_leg][1]));
                 }
             }
             // update settled tokens in storage with all local deltas

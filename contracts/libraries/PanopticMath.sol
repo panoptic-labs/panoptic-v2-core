@@ -997,7 +997,7 @@ library PanopticMath {
             amount1 = uint128(Math.getAmount1ForLiquidity(liquidityChunk));
         }
 
-        return LeftRightUnsigned.wrap(amount0).toLeftSlot(amount1);
+        return LeftRightUnsigned.wrap(amount0).addToLeftSlot(amount1);
     }
 
     /// @notice Compute the amount of funds that are moved to or removed from the Panoptic Pool when `tokenId` is created.
@@ -1018,22 +1018,26 @@ library PanopticMath {
         if (tokenId.tokenType(legIndex) == 0) {
             if (isShort) {
                 // if option is short, increment shorts by contracts
-                shorts = LeftRightSigned.wrap(0).toRightSlot(
+                shorts = LeftRightSigned.wrap(0).addToRightSlot(
                     Math.toInt128(amountsMoved.rightSlot())
                 );
             } else {
                 // is option is long, increment longs by contracts
-                longs = LeftRightSigned.wrap(0).toRightSlot(
+                longs = LeftRightSigned.wrap(0).addToRightSlot(
                     Math.toInt128(amountsMoved.rightSlot())
                 );
             }
         } else {
             if (isShort) {
                 // if option is short, increment shorts by notional
-                shorts = LeftRightSigned.wrap(0).toLeftSlot(Math.toInt128(amountsMoved.leftSlot()));
+                shorts = LeftRightSigned.wrap(0).addToLeftSlot(
+                    Math.toInt128(amountsMoved.leftSlot())
+                );
             } else {
                 // if option is long, increment longs by notional
-                longs = LeftRightSigned.wrap(0).toLeftSlot(Math.toInt128(amountsMoved.leftSlot()));
+                longs = LeftRightSigned.wrap(0).addToLeftSlot(
+                    Math.toInt128(amountsMoved.leftSlot())
+                );
             }
         }
     }
@@ -1106,7 +1110,7 @@ library PanopticMath {
 
                 // It is assumed the sum of `protocolLoss1` and `collateralDelta1` does not exceed `2^127 - 1` given practical constraints
                 // on token supplies and deposit limits
-                haircutBase = LeftRightSigned.wrap(longPremium.rightSlot()).toLeftSlot(
+                haircutBase = LeftRightSigned.wrap(longPremium.rightSlot()).addToLeftSlot(
                     int128(protocolLoss1 + collateralDelta1)
                 );
             } else if (
@@ -1135,13 +1139,13 @@ library PanopticMath {
                 // on token supplies and deposit limits
                 haircutBase = LeftRightSigned
                     .wrap(int128(protocolLoss0 + collateralDelta0))
-                    .toLeftSlot(longPremium.leftSlot());
+                    .addToLeftSlot(longPremium.leftSlot());
             } else {
                 // for each token, haircut until the protocol loss is mitigated or the premium paid is exhausted
                 // the size of `collateralDelta0/1` and `longPremium.rightSlot()/leftSlot()` is limited to `2^127 - 1` given that they originate from LeftRightSigned types
                 haircutBase = LeftRightSigned
                     .wrap(int128(Math.min(collateralDelta0, longPremium.rightSlot())))
-                    .toLeftSlot(int128(Math.min(collateralDelta1, longPremium.leftSlot())));
+                    .addToLeftSlot(int128(Math.min(collateralDelta1, longPremium.leftSlot())));
 
                 collateralDelta0 = 0;
                 collateralDelta1 = 0;
@@ -1175,7 +1179,7 @@ library PanopticMath {
                                     )
                                 )
                             )
-                            .toLeftSlot(
+                            .addToLeftSlot(
                                 int128(
                                     uint128(
                                         Math.unsafeDivRoundingUp(
@@ -1223,7 +1227,7 @@ library PanopticMath {
                 collateral1.settleBurn(_liquidatee, 0, 0, 0, int128(haircutTotal.leftSlot()));
 
             return
-                LeftRightSigned.wrap(0).toRightSlot(int128(collateralDelta0)).toLeftSlot(
+                LeftRightSigned.wrap(0).addToRightSlot(int128(collateralDelta0)).addToLeftSlot(
                     int128(collateralDelta1)
                 );
         }

@@ -1205,8 +1205,8 @@ contract PanopticMathTest is Test, PositionUtils {
         vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned legacyContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0.toUint128())
-            .toLeftSlot(amount1.toUint128());
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
         // set amount0 - UNISWAP MATH
         uint256 contracts = positionSize * tokenId.optionRatio(0);
@@ -1245,8 +1245,8 @@ contract PanopticMathTest is Test, PositionUtils {
         vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0.toUint128())
-            .toLeftSlot(amount1.toUint128());
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
         // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
@@ -1359,8 +1359,8 @@ contract PanopticMathTest is Test, PositionUtils {
         vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned legacyContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0.toUint128())
-            .toLeftSlot(amount1.toUint128());
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
         // set amount0 - UNISWAP MATH
         uint256 contracts = positionSize * tokenId.optionRatio(0);
@@ -1395,8 +1395,8 @@ contract PanopticMathTest is Test, PositionUtils {
         vm.assume(amount1 < type(uint128).max);
         LeftRightUnsigned expectedContractsNotional = LeftRightUnsigned
             .wrap(0)
-            .toRightSlot(amount0.toUint128())
-            .toLeftSlot(amount1.toUint128());
+            .addToRightSlot(amount0.toUint128())
+            .addToLeftSlot(amount1.toUint128());
 
         // set amount0 - PANOPTIC MATH
         LeftRightUnsigned returnedContractsNotional = harness.getAmountsMoved(
@@ -1481,7 +1481,7 @@ contract PanopticMathTest is Test, PositionUtils {
         LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
-        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).toRightSlot(
+        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToRightSlot(
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
@@ -1552,7 +1552,7 @@ contract PanopticMathTest is Test, PositionUtils {
         LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.rightSlot())) < type(int128).max);
 
-        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).toRightSlot(
+        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToRightSlot(
             Math.toInt128(contractsNotional.rightSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
@@ -1608,7 +1608,7 @@ contract PanopticMathTest is Test, PositionUtils {
         LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
 
-        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).toLeftSlot(
+        LeftRightSigned expectedShorts = LeftRightSigned.wrap(0).addToLeftSlot(
             Math.toInt128(contractsNotional.leftSlot())
         );
         (LeftRightSigned returnedLongs, LeftRightSigned returnedShorts) = harness
@@ -1667,7 +1667,7 @@ contract PanopticMathTest is Test, PositionUtils {
         LeftRightUnsigned contractsNotional = harness.getAmountsMoved(tokenId, positionSize, 0);
 
         vm.assume(int256(uint256(contractsNotional.leftSlot())) < type(int128).max);
-        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).toLeftSlot(
+        LeftRightSigned expectedLongs = LeftRightSigned.wrap(0).addToLeftSlot(
             Math.toInt128(contractsNotional.leftSlot())
         );
 

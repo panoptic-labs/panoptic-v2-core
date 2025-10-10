@@ -822,7 +822,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             );
 
             // Add amounts swapped to totalSwapped variable
-            totalSwapped = LeftRightSigned.wrap(0).toRightSlot(swap0.toInt128()).toLeftSlot(
+            totalSwapped = LeftRightSigned.wrap(0).addToRightSlot(swap0.toInt128()).addToLeftSlot(
                 swap1.toInt128()
             );
         }
@@ -903,8 +903,8 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             // if tokenType is 0, and we transacted some token1: then this leg is ITM
             itmAmounts = itmAmounts.add(
                 tokenId.tokenType(leg) == 0
-                    ? LeftRightSigned.wrap(0).toLeftSlot(movedLeg.leftSlot())
-                    : LeftRightSigned.wrap(0).toRightSlot(movedLeg.rightSlot())
+                    ? LeftRightSigned.wrap(0).addToLeftSlot(movedLeg.leftSlot())
+                    : LeftRightSigned.wrap(0).addToRightSlot(movedLeg.rightSlot())
             );
 
             unchecked {
@@ -1019,9 +1019,9 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
             }
 
             // update the starting liquidity for this position for next time around
-            s_accountLiquidity[positionKey] = LeftRightUnsigned.wrap(updatedLiquidity).toLeftSlot(
-                removedLiquidity
-            );
+            s_accountLiquidity[positionKey] = LeftRightUnsigned
+                .wrap(updatedLiquidity)
+                .addToLeftSlot(removedLiquidity);
         }
 
         // track how much liquidity we need to collect from uniswap
@@ -1131,16 +1131,16 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         feesBase = roundUp
             ? LeftRightSigned
                 .wrap(0)
-                .toRightSlot(
+                .addToRightSlot(
                     int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside0LastX128, liquidity)))
                 )
-                .toLeftSlot(
+                .addToLeftSlot(
                     int128(int256(Math.mulDiv128RoundingUp(feeGrowthInside1LastX128, liquidity)))
                 )
             : LeftRightSigned
                 .wrap(0)
-                .toRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
-                .toLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
+                .addToRightSlot(int128(int256(Math.mulDiv128(feeGrowthInside0LastX128, liquidity))))
+                .addToLeftSlot(int128(int256(Math.mulDiv128(feeGrowthInside1LastX128, liquidity))));
     }
 
     /// @notice Mint a chunk of liquidity (`liquidityChunk`) in the Uniswap V3 pool; return the amount moved.
@@ -1176,9 +1176,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // amount0 The amount of token0 that was paid to mint the given amount of liquidity
         // amount1 The amount of token1 that was paid to mint the given amount of liquidity
         // no need to safecast to int from uint here as the max position size is int128
-        movedAmounts = LeftRightSigned.wrap(0).toRightSlot(int128(int256(amount0))).toLeftSlot(
-            int128(int256(amount1))
-        );
+        movedAmounts = LeftRightSigned
+            .wrap(0)
+            .addToRightSlot(int128(int256(amount0)))
+            .addToLeftSlot(int128(int256(amount1)));
     }
 
     /// @notice Burn a chunk of liquidity (`liquidityChunk`) in the Uniswap V3 pool and send to msg.sender; return the amount moved.
@@ -1202,9 +1203,10 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
         // no need to safecast to int from uint here as the max position size is int128
         // decrement the amountsOut with burnt amounts. amountsOut = notional value of tokens moved
         unchecked {
-            movedAmounts = LeftRightSigned.wrap(0).toRightSlot(-int128(int256(amount0))).toLeftSlot(
-                -int128(int256(amount1))
-            );
+            movedAmounts = LeftRightSigned
+                .wrap(0)
+                .addToRightSlot(-int128(int256(amount0)))
+                .addToLeftSlot(-int128(int256(amount1)));
         }
     }
 
@@ -1273,7 +1275,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
 
             // CollectedOut is the amount of fees accumulated+collected (received - burnt)
             // That's because receivedAmount contains the burnt tokens and whatever amount of fees collected
-            collectedChunk = LeftRightUnsigned.wrap(collected0).toLeftSlot(collected1);
+            collectedChunk = LeftRightUnsigned.wrap(collected0).addToLeftSlot(collected1);
 
             // record the collected amounts in the s_accountPremiumOwed and s_accountPremiumGross accumulators
             _updateStoredPremia(positionKey, currentLiquidity, collectedChunk);
@@ -1341,7 +1343,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         .mulDiv(premium1X64_base, numerator, totalLiquidity)
                         .toUint128Capped();
 
-                    deltaPremiumOwed = LeftRightUnsigned.wrap(premium0X64_owed).toLeftSlot(
+                    deltaPremiumOwed = LeftRightUnsigned.wrap(premium0X64_owed).addToLeftSlot(
                         premium1X64_owed
                     );
                 }
@@ -1364,7 +1366,7 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
                         .mulDiv(premium1X64_base, numerator, totalLiquidity ** 2)
                         .toUint128Capped();
 
-                    deltaPremiumGross = LeftRightUnsigned.wrap(premium0X64_gross).toLeftSlot(
+                    deltaPremiumGross = LeftRightUnsigned.wrap(premium0X64_gross).addToLeftSlot(
                         premium1X64_gross
                     );
                 }
@@ -1527,5 +1529,15 @@ contract SemiFungiblePositionManager is ERC1155, Multicall, TransientReentrancyG
     /// @return poolId The unique pool identifier corresponding to `univ3pool`
     function getPoolId(address univ3pool) external view returns (uint64 poolId) {
         poolId = uint64(s_AddrToPoolIdData[univ3pool]);
+    }
+
+    function getCurrentTick(IUniswapV3Pool univ3pool) external view returns (int24 currentTick) {
+        (, currentTick, , , , , ) = univ3pool.slot0();
+    }
+
+    function indexAndCardinality(
+        IUniswapV3Pool univ3pool
+    ) external view returns (uint16 observationIndex, uint16 observationCardinality) {
+        (, , observationIndex, observationCardinality, , , ) = univ3pool.slot0();
     }
 }

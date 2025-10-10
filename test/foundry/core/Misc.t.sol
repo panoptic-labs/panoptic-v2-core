@@ -472,7 +472,7 @@ contract Misctest is Test, PositionUtils {
             liquidatee,
             positionIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toRightSlot(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToRightSlot(1).addToLeftSlot(1)
         );
     }
 
@@ -520,7 +520,7 @@ contract Misctest is Test, PositionUtils {
             exercisee,
             settleeList,
             settleeList,
-            LeftRightUnsigned.wrap(0).toRightSlot(premiaAsCollateral ? 1 : 0).toLeftSlot(
+            LeftRightUnsigned.wrap(0).addToRightSlot(premiaAsCollateral ? 1 : 0).addToLeftSlot(
                 premiaAsCollateral ? 1 : 0
             )
         );
@@ -1814,7 +1814,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[0],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
     }
 
@@ -1961,7 +1961,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -1971,7 +1971,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -1981,7 +1981,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             $tempIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         snap = vm.snapshotState();
@@ -2001,7 +2001,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -2011,7 +2011,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         uint256 snap2 = vm.snapshotState();
@@ -2022,7 +2022,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         vm.revertToState(snap2);
@@ -2033,7 +2033,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             $tempIdList,
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
 
         vm.revertToState(snap);
@@ -2059,7 +2059,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.expectRevert(Errors.AccountInsolvent.selector);
@@ -2069,7 +2069,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         snap2 = vm.snapshotState();
@@ -2080,7 +2080,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         vm.revertToState(snap2);
@@ -2093,7 +2093,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             $tempIdList,
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
 
         vm.revertToState(snap2);
@@ -2114,7 +2114,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(0)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(0)
         );
 
         vm.revertToState(snap2);
@@ -2127,7 +2127,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(0).toLeftSlot(1)
+            LeftRightUnsigned.wrap(0).addToLeftSlot(1)
         );
 
         vm.revertToState(snap2);
@@ -2139,7 +2139,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(0)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(0)
         );
 
         vm.revertToState(snap2);
@@ -2152,7 +2152,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[1],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -2238,7 +2238,7 @@ contract Misctest is Test, PositionUtils {
             $posIdList[0],
             new TokenId[](0),
             new TokenId[](0),
-            LeftRightUnsigned.wrap(1).toLeftSlot(1)
+            LeftRightUnsigned.wrap(1).addToLeftSlot(1)
         );
     }
 
@@ -3745,7 +3745,7 @@ contract Misctest is Test, PositionUtils {
             true
         );
 
-        editCollateral(ct0, Bob, ct0.convertToShares(266263));
+        editCollateral(ct0, Bob, ct0.convertToShares(266264));
         editCollateral(ct1, Bob, 0);
 
         pp.validateCollateralWithdrawable(Bob, $posIdList, true);
@@ -3782,7 +3782,7 @@ contract Misctest is Test, PositionUtils {
         editCollateral(ct0, Bob, ct0.convertToShares(1_000_000));
         editCollateral(ct1, Bob, 0);
 
-        ct0.withdraw(1_000_000 - 266263, Bob, Bob, $posIdList, true);
+        ct0.withdraw(1_000_000 - 266264, Bob, Bob, $posIdList, true);
     }
 
     function test_Fail_validateCollateralWithdrawable() public {
