@@ -336,7 +336,7 @@ contract PanopticPool is Multicall {
         CollateralTracker ct0 = s_collateralToken0;
         CollateralTracker ct1 = s_collateralToken1;
         if (ct0.assetsOf(msg.sender) < minValue0 || ct1.assetsOf(msg.sender) < minValue1)
-            revert Errors.AccountInsolvent();
+            revert Errors.AccountInsolvent(0, 0);
     }
 
     /// @notice Determines if account is eligible to withdraw or transfer collateral.
@@ -884,7 +884,7 @@ contract PanopticPool is Multicall {
         );
         uint256 numberOfTicks = atTicks.length;
 
-        if (solvent != numberOfTicks) revert Errors.AccountInsolvent();
+        if (solvent != numberOfTicks) revert Errors.AccountInsolvent(solvent, numberOfTicks);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -969,7 +969,7 @@ contract PanopticPool is Multicall {
                             bytes32 toHash = keccak256(abi.encodePacked(positionIdListTo));
                             bytes32 finalHash = keccak256(abi.encodePacked(positionIdListToFinal));
                             if (toHash != finalHash) {
-                                revert Errors.InputListFail();
+                                revert Errors.InputListFailForSettleLong();
                             }
                         }
                         exchangedAmounts = _settleLongPremium(
@@ -1003,14 +1003,14 @@ contract PanopticPool is Multicall {
 
                 // if the positions lengths are the same, this was intended as a settleLongPremia, but revert because account is insolvent
                 if (positionIdListToFinal.length == positionIdListTo.length)
-                    revert Errors.AccountInsolvent();
+                    revert Errors.AccountInsolvent(solvent, 4);
 
                 // if the final position list has a non-zero length, this can't be a complete liquidation, revert
                 if (positionIdListToFinal.length != 0) revert Errors.InputListFail();
                 exchangedAmounts = _liquidate(account, positionIdListTo, twapTick, currentTick);
             } else {
-                // otherwise, revert because the account is not fully margin called
-                revert Errors.NotMarginCalled();
+                // otherwise, revert because the account is not fully margin called or fully solvent
+                revert Errors.AccountInsolvent(solvent, 4);
             }
         }
 

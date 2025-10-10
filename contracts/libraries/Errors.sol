@@ -6,7 +6,7 @@ pragma solidity ^0.8.24;
 /// @notice Contains all custom error messages used in Panoptic.
 library Errors {
     /// @notice PanopticPool: The account is not solvent enough to perform the desired action
-    error AccountInsolvent();
+    error AccountInsolvent(uint256 solvent, uint256 numberOfTicks);
 
     /// @notice Casting error
     /// @dev e.g. uint128(uint256(a)) fails
