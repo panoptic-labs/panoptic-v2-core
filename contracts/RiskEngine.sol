@@ -453,6 +453,7 @@ contract RiskEngine {
                     longPremia.rightSlot() +
                     owedInterest0).toUint128()
                 : 0;
+
             tokenData0 = LeftRightUnsigned.wrap(balance0.toUint128()).addToLeftSlot(
                 requirement0.toUint128()
             );
@@ -917,6 +918,13 @@ contract RiskEngine {
         uint256 partnerIndex,
         int16 poolUtilization
     ) internal view returns (uint256 spreadRequirement) {
+        if (tokenId.strike(index) == tokenId.strike(partnerIndex)) {
+            // real formula is contractSize * ((sqrt(r1) - 1)/(sqrt(r1)+1) - (sqrt(r2) - 1)/(sqrt(r2)+1))
+            // Taylor expand to get a rough approximation of: contractSize * ∆width * tickSpacing / 40000
+            // This is strictly larger than the real one, so OK to use that for a collateral requirement.
+            return 0; // (tokenId.width(index) - tokenId.width(partnerIndex) * tokenId.tickSpacing()) / 40000;
+        }
+
         // compute the total amount of funds moved for the position's current leg
         LeftRightUnsigned amountsMoved = PanopticMath.getAmountsMoved(tokenId, positionSize, index);
 
@@ -980,11 +988,12 @@ contract RiskEngine {
         // TODO: check this assumption, allow very small collateral requirements since force exercise can work while in-range
         spreadRequirement = Math.max(
             spreadRequirement,
-            _getRequiredCollateralAtUtilization(
-                tokenType == 0 ? moved0 : moved1,
-                1,
-                poolUtilization
-            )
+            0 *
+                _getRequiredCollateralAtUtilization(
+                    tokenType == 0 ? moved0 : moved1,
+                    1,
+                    poolUtilization
+                )
         );
     }
 
